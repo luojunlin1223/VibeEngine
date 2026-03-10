@@ -1,0 +1,36 @@
+# Build outputs
+build/
+out/
+bin/
+obj/
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.lib
+
+# IDE / Editor
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Dependencies
+node_modules/
+vendor/
+third_party/build/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
