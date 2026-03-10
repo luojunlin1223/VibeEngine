@@ -15,10 +15,15 @@ VibeEngine is an experimental game engine where all code is authored by AI. The 
 ## Project Structure
 
 ```
-/  (root)
-├── CLAUDE.md          # AI development guidelines (this file)
-├── .gitignore         # Git ignore rules
-└── ...                # Engine modules TBD
+VibeEngine/
+├── CMakeLists.txt          # Root CMake (deps via FetchContent)
+├── engine/
+│   ├── include/VibeEngine/
+│   │   ├── Core/           # Application, Window, Log
+│   │   ├── Renderer/       # Abstract: RendererAPI, Buffer, Shader, VertexArray
+│   │   └── Platform/       # OpenGL/ and Vulkan/ backend implementations
+│   └── src/                # .cpp files (mirrors include/)
+└── sandbox/                # Test application
 ```
 
 ## Development Guidelines
