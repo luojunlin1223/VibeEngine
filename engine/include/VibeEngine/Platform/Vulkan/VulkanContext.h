@@ -33,9 +33,15 @@ public:
     VkSurfaceKHR     GetSurface()        const { return m_Surface; }
     VkPipeline       GetPipeline()       const { return m_GraphicsPipeline; }
     VkPipelineLayout GetPipelineLayout() const { return m_PipelineLayout; }
+    VkRenderPass     GetRenderPass()     const { return m_RenderPass; }
+    VkQueue          GetGraphicsQueue()  const { return m_GraphicsQueue; }
+    uint32_t         GetGraphicsFamily() const { return static_cast<uint32_t>(m_GraphicsFamily); }
+    uint32_t         GetSwapchainImageCount() const { return static_cast<uint32_t>(m_SwapchainImages.size()); }
 
     void SetClearColor(float r, float g, float b, float a);
     void SubmitDrawCommand(const VulkanDrawCommand& cmd);
+
+    void SetImGuiEnabled(bool enabled) { m_ImGuiEnabled = enabled; }
 
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
@@ -52,6 +58,7 @@ private:
     void CreateCommandPool();
     void CreateCommandBuffers();
     void CreateSyncObjects();
+    void RecreateSwapchain();
     void RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);
     void Cleanup();
     void CleanupSwapchain();
@@ -100,6 +107,7 @@ private:
     // Render state
     VkClearColorValue m_ClearColor = {{0.1f, 0.1f, 0.1f, 1.0f}};
     std::vector<VulkanDrawCommand> m_DrawCommands;
+    bool m_ImGuiEnabled = false;
 };
 
 } // namespace VE

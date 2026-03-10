@@ -3,28 +3,87 @@
 #include "VibeEngine/Core/Log.h"
 #include "VibeEngine/Renderer/Renderer.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
+#include "VibeEngine/ImGui/ImGuiLayer.h"
+
+#include <GLFW/glfw3.h>
 
 namespace VE {
 
-Application::Application(RendererAPI::API api) {
+Application::Application(RendererAPI::API api)
+    : m_CurrentAPI(api)
+{
     Log::Init();
     VE_ENGINE_INFO("VibeEngine v0.1.0 initializing...");
 
-    // Set API type first (Window needs this to choose context type)
     RendererAPI::SetAPI(api);
 
-    // Create window (this initializes the graphics context: OpenGL/Vulkan)
     m_Window = std::make_unique<Window>();
 
-    // Now that the context is live, initialize the renderer API (GL state, etc.)
     RenderCommand::Init();
     VE_ENGINE_INFO("Renderer initialized with {0}",
         api == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan");
+
+    m_ImGuiLayer = std::make_unique<ImGuiLayer>();
+    m_ImGuiLayer->Init(m_Window->GetNativeWindow(), api);
 }
 
 Application::~Application() {
+    if (m_ImGuiLayer) {
+        m_ImGuiLayer->Shutdown();
+    }
     Renderer::Shutdown();
     VE_ENGINE_INFO("VibeEngine shutting down");
+}
+
+void Application::RequestSwitchAPI(RendererAPI::API newAPI) {
+    if (newAPI != m_CurrentAPI)
+        m_PendingAPI = newAPI;
+}
+
+void Application::SwitchAPI(RendererAPI::API newAPI) {
+    VE_ENGINE_INFO("Switching renderer from {0} to {1}",
+        m_CurrentAPI == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan",
+        newAPI == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan");
+
+    // 1. Shutdown ImGui (this also destroys any viewport OS windows)
+    m_ImGuiLayer->Shutdown();
+    m_ImGuiLayer.reset();
+
+    // Flush GLFW events so viewport windows are properly destroyed
+    glfwPollEvents();
+
+    // 2. Let the application release GPU resources
+    OnRendererReloaded(); // first call: release old resources
+
+    // 3. Shutdown renderer
+    RenderCommand::Shutdown();
+    Renderer::Shutdown();
+
+    // 4. Destroy old window (and graphics context)
+    m_Window.reset();
+
+    // 5. Set new API and recreate everything
+    m_CurrentAPI = newAPI;
+    RendererAPI::SetAPI(newAPI);
+
+    m_Window = std::make_unique<Window>();
+
+    RenderCommand::Init();
+    VE_ENGINE_INFO("Renderer re-initialized with {0}",
+        newAPI == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan");
+
+    // 6. Reinitialize ImGui
+    m_ImGuiLayer = std::make_unique<ImGuiLayer>();
+    m_ImGuiLayer->Init(m_Window->GetNativeWindow(), newAPI);
+
+    // 7. Let the application recreate GPU resources
+    OnRendererReloaded(); // second call: recreate with new backend
+
+    // 8. Make sure the new window is visible and focused
+    glfwShowWindow(m_Window->GetNativeWindow());
+    glfwFocusWindow(m_Window->GetNativeWindow());
+
+    VE_ENGINE_INFO("Backend switch complete");
 }
 
 void Application::Run() {
@@ -41,8 +100,22 @@ void Application::Run() {
         OnUpdate();
         OnRender();
 
+        // ImGui rendering pass
+        if (m_ImGuiLayer) {
+            m_ImGuiLayer->Begin();
+            OnImGuiRender();
+            m_ImGuiLayer->End();
+        }
+
         Renderer::EndFrame();
         m_Window->OnUpdate();
+
+        // Handle pending API switch at the end of the frame
+        if (m_PendingAPI != RendererAPI::API::None) {
+            RendererAPI::API target = m_PendingAPI;
+            m_PendingAPI = RendererAPI::API::None;
+            SwitchAPI(target);
+        }
     }
 
     VE_ENGINE_INFO("Main loop ended");

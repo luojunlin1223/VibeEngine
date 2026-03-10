@@ -10,3 +10,11 @@
 #include "Renderer/Buffer.h"
 #include "Renderer/VertexArray.h"
 #include "Renderer/Shader.h"
+
+#include "Scene/Components.h"
+#include "Scene/Entity.h"
+#include "Scene/Scene.h"
+#include "Scene/MeshLibrary.h"
+
+#include "ImGui/ImGuiLayer.h"
+#include <imgui.h>

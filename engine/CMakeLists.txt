@@ -16,6 +16,8 @@ target_link_libraries(VibeEngineLib
         spdlog::spdlog
         glad_gl_core_46
         Vulkan::Vulkan
+        imgui_lib
+        EnTT::EnTT
 )
 
 # Platform definitions

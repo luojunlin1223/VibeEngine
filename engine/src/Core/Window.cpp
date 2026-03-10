@@ -39,6 +39,11 @@ void Window::Init(const WindowProps& props) {
         s_GLFWInitialized = true;
     }
 
+    // Reset all window hints to defaults before setting new ones.
+    // This is critical when switching backends (e.g. OpenGL → Vulkan)
+    // to avoid stale hints from the previous window.
+    glfwDefaultWindowHints();
+
     // Configure GLFW window hints based on graphics API
     auto api = RendererAPI::GetAPI();
     if (api == RendererAPI::API::OpenGL) {
@@ -50,6 +55,8 @@ void Window::Init(const WindowProps& props) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     }
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
 
     m_Window = glfwCreateWindow(
         static_cast<int>(m_Data.Width),

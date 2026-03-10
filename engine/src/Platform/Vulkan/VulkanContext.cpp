@@ -2,6 +2,9 @@
 #include "VibeEngine/Platform/Vulkan/TriangleShadersSpv.h"
 #include "VibeEngine/Core/Log.h"
 
+#include <imgui.h>
+#include <imgui_impl_vulkan.h>
+
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <set>
@@ -46,6 +49,25 @@ void VulkanContext::SubmitDrawCommand(const VulkanDrawCommand& cmd) {
 
 // ── SwapBuffers (frame presentation) ────────────────────────────────
 
+void VulkanContext::RecreateSwapchain() {
+    // Handle minimized window (zero-size framebuffer)
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(m_WindowHandle, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(m_WindowHandle, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vkDeviceWaitIdle(m_Device);
+
+    CleanupSwapchain();
+    CreateSwapchain();
+    CreateImageViews();
+    CreateFramebuffers();
+
+    VE_ENGINE_INFO("Vulkan swapchain recreated ({0}x{1})", m_SwapchainExtent.width, m_SwapchainExtent.height);
+}
+
 void VulkanContext::SwapBuffers() {
     vkWaitForFences(m_Device, 1, &m_InFlightFences[m_CurrentFrame], VK_TRUE, UINT64_MAX);
 
@@ -53,8 +75,8 @@ void VulkanContext::SwapBuffers() {
     VkResult result = vkAcquireNextImageKHR(m_Device, m_Swapchain, UINT64_MAX,
                                             m_ImageAvailableSemaphores[m_CurrentFrame],
                                             VK_NULL_HANDLE, &imageIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        VE_ENGINE_WARN("Swapchain out of date — resize not yet implemented");
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        RecreateSwapchain();
         return;
     }
 
@@ -89,7 +111,10 @@ void VulkanContext::SwapBuffers() {
     presentInfo.pSwapchains        = swapchains;
     presentInfo.pImageIndices      = &imageIndex;
 
-    vkQueuePresentKHR(m_PresentQueue, &presentInfo);
+    result = vkQueuePresentKHR(m_PresentQueue, &presentInfo);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        RecreateSwapchain();
+    }
 
     m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -116,11 +141,13 @@ void VulkanContext::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
 
     // Dynamic viewport and scissor
+    // Flip viewport Y to match OpenGL's coordinate system (Y-up).
+    // Requires Vulkan 1.1+ (VK_KHR_maintenance1).
     VkViewport viewport{};
     viewport.x        = 0.0f;
-    viewport.y        = 0.0f;
+    viewport.y        = static_cast<float>(m_SwapchainExtent.height);
     viewport.width    = static_cast<float>(m_SwapchainExtent.width);
-    viewport.height   = static_cast<float>(m_SwapchainExtent.height);
+    viewport.height   = -static_cast<float>(m_SwapchainExtent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
     vkCmdSetViewport(cmd, 0, 1, &viewport);
@@ -137,6 +164,11 @@ void VulkanContext::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex
         vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
         vkCmdBindIndexBuffer(cmd, dc.IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdDrawIndexed(cmd, dc.IndexCount, 1, 0, 0, 0);
+    }
+
+    // Render ImGui draw data (prepared by ImGuiLayer::End() → ImGui::Render())
+    if (m_ImGuiEnabled) {
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
     }
 
     vkCmdEndRenderPass(cmd);
@@ -289,9 +321,10 @@ void VulkanContext::CreateSwapchain() {
     std::vector<VkSurfaceFormatKHR> formats(formatCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(m_PhysicalDevice, m_Surface, &formatCount, formats.data());
 
+    // Prefer UNORM (no automatic gamma) to match OpenGL's default behavior
     VkSurfaceFormatKHR surfaceFormat = formats[0];
     for (const auto& f : formats) {
-        if (f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+        if (f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             surfaceFormat = f;
             break;
         }
@@ -493,7 +526,7 @@ void VulkanContext::CreateGraphicsPipeline() {
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth   = 1.0f;
     rasterizer.cullMode    = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace   = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
