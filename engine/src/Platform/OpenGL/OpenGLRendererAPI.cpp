@@ -31,4 +31,13 @@ void OpenGLRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexAr
                    GL_UNSIGNED_INT, nullptr);
 }
 
+void OpenGLRendererAPI::DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) {
+    vertexArray->Bind();
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertexCount));
+}
+
+void OpenGLRendererAPI::SetLineWidth(float width) {
+    glLineWidth(width);
+}
+
 } // namespace VE

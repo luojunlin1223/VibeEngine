@@ -18,6 +18,8 @@ target_link_libraries(VibeEngineLib
         Vulkan::Vulkan
         imgui_lib
         EnTT::EnTT
+        yaml-cpp::yaml-cpp
+        glm::glm
 )
 
 # Platform definitions

@@ -1,12 +1,13 @@
 /*
  * Components — Core ECS component types for VibeEngine.
  *
- * Every entity gets a TagComponent (name) by default.
+ * Every entity gets an IDComponent (UUID) and TagComponent (name) by default.
  * TransformComponent holds position/rotation/scale.
  * MeshRendererComponent references a mesh and shader for rendering.
  */
 #pragma once
 
+#include "VibeEngine/Core/UUID.h"
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Shader.h"
 
@@ -15,6 +16,13 @@
 #include <memory>
 
 namespace VE {
+
+struct IDComponent {
+    UUID ID;
+
+    IDComponent() = default;
+    IDComponent(UUID id) : ID(id) {}
+};
 
 struct TagComponent {
     std::string Tag;

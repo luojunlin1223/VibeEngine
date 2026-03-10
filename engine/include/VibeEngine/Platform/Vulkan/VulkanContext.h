@@ -2,6 +2,7 @@
 
 #include "VibeEngine/Renderer/GraphicsContext.h"
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 #include <vector>
 
 struct GLFWwindow;
@@ -14,6 +15,7 @@ struct VulkanDrawCommand {
     VkBuffer     VertexBuffer;
     VkBuffer     IndexBuffer;
     uint32_t     IndexCount;
+    glm::mat4    MVP;
 };
 
 class VulkanContext : public GraphicsContext {
@@ -42,6 +44,9 @@ public:
     void SubmitDrawCommand(const VulkanDrawCommand& cmd);
 
     void SetImGuiEnabled(bool enabled) { m_ImGuiEnabled = enabled; }
+
+    void SetCurrentMVP(const glm::mat4& mvp) { m_CurrentMVP = mvp; }
+    const glm::mat4& GetCurrentMVP() const { return m_CurrentMVP; }
 
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
@@ -108,6 +113,7 @@ private:
     VkClearColorValue m_ClearColor = {{0.1f, 0.1f, 0.1f, 1.0f}};
     std::vector<VulkanDrawCommand> m_DrawCommands;
     bool m_ImGuiEnabled = false;
+    glm::mat4 m_CurrentMVP = glm::mat4(1.0f);
 };
 
 } // namespace VE

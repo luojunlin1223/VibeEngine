@@ -1,6 +1,8 @@
 #include <VibeEngine/VibeEngine.h>
 #include <GLFW/glfw3.h>
 
+static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
+
 class Sandbox : public VE::Application {
 public:
     Sandbox()
@@ -9,6 +11,7 @@ public:
         VE_INFO("Sandbox application created");
         VE::MeshLibrary::Init();
         m_Scene = std::make_shared<VE::Scene>();
+        m_Camera.SetViewportSize(1280.0f, 720.0f);
     }
 
     ~Sandbox() override {
@@ -18,13 +21,45 @@ public:
 protected:
     void OnUpdate() override {
         m_Scene->OnUpdate();
+
+        // Keep camera viewport in sync with actual framebuffer size
+        // (framebuffer size may differ from window size on HiDPI displays)
+        int fbW = 0, fbH = 0;
+        glfwGetFramebufferSize(GetWindow().GetNativeWindow(), &fbW, &fbH);
+        if (fbW > 0 && fbH > 0)
+            m_Camera.SetViewportSize(static_cast<float>(fbW), static_cast<float>(fbH));
     }
 
     void OnRender() override {
-        m_Scene->OnRender();
+        // Cache VP for this frame — scene and gizmos must use the same matrix
+        m_FrameVP = m_Camera.GetViewProjection();
+        m_Scene->OnRender(m_FrameVP);
     }
 
     void OnImGuiRender() override {
+        // Handle camera input — takes effect NEXT frame
+        ImGuiIO& io = ImGui::GetIO();
+        if (!io.WantCaptureMouse) {
+            if (io.MouseWheel != 0.0f)
+                m_Camera.OnMouseScroll(io.MouseWheel);
+            if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+                m_Camera.OnMouseDrag(io.MouseDelta.x, io.MouseDelta.y);
+            }
+        }
+
+        // Gizmos use the SAME VP as OnRender (no one-frame lag).
+        // With ImGui viewports enabled, draw lists use absolute desktop
+        // coordinates, so we must pass the main viewport's position/size.
+        ImVec2 vpPos  = ImGui::GetMainViewport()->Pos;
+        ImVec2 vpSize = ImGui::GetMainViewport()->Size;
+
+        VE::GizmoRenderer::BeginScene(m_FrameVP, vpPos.x, vpPos.y, vpSize.x, vpSize.y);
+        VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
+        if (m_SelectedEntity) {
+            VE::GizmoRenderer::DrawWireframeBox(m_SelectedEntity);
+            VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity);
+        }
+
         DrawMainMenuBar();
         DrawHierarchyPanel();
         DrawInspectorPanel();
@@ -35,30 +70,61 @@ protected:
     }
 
     void OnRendererReloaded() override {
-        // Called twice during a switch:
-        //   1st call: old backend still active → release GPU resources
-        //   2nd call: new backend ready → recreate GPU resources
-        // We detect which phase by checking if MeshLibrary has resources.
-
         if (VE::MeshLibrary::GetTriangle()) {
-            // Phase 1: release
             ClearEntityGPUResources();
             VE::MeshLibrary::Shutdown();
         } else {
-            // Phase 2: recreate
             VE::MeshLibrary::Init();
             RestoreEntityGPUResources();
         }
     }
 
 private:
+    // ── Scene operations ──────────────────────────────────────────────
+
+    void NewScene() {
+        m_Scene = std::make_shared<VE::Scene>();
+        m_SelectedEntity = {};
+        m_CurrentScenePath.clear();
+        VE_INFO("New scene created");
+    }
+
+    void SaveScene() {
+        if (m_CurrentScenePath.empty()) {
+            SaveSceneAs();
+            return;
+        }
+        VE::SceneSerializer serializer(m_Scene);
+        serializer.Serialize(m_CurrentScenePath);
+    }
+
+    void SaveSceneAs() {
+        std::string path = VE::FileDialog::SaveFile(s_SceneFilter, GetWindow().GetNativeWindow());
+        if (!path.empty()) {
+            m_CurrentScenePath = path;
+            VE::SceneSerializer serializer(m_Scene);
+            serializer.Serialize(m_CurrentScenePath);
+        }
+    }
+
+    void LoadScene() {
+        std::string path = VE::FileDialog::OpenFile(s_SceneFilter, GetWindow().GetNativeWindow());
+        if (!path.empty()) {
+            m_Scene = std::make_shared<VE::Scene>();
+            m_SelectedEntity = {};
+            VE::SceneSerializer serializer(m_Scene);
+            if (serializer.Deserialize(path)) {
+                m_CurrentScenePath = path;
+            }
+        }
+    }
+
     // ── GPU resource management for API switching ──────────────────────
 
     void ClearEntityGPUResources() {
         auto view = m_Scene->GetAllEntitiesWith<VE::MeshRendererComponent>();
         for (auto entityID : view) {
             auto& mr = view.get<VE::MeshRendererComponent>(entityID);
-            // Remember which mesh type this entity had
             for (int i = 0; i < VE::MeshLibrary::GetMeshCount(); i++) {
                 if (VE::MeshLibrary::GetMeshByIndex(i) == mr.Mesh) {
                     m_EntityMeshIndex[static_cast<uint32_t>(entityID)] = i;
@@ -87,6 +153,16 @@ private:
     void DrawMainMenuBar() {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
+                if (ImGui::MenuItem("New Scene", "Ctrl+N"))
+                    NewScene();
+                if (ImGui::MenuItem("Open Scene", "Ctrl+O"))
+                    LoadScene();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+                    SaveScene();
+                if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S"))
+                    SaveSceneAs();
+                ImGui::Separator();
                 if (ImGui::MenuItem("Exit"))
                     glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
                 ImGui::EndMenu();
@@ -117,6 +193,14 @@ private:
             }
             ImGui::EndMainMenuBar();
         }
+
+        ImGuiIO& io = ImGui::GetIO();
+        bool ctrl = io.KeyCtrl;
+        bool shift = io.KeyShift;
+        if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_N)) NewScene();
+        if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_O)) LoadScene();
+        if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_S)) SaveScene();
+        if (ctrl &&  shift && ImGui::IsKeyPressed(ImGuiKey_S)) SaveSceneAs();
     }
 
     // ── Hierarchy Panel ────────────────────────────────────────────────
@@ -183,7 +267,6 @@ private:
             return;
         }
 
-        // Tag (name)
         if (m_SelectedEntity.HasComponent<VE::TagComponent>()) {
             auto& tag = m_SelectedEntity.GetComponent<VE::TagComponent>();
             char buffer[256];
@@ -195,7 +278,6 @@ private:
             ImGui::Separator();
         }
 
-        // Transform
         if (m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
             if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
                 auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
@@ -206,7 +288,6 @@ private:
             ImGui::Separator();
         }
 
-        // MeshRenderer
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             bool removeComponent = false;
             if (ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -245,7 +326,6 @@ private:
             ImGui::Separator();
         }
 
-        // Add Component button
         if (ImGui::Button("Add Component", ImVec2(-1, 0)))
             ImGui::OpenPopup("AddComponentPopup");
 
@@ -273,7 +353,6 @@ private:
         ImGui::Text("VibeEngine v0.1.0");
         ImGui::Separator();
 
-        // Renderer backend dropdown
         const char* apiNames[] = { "OpenGL", "Vulkan" };
         int currentAPI = (GetCurrentAPI() == VE::RendererAPI::API::OpenGL) ? 0 : 1;
         if (ImGui::Combo("Renderer", &currentAPI, apiNames, 2)) {
@@ -283,7 +362,6 @@ private:
             RequestSwitchAPI(newAPI);
         }
 
-        // Count renderable entities
         int drawCalls = 0;
         auto view = m_Scene->GetAllEntitiesWith<VE::MeshRendererComponent>();
         for (auto e : view) {
@@ -292,7 +370,13 @@ private:
         }
         ImGui::Text("Entities: %d", static_cast<int>(m_Scene->GetRegistry().storage<entt::entity>().size()));
         ImGui::Text("Draw calls: %d", drawCalls);
+
         ImGui::Separator();
+        ImGui::Text("Scene: %s", m_CurrentScenePath.empty() ? "(unsaved)" : m_CurrentScenePath.c_str());
+
+        ImGui::Separator();
+        ImGui::Text("Camera: (%.1f, %.1f) zoom=%.2f",
+            m_Camera.GetPosition().x, m_Camera.GetPosition().y, m_Camera.GetZoom());
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Text("Frame time: %.3f ms", 1000.0f / ImGui::GetIO().Framerate);
         ImGui::End();
@@ -301,6 +385,9 @@ private:
 private:
     std::shared_ptr<VE::Scene> m_Scene;
     VE::Entity m_SelectedEntity;
+    VE::EditorCamera m_Camera;
+    glm::mat4 m_FrameVP = glm::mat4(1.0f);
+    std::string m_CurrentScenePath;
 
     // Temporary storage for mesh indices during API switch
     std::unordered_map<uint32_t, int> m_EntityMeshIndex;

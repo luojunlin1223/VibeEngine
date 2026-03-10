@@ -13,6 +13,8 @@ public:
     static void SetClearColor(float r, float g, float b, float a);
     static void Clear();
     static void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray);
+    static void DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount);
+    static void SetLineWidth(float width);
 
 private:
     static std::unique_ptr<RendererAPI> s_RendererAPI;

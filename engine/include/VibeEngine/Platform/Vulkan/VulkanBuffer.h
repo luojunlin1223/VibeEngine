@@ -12,6 +12,7 @@ public:
 
     void Bind() const override {}
     void Unbind() const override {}
+    void SetData(const void*, uint32_t) override {}
     void SetLayout(const BufferLayout& layout) override { m_Layout = layout; }
     const BufferLayout& GetLayout() const override { return m_Layout; }
 

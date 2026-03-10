@@ -41,11 +41,30 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(glfw spdlog glad)
+# yaml-cpp (YAML parser for scene serialization)
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG        0.8.0
+    GIT_SHALLOW    TRUE
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(glfw spdlog glad yaml-cpp)
 
 # glad2: include cmake module and generate OpenGL 4.6 Core loader
 add_subdirectory("${glad_SOURCE_DIR}/cmake" "${glad_BINARY_DIR}")
 glad_add_library(glad_gl_core_46 REPRODUCIBLE API gl:core=4.6)
+
+# GLM (math library)
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        1.0.1
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(glm)
 
 # EnTT (header-only ECS library)
 FetchContent_Declare(

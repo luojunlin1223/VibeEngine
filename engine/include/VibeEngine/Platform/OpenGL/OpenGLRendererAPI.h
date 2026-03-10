@@ -11,6 +11,8 @@ public:
     void SetClearColor(float r, float g, float b, float a) override;
     void Clear() override;
     void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray) override;
+    void DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) override;
+    void SetLineWidth(float width) override;
 };
 
 } // namespace VE

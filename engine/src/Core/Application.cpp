@@ -97,6 +97,16 @@ void Application::Run() {
 
         Renderer::BeginFrame();
 
+        // Set viewport every frame to the actual framebuffer size.
+        // Vulkan does this in RecordCommandBuffer; for OpenGL we must
+        // do it explicitly because ImGui (viewports) can change glViewport.
+        {
+            int fbW = 0, fbH = 0;
+            glfwGetFramebufferSize(m_Window->GetNativeWindow(), &fbW, &fbH);
+            if (fbW > 0 && fbH > 0)
+                RenderCommand::SetViewport(0, 0, static_cast<uint32_t>(fbW), static_cast<uint32_t>(fbH));
+        }
+
         OnUpdate();
         OnRender();
 

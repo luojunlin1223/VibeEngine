@@ -2,6 +2,7 @@
 #include "VibeEngine/Core/Log.h"
 
 #include <glad/gl.h>
+#include <glm/gtc/type_ptr.hpp>
 #include <vector>
 
 namespace VE {
@@ -64,6 +65,36 @@ void OpenGLShader::Bind() const {
 
 void OpenGLShader::Unbind() const {
     glUseProgram(0);
+}
+
+int OpenGLShader::GetUniformLocation(const std::string& name) {
+    auto it = m_UniformLocationCache.find(name);
+    if (it != m_UniformLocationCache.end())
+        return it->second;
+
+    int location = glGetUniformLocation(m_RendererID, name.c_str());
+    m_UniformLocationCache[name] = location;
+    return location;
+}
+
+void OpenGLShader::SetMat4(const std::string& name, const glm::mat4& value) {
+    glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, glm::value_ptr(value));
+}
+
+void OpenGLShader::SetVec4(const std::string& name, const glm::vec4& value) {
+    glUniform4fv(GetUniformLocation(name), 1, glm::value_ptr(value));
+}
+
+void OpenGLShader::SetVec3(const std::string& name, const glm::vec3& value) {
+    glUniform3fv(GetUniformLocation(name), 1, glm::value_ptr(value));
+}
+
+void OpenGLShader::SetFloat(const std::string& name, float value) {
+    glUniform1f(GetUniformLocation(name), value);
+}
+
+void OpenGLShader::SetInt(const std::string& name, int value) {
+    glUniform1i(GetUniformLocation(name), value);
 }
 
 } // namespace VE

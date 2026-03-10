@@ -30,4 +30,12 @@ void RenderCommand::DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray)
     s_RendererAPI->DrawIndexed(vertexArray);
 }
 
+void RenderCommand::DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) {
+    s_RendererAPI->DrawLines(vertexArray, vertexCount);
+}
+
+void RenderCommand::SetLineWidth(float width) {
+    s_RendererAPI->SetLineWidth(width);
+}
+
 } // namespace VE

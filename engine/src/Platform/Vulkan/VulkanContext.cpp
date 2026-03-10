@@ -4,6 +4,7 @@
 
 #include <imgui.h>
 #include <imgui_impl_vulkan.h>
+#include <glm/glm.hpp>
 
 #include <GLFW/glfw3.h>
 #include <vector>
@@ -159,6 +160,10 @@ void VulkanContext::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex
 
     // Draw all submitted draw commands
     for (const auto& dc : m_DrawCommands) {
+        // Push MVP matrix
+        vkCmdPushConstants(cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                           0, sizeof(glm::mat4), &dc.MVP);
+
         VkBuffer vertexBuffers[] = { dc.VertexBuffer };
         VkDeviceSize offsets[]   = { 0 };
         vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
@@ -542,8 +547,16 @@ void VulkanContext::CreateGraphicsPipeline() {
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments    = &colorBlendAttachment;
 
+    // Push constant for MVP matrix (mat4 = 64 bytes)
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset     = 0;
+    pushConstantRange.size       = sizeof(float) * 16; // mat4
+
     VkPipelineLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges    = &pushConstantRange;
     if (vkCreatePipelineLayout(m_Device, &layoutInfo, nullptr, &m_PipelineLayout) != VK_SUCCESS) {
         VE_ENGINE_ERROR("Failed to create pipeline layout!");
     }

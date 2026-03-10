@@ -37,8 +37,17 @@ void VulkanRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexAr
     cmd.VertexBuffer = vkVB->GetVkBuffer();
     cmd.IndexBuffer  = vkIB->GetVkBuffer();
     cmd.IndexCount   = vkIB->GetCount();
+    cmd.MVP          = VulkanContext::Get().GetCurrentMVP();
 
     VulkanContext::Get().SubmitDrawCommand(cmd);
+}
+
+void VulkanRendererAPI::DrawLines(const std::shared_ptr<VertexArray>&, uint32_t) {
+    // Not yet implemented for Vulkan
+}
+
+void VulkanRendererAPI::SetLineWidth(float) {
+    // Not yet implemented for Vulkan
 }
 
 } // namespace VE

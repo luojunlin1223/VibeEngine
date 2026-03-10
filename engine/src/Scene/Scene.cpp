@@ -4,11 +4,16 @@
 #include "VibeEngine/Renderer/RenderCommand.h"
 #include "VibeEngine/Core/Log.h"
 
+#include <glm/gtc/matrix_transform.hpp>
 #include <sstream>
 
 namespace VE {
 
 Entity Scene::CreateEntity(const std::string& name) {
+    return CreateEntityWithUUID(UUID(), name);
+}
+
+Entity Scene::CreateEntityWithUUID(UUID uuid, const std::string& name) {
     Entity entity(m_Registry.create(), this);
 
     // Generate a unique name if the default is used
@@ -20,6 +25,7 @@ Entity Scene::CreateEntity(const std::string& name) {
     }
     m_EntityCounter++;
 
+    entity.AddComponent<IDComponent>(uuid);
     entity.AddComponent<TagComponent>(entityName);
     entity.AddComponent<TransformComponent>();
 
@@ -38,16 +44,30 @@ void Scene::OnUpdate() {
     // Future: physics, scripts, etc.
 }
 
-void Scene::OnRender() {
-    auto view = m_Registry.view<MeshRendererComponent>();
-    for (auto entityID : view) {
-        auto& meshRenderer = view.get<MeshRendererComponent>(entityID);
+static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
+    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+        glm::vec3(tc.Position[0], tc.Position[1], tc.Position[2]));
+    model = glm::rotate(model, glm::radians(tc.Rotation[0]), glm::vec3(1, 0, 0));
+    model = glm::rotate(model, glm::radians(tc.Rotation[1]), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, glm::radians(tc.Rotation[2]), glm::vec3(0, 0, 1));
+    model = glm::scale(model, glm::vec3(tc.Scale[0], tc.Scale[1], tc.Scale[2]));
+    return model;
+}
 
-        if (!meshRenderer.Mesh || !meshRenderer.Material)
+void Scene::OnRender(const glm::mat4& viewProjection) {
+    auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
+    for (auto entityID : view) {
+        auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
+
+        if (!mr.Mesh || !mr.Material)
             continue;
 
-        meshRenderer.Material->Bind();
-        RenderCommand::DrawIndexed(meshRenderer.Mesh);
+        glm::mat4 model = ComputeModelMatrix(tc);
+        glm::mat4 mvp = viewProjection * model;
+
+        mr.Material->Bind();
+        mr.Material->SetMat4("u_MVP", mvp);
+        RenderCommand::DrawIndexed(mr.Mesh);
     }
 }
 

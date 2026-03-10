@@ -7,7 +7,9 @@
  */
 #pragma once
 
+#include "VibeEngine/Core/UUID.h"
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
 #include <string>
 
 namespace VE {
@@ -20,10 +22,11 @@ public:
     ~Scene() = default;
 
     Entity CreateEntity(const std::string& name = "GameObject");
+    Entity CreateEntityWithUUID(UUID uuid, const std::string& name = "GameObject");
     void DestroyEntity(Entity entity);
 
     void OnUpdate();
-    void OnRender();
+    void OnRender(const glm::mat4& viewProjection);
 
     template<typename... Components>
     auto GetAllEntitiesWith() { return m_Registry.view<Components...>(); }
