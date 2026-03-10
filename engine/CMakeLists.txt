@@ -14,6 +14,8 @@ target_link_libraries(VibeEngineLib
     PUBLIC
         glfw
         spdlog::spdlog
+        glad_gl_core_46
+        Vulkan::Vulkan
 )
 
 # Platform definitions

@@ -1,7 +1,9 @@
 #pragma once
 
+#include "VibeEngine/Renderer/GraphicsContext.h"
 #include <string>
 #include <cstdint>
+#include <memory>
 
 struct GLFWwindow;
 
@@ -29,13 +31,15 @@ public:
     uint32_t GetWidth()  const { return m_Data.Width; }
     uint32_t GetHeight() const { return m_Data.Height; }
 
-    GLFWwindow* GetNativeWindow() const { return m_Window; }
+    GLFWwindow*      GetNativeWindow()    const { return m_Window; }
+    GraphicsContext*  GetGraphicsContext() const { return m_Context.get(); }
 
 private:
     void Init(const WindowProps& props);
     void Shutdown();
 
     GLFWwindow* m_Window = nullptr;
+    std::unique_ptr<GraphicsContext> m_Context;
 
     struct WindowData {
         std::string Title;

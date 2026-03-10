@@ -1,5 +1,8 @@
 #include "VibeEngine/Core/Window.h"
 #include "VibeEngine/Core/Log.h"
+#include "VibeEngine/Renderer/RendererAPI.h"
+#include "VibeEngine/Platform/OpenGL/OpenGLContext.h"
+#include "VibeEngine/Platform/Vulkan/VulkanContext.h"
 
 #include <GLFW/glfw3.h>
 
@@ -36,8 +39,16 @@ void Window::Init(const WindowProps& props) {
         s_GLFWInitialized = true;
     }
 
-    // No OpenGL context yet — just a plain window
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    // Configure GLFW window hints based on graphics API
+    auto api = RendererAPI::GetAPI();
+    if (api == RendererAPI::API::OpenGL) {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    } else {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    }
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     m_Window = glfwCreateWindow(
@@ -52,10 +63,20 @@ void Window::Init(const WindowProps& props) {
         return;
     }
 
+    // Create graphics context based on API
+    if (api == RendererAPI::API::OpenGL) {
+        m_Context = std::make_unique<OpenGLContext>(m_Window);
+    } else if (api == RendererAPI::API::Vulkan) {
+        m_Context = std::make_unique<VulkanContext>(m_Window);
+    }
+
+    m_Context->Init();
+
     VE_ENGINE_INFO("Window created successfully");
 }
 
 void Window::Shutdown() {
+    m_Context.reset();
     if (m_Window) {
         glfwDestroyWindow(m_Window);
         m_Window = nullptr;
@@ -64,6 +85,7 @@ void Window::Shutdown() {
 
 void Window::OnUpdate() {
     glfwPollEvents();
+    m_Context->SwapBuffers();
 }
 
 bool Window::ShouldClose() const {
