@@ -1,6 +1,6 @@
 #include <VibeEngine/VibeEngine.h>
 
-// ── Basic shaders for the triangle demo ─────────────────────────────
+// ── Basic shaders (used by OpenGL path; Vulkan uses embedded SPIR-V) ─
 static const char* vertexShaderSrc = R"(
 #version 460 core
 layout(location = 0) in vec3 a_Position;
@@ -27,17 +27,12 @@ void main() {
 class Sandbox : public VE::Application {
 public:
     Sandbox()
-        : VE::Application(VE::RendererAPI::API::OpenGL)
+        : VE::Application(VE::RendererAPI::API::Vulkan)
     {
         VE_INFO("Sandbox application created");
 
-        // Only set up OpenGL rendering objects when using OpenGL
-        if (VE::Renderer::GetAPI() != VE::RendererAPI::API::OpenGL)
-            return;
-
         // Triangle vertices: position (x,y,z) + color (r,g,b)
         float vertices[] = {
-            // positions          // colors
             -0.5f, -0.5f, 0.0f,  1.0f, 0.0f, 0.0f,  // bottom-left  (red)
              0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f,  // bottom-right (green)
              0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  // top          (blue)

@@ -1,6 +1,7 @@
 #include "VibeEngine/Renderer/Buffer.h"
 #include "VibeEngine/Renderer/RendererAPI.h"
 #include "VibeEngine/Platform/OpenGL/OpenGLBuffer.h"
+#include "VibeEngine/Platform/Vulkan/VulkanBuffer.h"
 #include "VibeEngine/Core/Log.h"
 
 namespace VE {
@@ -64,6 +65,7 @@ void BufferLayout::CalculateOffsetsAndStride() {
 std::shared_ptr<VertexBuffer> VertexBuffer::Create(const float* vertices, uint32_t size) {
     switch (RendererAPI::GetAPI()) {
         case RendererAPI::API::OpenGL: return std::make_shared<OpenGLVertexBuffer>(vertices, size);
+        case RendererAPI::API::Vulkan: return std::make_shared<VulkanVertexBuffer>(vertices, size);
         default:
             VE_ENGINE_ERROR("VertexBuffer::Create - unsupported API");
             return nullptr;
@@ -73,6 +75,7 @@ std::shared_ptr<VertexBuffer> VertexBuffer::Create(const float* vertices, uint32
 std::shared_ptr<IndexBuffer> IndexBuffer::Create(const uint32_t* indices, uint32_t count) {
     switch (RendererAPI::GetAPI()) {
         case RendererAPI::API::OpenGL: return std::make_shared<OpenGLIndexBuffer>(indices, count);
+        case RendererAPI::API::Vulkan: return std::make_shared<VulkanIndexBuffer>(indices, count);
         default:
             VE_ENGINE_ERROR("IndexBuffer::Create - unsupported API");
             return nullptr;
