@@ -1,6 +1,7 @@
 #include "VibeEngine/Scene/Scene.h"
 #include "VibeEngine/Scene/Entity.h"
 #include "VibeEngine/Scene/Components.h"
+#include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
 #include "VibeEngine/Core/Log.h"
 
@@ -54,7 +55,10 @@ static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
     return model;
 }
 
-void Scene::OnRender(const glm::mat4& viewProjection) {
+void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos) {
+    // Hardcoded directional light
+    glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entityID : view) {
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
@@ -67,6 +71,25 @@ void Scene::OnRender(const glm::mat4& viewProjection) {
 
         mr.Material->Bind();
         mr.Material->SetMat4("u_MVP", mvp);
+
+        // If the shader has lighting uniforms (lit shader), set them
+        bool isLit = (mr.Material == MeshLibrary::GetLitShader());
+        if (isLit) {
+            mr.Material->SetMat4("u_Model", model);
+            mr.Material->SetVec3("u_LightDir", lightDir);
+            mr.Material->SetVec3("u_ViewPos", cameraPos);
+            mr.Material->SetVec4("u_EntityColor",
+                glm::vec4(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]));
+
+            if (mr.Texture) {
+                mr.Texture->Bind(0);
+                mr.Material->SetInt("u_Texture", 0);
+                mr.Material->SetInt("u_UseTexture", 1);
+            } else {
+                mr.Material->SetInt("u_UseTexture", 0);
+            }
+        }
+
         RenderCommand::DrawIndexed(mr.Mesh);
     }
 }

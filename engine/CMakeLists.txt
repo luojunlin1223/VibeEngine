@@ -8,6 +8,8 @@ add_library(VibeEngineLib STATIC ${ENGINE_SOURCES})
 target_include_directories(VibeEngineLib
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/vendor/stb
 )
 
 target_link_libraries(VibeEngineLib

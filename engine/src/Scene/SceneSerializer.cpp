@@ -59,6 +59,9 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity) {
         out << YAML::Key << "Color" << YAML::Value << YAML::Flow
             << YAML::BeginSeq << mr.Color[0] << mr.Color[1] << mr.Color[2] << mr.Color[3] << YAML::EndSeq;
 
+        if (!mr.TexturePath.empty())
+            out << YAML::Key << "TexturePath" << YAML::Value << mr.TexturePath;
+
         out << YAML::EndMap;
     }
 
@@ -136,13 +139,19 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
             int meshIndex = mrNode["MeshType"].as<int>();
             if (meshIndex >= 0 && meshIndex < MeshLibrary::GetMeshCount()) {
                 mr.Mesh = MeshLibrary::GetMeshByIndex(meshIndex);
-                mr.Material = MeshLibrary::GetDefaultShader();
+                mr.Material = MeshLibrary::IsLitMesh(meshIndex)
+                    ? MeshLibrary::GetLitShader()
+                    : MeshLibrary::GetDefaultShader();
             }
             if (auto colorNode = mrNode["Color"]) {
                 mr.Color = {
                     colorNode[0].as<float>(), colorNode[1].as<float>(),
                     colorNode[2].as<float>(), colorNode[3].as<float>()
                 };
+            }
+            if (auto texNode = mrNode["TexturePath"]) {
+                mr.TexturePath = texNode.as<std::string>();
+                mr.Texture = Texture2D::Create(mr.TexturePath);
             }
         }
     }

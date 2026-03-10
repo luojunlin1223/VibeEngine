@@ -4,31 +4,43 @@
  * Backend-agnostic: works with both OpenGL and Vulkan since all
  * drawing goes through ImGui's rendering pipeline.
  *
- * World-space coordinates are projected to screen-space using the
- * editor camera's view-projection matrix.
- *
- * Renders:
- *   - Grid lines in the XY plane
- *   - Wireframe bounding box around selected entity
- *   - Translation gizmo: 3 colored axis arrows (R=X, G=Y, B=Z)
+ * Supports both 2D (XY plane) and 3D (XZ plane) grid modes.
  */
 #pragma once
 
 #include "VibeEngine/Scene/Entity.h"
+#include "VibeEngine/Renderer/EditorCamera.h"
 #include <glm/glm.hpp>
 
 namespace VE {
 
+enum class GizmoAxis { None, X, Y, Z };
+
 class GizmoRenderer {
 public:
-    // Call once per frame before any Draw calls
     static void BeginScene(const glm::mat4& viewProjection,
                            float viewportX, float viewportY,
-                           float viewportW, float viewportH);
+                           float viewportW, float viewportH,
+                           CameraMode cameraMode = CameraMode::Perspective3D);
 
-    static void DrawGrid(float gridSize = 10.0f, float spacing = 1.0f);
-    static void DrawTranslationGizmo(Entity entity);
+    static void DrawGrid(float gridSize = 20.0f, float spacing = 1.0f);
+    static void DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis = GizmoAxis::None);
     static void DrawWireframeBox(Entity entity);
+
+    // Screen ↔ World conversion
+    static glm::vec2 ScreenToWorld(float screenX, float screenY);
+
+    // Hit-test gizmo axes in screen space (works for 2D and 3D).
+    // pixelThreshold is the hit distance in pixels.
+    static GizmoAxis HitTestTranslationGizmo(const glm::vec3& entityPos,
+                                              float screenX, float screenY,
+                                              float pixelThreshold = 12.0f);
+
+    // Project a world position along a gizmo axis using screen-space mouse delta.
+    // Returns the new world position along the given axis.
+    static float ProjectMouseOntoAxis(GizmoAxis axis,
+                                       const glm::vec3& entityPos,
+                                       float screenX, float screenY);
 };
 
 } // namespace VE

@@ -1,9 +1,9 @@
 /*
- * EditorCamera — Simple 2D orthographic camera for the scene editor.
+ * EditorCamera — Dual-mode editor camera (2D orthographic / 3D perspective).
  *
  * Controls:
- *   - Middle mouse drag: pan
- *   - Scroll wheel: zoom
+ *   2D mode: middle-mouse pan, scroll zoom
+ *   3D mode: right-mouse orbit, middle-mouse pan, scroll dolly
  */
 #pragma once
 
@@ -11,25 +11,55 @@
 
 namespace VE {
 
+enum class CameraMode { Orthographic2D, Perspective3D };
+
 class EditorCamera {
 public:
-    EditorCamera() = default;
+    EditorCamera() { RecalculateMatrix(); }
 
     void SetViewportSize(float width, float height);
+    void SetMode(CameraMode mode);
+
     void OnMouseScroll(float yOffset);
-    void OnMouseDrag(float dx, float dy);
+    void OnMouseDrag(float dx, float dy);   // middle-mouse pan
+    void OnMouseRotate(float dx, float dy); // right-mouse orbit (3D only)
 
     const glm::mat4& GetViewProjection() const { return m_ViewProjection; }
+    CameraMode GetMode() const { return m_Mode; }
+
+    // 2D accessors
     float GetZoom() const { return m_Zoom; }
-    const glm::vec2& GetPosition() const { return m_Position; }
+    const glm::vec2& GetPosition() const { return m_Position2D; }
+
+    // 3D accessors
+    const glm::vec3& GetPosition3D() const { return m_Position3D; }
+    const glm::vec3& GetFocalPoint() const { return m_FocalPoint; }
+    float GetDistance() const { return m_Distance; }
 
 private:
     void RecalculateMatrix();
+    void RecalculatePosition3D();
+    glm::vec3 GetForwardDir() const;
+    glm::vec3 GetRightDir() const;
+    glm::vec3 GetUpDir() const;
 
-    glm::vec2 m_Position = { 0.0f, 0.0f };
-    float m_Zoom = 1.0f;
+    CameraMode m_Mode = CameraMode::Perspective3D;
     float m_AspectRatio = 16.0f / 9.0f;
     glm::mat4 m_ViewProjection = glm::mat4(1.0f);
+
+    // 2D state
+    glm::vec2 m_Position2D = { 0.0f, 0.0f };
+    float m_Zoom = 1.0f;
+
+    // 3D state
+    glm::vec3 m_FocalPoint = { 0.0f, 0.0f, 0.0f };
+    float m_Distance = 5.0f;
+    float m_Yaw   = -45.0f;  // degrees
+    float m_Pitch =  30.0f;  // degrees
+    float m_FOV   = 45.0f;   // degrees
+    float m_NearClip = 0.1f;
+    float m_FarClip  = 1000.0f;
+    glm::vec3 m_Position3D = { 0.0f, 0.0f, 0.0f };
 };
 
 } // namespace VE

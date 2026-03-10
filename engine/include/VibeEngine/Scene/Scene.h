@@ -26,7 +26,8 @@ public:
     void DestroyEntity(Entity entity);
 
     void OnUpdate();
-    void OnRender(const glm::mat4& viewProjection);
+    void OnRender(const glm::mat4& viewProjection,
+                  const glm::vec3& cameraPos = glm::vec3(0.0f));
 
     template<typename... Components>
     auto GetAllEntitiesWith() { return m_Registry.view<Components...>(); }

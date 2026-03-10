@@ -10,7 +10,7 @@ void VulkanRendererAPI::Init() {
     VE_ENGINE_INFO("VulkanRendererAPI initialized");
 }
 
-void VulkanRendererAPI::SetViewport(uint32_t /*x*/, uint32_t /*y*/, uint32_t /*width*/, uint32_t /*height*/) {
+void VulkanRendererAPI::SetViewport(uint32_t, uint32_t, uint32_t, uint32_t) {
     // Dynamic viewport is set during command buffer recording
 }
 
@@ -29,17 +29,23 @@ void VulkanRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexAr
     auto& ib  = vertexArray->GetIndexBuffer();
     if (vbs.empty() || !ib) return;
 
-    // Extract Vulkan-native handles
     auto* vkVB = static_cast<VulkanVertexBuffer*>(vbs[0].get());
     auto* vkIB = static_cast<VulkanIndexBuffer*>(ib.get());
 
-    VulkanDrawCommand cmd{};
-    cmd.VertexBuffer = vkVB->GetVkBuffer();
-    cmd.IndexBuffer  = vkIB->GetVkBuffer();
-    cmd.IndexCount   = vkIB->GetCount();
-    cmd.MVP          = VulkanContext::Get().GetCurrentMVP();
+    auto& ctx = VulkanContext::Get();
 
-    VulkanContext::Get().SubmitDrawCommand(cmd);
+    VulkanDrawCommand cmd{};
+    cmd.VertexBuffer   = vkVB->GetVkBuffer();
+    cmd.IndexBuffer    = vkIB->GetVkBuffer();
+    cmd.IndexCount     = vkIB->GetCount();
+    cmd.MVP            = ctx.GetCurrentMVP();
+    cmd.Model          = ctx.GetCurrentModel();
+    cmd.UseLitPipeline = ctx.GetCurrentUseLit();
+
+    ctx.SubmitDrawCommand(cmd);
+
+    // Reset lit flag for next draw call
+    ctx.SetCurrentUseLit(false);
 }
 
 void VulkanRendererAPI::DrawLines(const std::shared_ptr<VertexArray>&, uint32_t) {

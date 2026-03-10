@@ -10,6 +10,7 @@
 #include "VibeEngine/Core/UUID.h"
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Shader.h"
+#include "VibeEngine/Renderer/Texture.h"
 
 #include <string>
 #include <array>
@@ -41,8 +42,10 @@ struct TransformComponent {
 
 struct MeshRendererComponent {
     std::shared_ptr<VertexArray> Mesh;
-    std::shared_ptr<Shader>     Material; // shader used as material for now
+    std::shared_ptr<Shader>     Material;
     std::array<float, 4>        Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    std::shared_ptr<Texture2D>  Texture;      // optional diffuse texture
+    std::string                 TexturePath;  // path for serialization/reload
 
     MeshRendererComponent() = default;
 };

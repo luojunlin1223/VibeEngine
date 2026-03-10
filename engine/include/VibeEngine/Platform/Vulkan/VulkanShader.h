@@ -16,6 +16,10 @@ public:
     void SetMat4(const std::string& name, const glm::mat4& value) override {
         if (name == "u_MVP")
             VulkanContext::Get().SetCurrentMVP(value);
+        else if (name == "u_Model") {
+            VulkanContext::Get().SetCurrentModel(value);
+            VulkanContext::Get().SetCurrentUseLit(true);
+        }
     }
 
     void SetVec4(const std::string&, const glm::vec4&) override {}

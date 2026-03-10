@@ -16,6 +16,8 @@ struct VulkanDrawCommand {
     VkBuffer     IndexBuffer;
     uint32_t     IndexCount;
     glm::mat4    MVP;
+    glm::mat4    Model;          // for lit pipeline
+    bool         UseLitPipeline = false;
 };
 
 class VulkanContext : public GraphicsContext {
@@ -26,7 +28,6 @@ public:
     void Init() override;
     void SwapBuffers() override;
 
-    // Singleton accessor for Vulkan platform classes
     static VulkanContext& Get() { return *s_Instance; }
 
     VkInstance       GetInstance()       const { return m_Instance; }
@@ -47,6 +48,10 @@ public:
 
     void SetCurrentMVP(const glm::mat4& mvp) { m_CurrentMVP = mvp; }
     const glm::mat4& GetCurrentMVP() const { return m_CurrentMVP; }
+    void SetCurrentModel(const glm::mat4& model) { m_CurrentModel = model; }
+    const glm::mat4& GetCurrentModel() const { return m_CurrentModel; }
+    void SetCurrentUseLit(bool lit) { m_CurrentUseLit = lit; }
+    bool GetCurrentUseLit() const { return m_CurrentUseLit; }
 
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
@@ -57,8 +62,10 @@ private:
     void CreateLogicalDevice();
     void CreateSwapchain();
     void CreateImageViews();
+    void CreateDepthResources();
     void CreateRenderPass();
     void CreateGraphicsPipeline();
+    void CreateLitGraphicsPipeline();
     void CreateFramebuffers();
     void CreateCommandPool();
     void CreateCommandBuffers();
@@ -69,6 +76,7 @@ private:
     void CleanupSwapchain();
 
     VkShaderModule CreateShaderModule(const uint32_t* code, size_t size);
+    VkFormat FindDepthFormat();
 
     int FindQueueFamily(VkQueueFlagBits flags);
 
@@ -91,10 +99,20 @@ private:
     VkFormat                   m_SwapchainFormat  = VK_FORMAT_UNDEFINED;
     VkExtent2D                 m_SwapchainExtent  = {0, 0};
 
-    // Pipeline
+    // Depth buffer
+    VkImage        m_DepthImage       = VK_NULL_HANDLE;
+    VkDeviceMemory m_DepthImageMemory = VK_NULL_HANDLE;
+    VkImageView    m_DepthImageView   = VK_NULL_HANDLE;
+    VkFormat       m_DepthFormat      = VK_FORMAT_D32_SFLOAT;
+
+    // Unlit pipeline (2D: pos+color, 64-byte push constant MVP)
     VkRenderPass      m_RenderPass       = VK_NULL_HANDLE;
     VkPipelineLayout  m_PipelineLayout   = VK_NULL_HANDLE;
     VkPipeline        m_GraphicsPipeline = VK_NULL_HANDLE;
+
+    // Lit pipeline (3D: pos+normal+color, 128-byte push constant MVP+Model)
+    VkPipelineLayout  m_LitPipelineLayout   = VK_NULL_HANDLE;
+    VkPipeline        m_LitGraphicsPipeline = VK_NULL_HANDLE;
 
     // Framebuffers
     std::vector<VkFramebuffer> m_Framebuffers;
@@ -113,7 +131,9 @@ private:
     VkClearColorValue m_ClearColor = {{0.1f, 0.1f, 0.1f, 1.0f}};
     std::vector<VulkanDrawCommand> m_DrawCommands;
     bool m_ImGuiEnabled = false;
-    glm::mat4 m_CurrentMVP = glm::mat4(1.0f);
+    glm::mat4 m_CurrentMVP   = glm::mat4(1.0f);
+    glm::mat4 m_CurrentModel = glm::mat4(1.0f);
+    bool m_CurrentUseLit = false;
 };
 
 } // namespace VE

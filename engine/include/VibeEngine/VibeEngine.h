@@ -13,6 +13,7 @@
 #include "Renderer/VertexArray.h"
 #include "Renderer/Shader.h"
 #include "Renderer/EditorCamera.h"
+#include "Renderer/Texture.h"
 #include "Renderer/GizmoRenderer.h"
 
 #include "Scene/Components.h"
