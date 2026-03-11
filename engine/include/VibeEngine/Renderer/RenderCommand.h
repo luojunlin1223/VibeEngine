@@ -15,6 +15,8 @@ public:
     static void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray);
     static void DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount);
     static void SetLineWidth(float width);
+    static void SetDepthFunc(RendererAPI::DepthFunc func);
+    static void SetDepthWrite(bool enabled);
 
 private:
     static std::unique_ptr<RendererAPI> s_RendererAPI;

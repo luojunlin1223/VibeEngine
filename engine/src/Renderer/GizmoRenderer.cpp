@@ -75,18 +75,22 @@ glm::vec2 GizmoRenderer::ScreenToWorld(float screenX, float screenY) {
 
 GizmoAxis GizmoRenderer::HitTestTranslationGizmo(const glm::vec3& entityPos,
                                                    float screenX, float screenY,
-                                                   float pixelThreshold) {
+                                                   float pixelThreshold,
+                                                   const glm::mat3& rotMatrix) {
+    glm::vec3 axisX = rotMatrix * glm::vec3(1, 0, 0);
+    glm::vec3 axisY = rotMatrix * glm::vec3(0, 1, 0);
+    glm::vec3 axisZ = rotMatrix * glm::vec3(0, 0, 1);
+
     ImVec2 mouse = { screenX, screenY };
     ImVec2 originSS = WorldToScreen(entityPos);
-    ImVec2 xEndSS   = WorldToScreen(entityPos + glm::vec3(kGizmoArmLength, 0, 0));
-    ImVec2 yEndSS   = WorldToScreen(entityPos + glm::vec3(0, kGizmoArmLength, 0));
-    ImVec2 zEndSS   = WorldToScreen(entityPos + glm::vec3(0, 0, kGizmoArmLength));
+    ImVec2 xEndSS   = WorldToScreen(entityPos + axisX * kGizmoArmLength);
+    ImVec2 yEndSS   = WorldToScreen(entityPos + axisY * kGizmoArmLength);
+    ImVec2 zEndSS   = WorldToScreen(entityPos + axisZ * kGizmoArmLength);
 
     float distX = PointToSegmentDistanceSS(mouse, originSS, xEndSS);
     float distY = PointToSegmentDistanceSS(mouse, originSS, yEndSS);
     float distZ = PointToSegmentDistanceSS(mouse, originSS, zEndSS);
 
-    // Find the closest axis within threshold
     float best = pixelThreshold;
     GizmoAxis result = GizmoAxis::None;
 
@@ -98,14 +102,16 @@ GizmoAxis GizmoRenderer::HitTestTranslationGizmo(const glm::vec3& entityPos,
 
 float GizmoRenderer::ProjectMouseOntoAxis(GizmoAxis axis,
                                             const glm::vec3& entityPos,
-                                            float screenX, float screenY) {
-    // Project the mouse onto the axis line in screen space, then find
-    // the world-space position along that axis.
-    glm::vec3 axisDir(0);
+                                            float screenX, float screenY,
+                                            const glm::mat3& rotMatrix) {
+    // Get rotated axis direction
+    glm::vec3 localDir(0);
     int component = 0;
-    if (axis == GizmoAxis::X) { axisDir = glm::vec3(1, 0, 0); component = 0; }
-    if (axis == GizmoAxis::Y) { axisDir = glm::vec3(0, 1, 0); component = 1; }
-    if (axis == GizmoAxis::Z) { axisDir = glm::vec3(0, 0, 1); component = 2; }
+    if (axis == GizmoAxis::X) { localDir = glm::vec3(1, 0, 0); component = 0; }
+    if (axis == GizmoAxis::Y) { localDir = glm::vec3(0, 1, 0); component = 1; }
+    if (axis == GizmoAxis::Z) { localDir = glm::vec3(0, 0, 1); component = 2; }
+
+    glm::vec3 axisDir = rotMatrix * localDir;
 
     // Two points on the axis in screen space
     ImVec2 aSS = WorldToScreen(entityPos);
@@ -115,11 +121,11 @@ float GizmoRenderer::ProjectMouseOntoAxis(GizmoAxis axis,
     float lenSq = dx * dx + dy * dy;
     if (lenSq < 1e-6f) return entityPos[component];
 
-    // t parameter: how far along the screen-space axis is the mouse?
     float t = ((screenX - aSS.x) * dx + (screenY - aSS.y) * dy) / lenSq;
 
-    // Map t back to world: entityPos + t * axisDir (1 world unit in screen)
-    return entityPos[component] + t;
+    // Project t back along the rotated axis, but return the local component
+    glm::vec3 worldOffset = axisDir * t;
+    return entityPos[component] + worldOffset[component];
 }
 
 void GizmoRenderer::DrawGrid(float gridSize, float spacing) {
@@ -152,11 +158,26 @@ void GizmoRenderer::DrawGrid(float gridSize, float spacing) {
     }
 }
 
+// Build rotation matrix from TransformComponent
+static glm::mat3 GetRotationMatrix(const TransformComponent& tc) {
+    glm::mat4 rot(1.0f);
+    rot = glm::rotate(rot, glm::radians(tc.Rotation[0]), glm::vec3(1, 0, 0));
+    rot = glm::rotate(rot, glm::radians(tc.Rotation[1]), glm::vec3(0, 1, 0));
+    rot = glm::rotate(rot, glm::radians(tc.Rotation[2]), glm::vec3(0, 0, 1));
+    return glm::mat3(rot);
+}
+
 void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis) {
     if (!entity || !entity.HasComponent<TransformComponent>()) return;
 
     auto& tc = entity.GetComponent<TransformComponent>();
     glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+    glm::mat3 rot = GetRotationMatrix(tc);
+
+    // Local axes rotated to world space
+    glm::vec3 axisX = rot * glm::vec3(1, 0, 0);
+    glm::vec3 axisY = rot * glm::vec3(0, 1, 0);
+    glm::vec3 axisZ = rot * glm::vec3(0, 0, 1);
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
@@ -171,55 +192,64 @@ void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis)
     // X axis (red)
     ImU32 xCol   = (highlightAxis == GizmoAxis::X) ? highlight : red;
     float xThick = (highlightAxis == GizmoAxis::X) ? thickHover : thick;
-    glm::vec3 xEnd = pos + glm::vec3(kGizmoArmLength, 0, 0);
+    glm::vec3 xEnd = pos + axisX * kGizmoArmLength;
+    glm::vec3 xArrowPerp = axisY * (kGizmoArrowSize * 0.5f);
     DrawLineWorld(dl, pos, xEnd, xCol, xThick);
-    DrawLineWorld(dl, xEnd, xEnd + glm::vec3(-kGizmoArrowSize, kGizmoArrowSize * 0.5f, 0), xCol, xThick);
-    DrawLineWorld(dl, xEnd, xEnd + glm::vec3(-kGizmoArrowSize, -kGizmoArrowSize * 0.5f, 0), xCol, xThick);
+    DrawLineWorld(dl, xEnd, xEnd - axisX * kGizmoArrowSize + xArrowPerp, xCol, xThick);
+    DrawLineWorld(dl, xEnd, xEnd - axisX * kGizmoArrowSize - xArrowPerp, xCol, xThick);
 
     // Y axis (green)
     ImU32 yCol   = (highlightAxis == GizmoAxis::Y) ? highlight : green;
     float yThick = (highlightAxis == GizmoAxis::Y) ? thickHover : thick;
-    glm::vec3 yEnd = pos + glm::vec3(0, kGizmoArmLength, 0);
+    glm::vec3 yEnd = pos + axisY * kGizmoArmLength;
+    glm::vec3 yArrowPerp = axisX * (kGizmoArrowSize * 0.5f);
     DrawLineWorld(dl, pos, yEnd, yCol, yThick);
-    DrawLineWorld(dl, yEnd, yEnd + glm::vec3(kGizmoArrowSize * 0.5f, -kGizmoArrowSize, 0), yCol, yThick);
-    DrawLineWorld(dl, yEnd, yEnd + glm::vec3(-kGizmoArrowSize * 0.5f, -kGizmoArrowSize, 0), yCol, yThick);
+    DrawLineWorld(dl, yEnd, yEnd - axisY * kGizmoArrowSize + yArrowPerp, yCol, yThick);
+    DrawLineWorld(dl, yEnd, yEnd - axisY * kGizmoArrowSize - yArrowPerp, yCol, yThick);
 
     // Z axis (blue)
     ImU32 zCol   = (highlightAxis == GizmoAxis::Z) ? highlight : blue;
     float zThick = (highlightAxis == GizmoAxis::Z) ? thickHover : thick;
-    glm::vec3 zEnd = pos + glm::vec3(0, 0, kGizmoArmLength);
+    glm::vec3 zEnd = pos + axisZ * kGizmoArmLength;
+    glm::vec3 zArrowPerp = axisY * (kGizmoArrowSize * 0.5f);
     DrawLineWorld(dl, pos, zEnd, zCol, zThick);
-    DrawLineWorld(dl, zEnd, zEnd + glm::vec3(0, kGizmoArrowSize * 0.5f, -kGizmoArrowSize), zCol, zThick);
-    DrawLineWorld(dl, zEnd, zEnd + glm::vec3(0, -kGizmoArrowSize * 0.5f, -kGizmoArrowSize), zCol, zThick);
+    DrawLineWorld(dl, zEnd, zEnd - axisZ * kGizmoArrowSize + zArrowPerp, zCol, zThick);
+    DrawLineWorld(dl, zEnd, zEnd - axisZ * kGizmoArrowSize - zArrowPerp, zCol, zThick);
 }
 
 void GizmoRenderer::DrawWireframeBox(Entity entity) {
     if (!entity || !entity.HasComponent<TransformComponent>()) return;
 
     auto& tc = entity.GetComponent<TransformComponent>();
-    glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-    glm::vec3 scl(tc.Scale[0], tc.Scale[1], tc.Scale[2]);
 
-    float hx = 0.5f * scl.x;
-    float hy = 0.5f * scl.y;
-    float hz = 0.5f * scl.z;
+    // Build model matrix (same as Scene rendering)
+    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+        glm::vec3(tc.Position[0], tc.Position[1], tc.Position[2]));
+    model = glm::rotate(model, glm::radians(tc.Rotation[0]), glm::vec3(1, 0, 0));
+    model = glm::rotate(model, glm::radians(tc.Rotation[1]), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, glm::radians(tc.Rotation[2]), glm::vec3(0, 0, 1));
+    model = glm::scale(model, glm::vec3(tc.Scale[0], tc.Scale[1], tc.Scale[2]));
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     ImU32 wireColor = IM_COL32(255, 150, 0, 255);
 
-    // 8 corners of the AABB
-    glm::vec3 corners[8] = {
-        pos + glm::vec3(-hx, -hy, -hz), pos + glm::vec3( hx, -hy, -hz),
-        pos + glm::vec3( hx,  hy, -hz), pos + glm::vec3(-hx,  hy, -hz),
-        pos + glm::vec3(-hx, -hy,  hz), pos + glm::vec3( hx, -hy,  hz),
-        pos + glm::vec3( hx,  hy,  hz), pos + glm::vec3(-hx,  hy,  hz),
+    // 8 corners of a unit cube in local space, transformed to world space
+    glm::vec3 local[8] = {
+        { -0.5f, -0.5f, -0.5f }, {  0.5f, -0.5f, -0.5f },
+        {  0.5f,  0.5f, -0.5f }, { -0.5f,  0.5f, -0.5f },
+        { -0.5f, -0.5f,  0.5f }, {  0.5f, -0.5f,  0.5f },
+        {  0.5f,  0.5f,  0.5f }, { -0.5f,  0.5f,  0.5f },
     };
+
+    glm::vec3 corners[8];
+    for (int i = 0; i < 8; i++)
+        corners[i] = glm::vec3(model * glm::vec4(local[i], 1.0f));
 
     // 12 edges
     int edges[][2] = {
-        {0,1},{1,2},{2,3},{3,0}, // back face
-        {4,5},{5,6},{6,7},{7,4}, // front face
-        {0,4},{1,5},{2,6},{3,7}, // connecting edges
+        {0,1},{1,2},{2,3},{3,0},
+        {4,5},{5,6},{6,7},{7,4},
+        {0,4},{1,5},{2,6},{3,7},
     };
     for (auto& e : edges)
         DrawLineWorld(dl, corners[e[0]], corners[e[1]], wireColor, 1.5f);

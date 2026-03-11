@@ -2,6 +2,7 @@
 #include "VibeEngine/Scene/Entity.h"
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Scene/MeshLibrary.h"
+#include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <yaml-cpp/yaml.h>
@@ -41,6 +42,48 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity) {
         out << YAML::EndMap;
     }
 
+    // DirectionalLightComponent
+    if (entity.HasComponent<DirectionalLightComponent>()) {
+        auto& dl = entity.GetComponent<DirectionalLightComponent>();
+        out << YAML::Key << "DirectionalLightComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Direction" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << dl.Direction[0] << dl.Direction[1] << dl.Direction[2] << YAML::EndSeq;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << dl.Color[0] << dl.Color[1] << dl.Color[2] << YAML::EndSeq;
+        out << YAML::Key << "Intensity" << YAML::Value << dl.Intensity;
+        out << YAML::EndMap;
+    }
+
+    // RigidbodyComponent
+    if (entity.HasComponent<RigidbodyComponent>()) {
+        auto& rb = entity.GetComponent<RigidbodyComponent>();
+        out << YAML::Key << "RigidbodyComponent" << YAML::Value << YAML::BeginMap;
+        const char* bodyTypeStr = rb.Type == BodyType::Static ? "Static" :
+                                  rb.Type == BodyType::Kinematic ? "Kinematic" : "Dynamic";
+        out << YAML::Key << "BodyType"       << YAML::Value << bodyTypeStr;
+        out << YAML::Key << "Mass"           << YAML::Value << rb.Mass;
+        out << YAML::Key << "LinearDamping"  << YAML::Value << rb.LinearDamping;
+        out << YAML::Key << "AngularDamping" << YAML::Value << rb.AngularDamping;
+        out << YAML::Key << "Restitution"    << YAML::Value << rb.Restitution;
+        out << YAML::Key << "Friction"       << YAML::Value << rb.Friction;
+        out << YAML::Key << "UseGravity"     << YAML::Value << rb.UseGravity;
+        out << YAML::EndMap;
+    }
+
+    // ColliderComponent
+    if (entity.HasComponent<ColliderComponent>()) {
+        auto& col = entity.GetComponent<ColliderComponent>();
+        out << YAML::Key << "ColliderComponent" << YAML::Value << YAML::BeginMap;
+        const char* shapeStr = col.Shape == ColliderShape::Box ? "Box" :
+                               col.Shape == ColliderShape::Sphere ? "Sphere" : "Capsule";
+        out << YAML::Key << "Shape"  << YAML::Value << shapeStr;
+        out << YAML::Key << "Size"   << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << col.Size[0] << col.Size[1] << col.Size[2] << YAML::EndSeq;
+        out << YAML::Key << "Offset" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << col.Offset[0] << col.Offset[1] << col.Offset[2] << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+
     // MeshRendererComponent
     if (entity.HasComponent<MeshRendererComponent>()) {
         auto& mr = entity.GetComponent<MeshRendererComponent>();
@@ -55,6 +98,8 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity) {
             }
         }
         out << YAML::Key << "MeshType" << YAML::Value << meshIndex;
+        if (meshIndex == -1 && !mr.MeshSourcePath.empty())
+            out << YAML::Key << "MeshSource" << YAML::Value << mr.MeshSourcePath;
 
         out << YAML::Key << "Color" << YAML::Value << YAML::Flow
             << YAML::BeginSeq << mr.Color[0] << mr.Color[1] << mr.Color[2] << mr.Color[3] << YAML::EndSeq;
@@ -70,59 +115,67 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity) {
 
 // ── Serialize ──────────────────────────────────────────────────────
 
-void SceneSerializer::Serialize(const std::string& filepath) {
+static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     YAML::Emitter out;
     out << YAML::BeginMap;
     out << YAML::Key << "Scene" << YAML::Value << "Untitled";
+
+    // Pipeline settings
+    auto& ps = scene->GetPipelineSettings();
+    out << YAML::Key << "PipelineSettings" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "SkyEnabled" << YAML::Value << ps.SkyEnabled;
+    out << YAML::Key << "SkyTopColor" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.SkyTopColor[0] << ps.SkyTopColor[1] << ps.SkyTopColor[2] << YAML::EndSeq;
+    out << YAML::Key << "SkyBottomColor" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.SkyBottomColor[0] << ps.SkyBottomColor[1] << ps.SkyBottomColor[2] << YAML::EndSeq;
+    if (!ps.SkyTexturePath.empty())
+        out << YAML::Key << "SkyTexturePath" << YAML::Value << ps.SkyTexturePath;
+    out << YAML::EndMap;
+
     out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
-    auto view = m_Scene->GetAllEntitiesWith<IDComponent>();
+    auto view = scene->GetAllEntitiesWith<IDComponent>();
     for (auto entityID : view) {
-        Entity entity(entityID, &*m_Scene);
+        Entity entity(entityID, &*scene);
         SerializeEntity(out, entity);
     }
 
     out << YAML::EndSeq;
     out << YAML::EndMap;
-
-    std::ofstream fout(filepath);
-    fout << out.c_str();
-    fout.close();
-
-    VE_ENGINE_INFO("Scene saved to: {0}", filepath);
+    return std::string(out.c_str());
 }
 
-// ── Deserialize ────────────────────────────────────────────────────
-
-bool SceneSerializer::Deserialize(const std::string& filepath) {
-    YAML::Node data;
-    try {
-        data = YAML::LoadFile(filepath);
-    } catch (const YAML::Exception& e) {
-        VE_ENGINE_ERROR("Failed to load scene '{0}': {1}", filepath, e.what());
+static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_ptr<Scene>& scene) {
+    if (!data["Scene"])
         return false;
-    }
 
-    if (!data["Scene"]) {
-        VE_ENGINE_ERROR("Invalid scene file: {0}", filepath);
-        return false;
+    // Pipeline settings
+    if (auto psNode = data["PipelineSettings"]) {
+        auto& ps = scene->GetPipelineSettings();
+        if (psNode["SkyEnabled"]) ps.SkyEnabled = psNode["SkyEnabled"].as<bool>();
+        if (auto top = psNode["SkyTopColor"])
+            ps.SkyTopColor = { top[0].as<float>(), top[1].as<float>(), top[2].as<float>() };
+        if (auto bot = psNode["SkyBottomColor"])
+            ps.SkyBottomColor = { bot[0].as<float>(), bot[1].as<float>(), bot[2].as<float>() };
+        if (auto tex = psNode["SkyTexturePath"]) {
+            ps.SkyTexturePath = tex.as<std::string>();
+            ps.SkyTexture = Texture2D::Create(ps.SkyTexturePath);
+        }
     }
 
     auto entities = data["Entities"];
     if (!entities)
-        return true; // Empty scene is valid
+        return true;
 
     for (auto entityNode : entities) {
         uint64_t uuid = entityNode["Entity"].as<uint64_t>();
 
         std::string name = "GameObject";
-        if (auto tagNode = entityNode["TagComponent"]) {
+        if (auto tagNode = entityNode["TagComponent"])
             name = tagNode["Tag"].as<std::string>();
-        }
 
-        Entity entity = m_Scene->CreateEntityWithUUID(UUID(uuid), name);
+        Entity entity = scene->CreateEntityWithUUID(UUID(uuid), name);
 
-        // TransformComponent (already added by CreateEntityWithUUID)
         if (auto tcNode = entityNode["TransformComponent"]) {
             auto& tc = entity.GetComponent<TransformComponent>();
             auto pos = tcNode["Position"];
@@ -133,7 +186,41 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
             tc.Scale = { scl[0].as<float>(), scl[1].as<float>(), scl[2].as<float>() };
         }
 
-        // MeshRendererComponent
+        if (auto dlNode = entityNode["DirectionalLightComponent"]) {
+            auto& dl = entity.AddComponent<DirectionalLightComponent>();
+            auto dir = dlNode["Direction"];
+            dl.Direction = { dir[0].as<float>(), dir[1].as<float>(), dir[2].as<float>() };
+            auto col = dlNode["Color"];
+            dl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
+            dl.Intensity = dlNode["Intensity"].as<float>();
+        }
+
+        if (auto rbNode = entityNode["RigidbodyComponent"]) {
+            auto& rb = entity.AddComponent<RigidbodyComponent>();
+            std::string bt = rbNode["BodyType"].as<std::string>();
+            if (bt == "Static") rb.Type = BodyType::Static;
+            else if (bt == "Kinematic") rb.Type = BodyType::Kinematic;
+            else rb.Type = BodyType::Dynamic;
+            rb.Mass           = rbNode["Mass"].as<float>();
+            rb.LinearDamping  = rbNode["LinearDamping"].as<float>();
+            rb.AngularDamping = rbNode["AngularDamping"].as<float>();
+            rb.Restitution    = rbNode["Restitution"].as<float>();
+            rb.Friction       = rbNode["Friction"].as<float>();
+            rb.UseGravity     = rbNode["UseGravity"].as<bool>();
+        }
+
+        if (auto colNode = entityNode["ColliderComponent"]) {
+            auto& col = entity.AddComponent<ColliderComponent>();
+            std::string sh = colNode["Shape"].as<std::string>();
+            if (sh == "Box") col.Shape = ColliderShape::Box;
+            else if (sh == "Sphere") col.Shape = ColliderShape::Sphere;
+            else col.Shape = ColliderShape::Capsule;
+            auto sz = colNode["Size"];
+            col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
+            auto off = colNode["Offset"];
+            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+        }
+
         if (auto mrNode = entityNode["MeshRendererComponent"]) {
             auto& mr = entity.AddComponent<MeshRendererComponent>();
             int meshIndex = mrNode["MeshType"].as<int>();
@@ -142,6 +229,13 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
                 mr.Material = MeshLibrary::IsLitMesh(meshIndex)
                     ? MeshLibrary::GetLitShader()
                     : MeshLibrary::GetDefaultShader();
+            } else if (meshIndex == -1 && mrNode["MeshSource"]) {
+                mr.MeshSourcePath = mrNode["MeshSource"].as<std::string>();
+                auto meshAsset = MeshImporter::GetOrLoad(mr.MeshSourcePath);
+                if (meshAsset && meshAsset->VAO) {
+                    mr.Mesh = meshAsset->VAO;
+                    mr.Material = MeshLibrary::GetLitShader();
+                }
             }
             if (auto colorNode = mrNode["Color"]) {
                 mr.Color = {
@@ -156,8 +250,52 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
         }
     }
 
+    return true;
+}
+
+void SceneSerializer::Serialize(const std::string& filepath) {
+    std::string yaml = SerializeSceneToYAML(m_Scene);
+    std::ofstream fout(filepath);
+    fout << yaml;
+    fout.close();
+    VE_ENGINE_INFO("Scene saved to: {0}", filepath);
+}
+
+// ── Deserialize ────────────────────────────────────────────────────
+
+bool SceneSerializer::Deserialize(const std::string& filepath) {
+    YAML::Node data;
+    try {
+        data = YAML::LoadFile(filepath);
+    } catch (const YAML::Exception& e) {
+        VE_ENGINE_ERROR("Failed to load scene '{0}': {1}", filepath, e.what());
+        return false;
+    }
+
+    if (!DeserializeSceneFromYAML(data, m_Scene)) {
+        VE_ENGINE_ERROR("Invalid scene file: {0}", filepath);
+        return false;
+    }
+
     VE_ENGINE_INFO("Scene loaded from: {0}", filepath);
     return true;
+}
+
+// ── In-memory snapshot ─────────────────────────────────────────────
+
+std::string SceneSerializer::SerializeToString() {
+    return SerializeSceneToYAML(m_Scene);
+}
+
+bool SceneSerializer::DeserializeFromString(const std::string& yamlData) {
+    YAML::Node data;
+    try {
+        data = YAML::Load(yamlData);
+    } catch (const YAML::Exception& e) {
+        VE_ENGINE_ERROR("Failed to parse scene snapshot: {0}", e.what());
+        return false;
+    }
+    return DeserializeSceneFromYAML(data, m_Scene);
 }
 
 } // namespace VE

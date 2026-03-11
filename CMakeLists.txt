@@ -103,6 +103,23 @@ target_link_libraries(imgui_lib PUBLIC glfw Vulkan::Vulkan)
 # ImGui uses its own embedded GL loader (imgui_impl_opengl3_loader.h).
 # No need to link our glad loader for imgui_lib itself.
 
+# Jolt Physics
+FetchContent_Declare(
+    JoltPhysics
+    GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
+    GIT_TAG        v5.2.0
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  Build
+)
+set(TARGET_HELLO_WORLD OFF CACHE BOOL "" FORCE)
+set(TARGET_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(TARGET_PERFORMANCE_TEST OFF CACHE BOOL "" FORCE)
+set(TARGET_SAMPLES OFF CACHE BOOL "" FORCE)
+set(TARGET_VIEWER OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(JoltPhysics)
+
 # Find Vulkan SDK
 find_package(Vulkan REQUIRED)
 

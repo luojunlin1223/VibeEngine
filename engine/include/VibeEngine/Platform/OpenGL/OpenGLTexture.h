@@ -14,6 +14,7 @@ public:
     uint32_t GetHeight() const override { return m_Height; }
     void Bind(uint32_t slot = 0) const override;
     void Unbind() const override;
+    uint64_t GetNativeTextureID() const override { return static_cast<uint64_t>(m_RendererID); }
 
 private:
     uint32_t m_RendererID = 0;

@@ -34,13 +34,13 @@ public:
     // pixelThreshold is the hit distance in pixels.
     static GizmoAxis HitTestTranslationGizmo(const glm::vec3& entityPos,
                                               float screenX, float screenY,
-                                              float pixelThreshold = 12.0f);
+                                              float pixelThreshold = 12.0f,
+                                              const glm::mat3& rotMatrix = glm::mat3(1.0f));
 
-    // Project a world position along a gizmo axis using screen-space mouse delta.
-    // Returns the new world position along the given axis.
     static float ProjectMouseOntoAxis(GizmoAxis axis,
                                        const glm::vec3& entityPos,
-                                       float screenX, float screenY);
+                                       float screenX, float screenY,
+                                       const glm::mat3& rotMatrix = glm::mat3(1.0f));
 };
 
 } // namespace VE

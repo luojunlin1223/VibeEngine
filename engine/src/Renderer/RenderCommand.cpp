@@ -38,4 +38,12 @@ void RenderCommand::SetLineWidth(float width) {
     s_RendererAPI->SetLineWidth(width);
 }
 
+void RenderCommand::SetDepthFunc(RendererAPI::DepthFunc func) {
+    s_RendererAPI->SetDepthFunc(func);
+}
+
+void RenderCommand::SetDepthWrite(bool enabled) {
+    s_RendererAPI->SetDepthWrite(enabled);
+}
+
 } // namespace VE

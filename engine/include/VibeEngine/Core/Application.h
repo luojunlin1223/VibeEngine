@@ -38,6 +38,10 @@ private:
     RendererAPI::API m_CurrentAPI = RendererAPI::API::OpenGL;
     RendererAPI::API m_PendingAPI = RendererAPI::API::None; // None = no switch pending
     bool m_Running = true;
+    float m_LastFrameTime = 0.0f;
+
+protected:
+    float m_DeltaTime = 0.0f;
 };
 
 } // namespace VE

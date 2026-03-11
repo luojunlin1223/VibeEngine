@@ -40,12 +40,46 @@ struct TransformComponent {
     TransformComponent() = default;
 };
 
+struct DirectionalLightComponent {
+    std::array<float, 3> Direction = { 0.3f, 1.0f, 0.5f }; // world-space direction (auto-normalized)
+    std::array<float, 3> Color    = { 1.0f, 1.0f, 1.0f };
+    float Intensity = 1.0f;
+
+    DirectionalLightComponent() = default;
+};
+
+enum class BodyType { Static, Kinematic, Dynamic };
+
+struct RigidbodyComponent {
+    BodyType Type = BodyType::Dynamic;
+    float Mass = 1.0f;
+    float LinearDamping = 0.05f;
+    float AngularDamping = 0.05f;
+    float Restitution = 0.3f;
+    float Friction = 0.5f;
+    bool UseGravity = true;
+    uint32_t _JoltBodyID = 0xFFFFFFFF; // runtime only, not serialized
+
+    RigidbodyComponent() = default;
+};
+
+enum class ColliderShape { Box, Sphere, Capsule };
+
+struct ColliderComponent {
+    ColliderShape Shape = ColliderShape::Box;
+    std::array<float, 3> Size   = { 1.0f, 1.0f, 1.0f }; // box half-extents, or radius in [0]
+    std::array<float, 3> Offset = { 0.0f, 0.0f, 0.0f };
+
+    ColliderComponent() = default;
+};
+
 struct MeshRendererComponent {
     std::shared_ptr<VertexArray> Mesh;
     std::shared_ptr<Shader>     Material;
     std::array<float, 4>        Color = { 1.0f, 1.0f, 1.0f, 1.0f };
-    std::shared_ptr<Texture2D>  Texture;      // optional diffuse texture
-    std::string                 TexturePath;  // path for serialization/reload
+    std::shared_ptr<Texture2D>  Texture;
+    std::string                 TexturePath;
+    std::string                 MeshSourcePath; // for imported meshes (FBX etc.)
 
     MeshRendererComponent() = default;
 };

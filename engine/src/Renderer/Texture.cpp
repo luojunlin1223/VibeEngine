@@ -1,6 +1,7 @@
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/RendererAPI.h"
 #include "VibeEngine/Platform/OpenGL/OpenGLTexture.h"
+#include "VibeEngine/Platform/Vulkan/VulkanTexture.h"
 #include "VibeEngine/Core/Log.h"
 
 namespace VE {
@@ -10,8 +11,7 @@ std::shared_ptr<Texture2D> Texture2D::Create(const std::string& path) {
         case RendererAPI::API::OpenGL:
             return std::make_shared<OpenGLTexture2D>(path);
         case RendererAPI::API::Vulkan:
-            VE_ENGINE_WARN("Texture loading not yet supported on Vulkan");
-            return nullptr;
+            return std::make_shared<VulkanTexture2D>(path);
         default:
             return nullptr;
     }

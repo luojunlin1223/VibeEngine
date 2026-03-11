@@ -35,17 +35,30 @@ void VulkanRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexAr
     auto& ctx = VulkanContext::Get();
 
     VulkanDrawCommand cmd{};
-    cmd.VertexBuffer   = vkVB->GetVkBuffer();
-    cmd.IndexBuffer    = vkIB->GetVkBuffer();
-    cmd.IndexCount     = vkIB->GetCount();
-    cmd.MVP            = ctx.GetCurrentMVP();
-    cmd.Model          = ctx.GetCurrentModel();
-    cmd.UseLitPipeline = ctx.GetCurrentUseLit();
+    cmd.VertexBuffer         = vkVB->GetVkBuffer();
+    cmd.IndexBuffer          = vkIB->GetVkBuffer();
+    cmd.IndexCount           = vkIB->GetCount();
+    cmd.MVP                  = ctx.GetCurrentMVP();
+    cmd.Model                = ctx.GetCurrentModel();
+    cmd.UseLitPipeline       = ctx.GetCurrentUseLit();
+    cmd.TextureDescriptorSet = ctx.GetCurrentTextureDescriptorSet();
+    cmd.UseTexture           = ctx.GetCurrentUseTexture();
+    cmd.LightDir             = ctx.GetCurrentLightDir();
+    cmd.LightColor           = ctx.GetCurrentLightColor();
+    cmd.LightIntensity       = ctx.GetCurrentLightIntensity();
+    cmd.ViewPos              = ctx.GetCurrentViewPos();
+    cmd.EntityColor          = ctx.GetCurrentEntityColor();
+    cmd.UseSkyPipeline       = ctx.GetCurrentUseSky();
+    cmd.SkyTopColor          = ctx.GetCurrentSkyTopColor();
+    cmd.SkyBottomColor       = ctx.GetCurrentSkyBottomColor();
 
     ctx.SubmitDrawCommand(cmd);
 
-    // Reset lit flag for next draw call
+    // Reset per-draw state
     ctx.SetCurrentUseLit(false);
+    ctx.SetCurrentUseSky(false);
+    ctx.SetCurrentTextureDescriptorSet(VK_NULL_HANDLE);
+    ctx.SetCurrentUseTexture(0);
 }
 
 void VulkanRendererAPI::DrawLines(const std::shared_ptr<VertexArray>&, uint32_t) {
@@ -54,6 +67,14 @@ void VulkanRendererAPI::DrawLines(const std::shared_ptr<VertexArray>&, uint32_t)
 
 void VulkanRendererAPI::SetLineWidth(float) {
     // Not yet implemented for Vulkan
+}
+
+void VulkanRendererAPI::SetDepthFunc(DepthFunc) {
+    // Vulkan depth func is set per-pipeline, not dynamically
+}
+
+void VulkanRendererAPI::SetDepthWrite(bool) {
+    // Vulkan depth write is set per-pipeline, not dynamically
 }
 
 } // namespace VE

@@ -18,6 +18,16 @@ struct VulkanDrawCommand {
     glm::mat4    MVP;
     glm::mat4    Model;          // for lit pipeline
     bool         UseLitPipeline = false;
+    VkDescriptorSet TextureDescriptorSet = VK_NULL_HANDLE;
+    int          UseTexture = 0;
+    glm::vec3    LightDir      = glm::vec3(0.3f, 1.0f, 0.5f);
+    glm::vec3    LightColor    = glm::vec3(1.0f);
+    float        LightIntensity = 1.0f;
+    glm::vec3    ViewPos       = glm::vec3(0.0f);
+    glm::vec4    EntityColor   = glm::vec4(1.0f);
+    bool         UseSkyPipeline = false;
+    glm::vec3    SkyTopColor   = glm::vec3(0.4f, 0.7f, 1.0f);
+    glm::vec3    SkyBottomColor = glm::vec3(0.9f, 0.9f, 0.95f);
 };
 
 class VulkanContext : public GraphicsContext {
@@ -53,6 +63,35 @@ public:
     void SetCurrentUseLit(bool lit) { m_CurrentUseLit = lit; }
     bool GetCurrentUseLit() const { return m_CurrentUseLit; }
 
+    void SetCurrentTextureDescriptorSet(VkDescriptorSet ds) { m_CurrentTextureDS = ds; }
+    VkDescriptorSet GetCurrentTextureDescriptorSet() const { return m_CurrentTextureDS; }
+    void SetCurrentUseTexture(int use) { m_CurrentUseTexture = use; }
+    int  GetCurrentUseTexture() const { return m_CurrentUseTexture; }
+
+    void SetCurrentLightDir(const glm::vec3& v) { m_CurrentLightDir = v; }
+    const glm::vec3& GetCurrentLightDir() const { return m_CurrentLightDir; }
+    void SetCurrentLightColor(const glm::vec3& v) { m_CurrentLightColor = v; }
+    const glm::vec3& GetCurrentLightColor() const { return m_CurrentLightColor; }
+    void SetCurrentLightIntensity(float v) { m_CurrentLightIntensity = v; }
+    float GetCurrentLightIntensity() const { return m_CurrentLightIntensity; }
+    void SetCurrentViewPos(const glm::vec3& v) { m_CurrentViewPos = v; }
+    const glm::vec3& GetCurrentViewPos() const { return m_CurrentViewPos; }
+    void SetCurrentEntityColor(const glm::vec4& v) { m_CurrentEntityColor = v; }
+    const glm::vec4& GetCurrentEntityColor() const { return m_CurrentEntityColor; }
+
+    void SetCurrentUseSky(bool v) { m_CurrentUseSky = v; }
+    bool GetCurrentUseSky() const { return m_CurrentUseSky; }
+    void SetCurrentSkyTopColor(const glm::vec3& v) { m_CurrentSkyTopColor = v; }
+    const glm::vec3& GetCurrentSkyTopColor() const { return m_CurrentSkyTopColor; }
+    void SetCurrentSkyBottomColor(const glm::vec3& v) { m_CurrentSkyBottomColor = v; }
+    const glm::vec3& GetCurrentSkyBottomColor() const { return m_CurrentSkyBottomColor; }
+
+    VkCommandPool GetCommandPool() const { return m_CommandPool; }
+    VkDescriptorSet GetDefaultTextureDescriptorSet() const { return m_DefaultTextureDS; }
+
+    // Allocate a descriptor set for a texture (image + sampler)
+    VkDescriptorSet AllocateTextureDescriptorSet(VkImageView imageView, VkSampler sampler);
+
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
 private:
@@ -64,8 +103,12 @@ private:
     void CreateImageViews();
     void CreateDepthResources();
     void CreateRenderPass();
+    void CreateDescriptorSetLayout();
+    void CreateDescriptorPool();
+    void CreateDefaultTexture();
     void CreateGraphicsPipeline();
     void CreateLitGraphicsPipeline();
+    void CreateSkyGraphicsPipeline();
     void CreateFramebuffers();
     void CreateCommandPool();
     void CreateCommandBuffers();
@@ -114,6 +157,10 @@ private:
     VkPipelineLayout  m_LitPipelineLayout   = VK_NULL_HANDLE;
     VkPipeline        m_LitGraphicsPipeline = VK_NULL_HANDLE;
 
+    // Sky pipeline (depth write off, LEQUAL, cull front)
+    VkPipelineLayout  m_SkyPipelineLayout   = VK_NULL_HANDLE;
+    VkPipeline        m_SkyGraphicsPipeline = VK_NULL_HANDLE;
+
     // Framebuffers
     std::vector<VkFramebuffer> m_Framebuffers;
 
@@ -127,6 +174,17 @@ private:
     std::vector<VkFence>     m_InFlightFences;
     uint32_t                 m_CurrentFrame = 0;
 
+    // Descriptor set infrastructure
+    VkDescriptorSetLayout m_TextureDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool      m_DescriptorPool             = VK_NULL_HANDLE;
+
+    // Default 1x1 white texture (bound when no texture is assigned)
+    VkImage        m_DefaultTexImage       = VK_NULL_HANDLE;
+    VkDeviceMemory m_DefaultTexMemory      = VK_NULL_HANDLE;
+    VkImageView    m_DefaultTexImageView   = VK_NULL_HANDLE;
+    VkSampler      m_DefaultTexSampler     = VK_NULL_HANDLE;
+    VkDescriptorSet m_DefaultTextureDS     = VK_NULL_HANDLE;
+
     // Render state
     VkClearColorValue m_ClearColor = {{0.1f, 0.1f, 0.1f, 1.0f}};
     std::vector<VulkanDrawCommand> m_DrawCommands;
@@ -134,6 +192,16 @@ private:
     glm::mat4 m_CurrentMVP   = glm::mat4(1.0f);
     glm::mat4 m_CurrentModel = glm::mat4(1.0f);
     bool m_CurrentUseLit = false;
+    VkDescriptorSet m_CurrentTextureDS = VK_NULL_HANDLE;
+    int  m_CurrentUseTexture = 0;
+    bool      m_CurrentUseSky        = false;
+    glm::vec3 m_CurrentSkyTopColor   = glm::vec3(0.4f, 0.7f, 1.0f);
+    glm::vec3 m_CurrentSkyBottomColor = glm::vec3(0.9f, 0.9f, 0.95f);
+    glm::vec3 m_CurrentLightDir      = glm::vec3(0.3f, 1.0f, 0.5f);
+    glm::vec3 m_CurrentLightColor    = glm::vec3(1.0f);
+    float     m_CurrentLightIntensity = 1.0f;
+    glm::vec3 m_CurrentViewPos       = glm::vec3(0.0f);
+    glm::vec4 m_CurrentEntityColor   = glm::vec4(1.0f);
 };
 
 } // namespace VE

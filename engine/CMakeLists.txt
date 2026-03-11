@@ -3,13 +3,14 @@ file(GLOB_RECURSE ENGINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
-add_library(VibeEngineLib STATIC ${ENGINE_SOURCES})
+add_library(VibeEngineLib STATIC ${ENGINE_SOURCES} ${CMAKE_SOURCE_DIR}/vendor/ufbx/ufbx.c)
 
 target_include_directories(VibeEngineLib
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_SOURCE_DIR}/vendor/stb
+        ${CMAKE_SOURCE_DIR}/vendor/ufbx
 )
 
 target_link_libraries(VibeEngineLib
@@ -22,6 +23,7 @@ target_link_libraries(VibeEngineLib
         EnTT::EnTT
         yaml-cpp::yaml-cpp
         glm::glm
+        Jolt
 )
 
 # Platform definitions

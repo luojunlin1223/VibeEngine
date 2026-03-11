@@ -13,6 +13,8 @@ public:
     void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray) override;
     void DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) override;
     void SetLineWidth(float width) override;
+    void SetDepthFunc(DepthFunc func) override;
+    void SetDepthWrite(bool enabled) override;
 };
 
 } // namespace VE

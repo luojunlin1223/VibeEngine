@@ -22,10 +22,34 @@ public:
         }
     }
 
-    void SetVec4(const std::string&, const glm::vec4&) override {}
-    void SetVec3(const std::string&, const glm::vec3&) override {}
-    void SetFloat(const std::string&, float) override {}
-    void SetInt(const std::string&, int) override {}
+    void SetVec4(const std::string& name, const glm::vec4& value) override {
+        if (name == "u_EntityColor")
+            VulkanContext::Get().SetCurrentEntityColor(value);
+    }
+    void SetVec3(const std::string& name, const glm::vec3& value) override {
+        if (name == "u_LightDir")
+            VulkanContext::Get().SetCurrentLightDir(value);
+        else if (name == "u_LightColor")
+            VulkanContext::Get().SetCurrentLightColor(value);
+        else if (name == "u_ViewPos")
+            VulkanContext::Get().SetCurrentViewPos(value);
+        else if (name == "u_TopColor") {
+            VulkanContext::Get().SetCurrentSkyTopColor(value);
+            VulkanContext::Get().SetCurrentUseSky(true);
+        }
+        else if (name == "u_BottomColor")
+            VulkanContext::Get().SetCurrentSkyBottomColor(value);
+    }
+    void SetFloat(const std::string& name, float value) override {
+        if (name == "u_LightIntensity")
+            VulkanContext::Get().SetCurrentLightIntensity(value);
+    }
+
+    void SetInt(const std::string& name, int value) override {
+        if (name == "u_UseTexture")
+            VulkanContext::Get().SetCurrentUseTexture(value);
+        // u_Texture (sampler slot) is handled via descriptor set binding
+    }
 };
 
 } // namespace VE

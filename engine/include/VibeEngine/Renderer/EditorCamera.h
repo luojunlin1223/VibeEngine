@@ -25,6 +25,7 @@ public:
     void OnMouseRotate(float dx, float dy); // right-mouse orbit (3D only)
 
     const glm::mat4& GetViewProjection() const { return m_ViewProjection; }
+    const glm::mat4& GetSkyViewProjection() const { return m_SkyViewProjection; }
     CameraMode GetMode() const { return m_Mode; }
 
     // 2D accessors
@@ -45,7 +46,8 @@ private:
 
     CameraMode m_Mode = CameraMode::Perspective3D;
     float m_AspectRatio = 16.0f / 9.0f;
-    glm::mat4 m_ViewProjection = glm::mat4(1.0f);
+    glm::mat4 m_ViewProjection    = glm::mat4(1.0f);
+    glm::mat4 m_SkyViewProjection = glm::mat4(1.0f);
 
     // 2D state
     glm::vec2 m_Position2D = { 0.0f, 0.0f };

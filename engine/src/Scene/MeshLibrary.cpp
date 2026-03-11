@@ -2,13 +2,22 @@
 #include "VibeEngine/Renderer/Buffer.h"
 #include "VibeEngine/Core/Log.h"
 
+#include <cmath>
+#include <vector>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace VE {
 
 std::shared_ptr<VertexArray> MeshLibrary::s_Triangle;
 std::shared_ptr<VertexArray> MeshLibrary::s_Quad;
 std::shared_ptr<VertexArray> MeshLibrary::s_Cube;
+std::shared_ptr<VertexArray> MeshLibrary::s_Sphere;
 std::shared_ptr<Shader>      MeshLibrary::s_DefaultShader;
 std::shared_ptr<Shader>      MeshLibrary::s_LitShader;
+std::shared_ptr<Shader>      MeshLibrary::s_SkyShader;
 
 // ── Unlit shader (2D) ──────────────────────────────────────────────
 
@@ -16,13 +25,16 @@ static const char* s_DefaultVertexSrc = R"(
 #version 460 core
 layout(location = 0) in vec3 a_Position;
 layout(location = 1) in vec3 a_Color;
+layout(location = 2) in vec2 a_TexCoord;
 
 uniform mat4 u_MVP;
 
 out vec3 v_Color;
+out vec2 v_TexCoord;
 
 void main() {
-    v_Color = a_Color;
+    v_Color    = a_Color;
+    v_TexCoord = a_TexCoord;
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
 )";
@@ -30,10 +42,18 @@ void main() {
 static const char* s_DefaultFragmentSrc = R"(
 #version 460 core
 in vec3 v_Color;
+in vec2 v_TexCoord;
+
+uniform sampler2D u_Texture;
+uniform int u_UseTexture;
+
 out vec4 FragColor;
 
 void main() {
-    FragColor = vec4(v_Color, 1.0);
+    vec3 baseColor = v_Color;
+    if (u_UseTexture == 1)
+        baseColor = texture(u_Texture, v_TexCoord).rgb;
+    FragColor = vec4(baseColor, 1.0);
 }
 )";
 
@@ -71,6 +91,8 @@ in vec3 v_FragPos;
 in vec2 v_TexCoord;
 
 uniform vec3 u_LightDir;
+uniform vec3 u_LightColor;
+uniform float u_LightIntensity;
 uniform vec3 u_ViewPos;
 uniform vec4 u_EntityColor;
 uniform sampler2D u_Texture;
@@ -85,15 +107,58 @@ void main() {
 
     vec3 ambient = 0.15 * baseColor;
     float diff   = max(dot(v_Normal, u_LightDir), 0.0);
-    vec3 diffuse = diff * baseColor;
+    vec3 diffuse = diff * baseColor * u_LightColor * u_LightIntensity;
 
     vec3 viewDir    = normalize(u_ViewPos - v_FragPos);
     vec3 halfwayDir = normalize(u_LightDir + viewDir);
     float spec      = pow(max(dot(v_Normal, halfwayDir), 0.0), 32.0);
-    vec3 specular   = vec3(0.3) * spec;
+    vec3 specular   = vec3(0.3) * spec * u_LightColor * u_LightIntensity;
 
     vec3 result = (ambient + diffuse + specular) * u_EntityColor.rgb;
     FragColor = vec4(result, u_EntityColor.a);
+}
+)";
+
+// ── Sky shader ──────────────────────────────────────────────────────
+
+static const char* s_SkyVertexSrc = R"(
+#version 460 core
+layout(location = 0) in vec3 a_Position;
+
+uniform mat4 u_MVP;
+
+out vec3 v_Dir;
+
+void main() {
+    v_Dir = a_Position;
+    vec4 pos = u_MVP * vec4(a_Position, 1.0);
+    gl_Position = pos.xyww; // depth = 1.0 (far plane)
+}
+)";
+
+static const char* s_SkyFragmentSrc = R"(
+#version 460 core
+in vec3 v_Dir;
+
+uniform vec3 u_TopColor;
+uniform vec3 u_BottomColor;
+uniform sampler2D u_Texture;
+uniform int u_UseTexture;
+
+out vec4 FragColor;
+
+void main() {
+    vec3 dir = normalize(v_Dir);
+    if (u_UseTexture == 1) {
+        // Equirectangular mapping
+        float u = atan(dir.z, dir.x) / (2.0 * 3.14159265) + 0.5;
+        float v = asin(clamp(dir.y, -1.0, 1.0)) / 3.14159265 + 0.5;
+        FragColor = vec4(texture(u_Texture, vec2(u, v)).rgb, 1.0);
+    } else {
+        float t = dir.y * 0.5 + 0.5; // 0 = bottom, 1 = top
+        vec3 color = mix(u_BottomColor, u_TopColor, t);
+        FragColor = vec4(color, 1.0);
+    }
 }
 )";
 
@@ -101,10 +166,10 @@ void MeshLibrary::Init() {
     // ── Triangle (2D, unlit) ────────────────────────────────────────
     {
         float vertices[] = {
-            // position            // color
-            -0.5f, -0.5f, 0.0f,   1.0f, 0.0f, 0.0f,
-             0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,
-             0.0f,  0.5f, 0.0f,   0.0f, 0.0f, 1.0f,
+            // position            // color              // uv
+            -0.5f, -0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+             0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
+             0.0f,  0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.5f, 1.0f,
         };
         uint32_t indices[] = { 0, 1, 2 };
 
@@ -113,6 +178,7 @@ void MeshLibrary::Init() {
         vb->SetLayout({
             { ShaderDataType::Float3, "a_Position" },
             { ShaderDataType::Float3, "a_Color"    },
+            { ShaderDataType::Float2, "a_TexCoord" },
         });
         s_Triangle->AddVertexBuffer(vb);
         s_Triangle->SetIndexBuffer(IndexBuffer::Create(indices, 3));
@@ -121,10 +187,11 @@ void MeshLibrary::Init() {
     // ── Quad (2D, unlit) ────────────────────────────────────────────
     {
         float vertices[] = {
-            -0.5f, -0.5f, 0.0f,   0.8f, 0.2f, 0.2f,
-             0.5f, -0.5f, 0.0f,   0.2f, 0.8f, 0.2f,
-             0.5f,  0.5f, 0.0f,   0.2f, 0.2f, 0.8f,
-            -0.5f,  0.5f, 0.0f,   0.8f, 0.8f, 0.2f,
+            // position            // color              // uv
+            -0.5f, -0.5f, 0.0f,   0.8f, 0.2f, 0.2f,   0.0f, 0.0f,
+             0.5f, -0.5f, 0.0f,   0.2f, 0.8f, 0.2f,   1.0f, 0.0f,
+             0.5f,  0.5f, 0.0f,   0.2f, 0.2f, 0.8f,   1.0f, 1.0f,
+            -0.5f,  0.5f, 0.0f,   0.8f, 0.8f, 0.2f,   0.0f, 1.0f,
         };
         uint32_t indices[] = { 0, 1, 2, 2, 3, 0 };
 
@@ -133,6 +200,7 @@ void MeshLibrary::Init() {
         vb->SetLayout({
             { ShaderDataType::Float3, "a_Position" },
             { ShaderDataType::Float3, "a_Color"    },
+            { ShaderDataType::Float2, "a_TexCoord" },
         });
         s_Quad->AddVertexBuffer(vb);
         s_Quad->SetIndexBuffer(IndexBuffer::Create(indices, 6));
@@ -194,30 +262,83 @@ void MeshLibrary::Init() {
         s_Cube->SetIndexBuffer(IndexBuffer::Create(indices, 36));
     }
 
+    // ── Sphere (sky, position-only) ────────────────────────────────
+    {
+        const int rings = 32;
+        const int segments = 64;
+        std::vector<float> vertices;
+        std::vector<uint32_t> indices;
+
+        for (int r = 0; r <= rings; r++) {
+            float phi = static_cast<float>(M_PI) * static_cast<float>(r) / static_cast<float>(rings);
+            float y   = std::cos(phi);
+            float sinPhi = std::sin(phi);
+
+            for (int s = 0; s <= segments; s++) {
+                float theta = 2.0f * static_cast<float>(M_PI) * static_cast<float>(s) / static_cast<float>(segments);
+                float x = sinPhi * std::cos(theta);
+                float z = sinPhi * std::sin(theta);
+
+                vertices.push_back(x);
+                vertices.push_back(y);
+                vertices.push_back(z);
+            }
+        }
+
+        for (int r = 0; r < rings; r++) {
+            for (int s = 0; s < segments; s++) {
+                uint32_t a = static_cast<uint32_t>(r * (segments + 1) + s);
+                uint32_t b = a + static_cast<uint32_t>(segments + 1);
+                // Reversed winding so inside faces are front-facing
+                indices.push_back(a);
+                indices.push_back(a + 1);
+                indices.push_back(b);
+                indices.push_back(b);
+                indices.push_back(a + 1);
+                indices.push_back(b + 1);
+            }
+        }
+
+        s_Sphere = VertexArray::Create();
+        auto vb = VertexBuffer::Create(vertices.data(),
+            static_cast<uint32_t>(vertices.size() * sizeof(float)));
+        vb->SetLayout({
+            { ShaderDataType::Float3, "a_Position" },
+        });
+        s_Sphere->AddVertexBuffer(vb);
+        s_Sphere->SetIndexBuffer(IndexBuffer::Create(indices.data(),
+            static_cast<uint32_t>(indices.size())));
+    }
+
     // ── Shaders ─────────────────────────────────────────────────────
     s_DefaultShader = Shader::Create(s_DefaultVertexSrc, s_DefaultFragmentSrc);
     s_LitShader     = Shader::Create(s_LitVertexSrc, s_LitFragmentSrc);
+    s_SkyShader     = Shader::Create(s_SkyVertexSrc, s_SkyFragmentSrc);
 
-    VE_ENGINE_INFO("MeshLibrary initialized (Triangle, Quad, Cube)");
+    VE_ENGINE_INFO("MeshLibrary initialized (Triangle, Quad, Cube, Sphere)");
 }
 
 void MeshLibrary::Shutdown() {
     s_Triangle.reset();
     s_Quad.reset();
     s_Cube.reset();
+    s_Sphere.reset();
     s_DefaultShader.reset();
     s_LitShader.reset();
+    s_SkyShader.reset();
     VE_ENGINE_INFO("MeshLibrary shutdown");
 }
 
 std::shared_ptr<VertexArray> MeshLibrary::GetTriangle() { return s_Triangle; }
 std::shared_ptr<VertexArray> MeshLibrary::GetQuad()     { return s_Quad; }
 std::shared_ptr<VertexArray> MeshLibrary::GetCube()     { return s_Cube; }
+std::shared_ptr<VertexArray> MeshLibrary::GetSphere()   { return s_Sphere; }
 std::shared_ptr<Shader>      MeshLibrary::GetDefaultShader() { return s_DefaultShader; }
 std::shared_ptr<Shader>      MeshLibrary::GetLitShader()     { return s_LitShader; }
+std::shared_ptr<Shader>      MeshLibrary::GetSkyShader()     { return s_SkyShader; }
 
 const char* MeshLibrary::GetMeshName(int index) {
-    static const char* names[] = { "Triangle", "Quad", "Cube" };
+    static const char* names[] = { "Triangle", "Quad", "Cube", "Sphere" };
     if (index >= 0 && index < GetMeshCount()) return names[index];
     return "Unknown";
 }
@@ -227,14 +348,15 @@ std::shared_ptr<VertexArray> MeshLibrary::GetMeshByIndex(int index) {
         case 0: return s_Triangle;
         case 1: return s_Quad;
         case 2: return s_Cube;
+        case 3: return s_Sphere;
         default: return nullptr;
     }
 }
 
 bool MeshLibrary::IsLitMesh(int index) {
-    return index >= 2; // Cube and future 3D meshes
+    return index >= 2 && index <= 2; // Only Cube uses lit shader
 }
 
-int MeshLibrary::GetMeshCount() { return 3; }
+int MeshLibrary::GetMeshCount() { return 4; }
 
 } // namespace VE

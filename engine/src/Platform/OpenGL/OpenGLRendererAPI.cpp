@@ -40,4 +40,15 @@ void OpenGLRendererAPI::SetLineWidth(float width) {
     glLineWidth(width);
 }
 
+void OpenGLRendererAPI::SetDepthFunc(DepthFunc func) {
+    switch (func) {
+        case DepthFunc::Less:      glDepthFunc(GL_LESS);   break;
+        case DepthFunc::LessEqual: glDepthFunc(GL_LEQUAL); break;
+    }
+}
+
+void OpenGLRendererAPI::SetDepthWrite(bool enabled) {
+    glDepthMask(enabled ? GL_TRUE : GL_FALSE);
+}
+
 } // namespace VE

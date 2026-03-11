@@ -10,6 +10,7 @@ class VertexArray;
 class RendererAPI {
 public:
     enum class API { None = 0, OpenGL, Vulkan };
+    enum class DepthFunc { Less, LessEqual };
 
     virtual ~RendererAPI() = default;
 
@@ -20,6 +21,8 @@ public:
     virtual void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray) = 0;
     virtual void DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) = 0;
     virtual void SetLineWidth(float width) = 0;
+    virtual void SetDepthFunc(DepthFunc func) = 0;
+    virtual void SetDepthWrite(bool enabled) = 0;
 
     static API GetAPI() { return s_API; }
     static void SetAPI(API api) { s_API = api; }

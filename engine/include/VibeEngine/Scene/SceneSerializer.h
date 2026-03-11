@@ -20,6 +20,10 @@ public:
     void Serialize(const std::string& filepath);
     bool Deserialize(const std::string& filepath);
 
+    // In-memory serialization for play-mode snapshots
+    std::string SerializeToString();
+    bool DeserializeFromString(const std::string& yamlData);
+
 private:
     std::shared_ptr<Scene> m_Scene;
 };

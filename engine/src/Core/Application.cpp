@@ -107,6 +107,10 @@ void Application::Run() {
                 RenderCommand::SetViewport(0, 0, static_cast<uint32_t>(fbW), static_cast<uint32_t>(fbH));
         }
 
+        float time = static_cast<float>(glfwGetTime());
+        m_DeltaTime = time - m_LastFrameTime;
+        m_LastFrameTime = time;
+
         OnUpdate();
         OnRender();
 

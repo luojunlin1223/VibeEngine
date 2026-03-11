@@ -1,6 +1,9 @@
 #include <VibeEngine/VibeEngine.h>
 #include <GLFW/glfw3.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <limits>
+#include <filesystem>
+#include <sstream>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
 
@@ -13,6 +16,12 @@ public:
         VE::MeshLibrary::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
+        m_AssetDatabase.Init(".");
+
+        VE::FramebufferSpec fbSpec;
+        fbSpec.Width = 1280;
+        fbSpec.Height = 720;
+        m_Framebuffer = VE::Framebuffer::Create(fbSpec);
     }
 
     ~Sandbox() override {
@@ -21,12 +30,8 @@ public:
 
 protected:
     void OnUpdate() override {
-        m_Scene->OnUpdate();
-
-        int fbW = 0, fbH = 0;
-        glfwGetFramebufferSize(GetWindow().GetNativeWindow(), &fbW, &fbH);
-        if (fbW > 0 && fbH > 0)
-            m_Camera.SetViewportSize(static_cast<float>(fbW), static_cast<float>(fbH));
+        m_Scene->OnUpdate(m_DeltaTime);
+        m_AssetDatabase.Update(m_DeltaTime);
     }
 
     void OnRender() override {
@@ -34,19 +39,58 @@ protected:
         glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
             ? m_Camera.GetPosition3D()
             : glm::vec3(m_Camera.GetPosition(), 5.0f);
+
+        if (m_Framebuffer) {
+            m_Framebuffer->Bind();
+            VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+            VE::RenderCommand::Clear();
+        }
+
+        m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
         m_Scene->OnRender(m_FrameVP, camPos);
+
+        if (m_Framebuffer)
+            m_Framebuffer->Unbind();
+    }
+
+    // Helper: build rotation matrix from a TransformComponent
+    static glm::mat3 GetEntityRotation(const VE::TransformComponent& tc) {
+        glm::mat4 rot(1.0f);
+        rot = glm::rotate(rot, glm::radians(tc.Rotation[0]), glm::vec3(1, 0, 0));
+        rot = glm::rotate(rot, glm::radians(tc.Rotation[1]), glm::vec3(0, 1, 0));
+        rot = glm::rotate(rot, glm::radians(tc.Rotation[2]), glm::vec3(0, 0, 1));
+        return glm::mat3(rot);
     }
 
     void OnImGuiRender() override {
         ImGuiIO& io = ImGui::GetIO();
+
+        // ── Full-window dockspace ────────────────────────────────────
+        {
+            ImGuiWindowFlags dockFlags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking
+                | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize
+                | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+            ImGuiViewport* vp = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(vp->WorkPos);
+            ImGui::SetNextWindowSize(vp->WorkSize);
+            ImGui::SetNextWindowViewport(vp->ID);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+            ImGui::Begin("DockSpaceWindow", nullptr, dockFlags);
+            ImGui::PopStyleVar(3);
+            ImGui::DockSpace(ImGui::GetID("MainDockSpace"), ImVec2(0, 0), ImGuiDockNodeFlags_None);
+            ImGui::End();
+        }
 
         // ── Gizmo drag continuation (runs even over ImGui panels) ────
         if (m_DraggingAxis != VE::GizmoAxis::None) {
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                 auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                 glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                glm::mat3 rot = GetEntityRotation(tc);
                 float val = VE::GizmoRenderer::ProjectMouseOntoAxis(
-                    m_DraggingAxis, pos, io.MousePos.x, io.MousePos.y);
+                    m_DraggingAxis, pos, io.MousePos.x, io.MousePos.y, rot);
                 int comp = (m_DraggingAxis == VE::GizmoAxis::X) ? 0
                          : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
                 tc.Position[comp] = m_DragStartPos[comp] + (val - m_DragOriginVal);
@@ -55,8 +99,8 @@ protected:
             }
         }
 
-        // ── Camera + scene interaction ───────────────────────────────
-        if (!io.WantCaptureMouse && m_DraggingAxis == VE::GizmoAxis::None) {
+        // ── Camera + scene interaction (only when viewport is hovered) ───
+        if (m_ViewportHovered && m_DraggingAxis == VE::GizmoAxis::None) {
             if (io.MouseWheel != 0.0f)
                 m_Camera.OnMouseScroll(io.MouseWheel);
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
@@ -64,54 +108,44 @@ protected:
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Right))
                 m_Camera.OnMouseRotate(io.MouseDelta.x, io.MouseDelta.y);
 
-            // Left-click: gizmo drag or entity select
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                 VE::GizmoAxis axis = VE::GizmoAxis::None;
-                if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
+                bool canDrag = m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>();
+                if (canDrag && m_PlayMode && m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
+                    auto& rb = m_SelectedEntity.GetComponent<VE::RigidbodyComponent>();
+                    if (rb.Type == VE::BodyType::Dynamic)
+                        canDrag = false;
+                }
+                if (canDrag) {
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                     glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                    glm::mat3 rot = GetEntityRotation(tc);
                     axis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                        pos, io.MousePos.x, io.MousePos.y);
+                        pos, io.MousePos.x, io.MousePos.y, 12.0f, rot);
                 }
 
                 if (axis != VE::GizmoAxis::None) {
                     m_DraggingAxis = axis;
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                     glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                    glm::mat3 rot = GetEntityRotation(tc);
                     m_DragStartPos = { tc.Position[0], tc.Position[1], tc.Position[2] };
                     m_DragOriginVal = VE::GizmoRenderer::ProjectMouseOntoAxis(
-                        axis, pos, io.MousePos.x, io.MousePos.y);
+                        axis, pos, io.MousePos.x, io.MousePos.y, rot);
                 } else {
                     m_SelectedEntity = HitTestEntities(io.MousePos.x, io.MousePos.y);
                 }
             }
         }
 
-        // ── Gizmos ───────────────────────────────────────────────────
-        ImVec2 vpPos  = ImGui::GetMainViewport()->Pos;
-        ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-
-        VE::GizmoRenderer::BeginScene(m_FrameVP, vpPos.x, vpPos.y,
-                                       vpSize.x, vpSize.y, m_Camera.GetMode());
-        VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
-        if (m_SelectedEntity) {
-            VE::GizmoRenderer::DrawWireframeBox(m_SelectedEntity);
-
-            VE::GizmoAxis displayAxis = m_DraggingAxis;
-            if (displayAxis == VE::GizmoAxis::None && !io.WantCaptureMouse
-                && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
-                auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
-                glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-                displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                    pos, io.MousePos.x, io.MousePos.y);
-            }
-            VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis);
-        }
-
         DrawMainMenuBar();
+        DrawToolbar();
+        DrawViewportPanel();
         DrawHierarchyPanel();
         DrawInspectorPanel();
         DrawSceneInfoPanel();
+        DrawPipelineSettingsPanel();
+        DrawContentBrowserPanel();
 
         if (m_ShowDemo)
             ImGui::ShowDemoWindow(&m_ShowDemo);
@@ -121,17 +155,24 @@ protected:
         if (VE::MeshLibrary::GetTriangle()) {
             ClearEntityGPUResources();
             VE::MeshLibrary::Shutdown();
+            VE::MeshImporter::ClearCache();
+            m_Framebuffer.reset();
         } else {
             VE::MeshLibrary::Init();
+            VE::MeshImporter::ReuploadCache();
             RestoreEntityGPUResources();
+            VE::FramebufferSpec fbSpec;
+            fbSpec.Width = 1280;
+            fbSpec.Height = 720;
+            m_Framebuffer = VE::Framebuffer::Create(fbSpec);
         }
+        m_ThumbnailCache.Clear();
     }
 
 private:
     // ── Scene picking ─────────────────────────────────────────────────
 
     VE::Entity HitTestEntities(float screenX, float screenY) {
-        // For 2D mode, use world-space AABB. For 3D, use screen-space projection.
         VE::Entity best;
         float bestDist = std::numeric_limits<float>::max();
 
@@ -140,9 +181,8 @@ private:
             auto& tc = view.get<VE::TransformComponent>(entityID);
             glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
 
-            // Project entity center to screen
             glm::vec4 clip = m_FrameVP * glm::vec4(pos, 1.0f);
-            if (clip.w <= 0.0f) continue; // behind camera
+            if (clip.w <= 0.0f) continue;
             glm::vec3 ndc = glm::vec3(clip) / clip.w;
 
             ImVec2 vpPos  = ImGui::GetMainViewport()->Pos;
@@ -150,12 +190,11 @@ private:
             float sx = vpPos.x + (ndc.x * 0.5f + 0.5f) * vpSize.x;
             float sy = vpPos.y + (1.0f - (ndc.y * 0.5f + 0.5f)) * vpSize.y;
 
-            // Approximate screen-space radius from scale
             float worldRadius = std::max({tc.Scale[0], tc.Scale[1], tc.Scale[2]}) * 0.5f;
             glm::vec4 edgeClip = m_FrameVP * glm::vec4(pos + glm::vec3(worldRadius, 0, 0), 1.0f);
             float edgeSx = vpPos.x + ((edgeClip.x / edgeClip.w) * 0.5f + 0.5f) * vpSize.x;
             float screenRadius = std::abs(edgeSx - sx);
-            screenRadius = std::max(screenRadius, 20.0f); // minimum clickable size
+            screenRadius = std::max(screenRadius, 20.0f);
 
             float dx = screenX - sx, dy = screenY - sy;
             float dist = std::sqrt(dx * dx + dy * dy);
@@ -216,8 +255,9 @@ private:
             }
             mr.Mesh.reset();
             mr.Material.reset();
-            mr.Texture.reset(); // GPU resource, release it
+            mr.Texture.reset();
         }
+        m_Scene->GetPipelineSettings().SkyTexture.reset();
     }
 
     void RestoreEntityGPUResources() {
@@ -235,6 +275,9 @@ private:
                 mr.Texture = VE::Texture2D::Create(mr.TexturePath);
         }
         m_EntityMeshIndex.clear();
+        auto& ps = m_Scene->GetPipelineSettings();
+        if (!ps.SkyTexturePath.empty())
+            ps.SkyTexture = VE::Texture2D::Create(ps.SkyTexturePath);
     }
 
     // ── Main Menu Bar ──────────────────────────────────────────────────
@@ -273,12 +316,21 @@ private:
                     mr.Mesh = VE::MeshLibrary::GetCube();
                     mr.Material = VE::MeshLibrary::GetLitShader();
                 }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Create Directional Light")) {
+                    auto e = m_Scene->CreateEntity("Directional Light");
+                    e.AddComponent<VE::DirectionalLightComponent>();
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
                 ImGui::MenuItem("Hierarchy", nullptr, &m_ShowHierarchy);
                 ImGui::MenuItem("Inspector", nullptr, &m_ShowInspector);
                 ImGui::MenuItem("Scene Info", nullptr, &m_ShowSceneInfo);
+                ImGui::Separator();
+                ImGui::MenuItem("Render Pipeline", nullptr, &m_ShowPipelineSettings);
+                ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
+                ImGui::Separator();
                 ImGui::MenuItem("Demo Window", nullptr, &m_ShowDemo);
                 ImGui::EndMenu();
             }
@@ -291,6 +343,137 @@ private:
         if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_O)) LoadScene();
         if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_S)) SaveScene();
         if (ctrl &&  shift && ImGui::IsKeyPressed(ImGuiKey_S)) SaveSceneAs();
+    }
+
+    // ── Viewport Panel ──────────────────────────────────────────────────
+
+    void DrawViewportPanel() {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin("Scene Viewport");
+
+        m_ViewportHovered = ImGui::IsWindowHovered();
+        m_ViewportFocused = ImGui::IsWindowFocused();
+
+        ImVec2 viewportSize = ImGui::GetContentRegionAvail();
+        if (viewportSize.x > 0 && viewportSize.y > 0) {
+            uint32_t w = static_cast<uint32_t>(viewportSize.x);
+            uint32_t h = static_cast<uint32_t>(viewportSize.y);
+            if (m_Framebuffer)
+                m_Framebuffer->Resize(w, h);
+            m_Camera.SetViewportSize(viewportSize.x, viewportSize.y);
+        }
+
+        // Display the framebuffer texture
+        if (m_Framebuffer) {
+            uint64_t texID = m_Framebuffer->GetColorAttachmentID();
+            if (texID != 0) {
+                ImGui::Image((ImTextureID)texID, viewportSize, ImVec2(0, 1), ImVec2(1, 0));
+            }
+        }
+
+        // Drag-drop target: drop mesh into viewport to create entity
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_MESH")) {
+                std::string path(static_cast<const char*>(payload->Data));
+                auto meshAsset = VE::MeshImporter::GetOrLoad(path);
+                if (meshAsset && meshAsset->VAO) {
+                    auto entity = m_Scene->CreateEntity(meshAsset->Name);
+                    auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = meshAsset->VAO;
+                    mr.Material = VE::MeshLibrary::GetLitShader();
+                    mr.MeshSourcePath = path;
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        // Gizmos are drawn as overlay on the viewport using ImDrawList
+        ImVec2 vpMin = ImGui::GetWindowContentRegionMin();
+        ImVec2 vpMax = ImGui::GetWindowContentRegionMax();
+        ImVec2 wPos  = ImGui::GetWindowPos();
+        float vpX = wPos.x + vpMin.x;
+        float vpY = wPos.y + vpMin.y;
+        float vpW = vpMax.x - vpMin.x;
+        float vpH = vpMax.y - vpMin.y;
+
+        VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
+        VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
+        if (m_SelectedEntity) {
+            VE::GizmoRenderer::DrawWireframeBox(m_SelectedEntity);
+
+            VE::GizmoAxis displayAxis = m_DraggingAxis;
+            ImGuiIO& io = ImGui::GetIO();
+            if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered
+                && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
+                auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
+                glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                glm::mat3 rot = GetEntityRotation(tc);
+                displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
+                    pos, io.MousePos.x, io.MousePos.y, 12.0f, rot);
+            }
+            VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis);
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar();
+    }
+
+    // ── Toolbar ────────────────────────────────────────────────────────
+
+    void EnterPlayMode() {
+        if (m_PlayMode) return;
+
+        // Save scene snapshot
+        VE::SceneSerializer serializer(m_Scene);
+        m_SceneSnapshot = serializer.SerializeToString();
+
+        m_Scene->StartPhysics();
+        m_PlayMode = true;
+        VE_INFO("Entered Play mode");
+    }
+
+    void ExitPlayMode() {
+        if (!m_PlayMode) return;
+
+        m_Scene->StopPhysics();
+
+        // Restore scene from snapshot
+        m_Scene = std::make_shared<VE::Scene>();
+        m_SelectedEntity = {};
+        VE::SceneSerializer serializer(m_Scene);
+        serializer.DeserializeFromString(m_SceneSnapshot);
+        m_SceneSnapshot.clear();
+
+        m_PlayMode = false;
+        VE_INFO("Exited Play mode (scene restored)");
+    }
+
+    void DrawToolbar() {
+        bool wasPlayMode = m_PlayMode;
+
+        if (wasPlayMode)
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.35f, 0.15f, 0.15f, 1.0f));
+
+        ImGui::Begin("Toolbar", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+        float windowWidth = ImGui::GetContentRegionAvail().x;
+        float buttonWidth = 80.0f;
+        ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
+
+        if (!m_PlayMode) {
+            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
+                EnterPlayMode();
+        } else {
+            if (ImGui::Button("Stop", ImVec2(buttonWidth, 0)))
+                ExitPlayMode();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "PLAY MODE");
+        }
+
+        ImGui::End();
+
+        if (wasPlayMode)
+            ImGui::PopStyleColor();
     }
 
     // ── Hierarchy Panel ────────────────────────────────────────────────
@@ -335,6 +518,11 @@ private:
                 mr.Mesh = VE::MeshLibrary::GetCube();
                 mr.Material = VE::MeshLibrary::GetLitShader();
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Create Directional Light")) {
+                auto e = m_Scene->CreateEntity("Directional Light");
+                e.AddComponent<VE::DirectionalLightComponent>();
+            }
             ImGui::EndPopup();
         }
 
@@ -377,6 +565,72 @@ private:
             ImGui::Separator();
         }
 
+        if (m_SelectedEntity.HasComponent<VE::DirectionalLightComponent>()) {
+            bool removeLight = false;
+            if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& dl = m_SelectedEntity.GetComponent<VE::DirectionalLightComponent>();
+                ImGui::DragFloat3("Direction", dl.Direction.data(), 0.01f);
+                ImGui::ColorEdit3("Light Color", dl.Color.data());
+                ImGui::DragFloat("Intensity", &dl.Intensity, 0.01f, 0.0f, 10.0f);
+                if (ImGui::Button("Remove Light"))
+                    removeLight = true;
+            }
+            if (removeLight)
+                m_SelectedEntity.RemoveComponent<VE::DirectionalLightComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
+            bool removeRB = false;
+            if (ImGui::CollapsingHeader("Rigidbody", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& rb = m_SelectedEntity.GetComponent<VE::RigidbodyComponent>();
+                const char* bodyTypes[] = { "Static", "Kinematic", "Dynamic" };
+                int currentType = static_cast<int>(rb.Type);
+                if (ImGui::Combo("Body Type", &currentType, bodyTypes, 3))
+                    rb.Type = static_cast<VE::BodyType>(currentType);
+                if (rb.Type == VE::BodyType::Dynamic) {
+                    ImGui::DragFloat("Mass", &rb.Mass, 0.1f, 0.01f, 1000.0f);
+                }
+                ImGui::DragFloat("Linear Damping", &rb.LinearDamping, 0.01f, 0.0f, 10.0f);
+                ImGui::DragFloat("Angular Damping", &rb.AngularDamping, 0.01f, 0.0f, 10.0f);
+                ImGui::DragFloat("Restitution", &rb.Restitution, 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("Friction", &rb.Friction, 0.01f, 0.0f, 2.0f);
+                ImGui::Checkbox("Use Gravity", &rb.UseGravity);
+                if (!m_SelectedEntity.HasComponent<VE::ColliderComponent>())
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Needs Collider component to work!");
+                if (ImGui::Button("Remove Rigidbody"))
+                    removeRB = true;
+            }
+            if (removeRB)
+                m_SelectedEntity.RemoveComponent<VE::RigidbodyComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::ColliderComponent>()) {
+            bool removeCol = false;
+            if (ImGui::CollapsingHeader("Collider", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& col = m_SelectedEntity.GetComponent<VE::ColliderComponent>();
+                const char* shapes[] = { "Box", "Sphere", "Capsule" };
+                int currentShape = static_cast<int>(col.Shape);
+                if (ImGui::Combo("Shape", &currentShape, shapes, 3))
+                    col.Shape = static_cast<VE::ColliderShape>(currentShape);
+                if (col.Shape == VE::ColliderShape::Box)
+                    ImGui::DragFloat3("Size", col.Size.data(), 0.1f, 0.01f, 100.0f);
+                else if (col.Shape == VE::ColliderShape::Sphere)
+                    ImGui::DragFloat("Diameter", &col.Size[0], 0.1f, 0.01f, 100.0f);
+                else {
+                    ImGui::DragFloat("Diameter", &col.Size[0], 0.1f, 0.01f, 100.0f);
+                    ImGui::DragFloat("Height", &col.Size[1], 0.1f, 0.01f, 100.0f);
+                }
+                ImGui::DragFloat3("Offset", col.Offset.data(), 0.1f);
+                if (ImGui::Button("Remove Collider"))
+                    removeCol = true;
+            }
+            if (removeCol)
+                m_SelectedEntity.RemoveComponent<VE::ColliderComponent>();
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             bool removeComponent = false;
             if (ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -408,7 +662,6 @@ private:
 
                 ImGui::ColorEdit4("Color", mr.Color.data());
 
-                // Texture picker
                 ImGui::Text("Texture: %s", mr.TexturePath.empty() ? "(none)" : mr.TexturePath.c_str());
                 if (ImGui::Button("Load Texture...")) {
                     static const char* texFilter =
@@ -436,18 +689,285 @@ private:
         if (ImGui::Button("Add Component", ImVec2(-1, 0)))
             ImGui::OpenPopup("AddComponentPopup");
         if (ImGui::BeginPopup("AddComponentPopup")) {
+            bool anyAdded = false;
             if (!m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
                 if (ImGui::MenuItem("Mesh Renderer")) {
                     auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
                     mr.Mesh = VE::MeshLibrary::GetCube();
                     mr.Material = VE::MeshLibrary::GetLitShader();
                 }
-            } else {
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::DirectionalLightComponent>()) {
+                if (ImGui::MenuItem("Directional Light")) {
+                    m_SelectedEntity.AddComponent<VE::DirectionalLightComponent>();
+                }
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
+                if (ImGui::MenuItem("Rigidbody")) {
+                    m_SelectedEntity.AddComponent<VE::RigidbodyComponent>();
+                    if (!m_SelectedEntity.HasComponent<VE::ColliderComponent>())
+                        m_SelectedEntity.AddComponent<VE::ColliderComponent>();
+                }
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::ColliderComponent>()) {
+                if (ImGui::MenuItem("Collider")) {
+                    m_SelectedEntity.AddComponent<VE::ColliderComponent>();
+                }
+                anyAdded = true;
+            }
+            if (!anyAdded) {
                 ImGui::TextDisabled("All components added");
             }
             ImGui::EndPopup();
         }
         ImGui::End();
+    }
+
+    // ── Render Pipeline Settings Panel ────────────────────────────────
+
+    void DrawPipelineSettingsPanel() {
+        if (!m_ShowPipelineSettings) return;
+        ImGui::Begin("Render Pipeline", &m_ShowPipelineSettings);
+
+        auto& ps = m_Scene->GetPipelineSettings();
+
+        if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Sky", &ps.SkyEnabled);
+
+            if (ps.SkyEnabled) {
+                ImGui::ColorEdit3("Top Color", ps.SkyTopColor.data());
+                ImGui::ColorEdit3("Bottom Color", ps.SkyBottomColor.data());
+
+                ImGui::Text("Sky Texture: %s",
+                    ps.SkyTexturePath.empty() ? "(none - gradient)" : ps.SkyTexturePath.c_str());
+                if (ImGui::Button("Load Sky Texture...")) {
+                    static const char* texFilter =
+                        "Image Files (*.png;*.jpg;*.hdr)\0*.png;*.jpg;*.jpeg;*.hdr\0All Files\0*.*\0";
+                    std::string path = VE::FileDialog::OpenFile(texFilter, GetWindow().GetNativeWindow());
+                    if (!path.empty()) {
+                        ps.SkyTexturePath = path;
+                        ps.SkyTexture = VE::Texture2D::Create(path);
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Clear##SkyTex")) {
+                    ps.SkyTexturePath.clear();
+                    ps.SkyTexture.reset();
+                }
+            }
+        }
+
+        ImGui::End();
+    }
+
+    // ── Content Browser Panel ─────────────────────────────────────────
+
+    void DrawContentBrowserPanel() {
+        if (!m_ShowContentBrowser) return;
+        ImGui::Begin("Content Browser", &m_ShowContentBrowser);
+
+        // Breadcrumb navigation
+        {
+            if (ImGui::Button("Assets"))
+                m_BrowserCurrentDir.clear();
+
+            if (!m_BrowserCurrentDir.empty()) {
+                // Show path segments as clickable buttons
+                std::string accumulated;
+                std::istringstream ss(m_BrowserCurrentDir);
+                std::string segment;
+                while (std::getline(ss, segment, '/')) {
+                    ImGui::SameLine();
+                    ImGui::Text("/");
+                    ImGui::SameLine();
+                    accumulated = accumulated.empty() ? segment : accumulated + "/" + segment;
+                    std::string id = segment + "##" + accumulated;
+                    if (ImGui::Button(id.c_str()))
+                        m_BrowserCurrentDir = accumulated;
+                }
+            }
+
+            // Refresh button
+            ImGui::SameLine(ImGui::GetWindowWidth() - 80);
+            if (ImGui::Button("Refresh"))
+                m_AssetDatabase.Refresh();
+        }
+
+        ImGui::Separator();
+
+        // Two-column layout: folder tree | contents
+        float treeWidth = 180.0f;
+
+        // Left pane: folder tree
+        ImGui::BeginChild("FolderTree", ImVec2(treeWidth, 0), true);
+        DrawFolderTree("");
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        // Right pane: contents grid
+        ImGui::BeginChild("Contents", ImVec2(0, 0), true);
+
+        // Right-click context menu (on empty space)
+        if (ImGui::BeginPopupContextWindow("BrowserPopup", ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
+            if (ImGui::MenuItem("New Folder")) {
+                m_AssetDatabase.CreateFolder(m_BrowserCurrentDir, "New Folder");
+            }
+            ImGui::EndPopup();
+        }
+
+        auto contents = m_AssetDatabase.GetDirectoryContents(m_BrowserCurrentDir);
+        float padding = 8.0f;
+        float cellSize = 80.0f;
+        float panelWidth = ImGui::GetContentRegionAvail().x;
+        int columns = std::max(1, static_cast<int>(panelWidth / (cellSize + padding)));
+
+        ImGui::Columns(columns, nullptr, false);
+
+        for (auto& relPath : contents) {
+            auto* meta = m_AssetDatabase.GetMetaByPath(relPath);
+            if (!meta) continue;
+
+            std::string filename = std::filesystem::path(relPath).filename().generic_string();
+
+            ImGui::PushID(relPath.c_str());
+
+            // Draw icon/thumbnail
+            float thumbSize = cellSize - 16.0f;
+            // Use InvisibleButton as the base interactive item (gives us an ID for popups/clicks)
+            ImGui::InvisibleButton("##item", ImVec2(thumbSize, thumbSize));
+            bool hovered = ImGui::IsItemHovered();
+            ImVec2 itemMin = ImGui::GetItemRectMin();
+            ImVec2 itemMax = ImGui::GetItemRectMax();
+
+            // Draw icon/thumbnail over the invisible button
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            if (meta->Type == VE::AssetType::Texture2D) {
+                std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                uint64_t texID = m_ThumbnailCache.GetThumbnail(absPath);
+                if (texID != 0)
+                    dl->AddImage((ImTextureID)texID, itemMin, itemMax);
+                else
+                    dl->AddRectFilled(itemMin, itemMax, IM_COL32(120, 70, 70, 255));
+            } else if (meta->Type == VE::AssetType::Folder) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(70, 70, 120, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 8.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "DIR");
+            } else if (meta->Type == VE::AssetType::Scene) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(90, 120, 70, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SCN");
+            } else if (meta->Type == VE::AssetType::Mesh) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(100, 70, 130, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "FBX");
+            } else {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
+            }
+
+            // Hover highlight
+            if (hovered)
+                dl->AddRect(itemMin, itemMax, IM_COL32(255, 200, 100, 200), 0.0f, 0, 2.0f);
+
+            // Double-click actions
+            if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                if (meta->Type == VE::AssetType::Folder) {
+                    m_BrowserCurrentDir = relPath;
+                } else if (meta->Type == VE::AssetType::Scene) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    m_Scene = std::make_shared<VE::Scene>();
+                    m_SelectedEntity = {};
+                    VE::SceneSerializer serializer(m_Scene);
+                    if (serializer.Deserialize(absPath))
+                        m_CurrentScenePath = absPath;
+                } else if (meta->Type == VE::AssetType::Mesh) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    auto meshAsset = VE::MeshImporter::GetOrLoad(absPath);
+                    if (meshAsset && meshAsset->VAO) {
+                        auto entity = m_Scene->CreateEntity(meshAsset->Name);
+                        auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = meshAsset->VAO;
+                        mr.Material = VE::MeshLibrary::GetLitShader();
+                        mr.MeshSourcePath = absPath;
+                    }
+                }
+            }
+
+            // Drag-drop source for mesh files
+            if (meta->Type == VE::AssetType::Mesh) {
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    ImGui::SetDragDropPayload("ASSET_MESH", absPath.c_str(), absPath.size() + 1);
+                    ImGui::Text("%s", filename.c_str());
+                    ImGui::EndDragDropSource();
+                }
+            }
+
+            // Right-click context menu on item (works because InvisibleButton has an ID)
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Delete")) {
+                    m_AssetDatabase.DeleteAsset(relPath);
+                    ImGui::EndPopup();
+                    ImGui::PopID();
+                    ImGui::Columns(1);
+                    ImGui::EndChild();
+                    ImGui::End();
+                    return; // collection invalidated
+                }
+                ImGui::EndPopup();
+            }
+
+            // Filename label (truncated)
+            ImGui::TextWrapped("%s", filename.c_str());
+
+            ImGui::PopID();
+            ImGui::NextColumn();
+        }
+
+        ImGui::Columns(1);
+        ImGui::EndChild();
+
+        ImGui::End();
+    }
+
+    void DrawFolderTree(const std::string& relDir) {
+        auto contents = m_AssetDatabase.GetDirectoryContents(relDir);
+
+        for (auto& relPath : contents) {
+            auto* meta = m_AssetDatabase.GetMetaByPath(relPath);
+            if (!meta || meta->Type != VE::AssetType::Folder) continue;
+
+            std::string name = std::filesystem::path(relPath).filename().generic_string();
+
+            ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+            if (m_BrowserCurrentDir == relPath)
+                flags |= ImGuiTreeNodeFlags_Selected;
+
+            // Check if folder has subfolders
+            auto sub = m_AssetDatabase.GetDirectoryContents(relPath);
+            bool hasSubFolders = false;
+            for (auto& s : sub) {
+                auto* sm = m_AssetDatabase.GetMetaByPath(s);
+                if (sm && sm->Type == VE::AssetType::Folder) { hasSubFolders = true; break; }
+            }
+            if (!hasSubFolders)
+                flags |= ImGuiTreeNodeFlags_Leaf;
+
+            bool opened = ImGui::TreeNodeEx(name.c_str(), flags);
+            if (ImGui::IsItemClicked())
+                m_BrowserCurrentDir = relPath;
+
+            if (opened) {
+                DrawFolderTree(relPath);
+                ImGui::TreePop();
+            }
+        }
     }
 
     // ── Scene Info Panel ───────────────────────────────────────────────
@@ -458,7 +978,6 @@ private:
         ImGui::Text("VibeEngine v0.2.0");
         ImGui::Separator();
 
-        // Renderer backend
         const char* apiNames[] = { "OpenGL", "Vulkan" };
         int currentAPI = (GetCurrentAPI() == VE::RendererAPI::API::OpenGL) ? 0 : 1;
         if (ImGui::Combo("Renderer", &currentAPI, apiNames, 2)) {
@@ -466,7 +985,6 @@ private:
                 ? VE::RendererAPI::API::OpenGL : VE::RendererAPI::API::Vulkan);
         }
 
-        // Camera mode toggle
         const char* cameraModes[] = { "2D Orthographic", "3D Perspective" };
         int camMode = (m_Camera.GetMode() == VE::CameraMode::Perspective3D) ? 1 : 0;
         if (ImGui::Combo("Camera", &camMode, cameraModes, 2)) {
@@ -504,6 +1022,9 @@ private:
     VE::EditorCamera m_Camera;
     glm::mat4 m_FrameVP = glm::mat4(1.0f);
     std::string m_CurrentScenePath;
+    std::shared_ptr<VE::Framebuffer> m_Framebuffer;
+    bool m_ViewportHovered = false;
+    bool m_ViewportFocused = false;
 
     // Gizmo drag state
     VE::GizmoAxis m_DraggingAxis = VE::GizmoAxis::None;
@@ -515,7 +1036,18 @@ private:
     bool m_ShowHierarchy = true;
     bool m_ShowInspector = true;
     bool m_ShowSceneInfo = true;
+    bool m_ShowPipelineSettings = false;
+    bool m_ShowContentBrowser = true;
     bool m_ShowDemo = false;
+
+    // Play mode
+    bool m_PlayMode = false;
+    std::string m_SceneSnapshot;
+
+    // Asset management
+    VE::AssetDatabase m_AssetDatabase;
+    VE::ThumbnailCache m_ThumbnailCache;
+    std::string m_BrowserCurrentDir; // relative to Assets/
 };
 
 int main() {

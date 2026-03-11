@@ -46,7 +46,7 @@ OpenGLTexture2D::OpenGLTexture2D(const std::string& path)
     glBindTexture(GL_TEXTURE_2D, 0);
     stbi_image_free(data);
 
-    VE_ENGINE_INFO("Texture loaded: {0} ({1}x{2}, {3}ch)", path, width, height, channels);
+    VE_ENGINE_INFO("Texture loaded: {0} ({1}x{2}, {3}ch) [GL ID={4}]", path, width, height, channels, m_RendererID);
 }
 
 OpenGLTexture2D::~OpenGLTexture2D() {

@@ -14,6 +14,7 @@
 #include "Renderer/Shader.h"
 #include "Renderer/EditorCamera.h"
 #include "Renderer/Texture.h"
+#include "Renderer/Framebuffer.h"
 #include "Renderer/GizmoRenderer.h"
 
 #include "Scene/Components.h"
@@ -21,6 +22,11 @@
 #include "Scene/Scene.h"
 #include "Scene/MeshLibrary.h"
 #include "Scene/SceneSerializer.h"
+
+#include "Asset/AssetDatabase.h"
+#include "Asset/ThumbnailCache.h"
+#include "Asset/MeshAsset.h"
+#include "Asset/MeshImporter.h"
 
 #include "ImGui/ImGuiLayer.h"
 #include <imgui.h>
