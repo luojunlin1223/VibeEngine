@@ -8,6 +8,7 @@
 
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Shader.h"
+#include "VibeEngine/Renderer/Material.h"
 #include <memory>
 
 namespace VE {

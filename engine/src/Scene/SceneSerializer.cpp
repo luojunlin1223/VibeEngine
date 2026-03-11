@@ -3,6 +3,7 @@
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Asset/MeshImporter.h"
+#include "VibeEngine/Renderer/Material.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <yaml-cpp/yaml.h>
@@ -15,12 +16,21 @@ SceneSerializer::SceneSerializer(const std::shared_ptr<Scene>& scene)
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-static void SerializeEntity(YAML::Emitter& out, Entity entity) {
+static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& registry) {
     out << YAML::BeginMap;
 
     // UUID
     auto& id = entity.GetComponent<IDComponent>();
     out << YAML::Key << "Entity" << YAML::Value << static_cast<uint64_t>(id.ID);
+
+    // Parent UUID
+    if (entity.HasComponent<RelationshipComponent>()) {
+        auto& rel = entity.GetComponent<RelationshipComponent>();
+        if (rel.Parent != entt::null && registry.valid(rel.Parent)) {
+            uint64_t parentUUID = static_cast<uint64_t>(registry.get<IDComponent>(rel.Parent).ID);
+            out << YAML::Key << "Parent" << YAML::Value << parentUUID;
+        }
+    }
 
     // TagComponent
     if (entity.HasComponent<TagComponent>()) {
@@ -104,8 +114,13 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity) {
         out << YAML::Key << "Color" << YAML::Value << YAML::Flow
             << YAML::BeginSeq << mr.Color[0] << mr.Color[1] << mr.Color[2] << mr.Color[3] << YAML::EndSeq;
 
-        if (!mr.TexturePath.empty())
-            out << YAML::Key << "TexturePath" << YAML::Value << mr.TexturePath;
+        // Material reference
+        if (mr.Mat) {
+            if (!mr.MaterialPath.empty())
+                out << YAML::Key << "MaterialPath" << YAML::Value << mr.MaterialPath;
+            else
+                out << YAML::Key << "MaterialName" << YAML::Value << mr.Mat->GetName();
+        }
 
         out << YAML::EndMap;
     }
@@ -137,7 +152,7 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     auto view = scene->GetAllEntitiesWith<IDComponent>();
     for (auto entityID : view) {
         Entity entity(entityID, &*scene);
-        SerializeEntity(out, entity);
+        SerializeEntity(out, entity, scene->GetRegistry());
     }
 
     out << YAML::EndSeq;
@@ -226,15 +241,15 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             int meshIndex = mrNode["MeshType"].as<int>();
             if (meshIndex >= 0 && meshIndex < MeshLibrary::GetMeshCount()) {
                 mr.Mesh = MeshLibrary::GetMeshByIndex(meshIndex);
-                mr.Material = MeshLibrary::IsLitMesh(meshIndex)
-                    ? MeshLibrary::GetLitShader()
-                    : MeshLibrary::GetDefaultShader();
+                mr.Mat = MeshLibrary::IsLitMesh(meshIndex)
+                    ? MaterialLibrary::Get("Lit")
+                    : MaterialLibrary::Get("Default");
             } else if (meshIndex == -1 && mrNode["MeshSource"]) {
                 mr.MeshSourcePath = mrNode["MeshSource"].as<std::string>();
                 auto meshAsset = MeshImporter::GetOrLoad(mr.MeshSourcePath);
                 if (meshAsset && meshAsset->VAO) {
                     mr.Mesh = meshAsset->VAO;
-                    mr.Material = MeshLibrary::GetLitShader();
+                    mr.Mat = MaterialLibrary::Get("Lit");
                 }
             }
             if (auto colorNode = mrNode["Color"]) {
@@ -243,10 +258,44 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     colorNode[2].as<float>(), colorNode[3].as<float>()
                 };
             }
-            if (auto texNode = mrNode["TexturePath"]) {
-                mr.TexturePath = texNode.as<std::string>();
-                mr.Texture = Texture2D::Create(mr.TexturePath);
+            // Material reference
+            if (auto matPathNode = mrNode["MaterialPath"]) {
+                mr.MaterialPath = matPathNode.as<std::string>();
+                auto mat = Material::Load(mr.MaterialPath);
+                if (mat) {
+                    mr.Mat = mat;
+                    MaterialLibrary::Register(mat);
+                }
+            } else if (auto matNameNode = mrNode["MaterialName"]) {
+                auto mat = MaterialLibrary::Get(matNameNode.as<std::string>());
+                if (mat) mr.Mat = mat;
             }
+            // Backward compat: old TexturePath field → set as material texture
+            if (auto texNode = mrNode["TexturePath"]) {
+                std::string texPath = texNode.as<std::string>();
+                if (!texPath.empty() && mr.Mat)
+                    mr.Mat->SetTexture("u_Texture", texPath);
+            }
+        }
+    }
+
+    // Second pass: resolve parent-child relationships by UUID
+    {
+        // Build UUID -> entity handle map
+        std::unordered_map<uint64_t, entt::entity> uuidMap;
+        auto idView = scene->GetAllEntitiesWith<IDComponent>();
+        for (auto e : idView)
+            uuidMap[static_cast<uint64_t>(idView.get<IDComponent>(e).ID)] = e;
+
+        // Re-iterate YAML to find Parent fields
+        for (auto entityNode : entities) {
+            if (!entityNode["Parent"]) continue;
+            uint64_t childUUID  = entityNode["Entity"].as<uint64_t>();
+            uint64_t parentUUID = entityNode["Parent"].as<uint64_t>();
+            auto childIt  = uuidMap.find(childUUID);
+            auto parentIt = uuidMap.find(parentUUID);
+            if (childIt != uuidMap.end() && parentIt != uuidMap.end())
+                scene->SetParent(childIt->second, parentIt->second);
         }
     }
 

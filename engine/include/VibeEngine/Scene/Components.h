@@ -11,9 +11,12 @@
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/Texture.h"
+#include "VibeEngine/Renderer/Material.h"
 
+#include <entt/entt.hpp>
 #include <string>
 #include <array>
+#include <vector>
 #include <memory>
 
 namespace VE {
@@ -30,6 +33,13 @@ struct TagComponent {
 
     TagComponent() = default;
     TagComponent(const std::string& tag) : Tag(tag) {}
+};
+
+struct RelationshipComponent {
+    entt::entity Parent = entt::null;
+    std::vector<entt::entity> Children;
+
+    RelationshipComponent() = default;
 };
 
 struct TransformComponent {
@@ -74,12 +84,11 @@ struct ColliderComponent {
 };
 
 struct MeshRendererComponent {
-    std::shared_ptr<VertexArray> Mesh;
-    std::shared_ptr<Shader>     Material;
-    std::array<float, 4>        Color = { 1.0f, 1.0f, 1.0f, 1.0f };
-    std::shared_ptr<Texture2D>  Texture;
-    std::string                 TexturePath;
-    std::string                 MeshSourcePath; // for imported meshes (FBX etc.)
+    std::shared_ptr<VertexArray>  Mesh;
+    std::shared_ptr<VE::Material> Mat;            // material (shader + properties)
+    std::array<float, 4>          Color = { 1.0f, 1.0f, 1.0f, 1.0f }; // per-instance color override
+    std::string                   MaterialPath;   // .vmat path for custom materials
+    std::string                   MeshSourcePath; // for imported meshes (FBX etc.)
 
     MeshRendererComponent() = default;
 };

@@ -4,6 +4,7 @@
 #include <limits>
 #include <filesystem>
 #include <sstream>
+#include <fstream>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
 
@@ -208,6 +209,56 @@ private:
 
     // ── Scene operations ──────────────────────────────────────────────
 
+    void CreateAssetFile(const std::string& dir, const std::string& baseName, const std::string& ext) {
+        std::string assetsRoot = m_AssetDatabase.GetAssetsRoot();
+        std::string relDir = dir;
+
+        // Find a unique name
+        std::string name = baseName;
+        std::string relPath = relDir.empty() ? name + ext : relDir + "/" + name + ext;
+        std::string absPath = (std::filesystem::path(assetsRoot) / relPath).generic_string();
+        int counter = 1;
+        while (std::filesystem::exists(absPath)) {
+            name = baseName + " " + std::to_string(counter++);
+            relPath = relDir.empty() ? name + ext : relDir + "/" + name + ext;
+            absPath = (std::filesystem::path(assetsRoot) / relPath).generic_string();
+        }
+
+        if (ext == ".vmat") {
+            // Create a default material file
+            auto mat = VE::Material::Create(name, VE::MeshLibrary::GetLitShader());
+            mat->SetLit(true);
+            mat->SetVec4("u_EntityColor", glm::vec4(1.0f));
+            mat->Save(absPath);
+            VE::MaterialLibrary::Register(mat);
+        } else if (ext == ".glsl") {
+            // Create a default shader template
+            std::ofstream fout(absPath);
+            fout << "#type vertex\n"
+                 << "#version 460 core\n"
+                 << "layout(location = 0) in vec3 a_Position;\n"
+                 << "layout(location = 1) in vec3 a_Color;\n"
+                 << "layout(location = 2) in vec2 a_TexCoord;\n\n"
+                 << "uniform mat4 u_MVP;\n\n"
+                 << "out vec3 v_Color;\n\n"
+                 << "void main() {\n"
+                 << "    v_Color = a_Color;\n"
+                 << "    gl_Position = u_MVP * vec4(a_Position, 1.0);\n"
+                 << "}\n\n"
+                 << "#type fragment\n"
+                 << "#version 460 core\n"
+                 << "in vec3 v_Color;\n"
+                 << "out vec4 FragColor;\n\n"
+                 << "void main() {\n"
+                 << "    FragColor = vec4(v_Color, 1.0);\n"
+                 << "}\n";
+            fout.close();
+        }
+
+        m_AssetDatabase.Refresh();
+        VE_INFO("Created asset: {0}", relPath);
+    }
+
     void NewScene() {
         m_Scene = std::make_shared<VE::Scene>();
         m_SelectedEntity = {};
@@ -254,8 +305,7 @@ private:
                 }
             }
             mr.Mesh.reset();
-            mr.Material.reset();
-            mr.Texture.reset();
+            mr.Mat.reset();
         }
         m_Scene->GetPipelineSettings().SkyTexture.reset();
     }
@@ -267,12 +317,10 @@ private:
             auto it = m_EntityMeshIndex.find(static_cast<uint32_t>(entityID));
             if (it != m_EntityMeshIndex.end()) {
                 mr.Mesh = VE::MeshLibrary::GetMeshByIndex(it->second);
-                mr.Material = VE::MeshLibrary::IsLitMesh(it->second)
-                    ? VE::MeshLibrary::GetLitShader()
-                    : VE::MeshLibrary::GetDefaultShader();
+                mr.Mat = VE::MeshLibrary::IsLitMesh(it->second)
+                    ? VE::MaterialLibrary::Get("Lit")
+                    : VE::MaterialLibrary::Get("Default");
             }
-            if (!mr.TexturePath.empty())
-                mr.Texture = VE::Texture2D::Create(mr.TexturePath);
         }
         m_EntityMeshIndex.clear();
         auto& ps = m_Scene->GetPipelineSettings();
@@ -302,19 +350,19 @@ private:
                     auto e = m_Scene->CreateEntity("Triangle");
                     auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                     mr.Mesh = VE::MeshLibrary::GetTriangle();
-                    mr.Material = VE::MeshLibrary::GetDefaultShader();
+                    mr.Mat = VE::MaterialLibrary::Get("Default");
                 }
                 if (ImGui::MenuItem("Create Quad")) {
                     auto e = m_Scene->CreateEntity("Quad");
                     auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                     mr.Mesh = VE::MeshLibrary::GetQuad();
-                    mr.Material = VE::MeshLibrary::GetDefaultShader();
+                    mr.Mat = VE::MaterialLibrary::Get("Default");
                 }
                 if (ImGui::MenuItem("Create Cube")) {
                     auto e = m_Scene->CreateEntity("Cube");
                     auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                     mr.Mesh = VE::MeshLibrary::GetCube();
-                    mr.Material = VE::MeshLibrary::GetLitShader();
+                    mr.Mat = VE::MaterialLibrary::Get("Lit");
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Create Directional Light")) {
@@ -380,7 +428,7 @@ private:
                     auto entity = m_Scene->CreateEntity(meshAsset->Name);
                     auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
                     mr.Mesh = meshAsset->VAO;
-                    mr.Material = VE::MeshLibrary::GetLitShader();
+                    mr.Mat = VE::MaterialLibrary::Get("Lit");
                     mr.MeshSourcePath = path;
                 }
             }
@@ -398,20 +446,23 @@ private:
 
         VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
         VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
-        if (m_SelectedEntity) {
-            VE::GizmoRenderer::DrawWireframeBox(m_SelectedEntity);
+        if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
+            glm::mat4 worldMat = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
+            VE::GizmoRenderer::DrawWireframeBox(worldMat);
+
+            glm::vec3 worldPos = glm::vec3(worldMat[3]);
+            glm::mat3 worldRot = glm::mat3(worldMat);
+            worldRot[0] = glm::normalize(worldRot[0]);
+            worldRot[1] = glm::normalize(worldRot[1]);
+            worldRot[2] = glm::normalize(worldRot[2]);
 
             VE::GizmoAxis displayAxis = m_DraggingAxis;
             ImGuiIO& io = ImGui::GetIO();
-            if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered
-                && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
-                auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
-                glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-                glm::mat3 rot = GetEntityRotation(tc);
+            if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered) {
                 displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                    pos, io.MousePos.x, io.MousePos.y, 12.0f, rot);
+                    worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
             }
-            VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis);
+            VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
         }
 
         ImGui::End();
@@ -482,19 +533,21 @@ private:
         if (!m_ShowHierarchy) return;
         ImGui::Begin("Hierarchy", &m_ShowHierarchy);
 
-        auto view = m_Scene->GetAllEntitiesWith<VE::TagComponent>();
+        // Draw only root entities (no parent), children are drawn recursively
+        auto view = m_Scene->GetAllEntitiesWith<VE::RelationshipComponent>();
         for (auto entityID : view) {
-            auto& tag = view.get<VE::TagComponent>(entityID);
-            bool isSelected = (m_SelectedEntity.GetHandle() == entityID);
-            ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf
-                | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
-            if (isSelected) flags |= ImGuiTreeNodeFlags_Selected;
+            auto& rel = view.get<VE::RelationshipComponent>(entityID);
+            if (rel.Parent == entt::null)
+                DrawEntityNode(entityID);
+        }
 
-            ImGui::TreeNodeEx(
-                reinterpret_cast<void*>(static_cast<uintptr_t>(static_cast<uint32_t>(entityID))),
-                flags, "%s", tag.Tag.c_str());
-            if (ImGui::IsItemClicked())
-                m_SelectedEntity = VE::Entity(entityID, &*m_Scene);
+        // Drop on empty space: unparent
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENTITY_NODE")) {
+                entt::entity dropped = *static_cast<const entt::entity*>(payload->Data);
+                m_Scene->RemoveParent(dropped);
+            }
+            ImGui::EndDragDropTarget();
         }
 
         if (ImGui::BeginPopupContextWindow("HierarchyPopup",
@@ -504,19 +557,19 @@ private:
                 auto e = m_Scene->CreateEntity("Triangle");
                 auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                 mr.Mesh = VE::MeshLibrary::GetTriangle();
-                mr.Material = VE::MeshLibrary::GetDefaultShader();
+                mr.Mat = VE::MaterialLibrary::Get("Default");
             }
             if (ImGui::MenuItem("Create Quad")) {
                 auto e = m_Scene->CreateEntity("Quad");
                 auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                 mr.Mesh = VE::MeshLibrary::GetQuad();
-                mr.Material = VE::MeshLibrary::GetDefaultShader();
+                mr.Mat = VE::MaterialLibrary::Get("Default");
             }
             if (ImGui::MenuItem("Create Cube")) {
                 auto e = m_Scene->CreateEntity("Cube");
                 auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                 mr.Mesh = VE::MeshLibrary::GetCube();
-                mr.Material = VE::MeshLibrary::GetLitShader();
+                mr.Mat = VE::MaterialLibrary::Get("Lit");
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Create Directional Light")) {
@@ -533,14 +586,226 @@ private:
         ImGui::End();
     }
 
+    void DrawEntityNode(entt::entity entityID) {
+        auto& registry = m_Scene->GetRegistry();
+        if (!registry.valid(entityID)) return;
+
+        auto& tag = registry.get<VE::TagComponent>(entityID);
+        auto& rel = registry.get<VE::RelationshipComponent>(entityID);
+
+        bool isSelected = (m_SelectedEntity.GetHandle() == entityID);
+        bool hasChildren = !rel.Children.empty();
+
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+        if (isSelected) flags |= ImGuiTreeNodeFlags_Selected;
+        if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf;
+
+        bool opened = ImGui::TreeNodeEx(
+            reinterpret_cast<void*>(static_cast<uintptr_t>(static_cast<uint32_t>(entityID))),
+            flags, "%s", tag.Tag.c_str());
+
+        if (ImGui::IsItemClicked()) {
+            m_SelectedEntity = VE::Entity(entityID, &*m_Scene);
+            m_SelectedAssetPath.clear(); // deselect asset
+        }
+
+        // Drag source
+        if (ImGui::BeginDragDropSource()) {
+            ImGui::SetDragDropPayload("ENTITY_NODE", &entityID, sizeof(entt::entity));
+            ImGui::Text("%s", tag.Tag.c_str());
+            ImGui::EndDragDropSource();
+        }
+
+        // Drop target: reparent dragged entity under this one
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENTITY_NODE")) {
+                entt::entity dropped = *static_cast<const entt::entity*>(payload->Data);
+                if (dropped != entityID)
+                    m_Scene->SetParent(dropped, entityID);
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (opened) {
+            for (auto child : rel.Children)
+                DrawEntityNode(child);
+            ImGui::TreePop();
+        }
+    }
+
+    // ── Inspector Panel ────────────────────────────────────────────────
+
+    // ── Asset Inspector ──────────────────────────────────────────────
+
+    void DrawAssetInspector() {
+        auto* meta = m_AssetDatabase.GetMetaByPath(m_SelectedAssetPath);
+        if (!meta) {
+            ImGui::TextDisabled("Asset not found");
+            return;
+        }
+
+        std::string filename = std::filesystem::path(m_SelectedAssetPath).filename().generic_string();
+        ImGui::Text("Asset: %s", filename.c_str());
+        ImGui::TextDisabled("Path: Assets/%s", m_SelectedAssetPath.c_str());
+        ImGui::TextDisabled("UUID: %llu", static_cast<unsigned long long>(static_cast<uint64_t>(meta->Uuid)));
+        ImGui::Separator();
+
+        if (meta->Type == VE::AssetType::MaterialAsset) {
+            DrawMaterialAssetInspector();
+        } else if (meta->Type == VE::AssetType::Texture2D) {
+            std::string absPath = m_AssetDatabase.GetAbsolutePath(m_SelectedAssetPath);
+            uint64_t texID = m_ThumbnailCache.GetThumbnail(absPath);
+            if (texID != 0)
+                ImGui::Image((ImTextureID)texID, ImVec2(128, 128));
+            ImGui::Text("Type: Texture2D");
+        } else if (meta->Type == VE::AssetType::Shader) {
+            ImGui::Text("Type: Shader (.glsl)");
+        } else if (meta->Type == VE::AssetType::Mesh) {
+            ImGui::Text("Type: Mesh");
+        } else if (meta->Type == VE::AssetType::Scene) {
+            ImGui::Text("Type: Scene");
+        } else {
+            ImGui::Text("Type: Unknown");
+        }
+    }
+
+    void DrawMaterialAssetInspector() {
+        std::string absPath = m_AssetDatabase.GetAbsolutePath(m_SelectedAssetPath);
+
+        // Load material if not cached
+        if (!m_InspectedMaterial || m_InspectedMaterialPath != absPath) {
+            m_InspectedMaterial = VE::Material::Load(absPath);
+            m_InspectedMaterialPath = absPath;
+            if (m_InspectedMaterial)
+                VE::MaterialLibrary::Register(m_InspectedMaterial);
+        }
+
+        if (!m_InspectedMaterial) {
+            ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "Failed to load material");
+            return;
+        }
+
+        ImGui::Text("Type: Material");
+        ImGui::Separator();
+
+        // Name
+        char nameBuf[128];
+        strncpy(nameBuf, m_InspectedMaterial->GetName().c_str(), sizeof(nameBuf) - 1);
+        nameBuf[sizeof(nameBuf) - 1] = '\0';
+        if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf)))
+            m_InspectedMaterial->SetName(nameBuf);
+
+        // Shader picker
+        {
+            const char* currentShaderName = "None";
+            auto shader = m_InspectedMaterial->GetShader();
+            // Find shader name by comparing pointers with built-in shaders
+            if (shader == VE::MeshLibrary::GetDefaultShader()) currentShaderName = "Default";
+            else if (shader == VE::MeshLibrary::GetLitShader()) currentShaderName = "Lit";
+            else if (shader == VE::MeshLibrary::GetSkyShader()) currentShaderName = "Sky";
+
+            if (ImGui::BeginCombo("Shader", currentShaderName)) {
+                if (ImGui::Selectable("Default", shader == VE::MeshLibrary::GetDefaultShader())) {
+                    m_InspectedMaterial->SetShader(VE::MeshLibrary::GetDefaultShader());
+                    m_InspectedMaterial->SetLit(false);
+                }
+                if (ImGui::Selectable("Lit", shader == VE::MeshLibrary::GetLitShader())) {
+                    m_InspectedMaterial->SetShader(VE::MeshLibrary::GetLitShader());
+                    m_InspectedMaterial->SetLit(true);
+                }
+                if (ImGui::Selectable("Sky", shader == VE::MeshLibrary::GetSkyShader())) {
+                    m_InspectedMaterial->SetShader(VE::MeshLibrary::GetSkyShader());
+                    m_InspectedMaterial->SetLit(false);
+                }
+                ImGui::EndCombo();
+            }
+        }
+
+        bool isLit = m_InspectedMaterial->IsLit();
+        if (ImGui::Checkbox("Is Lit", &isLit))
+            m_InspectedMaterial->SetLit(isLit);
+
+        ImGui::Separator();
+        ImGui::Text("Properties:");
+
+        // Material properties editor
+        for (auto& prop : m_InspectedMaterial->GetProperties()) {
+            ImGui::PushID(prop.Name.c_str());
+            switch (prop.Type) {
+                case VE::MaterialPropertyType::Float:
+                    ImGui::DragFloat(prop.Name.c_str(), &prop.FloatValue, 0.01f);
+                    break;
+                case VE::MaterialPropertyType::Int:
+                    ImGui::DragInt(prop.Name.c_str(), &prop.IntValue);
+                    break;
+                case VE::MaterialPropertyType::Vec3:
+                    ImGui::ColorEdit3(prop.Name.c_str(), &prop.Vec3Value.x);
+                    break;
+                case VE::MaterialPropertyType::Vec4:
+                    ImGui::ColorEdit4(prop.Name.c_str(), &prop.Vec4Value.x);
+                    break;
+                case VE::MaterialPropertyType::Texture2D: {
+                    ImGui::Text("%s: %s", prop.Name.c_str(),
+                        prop.TexturePath.empty() ? "(none)" : prop.TexturePath.c_str());
+                    if (ImGui::Button("Browse##tex")) {
+                        static const char* filter =
+                            "Image Files\0*.png;*.jpg;*.jpeg;*.bmp\0All Files\0*.*\0";
+                        std::string path = VE::FileDialog::OpenFile(filter, GetWindow().GetNativeWindow());
+                        if (!path.empty()) {
+                            prop.TexturePath = path;
+                            prop.TextureRef = VE::Texture2D::Create(path);
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Clear##tex")) {
+                        prop.TexturePath.clear();
+                        prop.TextureRef.reset();
+                    }
+                    break;
+                }
+            }
+            ImGui::PopID();
+        }
+
+        ImGui::Separator();
+
+        // Add property
+        if (ImGui::Button("Add Property"))
+            ImGui::OpenPopup("AddPropPopup");
+        if (ImGui::BeginPopup("AddPropPopup")) {
+            if (ImGui::MenuItem("Float")) {
+                m_InspectedMaterial->SetFloat("u_NewFloat", 0.0f);
+            }
+            if (ImGui::MenuItem("Color (Vec4)")) {
+                m_InspectedMaterial->SetVec4("u_NewColor", glm::vec4(1.0f));
+            }
+            if (ImGui::MenuItem("Texture")) {
+                m_InspectedMaterial->SetTexture("u_Texture", "");
+            }
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Save Material")) {
+            m_InspectedMaterial->Save(absPath);
+        }
+    }
+
     // ── Inspector Panel ────────────────────────────────────────────────
 
     void DrawInspectorPanel() {
         if (!m_ShowInspector) return;
         ImGui::Begin("Inspector", &m_ShowInspector);
 
+        // Asset inspector (takes priority when an asset is selected)
+        if (!m_SelectedAssetPath.empty()) {
+            DrawAssetInspector();
+            ImGui::End();
+            return;
+        }
+
         if (!m_SelectedEntity) {
-            ImGui::TextDisabled("No entity selected");
+            ImGui::TextDisabled("No selection");
             ImGui::End();
             return;
         }
@@ -651,31 +916,53 @@ private:
                         bool selected = (i == currentIndex);
                         if (ImGui::Selectable(VE::MeshLibrary::GetMeshName(i), selected)) {
                             mr.Mesh = VE::MeshLibrary::GetMeshByIndex(i);
-                            mr.Material = VE::MeshLibrary::IsLitMesh(i)
-                                ? VE::MeshLibrary::GetLitShader()
-                                : VE::MeshLibrary::GetDefaultShader();
+                            mr.Mat = VE::MeshLibrary::IsLitMesh(i)
+                                ? VE::MaterialLibrary::Get("Lit")
+                                : VE::MaterialLibrary::Get("Default");
                         }
                         if (selected) ImGui::SetItemDefaultFocus();
                     }
                     ImGui::EndCombo();
                 }
 
-                ImGui::ColorEdit4("Color", mr.Color.data());
-
-                ImGui::Text("Texture: %s", mr.TexturePath.empty() ? "(none)" : mr.TexturePath.c_str());
-                if (ImGui::Button("Load Texture...")) {
-                    static const char* texFilter =
-                        "Image Files (*.png;*.jpg;*.bmp)\0*.png;*.jpg;*.jpeg;*.bmp\0All Files\0*.*\0";
-                    std::string path = VE::FileDialog::OpenFile(texFilter, GetWindow().GetNativeWindow());
-                    if (!path.empty()) {
-                        mr.TexturePath = path;
-                        mr.Texture = VE::Texture2D::Create(path);
+                // Material picker
+                {
+                    const char* currentMatName = mr.Mat ? mr.Mat->GetName().c_str() : "None";
+                    if (ImGui::BeginCombo("Material", currentMatName)) {
+                        auto matNames = VE::MaterialLibrary::GetAllNames();
+                        for (auto& name : matNames) {
+                            bool selected = mr.Mat && mr.Mat->GetName() == name;
+                            if (ImGui::Selectable(name.c_str(), selected))
+                                mr.Mat = VE::MaterialLibrary::Get(name);
+                            if (selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
                     }
                 }
-                ImGui::SameLine();
-                if (ImGui::Button("Clear Texture")) {
-                    mr.TexturePath.clear();
-                    mr.Texture.reset();
+
+                ImGui::ColorEdit4("Color", mr.Color.data());
+
+                // Inline material properties
+                if (mr.Mat) {
+                    ImGui::Separator();
+                    ImGui::Text("Material: %s", mr.Mat->GetName().c_str());
+                    for (auto& prop : mr.Mat->GetProperties()) {
+                        switch (prop.Type) {
+                            case VE::MaterialPropertyType::Float:
+                                ImGui::DragFloat(prop.Name.c_str(), &prop.FloatValue, 0.01f);
+                                break;
+                            case VE::MaterialPropertyType::Vec3:
+                                ImGui::ColorEdit3(prop.Name.c_str(), &prop.Vec3Value.x);
+                                break;
+                            case VE::MaterialPropertyType::Vec4:
+                                ImGui::ColorEdit4(prop.Name.c_str(), &prop.Vec4Value.x);
+                                break;
+                            case VE::MaterialPropertyType::Texture2D:
+                                ImGui::Text("Tex: %s", prop.TexturePath.empty() ? "(none)" : prop.TexturePath.c_str());
+                                break;
+                            default: break;
+                        }
+                    }
                 }
 
                 if (ImGui::Button("Remove Component"))
@@ -694,7 +981,7 @@ private:
                 if (ImGui::MenuItem("Mesh Renderer")) {
                     auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
                     mr.Mesh = VE::MeshLibrary::GetCube();
-                    mr.Material = VE::MeshLibrary::GetLitShader();
+                    mr.Mat = VE::MaterialLibrary::Get("Lit");
                 }
                 anyAdded = true;
             }
@@ -816,6 +1103,13 @@ private:
             if (ImGui::MenuItem("New Folder")) {
                 m_AssetDatabase.CreateFolder(m_BrowserCurrentDir, "New Folder");
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem("New Material")) {
+                CreateAssetFile(m_BrowserCurrentDir, "New Material", ".vmat");
+            }
+            if (ImGui::MenuItem("New Shader")) {
+                CreateAssetFile(m_BrowserCurrentDir, "New Shader", ".glsl");
+            }
             ImGui::EndPopup();
         }
 
@@ -839,6 +1133,7 @@ private:
             float thumbSize = cellSize - 16.0f;
             // Use InvisibleButton as the base interactive item (gives us an ID for popups/clicks)
             ImGui::InvisibleButton("##item", ImVec2(thumbSize, thumbSize));
+            bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
             bool hovered = ImGui::IsItemHovered();
             ImVec2 itemMin = ImGui::GetItemRectMin();
             ImVec2 itemMax = ImGui::GetItemRectMax();
@@ -867,16 +1162,35 @@ private:
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
                 float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
                 dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "FBX");
+            } else if (meta->Type == VE::AssetType::Shader) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(130, 80, 130, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SHD");
+            } else if (meta->Type == VE::AssetType::MaterialAsset) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(180, 120, 50, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "MAT");
             } else {
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
             }
 
-            // Hover highlight
-            if (hovered)
+            // Selection highlight
+            bool isAssetSelected = (m_SelectedAssetPath == relPath);
+            if (isAssetSelected)
+                dl->AddRect(itemMin, itemMax, IM_COL32(100, 180, 255, 255), 0.0f, 0, 2.5f);
+            else if (hovered)
                 dl->AddRect(itemMin, itemMax, IM_COL32(255, 200, 100, 200), 0.0f, 0, 2.0f);
 
+            // Single-click: select asset in inspector
+            if (clicked) {
+                m_SelectedAssetPath = relPath;
+                m_SelectedEntity = {}; // deselect entity
+            }
+
             // Double-click actions
-            if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 if (meta->Type == VE::AssetType::Folder) {
                     m_BrowserCurrentDir = relPath;
                 } else if (meta->Type == VE::AssetType::Scene) {
@@ -893,7 +1207,7 @@ private:
                         auto entity = m_Scene->CreateEntity(meshAsset->Name);
                         auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = meshAsset->VAO;
-                        mr.Material = VE::MeshLibrary::GetLitShader();
+                        mr.Mat = VE::MaterialLibrary::Get("Lit");
                         mr.MeshSourcePath = absPath;
                     }
                 }
@@ -996,7 +1310,7 @@ private:
         auto view = m_Scene->GetAllEntitiesWith<VE::MeshRendererComponent>();
         for (auto e : view) {
             auto& mr = view.get<VE::MeshRendererComponent>(e);
-            if (mr.Mesh && mr.Material) drawCalls++;
+            if (mr.Mesh && mr.Mat) drawCalls++;
         }
         ImGui::Text("Entities: %d", static_cast<int>(m_Scene->GetRegistry().storage<entt::entity>().size()));
         ImGui::Text("Draw calls: %d", drawCalls);
@@ -1048,6 +1362,9 @@ private:
     VE::AssetDatabase m_AssetDatabase;
     VE::ThumbnailCache m_ThumbnailCache;
     std::string m_BrowserCurrentDir; // relative to Assets/
+    std::string m_SelectedAssetPath; // selected asset in Content Browser
+    std::shared_ptr<VE::Material> m_InspectedMaterial;
+    std::string m_InspectedMaterialPath;
 };
 
 int main() {

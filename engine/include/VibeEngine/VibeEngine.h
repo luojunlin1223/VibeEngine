@@ -14,6 +14,7 @@
 #include "Renderer/Shader.h"
 #include "Renderer/EditorCamera.h"
 #include "Renderer/Texture.h"
+#include "Renderer/Material.h"
 #include "Renderer/Framebuffer.h"
 #include "Renderer/GizmoRenderer.h"
 

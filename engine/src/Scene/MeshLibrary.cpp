@@ -1,6 +1,7 @@
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/Buffer.h"
 #include "VibeEngine/Core/Log.h"
+#include <glm/glm.hpp>
 
 #include <cmath>
 #include <vector>
@@ -90,32 +91,82 @@ in vec3 v_Normal;
 in vec3 v_FragPos;
 in vec2 v_TexCoord;
 
-uniform vec3 u_LightDir;
-uniform vec3 u_LightColor;
+uniform vec3  u_LightDir;
+uniform vec3  u_LightColor;
 uniform float u_LightIntensity;
-uniform vec3 u_ViewPos;
-uniform vec4 u_EntityColor;
+uniform vec3  u_ViewPos;
+uniform vec4  u_EntityColor;
+uniform float u_Metallic;
+uniform float u_Roughness;
+uniform float u_AO;
 uniform sampler2D u_Texture;
-uniform int u_UseTexture;
+uniform int   u_UseTexture;
 
 out vec4 FragColor;
 
+const float PI = 3.14159265359;
+
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+    float a  = roughness * roughness;
+    float a2 = a * a;
+    float NdotH  = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    float denom = NdotH2 * (a2 - 1.0) + 1.0;
+    return a2 / max(PI * denom * denom, 0.0000001);
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    return GeometrySchlickGGX(max(dot(N, V), 0.0), roughness)
+         * GeometrySchlickGGX(max(dot(N, L), 0.0), roughness);
+}
+
+vec3 FresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
 void main() {
-    vec3 baseColor = v_Color;
+    vec3 albedo = v_Color;
     if (u_UseTexture == 1)
-        baseColor = texture(u_Texture, v_TexCoord).rgb;
+        albedo = texture(u_Texture, v_TexCoord).rgb;
+    albedo *= u_EntityColor.rgb;
 
-    vec3 ambient = 0.15 * baseColor;
-    float diff   = max(dot(v_Normal, u_LightDir), 0.0);
-    vec3 diffuse = diff * baseColor * u_LightColor * u_LightIntensity;
+    float metallic  = u_Metallic;
+    float roughness = max(u_Roughness, 0.04);
+    float ao        = u_AO;
 
-    vec3 viewDir    = normalize(u_ViewPos - v_FragPos);
-    vec3 halfwayDir = normalize(u_LightDir + viewDir);
-    float spec      = pow(max(dot(v_Normal, halfwayDir), 0.0), 32.0);
-    vec3 specular   = vec3(0.3) * spec * u_LightColor * u_LightIntensity;
+    vec3 N = normalize(v_Normal);
+    vec3 V = normalize(u_ViewPos - v_FragPos);
 
-    vec3 result = (ambient + diffuse + specular) * u_EntityColor.rgb;
-    FragColor = vec4(result, u_EntityColor.a);
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+    vec3 L = normalize(u_LightDir);
+    vec3 H = normalize(V + L);
+    vec3 radiance = u_LightColor * u_LightIntensity;
+
+    float NDF = DistributionGGX(N, H, roughness);
+    float G   = GeometrySmith(N, V, L, roughness);
+    vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3  specular = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
+    vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+    float NdotL = max(dot(N, L), 0.0);
+    vec3 Lo = (kD * albedo / PI + specular) * radiance * NdotL;
+
+    vec3 ambient = vec3(0.03) * albedo * ao;
+    vec3 color = ambient + Lo;
+
+    // Tone mapping + gamma
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0 / 2.2));
+
+    FragColor = vec4(color, u_EntityColor.a);
 }
 )";
 
@@ -315,10 +366,30 @@ void MeshLibrary::Init() {
     s_LitShader     = Shader::Create(s_LitVertexSrc, s_LitFragmentSrc);
     s_SkyShader     = Shader::Create(s_SkyVertexSrc, s_SkyFragmentSrc);
 
+    // ── Built-in Materials ──────────────────────────────────────────
+    {
+        auto defaultMat = Material::Create("Default", s_DefaultShader);
+        defaultMat->SetLit(false);
+        MaterialLibrary::Register(defaultMat);
+
+        auto litMat = Material::Create("Lit", s_LitShader);
+        litMat->SetLit(true);
+        litMat->SetVec4("u_EntityColor", glm::vec4(1.0f));
+        litMat->SetFloat("u_Metallic", 0.0f);
+        litMat->SetFloat("u_Roughness", 0.5f);
+        litMat->SetFloat("u_AO", 1.0f);
+        MaterialLibrary::Register(litMat);
+
+        auto skyMat = Material::Create("Sky", s_SkyShader);
+        skyMat->SetLit(false);
+        MaterialLibrary::Register(skyMat);
+    }
+
     VE_ENGINE_INFO("MeshLibrary initialized (Triangle, Quad, Cube, Sphere)");
 }
 
 void MeshLibrary::Shutdown() {
+    MaterialLibrary::Shutdown();
     s_Triangle.reset();
     s_Quad.reset();
     s_Cube.reset();

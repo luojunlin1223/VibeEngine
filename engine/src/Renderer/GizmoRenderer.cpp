@@ -167,12 +167,16 @@ static glm::mat3 GetRotationMatrix(const TransformComponent& tc) {
     return glm::mat3(rot);
 }
 
-void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis) {
+void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis,
+                                          const glm::mat4& worldMatrix) {
     if (!entity || !entity.HasComponent<TransformComponent>()) return;
 
-    auto& tc = entity.GetComponent<TransformComponent>();
-    glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-    glm::mat3 rot = GetRotationMatrix(tc);
+    glm::vec3 pos = glm::vec3(worldMatrix[3]);
+    glm::mat3 rot = glm::mat3(worldMatrix);
+    // Normalize rotation axes (remove scale)
+    rot[0] = glm::normalize(rot[0]);
+    rot[1] = glm::normalize(rot[1]);
+    rot[2] = glm::normalize(rot[2]);
 
     // Local axes rotated to world space
     glm::vec3 axisX = rot * glm::vec3(1, 0, 0);
@@ -217,20 +221,9 @@ void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis)
     DrawLineWorld(dl, zEnd, zEnd - axisZ * kGizmoArrowSize - zArrowPerp, zCol, zThick);
 }
 
-void GizmoRenderer::DrawWireframeBox(Entity entity) {
-    if (!entity || !entity.HasComponent<TransformComponent>()) return;
-
-    auto& tc = entity.GetComponent<TransformComponent>();
-
-    // Build model matrix (same as Scene rendering)
-    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-        glm::vec3(tc.Position[0], tc.Position[1], tc.Position[2]));
-    model = glm::rotate(model, glm::radians(tc.Rotation[0]), glm::vec3(1, 0, 0));
-    model = glm::rotate(model, glm::radians(tc.Rotation[1]), glm::vec3(0, 1, 0));
-    model = glm::rotate(model, glm::radians(tc.Rotation[2]), glm::vec3(0, 0, 1));
-    model = glm::scale(model, glm::vec3(tc.Scale[0], tc.Scale[1], tc.Scale[2]));
-
+void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
     ImDrawList* dl = ImGui::GetForegroundDrawList();
+    glm::mat4 model = worldMatrix;
     ImU32 wireColor = IM_COL32(255, 150, 0, 255);
 
     // 8 corners of a unit cube in local space, transformed to world space

@@ -216,14 +216,18 @@ void VulkanContext::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex
             // Push fragment data: useTexture + lighting (80 bytes at offset 128)
             struct LitFragPC {
                 int32_t useTexture;           // offset 128
-                float   _pad1[3];             // padding to align vec3
+                float   _pad1[3];
                 float   lightDir[3];          // offset 144
-                float   _pad2;                // padding
+                float   _pad2;
                 float   lightColor[3];        // offset 160
                 float   lightIntensity;       // offset 172
                 float   viewPos[3];           // offset 176
-                float   _pad3;                // padding
+                float   _pad3;
                 float   entityColor[4];       // offset 192
+                float   metallic;             // offset 208
+                float   roughness;            // offset 212
+                float   ao;                   // offset 216
+                float   _pad4;                // offset 220
             } fragPC{};
             fragPC.useTexture = dc.UseTexture;
             fragPC.lightDir[0] = dc.LightDir.x;   fragPC.lightDir[1] = dc.LightDir.y;   fragPC.lightDir[2] = dc.LightDir.z;
@@ -232,6 +236,9 @@ void VulkanContext::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex
             fragPC.viewPos[0] = dc.ViewPos.x;     fragPC.viewPos[1] = dc.ViewPos.y;     fragPC.viewPos[2] = dc.ViewPos.z;
             fragPC.entityColor[0] = dc.EntityColor.x; fragPC.entityColor[1] = dc.EntityColor.y;
             fragPC.entityColor[2] = dc.EntityColor.z; fragPC.entityColor[3] = dc.EntityColor.w;
+            fragPC.metallic = dc.Metallic;
+            fragPC.roughness = dc.Roughness;
+            fragPC.ao = dc.AO;
             vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                                128, sizeof(fragPC), &fragPC);
         } else {
@@ -828,7 +835,7 @@ void VulkanContext::CreateLitGraphicsPipeline() {
     litPushConstantRanges[0].size       = sizeof(float) * 32; // 2x mat4 = 128 bytes
     litPushConstantRanges[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     litPushConstantRanges[1].offset     = 128;
-    litPushConstantRanges[1].size       = 80; // useTexture + lightDir + lightColor + lightIntensity + viewPos + entityColor
+    litPushConstantRanges[1].size       = 96; // useTexture + lighting + entityColor + PBR (metallic/roughness/ao)
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;

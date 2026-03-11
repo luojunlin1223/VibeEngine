@@ -43,6 +43,12 @@ public:
     void SetFloat(const std::string& name, float value) override {
         if (name == "u_LightIntensity")
             VulkanContext::Get().SetCurrentLightIntensity(value);
+        else if (name == "u_Metallic")
+            VulkanContext::Get().SetCurrentMetallic(value);
+        else if (name == "u_Roughness")
+            VulkanContext::Get().SetCurrentRoughness(value);
+        else if (name == "u_AO")
+            VulkanContext::Get().SetCurrentAO(value);
     }
 
     void SetInt(const std::string& name, int value) override {

@@ -80,6 +80,8 @@ AssetMeta AssetDatabase::LoadOrCreateMeta(const std::string& absPath,
                 else if (t == "Texture2D") meta.Type = AssetType::Texture2D;
                 else if (t == "Scene") meta.Type = AssetType::Scene;
                 else if (t == "Mesh") meta.Type = AssetType::Mesh;
+                else if (t == "Shader") meta.Type = AssetType::Shader;
+                else if (t == "Material") meta.Type = AssetType::MaterialAsset;
                 else meta.Type = AssetType::Unknown;
             }
             return meta;
@@ -112,7 +114,9 @@ void AssetDatabase::WriteMeta(const std::string& absPath, const AssetMeta& meta)
         case AssetType::Folder:    typeStr = "Folder"; break;
         case AssetType::Texture2D: typeStr = "Texture2D"; break;
         case AssetType::Scene:     typeStr = "Scene"; break;
-        case AssetType::Mesh:      typeStr = "Mesh"; break;
+        case AssetType::Mesh:          typeStr = "Mesh"; break;
+        case AssetType::Shader:        typeStr = "Shader"; break;
+        case AssetType::MaterialAsset: typeStr = "Material"; break;
         default: break;
     }
     out << YAML::Key << "type" << YAML::Value << typeStr;
@@ -130,6 +134,10 @@ AssetType AssetDatabase::DeduceType(const std::string& extension) const {
         return AssetType::Scene;
     if (extension == ".fbx" || extension == ".obj")
         return AssetType::Mesh;
+    if (extension == ".glsl")
+        return AssetType::Shader;
+    if (extension == ".vmat")
+        return AssetType::MaterialAsset;
     return AssetType::Unknown;
 }
 

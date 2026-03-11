@@ -24,8 +24,9 @@ public:
                            CameraMode cameraMode = CameraMode::Perspective3D);
 
     static void DrawGrid(float gridSize = 20.0f, float spacing = 1.0f);
-    static void DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis = GizmoAxis::None);
-    static void DrawWireframeBox(Entity entity);
+    static void DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis = GizmoAxis::None,
+                                      const glm::mat4& worldMatrix = glm::mat4(1.0f));
+    static void DrawWireframeBox(const glm::mat4& worldMatrix);
 
     // Screen ↔ World conversion
     static glm::vec2 ScreenToWorld(float screenX, float screenY);

@@ -48,6 +48,9 @@ void VulkanRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexAr
     cmd.LightIntensity       = ctx.GetCurrentLightIntensity();
     cmd.ViewPos              = ctx.GetCurrentViewPos();
     cmd.EntityColor          = ctx.GetCurrentEntityColor();
+    cmd.Metallic             = ctx.GetCurrentMetallic();
+    cmd.Roughness            = ctx.GetCurrentRoughness();
+    cmd.AO                   = ctx.GetCurrentAO();
     cmd.UseSkyPipeline       = ctx.GetCurrentUseSky();
     cmd.SkyTopColor          = ctx.GetCurrentSkyTopColor();
     cmd.SkyBottomColor       = ctx.GetCurrentSkyBottomColor();

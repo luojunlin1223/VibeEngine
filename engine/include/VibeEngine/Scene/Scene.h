@@ -37,6 +37,11 @@ public:
     Entity CreateEntity(const std::string& name = "GameObject");
     Entity CreateEntityWithUUID(UUID uuid, const std::string& name = "GameObject");
     void DestroyEntity(Entity entity);
+    void SetParent(entt::entity child, entt::entity parent);
+    void RemoveParent(entt::entity child);
+
+    // Compute world model matrix (walks parent chain)
+    glm::mat4 GetWorldTransform(entt::entity entity) const;
 
     void OnUpdate(float deltaTime = 0.0f);
     void OnRenderSky(const glm::mat4& skyViewProjection);

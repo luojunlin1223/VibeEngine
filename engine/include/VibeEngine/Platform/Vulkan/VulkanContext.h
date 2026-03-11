@@ -25,6 +25,9 @@ struct VulkanDrawCommand {
     float        LightIntensity = 1.0f;
     glm::vec3    ViewPos       = glm::vec3(0.0f);
     glm::vec4    EntityColor   = glm::vec4(1.0f);
+    float        Metallic      = 0.0f;
+    float        Roughness     = 0.5f;
+    float        AO            = 1.0f;
     bool         UseSkyPipeline = false;
     glm::vec3    SkyTopColor   = glm::vec3(0.4f, 0.7f, 1.0f);
     glm::vec3    SkyBottomColor = glm::vec3(0.9f, 0.9f, 0.95f);
@@ -78,6 +81,13 @@ public:
     const glm::vec3& GetCurrentViewPos() const { return m_CurrentViewPos; }
     void SetCurrentEntityColor(const glm::vec4& v) { m_CurrentEntityColor = v; }
     const glm::vec4& GetCurrentEntityColor() const { return m_CurrentEntityColor; }
+
+    void SetCurrentMetallic(float v) { m_CurrentMetallic = v; }
+    float GetCurrentMetallic() const { return m_CurrentMetallic; }
+    void SetCurrentRoughness(float v) { m_CurrentRoughness = v; }
+    float GetCurrentRoughness() const { return m_CurrentRoughness; }
+    void SetCurrentAO(float v) { m_CurrentAO = v; }
+    float GetCurrentAO() const { return m_CurrentAO; }
 
     void SetCurrentUseSky(bool v) { m_CurrentUseSky = v; }
     bool GetCurrentUseSky() const { return m_CurrentUseSky; }
@@ -202,6 +212,9 @@ private:
     float     m_CurrentLightIntensity = 1.0f;
     glm::vec3 m_CurrentViewPos       = glm::vec3(0.0f);
     glm::vec4 m_CurrentEntityColor   = glm::vec4(1.0f);
+    float     m_CurrentMetallic      = 0.0f;
+    float     m_CurrentRoughness     = 0.5f;
+    float     m_CurrentAO            = 1.0f;
 };
 
 } // namespace VE

@@ -29,6 +29,7 @@ Entity Scene::CreateEntityWithUUID(UUID uuid, const std::string& name) {
     entity.AddComponent<IDComponent>(uuid);
     entity.AddComponent<TagComponent>(entityName);
     entity.AddComponent<TransformComponent>();
+    entity.AddComponent<RelationshipComponent>();
 
     VE_ENGINE_INFO("Entity created: {0}", entityName);
     return entity;
@@ -38,12 +39,79 @@ void Scene::DestroyEntity(Entity entity) {
     if (entity.HasComponent<TagComponent>()) {
         VE_ENGINE_INFO("Entity destroyed: {0}", entity.GetComponent<TagComponent>().Tag);
     }
+
+    // Remove from parent's children list
+    RemoveParent(entity.GetHandle());
+
+    // Recursively destroy children
+    if (entity.HasComponent<RelationshipComponent>()) {
+        auto children = entity.GetComponent<RelationshipComponent>().Children; // copy
+        for (auto child : children) {
+            if (m_Registry.valid(child))
+                DestroyEntity(Entity(child, this));
+        }
+    }
+
     // Clean up Jolt body if physics is running
     if (m_PhysicsWorld && entity.HasComponent<RigidbodyComponent>()) {
         auto& rb = entity.GetComponent<RigidbodyComponent>();
         m_PhysicsWorld->RemoveBody(rb._JoltBodyID);
     }
     m_Registry.destroy(entity.GetHandle());
+}
+
+void Scene::SetParent(entt::entity child, entt::entity parent) {
+    if (child == parent) return;
+    if (!m_Registry.valid(child) || !m_Registry.valid(parent)) return;
+
+    // Prevent circular: walk up from parent, if we hit child, it's circular
+    entt::entity check = parent;
+    while (check != entt::null) {
+        if (check == child) return; // circular!
+        auto& rel = m_Registry.get<RelationshipComponent>(check);
+        check = rel.Parent;
+    }
+
+    RemoveParent(child);
+
+    auto& childRel = m_Registry.get<RelationshipComponent>(child);
+    auto& parentRel = m_Registry.get<RelationshipComponent>(parent);
+    childRel.Parent = parent;
+    parentRel.Children.push_back(child);
+}
+
+void Scene::RemoveParent(entt::entity child) {
+    if (!m_Registry.valid(child)) return;
+    auto& childRel = m_Registry.get<RelationshipComponent>(child);
+    if (childRel.Parent == entt::null) return;
+
+    if (m_Registry.valid(childRel.Parent)) {
+        auto& parentRel = m_Registry.get<RelationshipComponent>(childRel.Parent);
+        auto& vec = parentRel.Children;
+        vec.erase(std::remove(vec.begin(), vec.end(), child), vec.end());
+    }
+    childRel.Parent = entt::null;
+}
+
+glm::mat4 Scene::GetWorldTransform(entt::entity entity) const {
+    if (!m_Registry.valid(entity) || !m_Registry.all_of<TransformComponent>(entity))
+        return glm::mat4(1.0f);
+
+    auto& tc = m_Registry.get<TransformComponent>(entity);
+    glm::mat4 local = glm::translate(glm::mat4(1.0f),
+        glm::vec3(tc.Position[0], tc.Position[1], tc.Position[2]));
+    local = glm::rotate(local, glm::radians(tc.Rotation[0]), glm::vec3(1, 0, 0));
+    local = glm::rotate(local, glm::radians(tc.Rotation[1]), glm::vec3(0, 1, 0));
+    local = glm::rotate(local, glm::radians(tc.Rotation[2]), glm::vec3(0, 0, 1));
+    local = glm::scale(local, glm::vec3(tc.Scale[0], tc.Scale[1], tc.Scale[2]));
+
+    if (m_Registry.all_of<RelationshipComponent>(entity)) {
+        auto& rel = m_Registry.get<RelationshipComponent>(entity);
+        if (rel.Parent != entt::null && m_Registry.valid(rel.Parent))
+            return GetWorldTransform(rel.Parent) * local;
+    }
+
+    return local;
 }
 
 void Scene::OnUpdate(float deltaTime) {
@@ -149,35 +217,52 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     for (auto entityID : view) {
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
 
-        if (!mr.Mesh || !mr.Material)
+        if (!mr.Mesh || !mr.Mat)
             continue;
 
-        glm::mat4 model = ComputeModelMatrix(tc);
+        glm::mat4 model = GetWorldTransform(entityID);
         glm::mat4 mvp = viewProjection * model;
 
-        mr.Material->Bind();
-        mr.Material->SetMat4("u_MVP", mvp);
+        // Bind material (shader + material properties including textures)
+        mr.Mat->Bind();
 
-        // Texture binding (both lit and unlit shaders support textures)
-        if (mr.Texture) {
-            mr.Texture->Bind(0);
-            mr.Material->SetInt("u_Texture", 0);
-            mr.Material->SetInt("u_UseTexture", 1);
-        } else {
-            mr.Material->SetInt("u_UseTexture", 0);
+        auto shader = mr.Mat->GetShader();
+        if (!shader) continue;
+
+        shader->SetMat4("u_MVP", mvp);
+
+        // If material has no texture property set, ensure UseTexture=0
+        bool hasTexInMat = false;
+        for (auto& prop : mr.Mat->GetProperties()) {
+            if (prop.Type == MaterialPropertyType::Texture2D && prop.TextureRef)
+                hasTexInMat = true;
+        }
+        if (!hasTexInMat)
+            shader->SetInt("u_UseTexture", 0);
+
+        // Lighting + PBR uniforms for lit materials
+        if (mr.Mat->IsLit()) {
+            shader->SetMat4("u_Model", model);
+            shader->SetVec3("u_LightDir", lightDir);
+            shader->SetVec3("u_LightColor", lightColor);
+            shader->SetFloat("u_LightIntensity", lightIntensity);
+            shader->SetVec3("u_ViewPos", cameraPos);
+
+            // PBR defaults (if not set by material)
+            bool hasMetallic = false, hasRoughness = false, hasAO = false;
+            for (auto& prop : mr.Mat->GetProperties()) {
+                if (prop.Name == "u_Metallic") hasMetallic = true;
+                if (prop.Name == "u_Roughness") hasRoughness = true;
+                if (prop.Name == "u_AO") hasAO = true;
+            }
+            if (!hasMetallic)  shader->SetFloat("u_Metallic", 0.0f);
+            if (!hasRoughness) shader->SetFloat("u_Roughness", 0.5f);
+            if (!hasAO)        shader->SetFloat("u_AO", 1.0f);
         }
 
-        // If the shader has lighting uniforms (lit shader), set them
-        bool isLit = (mr.Material == MeshLibrary::GetLitShader());
-        if (isLit) {
-            mr.Material->SetMat4("u_Model", model);
-            mr.Material->SetVec3("u_LightDir", lightDir);
-            mr.Material->SetVec3("u_LightColor", lightColor);
-            mr.Material->SetFloat("u_LightIntensity", lightIntensity);
-            mr.Material->SetVec3("u_ViewPos", cameraPos);
-            mr.Material->SetVec4("u_EntityColor",
-                glm::vec4(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]));
-        }
+        // Per-instance color override
+        shader->SetVec4("u_EntityColor",
+            glm::vec4(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]));
 
         RenderCommand::DrawIndexed(mr.Mesh);
     }
