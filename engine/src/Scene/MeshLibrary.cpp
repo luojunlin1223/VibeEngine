@@ -1,10 +1,12 @@
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/Buffer.h"
+#include "VibeEngine/Renderer/ShaderLab.h"
 #include "VibeEngine/Core/Log.h"
 #include <glm/glm.hpp>
 
 #include <cmath>
 #include <vector>
+#include <filesystem>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -361,10 +363,29 @@ void MeshLibrary::Init() {
             static_cast<uint32_t>(indices.size())));
     }
 
-    // ── Shaders ─────────────────────────────────────────────────────
-    s_DefaultShader = Shader::Create(s_DefaultVertexSrc, s_DefaultFragmentSrc);
-    s_LitShader     = Shader::Create(s_LitVertexSrc, s_LitFragmentSrc);
-    s_SkyShader     = Shader::Create(s_SkyVertexSrc, s_SkyFragmentSrc);
+    // ── Shaders (try ShaderLab files first, fallback to hardcoded) ──
+    {
+        const std::string shaderDir = "shaders/";
+        auto tryLoadShader = [&](const std::string& filename,
+                                 const char* vertFallback, const char* fragFallback)
+            -> std::shared_ptr<Shader>
+        {
+            std::string path = shaderDir + filename;
+            if (std::filesystem::exists(path)) {
+                auto shader = Shader::CreateFromFile(path);
+                if (shader) {
+                    VE_ENGINE_INFO("ShaderLab: Loaded '{}'", path);
+                    return shader;
+                }
+                VE_ENGINE_WARN("ShaderLab: Failed to compile '{}', using fallback", path);
+            }
+            return Shader::Create(vertFallback, fragFallback);
+        };
+
+        s_DefaultShader = tryLoadShader("Unlit.shader", s_DefaultVertexSrc, s_DefaultFragmentSrc);
+        s_LitShader     = tryLoadShader("Lit.shader",   s_LitVertexSrc,     s_LitFragmentSrc);
+        s_SkyShader     = tryLoadShader("Sky.shader",   s_SkyVertexSrc,     s_SkyFragmentSrc);
+    }
 
     // ── Built-in Materials ──────────────────────────────────────────
     {

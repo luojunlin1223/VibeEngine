@@ -1,5 +1,6 @@
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/RendererAPI.h"
+#include "VibeEngine/Renderer/ShaderLab.h"
 #include "VibeEngine/Platform/OpenGL/OpenGLShader.h"
 #include "VibeEngine/Platform/Vulkan/VulkanShader.h"
 #include "VibeEngine/Core/Log.h"
@@ -14,6 +15,10 @@ std::shared_ptr<Shader> Shader::Create(const std::string& vertexSrc, const std::
             VE_ENGINE_ERROR("Shader::Create - unsupported API");
             return nullptr;
     }
+}
+
+std::shared_ptr<Shader> Shader::CreateFromFile(const std::string& filePath) {
+    return ShaderLabCompiler::CompileFile(filePath);
 }
 
 } // namespace VE

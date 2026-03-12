@@ -6,12 +6,91 @@ Built with C++17, CMake, and dual OpenGL/Vulkan rendering backends.
 
 ## Features
 
+### Rendering
 - **Dual Graphics Backend** — runtime-switchable OpenGL 4.6 and Vulkan 1.3
-- **Renderer Abstraction Layer** — unified API for Shader, Buffer, VertexArray, RenderCommand
-- **OpenGL Backend** — full rendering pipeline with glad2 loader
-- **Vulkan Backend** — complete pipeline: swapchain, render pass, graphics pipeline, command buffers, double-buffered frame sync
-- **Log System** — color-coded engine/client logging via spdlog
-- **GLFW Window** — cross-API window management with automatic context selection
+- **PBR Lighting** — physically-based rendering with GGX/Smith/Schlick BRDF
+- **Sky Rendering** — gradient and equirectangular texture sky sphere
+- **Texture System** — full texture pipeline for both backends
+- **ShaderLab** — Unity-style `.shader` file format with parser, compiler, and runtime loading
+
+### Editor
+- **ImGui-based Editor** — docking layout with viewport, hierarchy, inspector, content browser
+- **Editor Camera** — 2D orthographic and 3D perspective modes with orbit, pan, zoom
+- **Gizmo System** — translation gizmos with screen-space hit testing and axis dragging
+- **Content Browser** — asset browsing with thumbnails, folder tree, drag-and-drop
+- **Scene Serialization** — YAML-based `.vscene` files with save/load/file dialogs
+- **Play Mode** — Play/Stop with scene snapshot and restore
+
+### Entity Component System
+- **entt ECS** — high-performance entity-component system
+- Components: Transform, MeshRenderer, DirectionalLight, Rigidbody, Collider, Tag
+- Built-in meshes: Triangle, Quad, Cube, Sphere
+
+### Physics
+- **Jolt Physics** — 3D rigid body simulation (static, kinematic, dynamic)
+- Box, Sphere, and Capsule colliders
+- Fixed 60Hz timestep with accumulator
+
+### Asset Pipeline
+- **Asset Database** — file watching, `.meta` files, UUID tracking
+- **FBX Import** — mesh importing via ufbx with vertex deduplication
+- **Material System** — shader + property overrides with YAML serialization
+
+## ShaderLab
+
+VibeEngine uses a Unity-compatible ShaderLab syntax for shader authoring, providing a unified format for cross-platform shader development:
+
+```glsl
+Shader "VibeEngine/MyShader" {
+    Properties {
+        _MainTex ("Texture", 2D) = "white" {}
+        _Color ("Color", Color) = (1, 1, 1, 1)
+        _Metallic ("Metallic", Range(0, 1)) = 0.0
+    }
+
+    SubShader {
+        Tags { "RenderType"="Opaque" "Queue"="Geometry" }
+
+        Pass {
+            Name "ForwardLit"
+            Cull Back
+            ZWrite On
+            ZTest LEqual
+
+            GLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #version 460 core
+
+            #ifdef VERTEX
+            // ... vertex shader code ...
+            #endif
+
+            #ifdef FRAGMENT
+            // ... fragment shader code ...
+            #endif
+
+            ENDGLSL
+        }
+    }
+
+    FallBack "VibeEngine/Unlit"
+}
+```
+
+### Supported Property Types
+- `Float`, `Int` — scalar values
+- `Range(min, max)` — clamped float with slider UI
+- `Color` — RGBA color picker
+- `Vector` — 4-component vector
+- `2D`, `3D`, `Cube` — texture samplers
+
+### Render State
+- `Cull Back|Front|Off`
+- `ZWrite On|Off`
+- `ZTest Less|LEqual|Equal|GEqual|Greater|NotEqual|Always|Never`
+- `Blend SrcFactor DstFactor`
 
 ## Tech Stack
 
@@ -19,11 +98,15 @@ Built with C++17, CMake, and dual OpenGL/Vulkan rendering backends.
 |-----------|-----------|
 | Language | C++17 |
 | Build | CMake 3.20+ |
+| Graphics | OpenGL 4.6, Vulkan 1.3 |
 | Windowing | GLFW 3.4 |
-| OpenGL Loader | glad2 (GL 4.6 Core) |
-| Vulkan | Vulkan SDK 1.3+ |
+| Math | GLM 1.0.1 |
+| ECS | entt 3.14.0 |
+| Physics | Jolt Physics 5.2.0 |
+| UI | Dear ImGui (docking) |
+| Serialization | yaml-cpp 0.8.0 |
 | Logging | spdlog 1.15 |
-| Dependency Mgmt | CMake FetchContent (auto-download) |
+| FBX Import | ufbx |
 
 ## Project Structure
 
@@ -33,26 +116,16 @@ VibeEngine/
 ├── engine/
 │   ├── CMakeLists.txt                # Engine static library
 │   ├── include/VibeEngine/
-│   │   ├── Core/
-│   │   │   ├── Application.h         # App lifecycle + main loop
-│   │   │   ├── Log.h                 # spdlog wrapper + macros
-│   │   │   └── Window.h              # GLFW window abstraction
-│   │   ├── Renderer/
-│   │   │   ├── Renderer.h            # High-level renderer
-│   │   │   ├── RendererAPI.h         # Abstract rendering interface
-│   │   │   ├── RenderCommand.h       # Static command dispatch
-│   │   │   ├── Buffer.h              # Vertex/Index buffer + layout
-│   │   │   ├── VertexArray.h         # VAO abstraction
-│   │   │   ├── Shader.h              # Shader program
-│   │   │   └── GraphicsContext.h     # Graphics context interface
-│   │   ├── Platform/
-│   │   │   ├── OpenGL/               # OpenGL implementations
-│   │   │   └── Vulkan/               # Vulkan implementations
-│   │   └── VibeEngine.h              # Single-include convenience header
-│   └── src/                          # Implementation files (mirrors include/)
-└── sandbox/
-    ├── CMakeLists.txt
-    └── main.cpp                      # Demo app — renders a colored triangle
+│   │   ├── Core/                     # Application, Window, Log
+│   │   ├── Renderer/                 # Shader, Buffer, Texture, Material, ShaderLab
+│   │   ├── Scene/                    # Scene, Entity, Components, MeshLibrary
+│   │   ├── Asset/                    # AssetDatabase, FileWatcher, MeshImporter
+│   │   ├── Physics/                  # PhysicsWorld
+│   │   └── Platform/                 # OpenGL/ and Vulkan/ backend implementations
+│   ├── src/                          # Implementation files (mirrors include/)
+│   └── shaders/                      # ShaderLab .shader files + GLSL/SPIR-V sources
+├── sandbox/                          # Editor/test application
+└── vendor/                           # Third-party (ufbx, stb)
 ```
 
 ## Build
@@ -60,48 +133,35 @@ VibeEngine/
 ### Prerequisites
 
 - CMake 3.20+
-- C++17 compiler (MSVC 2022 / GCC 11+ / Clang 14+)
-- Vulkan SDK 1.3+ (for Vulkan backend)
-- Git (for FetchContent dependency download)
+- Visual Studio 2022 with C++17 support
+- Vulkan SDK 1.3+
+- Python 3 (for glad2 generation)
 
 ### Build Steps
 
 ```bash
-# Configure (dependencies auto-downloaded on first run)
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
-
-# Build
 cmake --build build --config Debug
-
-# Run
 ./build/bin/Debug/Sandbox
-```
-
-## Switching Graphics Backend
-
-In `sandbox/main.cpp`, change the API passed to the Application constructor:
-
-```cpp
-// Use Vulkan
-Sandbox() : VE::Application(VE::RendererAPI::API::Vulkan) { ... }
-
-// Use OpenGL
-Sandbox() : VE::Application(VE::RendererAPI::API::OpenGL) { ... }
 ```
 
 ## Architecture
 
 ```
 ┌─────────────┐
-│   Sandbox    │  ← User application (inherits Application)
+│   Sandbox    │  ← Editor application (inherits Application)
 ├─────────────┤
-│  Renderer    │  ← RenderCommand / Shader / Buffer / VertexArray
+│  ShaderLab  │  ← .shader file parser + compiler
+├─────────────┤
+│  Renderer   │  ← RenderCommand / Shader / Buffer / Material / Texture
 ├──────┬──────┤
-│OpenGL│Vulkan│  ← Platform backends (selected at init)
+│OpenGL│Vulkan│  ← Platform backends (runtime-switchable)
 ├──────┴──────┤
-│  Core       │  ← Application, Window, Log
+│  Scene/ECS  │  ← Entity, Components, MeshLibrary, Physics
 ├─────────────┤
-│ GLFW / SDK  │  ← Third-party
+│  Core       │  ← Application, Window, Log, Asset System
+├─────────────┤
+│ GLFW / Deps │  ← Third-party libraries
 └─────────────┘
 ```
 
@@ -113,18 +173,27 @@ The engine uses a **factory pattern** — abstract interfaces (`RendererAPI`, `B
 - [x] Window + game loop (GLFW)
 - [x] Log system (spdlog)
 - [x] Renderer abstraction layer
-- [x] OpenGL 4.6 backend (triangle rendering)
-- [x] Vulkan 1.3 backend (triangle rendering)
-- [ ] Math library (glm or custom)
-- [ ] Texture loading + 2D sprite rendering
-- [ ] Camera system
-- [ ] ECS (Entity-Component-System)
-- [ ] Input system
-- [ ] Resource manager
-- [ ] Scene graph
+- [x] OpenGL 4.6 backend
+- [x] Vulkan 1.3 backend
+- [x] Math library (GLM)
+- [x] ECS (entt) with Scene/Entity/Components
+- [x] ImGui editor with docking
+- [x] Runtime renderer switching (OpenGL <-> Vulkan)
+- [x] Scene serialization (YAML)
+- [x] Editor camera (2D/3D)
+- [x] Gizmo system (translation, selection)
+- [x] 3D renderer (PBR lighting, depth buffer)
+- [x] Texture system (OpenGL + Vulkan)
+- [x] Directional light component
+- [x] Sky rendering (gradient + equirectangular)
+- [x] Physics system (Jolt Physics)
+- [x] Asset management (FileWatcher, AssetDatabase, Content Browser)
+- [x] FBX import (ufbx)
+- [x] ShaderLab (.shader file format)
+- [ ] Material editor with ShaderLab property UI
 - [ ] Audio system
-- [ ] Physics system
-- [ ] Editor UI (ImGui)
+- [ ] Scripting system
+- [ ] Multi-platform support
 
 ## License
 

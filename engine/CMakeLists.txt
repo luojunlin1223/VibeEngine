@@ -35,3 +35,17 @@ target_compile_definitions(VibeEngineLib PUBLIC
     $<$<CONFIG:Debug>:VE_DEBUG>
     $<$<CONFIG:Release>:VE_RELEASE>
 )
+
+# ── Copy ShaderLab .shader files to output directory ─────────────────
+# Copy ShaderLab .shader files next to the executable (handles per-config dirs)
+set(VE_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
+file(GLOB VE_SHADER_FILES "${VE_SHADER_DIR}/*.shader")
+foreach(SHADER_FILE ${VE_SHADER_FILES})
+    get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
+    add_custom_command(TARGET VibeEngineLib POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SHADER_FILE}" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/${SHADER_NAME}"
+        COMMENT "Copying shader: ${SHADER_NAME}"
+    )
+endforeach()

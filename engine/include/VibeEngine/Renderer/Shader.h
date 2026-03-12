@@ -21,6 +21,9 @@ public:
     virtual void SetInt(const std::string& name, int value) = 0;
 
     static std::shared_ptr<Shader> Create(const std::string& vertexSrc, const std::string& fragmentSrc);
+
+    /// Load and compile a .shader (ShaderLab) file from disk.
+    static std::shared_ptr<Shader> CreateFromFile(const std::string& filePath);
 };
 
 } // namespace VE
