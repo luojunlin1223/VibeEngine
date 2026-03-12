@@ -385,6 +385,11 @@ void MeshLibrary::Init() {
         s_DefaultShader = tryLoadShader("Unlit.shader", s_DefaultVertexSrc, s_DefaultFragmentSrc);
         s_LitShader     = tryLoadShader("Lit.shader",   s_LitVertexSrc,     s_LitFragmentSrc);
         s_SkyShader     = tryLoadShader("Sky.shader",   s_SkyVertexSrc,     s_SkyFragmentSrc);
+
+        // Register built-in shaders in ShaderLibrary
+        ShaderLibrary::Register("Default", s_DefaultShader);
+        ShaderLibrary::Register("Lit",     s_LitShader);
+        ShaderLibrary::Register("Sky",     s_SkyShader);
     }
 
     // ── Built-in Materials ──────────────────────────────────────────
@@ -411,6 +416,7 @@ void MeshLibrary::Init() {
 
 void MeshLibrary::Shutdown() {
     MaterialLibrary::Shutdown();
+    ShaderLibrary::Shutdown();
     s_Triangle.reset();
     s_Quad.reset();
     s_Cube.reset();

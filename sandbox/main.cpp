@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <sstream>
 #include <fstream>
+#include <algorithm>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
 
@@ -18,6 +19,7 @@ public:
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
+        ScanAndRegisterShaders();
 
         VE::FramebufferSpec fbSpec;
         fbSpec.Width = 1280;
@@ -284,8 +286,38 @@ private:
             fout.close();
         }
 
+        // Auto-compile and register new .shader files
+        if (ext == ".shader") {
+            auto shader = VE::Shader::CreateFromFile(absPath);
+            if (shader) {
+                VE::ShaderLibrary::Register(name, shader);
+                VE_INFO("ShaderLibrary: Registered '{0}'", name);
+            }
+        }
+
         m_AssetDatabase.Refresh();
         VE_INFO("Created asset: {0}", relPath);
+    }
+
+    /// Scan Assets/ for .shader files and compile+register any not yet in ShaderLibrary.
+    void ScanAndRegisterShaders() {
+        std::string assetsRoot = m_AssetDatabase.GetAssetsRoot();
+        if (!std::filesystem::exists(assetsRoot)) return;
+
+        for (auto& entry : std::filesystem::recursive_directory_iterator(assetsRoot)) {
+            if (!entry.is_regular_file()) continue;
+            auto ext = entry.path().extension().string();
+            if (ext != ".shader") continue;
+
+            std::string name = entry.path().stem().string();
+            if (VE::ShaderLibrary::Exists(name)) continue;
+
+            auto shader = VE::Shader::CreateFromFile(entry.path().generic_string());
+            if (shader) {
+                VE::ShaderLibrary::Register(name, shader);
+                VE_INFO("ShaderLibrary: Registered '{0}' from Assets", name);
+            }
+        }
     }
 
     void NewScene() {
@@ -688,7 +720,7 @@ private:
                 ImGui::Image((ImTextureID)texID, ImVec2(128, 128));
             ImGui::Text("Type: Texture2D");
         } else if (meta->Type == VE::AssetType::Shader) {
-            ImGui::Text("Type: Shader (.glsl)");
+            ImGui::Text("Type: Shader (.shader)");
         } else if (meta->Type == VE::AssetType::Mesh) {
             ImGui::Text("Type: Mesh");
         } else if (meta->Type == VE::AssetType::Scene) {
@@ -724,27 +756,24 @@ private:
         if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf)))
             m_InspectedMaterial->SetName(nameBuf);
 
-        // Shader picker
+        // Shader picker (dynamic — lists all registered shaders)
         {
-            const char* currentShaderName = "None";
-            auto shader = m_InspectedMaterial->GetShader();
-            // Find shader name by comparing pointers with built-in shaders
-            if (shader == VE::MeshLibrary::GetDefaultShader()) currentShaderName = "Default";
-            else if (shader == VE::MeshLibrary::GetLitShader()) currentShaderName = "Lit";
-            else if (shader == VE::MeshLibrary::GetSkyShader()) currentShaderName = "Sky";
+            auto currentShader = m_InspectedMaterial->GetShader();
+            std::string currentName = currentShader ? currentShader->GetName() : "None";
 
-            if (ImGui::BeginCombo("Shader", currentShaderName)) {
-                if (ImGui::Selectable("Default", shader == VE::MeshLibrary::GetDefaultShader())) {
-                    m_InspectedMaterial->SetShader(VE::MeshLibrary::GetDefaultShader());
-                    m_InspectedMaterial->SetLit(false);
-                }
-                if (ImGui::Selectable("Lit", shader == VE::MeshLibrary::GetLitShader())) {
-                    m_InspectedMaterial->SetShader(VE::MeshLibrary::GetLitShader());
-                    m_InspectedMaterial->SetLit(true);
-                }
-                if (ImGui::Selectable("Sky", shader == VE::MeshLibrary::GetSkyShader())) {
-                    m_InspectedMaterial->SetShader(VE::MeshLibrary::GetSkyShader());
-                    m_InspectedMaterial->SetLit(false);
+            if (ImGui::BeginCombo("Shader", currentName.c_str())) {
+                auto allNames = VE::ShaderLibrary::GetAllNames();
+                // Sort for stable display order
+                std::sort(allNames.begin(), allNames.end());
+                for (auto& name : allNames) {
+                    auto shader = VE::ShaderLibrary::Get(name);
+                    bool isSelected = (shader == currentShader);
+                    if (ImGui::Selectable(name.c_str(), isSelected)) {
+                        m_InspectedMaterial->SetShader(shader);
+                        // Auto-detect lit status: "Lit" shader or shaders with lighting uniforms
+                        m_InspectedMaterial->SetLit(name == "Lit");
+                    }
+                    if (isSelected) ImGui::SetItemDefaultFocus();
                 }
                 ImGui::EndCombo();
             }
@@ -1108,8 +1137,10 @@ private:
 
             // Refresh button
             ImGui::SameLine(ImGui::GetWindowWidth() - 80);
-            if (ImGui::Button("Refresh"))
+            if (ImGui::Button("Refresh")) {
                 m_AssetDatabase.Refresh();
+                ScanAndRegisterShaders();
+            }
         }
 
         ImGui::Separator();
