@@ -3,11 +3,12 @@
  *
  * Scripts inherit from NativeScript and override OnCreate/OnUpdate/OnDestroy.
  * The engine communicates with script DLLs via a function pointer table (ScriptAPI)
- * to avoid link-time dependencies. Scripts use REGISTER_SCRIPT() macro and export
- * GetScriptEntries() / SetScriptAPI() functions.
+ * to avoid link-time dependencies. Scripts use REGISTER_SCRIPT() macro and the
+ * auto-generated ScriptRegistry.gen.cpp exports GetScriptEntries() / SetScriptAPI().
  */
 #pragma once
 #include <cstdint>
+#include <cstddef>
 
 namespace VE {
 
@@ -31,6 +32,16 @@ struct ScriptAPI {
     uint64_t (*Entity_FindByName)(const char* name) = nullptr;
 };
 
+// ── Property reflection ─────────────────────────────────────────────
+
+enum class ScriptPropertyType { Float, Int, Bool, Vec3, String };
+
+struct ScriptPropertyInfo {
+    const char* Name;
+    ScriptPropertyType Type;
+    size_t Offset;  // offsetof within the script instance
+};
+
 class NativeScript {
 public:
     virtual ~NativeScript() = default;
@@ -39,7 +50,13 @@ public:
     virtual void OnUpdate(float deltaTime) {}
     virtual void OnDestroy() {}
 
+    // Property reflection — override via VE_PROPERTIES macro
+    virtual const ScriptPropertyInfo* GetProperties(int& count) const { count = 0; return nullptr; }
+
     uint64_t GetEntityID() const { return m_EntityID; }
+
+    // Called by registry to set API from DLL side
+    static void SetAPI(const ScriptAPI* api) { API = api; }
 
 protected:
     // Convenience: access the API table from scripts
@@ -76,9 +93,9 @@ private:
   #define VE_SCRIPT_API
 #endif
 
-// Script registration macro — generates a factory function
+// Script registration macro — generates a factory function with external linkage
 #define REGISTER_SCRIPT(ClassName) \
-    static VE::NativeScript* Create_##ClassName() { return new ClassName(); }
+    VE::NativeScript* Create_##ClassName() { return new ClassName(); }
 
 // Entry in the script registry table exported by the DLL
 struct ScriptEntry {
@@ -86,6 +103,24 @@ struct ScriptEntry {
     VE::NativeScript* (*CreateFunc)();
 };
 
-// DLL must export:
+// ── Property exposure macros ────────────────────────────────────────
+
+#define VE_PROPERTIES(ClassName, ...) \
+    const VE::ScriptPropertyInfo* GetProperties(int& count) const override { \
+        static VE::ScriptPropertyInfo props[] = { __VA_ARGS__ }; \
+        count = sizeof(props) / sizeof(props[0]); \
+        return props; \
+    }
+
+#define VE_FLOAT(ClassName, name) \
+    { #name, VE::ScriptPropertyType::Float, offsetof(ClassName, name) }
+
+#define VE_INT(ClassName, name) \
+    { #name, VE::ScriptPropertyType::Int, offsetof(ClassName, name) }
+
+#define VE_BOOL(ClassName, name) \
+    { #name, VE::ScriptPropertyType::Bool, offsetof(ClassName, name) }
+
+// DLL must export (via auto-generated ScriptRegistry.gen.cpp):
 //   extern "C" VE_SCRIPT_API ScriptEntry* GetScriptEntries(int* count);
 //   extern "C" VE_SCRIPT_API void SetScriptAPI(const VE::ScriptAPI* api);
