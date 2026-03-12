@@ -25,6 +25,7 @@ public:
         VE::FramebufferSpec fbSpec;
         fbSpec.Width = 1280;
         fbSpec.Height = 720;
+        fbSpec.HDR = true;
         m_Framebuffer = VE::Framebuffer::Create(fbSpec);
     }
 
@@ -56,8 +57,33 @@ protected:
         m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
         m_Scene->OnRender(m_FrameVP, camPos);
 
-        if (m_Framebuffer)
+        if (m_Framebuffer) {
             m_Framebuffer->Unbind();
+
+            // Apply post-processing
+            auto& ps = m_Scene->GetPipelineSettings();
+            VE::PostProcessSettings ppSettings;
+            ppSettings.Bloom = { ps.BloomEnabled, ps.BloomThreshold, ps.BloomIntensity, ps.BloomIterations };
+            ppSettings.Vignette = { ps.VignetteEnabled, ps.VignetteIntensity, ps.VignetteSmoothness };
+            ppSettings.Color = { ps.ColorAdjustEnabled, ps.ColorExposure, ps.ColorContrast,
+                                 ps.ColorSaturation, ps.ColorFilter, ps.ColorGamma };
+            ppSettings.SMH = { ps.SMHEnabled, ps.SMH_Shadows, ps.SMH_Midtones, ps.SMH_Highlights,
+                               ps.SMH_ShadowStart, ps.SMH_ShadowEnd, ps.SMH_HighlightStart, ps.SMH_HighlightEnd };
+            ppSettings.Curves.Enabled = ps.CurvesEnabled;
+            ppSettings.Curves.Master.Points = ps.CurvesMaster;
+            ppSettings.Curves.Red.Points    = ps.CurvesRed;
+            ppSettings.Curves.Green.Points  = ps.CurvesGreen;
+            ppSettings.Curves.Blue.Points   = ps.CurvesBlue;
+            ppSettings.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+
+            uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
+            m_PostProcessedTexture = m_PostProcessing.Apply(
+                sceneTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(), ppSettings);
+
+            // If no effects active, Apply returns the original texture
+            if (m_PostProcessedTexture == sceneTex)
+                m_PostProcessedTexture = 0;
+        }
     }
 
     // Helper: build rotation matrix from a TransformComponent
@@ -165,6 +191,8 @@ protected:
             VE::MeshLibrary::Shutdown();
             VE::MeshImporter::ClearCache();
             m_Framebuffer.reset();
+            m_PostProcessing.Shutdown();
+            m_PostProcessedTexture = 0;
         } else {
             VE::MeshLibrary::Init();
             VE::MeshImporter::ReuploadCache();
@@ -172,6 +200,7 @@ protected:
             VE::FramebufferSpec fbSpec;
             fbSpec.Width = 1280;
             fbSpec.Height = 720;
+            fbSpec.HDR = true;
             m_Framebuffer = VE::Framebuffer::Create(fbSpec);
         }
         m_ThumbnailCache.Clear();
@@ -518,9 +547,11 @@ private:
             m_Camera.SetViewportSize(viewportSize.x, viewportSize.y);
         }
 
-        // Display the framebuffer texture
+        // Display the framebuffer texture (post-processed if bloom is active)
         if (m_Framebuffer) {
-            uint64_t texID = m_Framebuffer->GetColorAttachmentID();
+            uint64_t texID = (m_PostProcessedTexture != 0)
+                ? static_cast<uint64_t>(m_PostProcessedTexture)
+                : m_Framebuffer->GetColorAttachmentID();
             if (texID != 0) {
                 ImGui::Image((ImTextureID)texID, viewportSize, ImVec2(0, 1), ImVec2(1, 0));
             }
@@ -1199,6 +1230,138 @@ private:
         ImGui::End();
     }
 
+    // ── Curve Editor Widget ──────────────────────────────────────────
+    void DrawCurveEditor(const char* label,
+                         std::vector<std::pair<float, float>>& points,
+                         ImU32 curveColor) {
+        ImGui::PushID(label);
+        if (ImGui::TreeNode(label)) {
+            const float CANVAS_SIZE = 200.0f;
+            ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+            ImVec2 canvasSize(CANVAS_SIZE, CANVAS_SIZE);
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+
+            // Background
+            dl->AddRectFilled(canvasPos,
+                ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y),
+                IM_COL32(30, 30, 30, 255));
+            // Grid lines
+            for (int i = 1; i < 4; i++) {
+                float t = i / 4.0f;
+                dl->AddLine(
+                    ImVec2(canvasPos.x + t * canvasSize.x, canvasPos.y),
+                    ImVec2(canvasPos.x + t * canvasSize.x, canvasPos.y + canvasSize.y),
+                    IM_COL32(60, 60, 60, 255));
+                dl->AddLine(
+                    ImVec2(canvasPos.x, canvasPos.y + t * canvasSize.y),
+                    ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + t * canvasSize.y),
+                    IM_COL32(60, 60, 60, 255));
+            }
+            // Diagonal reference
+            dl->AddLine(canvasPos,
+                ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y),
+                IM_COL32(80, 80, 80, 128));
+
+            // Draw curve (evaluate many points)
+            ImVec2 prevPt;
+            for (int i = 0; i <= 128; i++) {
+                float t = i / 128.0f;
+                // Simple piecewise linear eval for drawing
+                float val = t;
+                for (size_t s = 0; s + 1 < points.size(); s++) {
+                    if (t >= points[s].first && t <= points[s + 1].first) {
+                        float seg = points[s + 1].first - points[s].first;
+                        float lt = (seg > 1e-6f) ? (t - points[s].first) / seg : 0.0f;
+                        val = points[s].second + lt * (points[s + 1].second - points[s].second);
+                        break;
+                    }
+                }
+                if (!points.empty() && t <= points.front().first) val = points.front().second;
+                if (!points.empty() && t >= points.back().first)  val = points.back().second;
+
+                ImVec2 pt(canvasPos.x + t * canvasSize.x,
+                          canvasPos.y + (1.0f - val) * canvasSize.y);
+                if (i > 0)
+                    dl->AddLine(prevPt, pt, curveColor, 2.0f);
+                prevPt = pt;
+            }
+
+            // Invisible button for interaction
+            ImGui::InvisibleButton("canvas", canvasSize);
+            bool canvasHovered = ImGui::IsItemHovered();
+
+            // Draw and handle control points
+            int dragIdx = -1;
+            for (size_t i = 0; i < points.size(); i++) {
+                ImVec2 ptScreen(canvasPos.x + points[i].first * canvasSize.x,
+                                canvasPos.y + (1.0f - points[i].second) * canvasSize.y);
+                float radius = 5.0f;
+
+                ImGui::SetCursorScreenPos(ImVec2(ptScreen.x - radius, ptScreen.y - radius));
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::InvisibleButton("pt", ImVec2(radius * 2, radius * 2));
+                bool ptHovered = ImGui::IsItemHovered();
+                bool ptActive  = ImGui::IsItemActive();
+
+                if (ptActive && ImGui::IsMouseDragging(0)) {
+                    ImVec2 delta = ImGui::GetIO().MouseDelta;
+                    points[i].first  += delta.x / canvasSize.x;
+                    points[i].second -= delta.y / canvasSize.y;
+                    // Clamp endpoints
+                    if (i == 0) points[i].first = 0.0f;
+                    if (i == points.size() - 1) points[i].first = 1.0f;
+                    points[i].first  = std::clamp(points[i].first,  0.0f, 1.0f);
+                    points[i].second = std::clamp(points[i].second, 0.0f, 1.0f);
+                    dragIdx = static_cast<int>(i);
+                }
+
+                dl->AddCircleFilled(ptScreen, radius,
+                    (ptHovered || ptActive) ? IM_COL32(255, 255, 0, 255) : curveColor);
+                ImGui::PopID();
+            }
+
+            // Sort points by x after drag
+            if (dragIdx >= 0) {
+                std::sort(points.begin(), points.end(),
+                    [](const auto& a, const auto& b) { return a.first < b.first; });
+            }
+
+            // Double-click to add point
+            if (canvasHovered && ImGui::IsMouseDoubleClicked(0)) {
+                ImVec2 mousePos = ImGui::GetIO().MousePos;
+                float nx = (mousePos.x - canvasPos.x) / canvasSize.x;
+                float ny = 1.0f - (mousePos.y - canvasPos.y) / canvasSize.y;
+                nx = std::clamp(nx, 0.0f, 1.0f);
+                ny = std::clamp(ny, 0.0f, 1.0f);
+                points.push_back({ nx, ny });
+                std::sort(points.begin(), points.end(),
+                    [](const auto& a, const auto& b) { return a.first < b.first; });
+            }
+
+            // Right-click to remove point (not endpoints)
+            if (canvasHovered && ImGui::IsMouseClicked(1)) {
+                ImVec2 mousePos = ImGui::GetIO().MousePos;
+                for (size_t i = 1; i + 1 < points.size(); i++) {
+                    ImVec2 ptScreen(canvasPos.x + points[i].first * canvasSize.x,
+                                    canvasPos.y + (1.0f - points[i].second) * canvasSize.y);
+                    float dx = mousePos.x - ptScreen.x;
+                    float dy = mousePos.y - ptScreen.y;
+                    if (dx * dx + dy * dy < 64.0f) {
+                        points.erase(points.begin() + i);
+                        break;
+                    }
+                }
+            }
+
+            if (ImGui::Button("Reset##curve")) {
+                points = { {0.0f, 0.0f}, {1.0f, 1.0f} };
+            }
+
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+
     void DrawPipelineSettingsPanel() {
         if (!m_ShowPipelineSettings) return;
         ImGui::Begin("Render Pipeline", &m_ShowPipelineSettings);
@@ -1228,6 +1391,68 @@ private:
                     ps.SkyTexturePath.clear();
                     ps.SkyTexture.reset();
                 }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Bloom", &ps.BloomEnabled);
+            if (ps.BloomEnabled) {
+                ImGui::SliderFloat("Threshold", &ps.BloomThreshold, 0.0f, 2.0f, "%.2f");
+                ImGui::SliderFloat("Bloom Intensity", &ps.BloomIntensity, 0.0f, 5.0f, "%.2f");
+                ImGui::SliderInt("Blur Passes", &ps.BloomIterations, 1, 10);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Vignette", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Vignette", &ps.VignetteEnabled);
+            if (ps.VignetteEnabled) {
+                ImGui::SliderFloat("Vignette Intensity", &ps.VignetteIntensity, 0.0f, 2.0f, "%.2f");
+                ImGui::SliderFloat("Smoothness", &ps.VignetteSmoothness, 0.01f, 1.0f, "%.2f");
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Color Adjustments", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Color Adjustments", &ps.ColorAdjustEnabled);
+            if (ps.ColorAdjustEnabled) {
+                ImGui::SliderFloat("Exposure", &ps.ColorExposure, -5.0f, 5.0f, "%.2f EV");
+                ImGui::SliderFloat("Contrast", &ps.ColorContrast, -1.0f, 1.0f, "%.2f");
+                ImGui::SliderFloat("Saturation", &ps.ColorSaturation, -1.0f, 1.0f, "%.2f");
+                ImGui::ColorEdit3("Color Filter", ps.ColorFilter.data());
+                ImGui::SliderFloat("Gamma", &ps.ColorGamma, 0.1f, 5.0f, "%.2f");
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Shadows / Midtones / Highlights")) {
+            ImGui::Checkbox("Enable SMH", &ps.SMHEnabled);
+            if (ps.SMHEnabled) {
+                ImGui::ColorEdit3("Shadows##SMH", ps.SMH_Shadows.data(),
+                    ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+                ImGui::ColorEdit3("Midtones##SMH", ps.SMH_Midtones.data(),
+                    ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+                ImGui::ColorEdit3("Highlights##SMH", ps.SMH_Highlights.data(),
+                    ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+                ImGui::Separator();
+                ImGui::Text("Tonal Ranges");
+                ImGui::SliderFloat("Shadow End", &ps.SMH_ShadowEnd, 0.0f, 0.5f, "%.2f");
+                ImGui::SliderFloat("Highlight Start", &ps.SMH_HighlightStart, 0.3f, 1.0f, "%.2f");
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Color Curves")) {
+            ImGui::Checkbox("Enable Curves", &ps.CurvesEnabled);
+            if (ps.CurvesEnabled) {
+                DrawCurveEditor("Master", ps.CurvesMaster, IM_COL32(200, 200, 200, 255));
+                DrawCurveEditor("Red",    ps.CurvesRed,    IM_COL32(255,  80,  80, 255));
+                DrawCurveEditor("Green",  ps.CurvesGreen,  IM_COL32( 80, 255,  80, 255));
+                DrawCurveEditor("Blue",   ps.CurvesBlue,   IM_COL32( 80,  80, 255, 255));
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Tonemapping")) {
+            ImGui::Checkbox("Enable Tonemapping", &ps.TonemapEnabled);
+            if (ps.TonemapEnabled) {
+                const char* modes[] = { "None", "Reinhard", "ACES Filmic", "Uncharted 2" };
+                ImGui::Combo("Operator", &ps.TonemapMode, modes, 4);
             }
         }
 
@@ -1558,6 +1783,10 @@ private:
     std::string m_SelectedAssetPath; // selected asset in Content Browser
     std::shared_ptr<VE::Material> m_InspectedMaterial;
     std::string m_InspectedMaterialPath;
+
+    // Post-processing
+    VE::PostProcessing m_PostProcessing;
+    uint32_t m_PostProcessedTexture = 0;
 };
 
 int main() {
