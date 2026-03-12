@@ -99,6 +99,18 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         auto& sc = entity.GetComponent<ScriptComponent>();
         out << YAML::Key << "ScriptComponent" << YAML::Value << YAML::BeginMap;
         out << YAML::Key << "ClassName" << YAML::Value << sc.ClassName;
+        if (!sc.Properties.empty()) {
+            out << YAML::Key << "Properties" << YAML::Value << YAML::BeginMap;
+            for (auto& [name, val] : sc.Properties) {
+                if (std::holds_alternative<float>(val))
+                    out << YAML::Key << name << YAML::Value << std::get<float>(val);
+                else if (std::holds_alternative<int>(val))
+                    out << YAML::Key << name << YAML::Value << std::get<int>(val);
+                else if (std::holds_alternative<bool>(val))
+                    out << YAML::Key << name << YAML::Value << std::get<bool>(val);
+            }
+            out << YAML::EndMap;
+        }
         out << YAML::EndMap;
     }
 
@@ -324,6 +336,29 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (auto scNode = entityNode["ScriptComponent"]) {
             auto& sc = entity.AddComponent<ScriptComponent>();
             sc.ClassName = scNode["ClassName"].as<std::string>();
+            if (auto propsNode = scNode["Properties"]) {
+                for (auto it = propsNode.begin(); it != propsNode.end(); ++it) {
+                    std::string key = it->first.as<std::string>();
+                    auto& val = it->second;
+                    // Try bool first (YAML bool is distinct), then int, then float
+                    if (val.Tag() == "!" || val.Scalar() == "true" || val.Scalar() == "false") {
+                        sc.Properties[key] = val.as<bool>();
+                    } else {
+                        // Try as float (covers both int and float in YAML)
+                        try {
+                            float f = val.as<float>();
+                            // Check if it's actually an integer (no decimal point)
+                            std::string s = val.Scalar();
+                            if (s.find('.') == std::string::npos && s.find('e') == std::string::npos)
+                                sc.Properties[key] = val.as<int>();
+                            else
+                                sc.Properties[key] = f;
+                        } catch (...) {
+                            sc.Properties[key] = 0.0f;
+                        }
+                    }
+                }
+            }
         }
 
         if (auto mrNode = entityNode["MeshRendererComponent"]) {

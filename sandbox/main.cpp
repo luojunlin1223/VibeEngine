@@ -16,6 +16,14 @@ public:
     {
         VE_INFO("Sandbox application created");
         VE::ScriptEngine::Init();
+        VE::ScriptEngine::SetEngineIncludePath(std::string(VE_PROJECT_ROOT) + "/engine/include");
+
+        // Auto-build script DLL on startup if scripts exist
+        if (VE::ScriptEngine::HasScriptFiles()) {
+            VE_INFO("Auto-building script project...");
+            VE::ScriptEngine::BuildScriptProjectSync();
+        }
+
         VE::MeshLibrary::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
@@ -269,36 +277,20 @@ private:
             mat->Save(absPath);
             VE::MaterialLibrary::Register(mat);
         } else if (ext == ".cpp") {
-            // Create a script template
+            // Create a clean script template (no DLL exports — handled by ScriptRegistry.gen.cpp)
             std::ofstream fout(absPath);
             fout << "#include <VibeEngine/Scripting/NativeScript.h>\n"
                  << "using namespace VE;\n\n"
-                 << "static const ScriptAPI* API = nullptr;\n\n"
                  << "class " << name << " : public NativeScript {\n"
                  << "public:\n"
                  << "    void OnCreate() override {\n"
-                 << "        if (API && API->Log_Info)\n"
-                 << "            API->Log_Info(\"" << name << " created!\");\n"
                  << "    }\n\n"
                  << "    void OnUpdate(float dt) override {\n"
-                 << "        // auto t = GetTransform();\n"
-                 << "        // SetTransform(t);\n"
                  << "    }\n\n"
                  << "    void OnDestroy() override {\n"
                  << "    }\n"
                  << "};\n\n"
-                 << "REGISTER_SCRIPT(" << name << ")\n\n"
-                 << "// ── DLL exports (add all scripts to s_Scripts) ──\n\n"
-                 << "static ScriptEntry s_Scripts[] = {\n"
-                 << "    { \"" << name << "\", Create_" << name << " },\n"
-                 << "};\n\n"
-                 << "extern \"C\" VE_SCRIPT_API ScriptEntry* GetScriptEntries(int* count) {\n"
-                 << "    *count = sizeof(s_Scripts) / sizeof(s_Scripts[0]);\n"
-                 << "    return s_Scripts;\n"
-                 << "}\n\n"
-                 << "extern \"C\" VE_SCRIPT_API void SetScriptAPI(const VE::ScriptAPI* api) {\n"
-                 << "    API = api;\n"
-                 << "}\n";
+                 << "REGISTER_SCRIPT(" << name << ")\n";
             fout.close();
         } else if (ext == ".shader") {
             // Create a default ShaderLab template
@@ -611,6 +603,12 @@ private:
 
     void EnterPlayMode() {
         if (m_PlayMode) return;
+
+        // Auto-build scripts if DLL not loaded
+        if (!VE::ScriptEngine::IsLoaded() && VE::ScriptEngine::HasScriptFiles()) {
+            VE_INFO("Auto-building scripts before Play...");
+            VE::ScriptEngine::BuildScriptProjectSync();
+        }
 
         // Save scene snapshot
         VE::SceneSerializer serializer(m_Scene);
@@ -1035,28 +1033,73 @@ private:
         }
 
         if (m_SelectedEntity.HasComponent<VE::ScriptComponent>()) {
+            auto& sc = m_SelectedEntity.GetComponent<VE::ScriptComponent>();
             bool removeScript = false;
-            if (ImGui::CollapsingHeader("Script", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& sc = m_SelectedEntity.GetComponent<VE::ScriptComponent>();
+            std::string headerLabel = sc.ClassName.empty() ? "Script" : sc.ClassName;
+            if (ImGui::CollapsingHeader(headerLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Text("Script: %s", sc.ClassName.empty() ? "(none)" : sc.ClassName.c_str());
 
-                // Class name: dropdown if DLL loaded, text input otherwise
-                if (VE::ScriptEngine::IsLoaded()) {
-                    auto classNames = VE::ScriptEngine::GetRegisteredClassNames();
-                    const char* current = sc.ClassName.empty() ? "(none)" : sc.ClassName.c_str();
-                    if (ImGui::BeginCombo("Class", current)) {
-                        for (auto& name : classNames) {
-                            bool selected = (name == sc.ClassName);
-                            if (ImGui::Selectable(name.c_str(), selected))
-                                sc.ClassName = name;
-                            if (selected) ImGui::SetItemDefaultFocus();
+                // Show properties — from live instance in play mode, or from stored values in edit mode
+                if (sc._Instance) {
+                    // Play mode: edit instance memory directly, sync back to storage
+                    int propCount = 0;
+                    auto* props = sc._Instance->GetProperties(propCount);
+                    if (propCount > 0) {
+                        ImGui::Separator();
+                        char* base = reinterpret_cast<char*>(sc._Instance);
+                        for (int i = 0; i < propCount; i++) {
+                            auto& prop = props[i];
+                            void* ptr = base + prop.Offset;
+                            switch (prop.Type) {
+                                case VE::ScriptPropertyType::Float:
+                                    ImGui::DragFloat(prop.Name, static_cast<float*>(ptr), 0.1f);
+                                    break;
+                                case VE::ScriptPropertyType::Int:
+                                    ImGui::DragInt(prop.Name, static_cast<int*>(ptr));
+                                    break;
+                                case VE::ScriptPropertyType::Bool:
+                                    ImGui::Checkbox(prop.Name, static_cast<bool*>(ptr));
+                                    break;
+                                default: break;
+                            }
                         }
-                        ImGui::EndCombo();
                     }
-                } else {
-                    char buf[256] = {};
-                    strncpy(buf, sc.ClassName.c_str(), sizeof(buf) - 1);
-                    if (ImGui::InputText("Class", buf, sizeof(buf)))
-                        sc.ClassName = buf;
+                } else if (!sc.ClassName.empty() && VE::ScriptEngine::IsLoaded()) {
+                    // Edit mode: show from cached metadata + stored property values
+                    auto cachedProps = VE::ScriptEngine::GetScriptProperties(sc.ClassName);
+                    if (!cachedProps.empty()) {
+                        ImGui::Separator();
+                        for (auto& cp : cachedProps) {
+                            auto type = static_cast<VE::ScriptPropertyType>(cp.Type);
+                            switch (type) {
+                                case VE::ScriptPropertyType::Float: {
+                                    auto it = sc.Properties.find(cp.Name);
+                                    float val = (it != sc.Properties.end() && std::holds_alternative<float>(it->second))
+                                        ? std::get<float>(it->second) : cp.DefaultFloat;
+                                    if (ImGui::DragFloat(cp.Name.c_str(), &val, 0.1f))
+                                        sc.Properties[cp.Name] = val;
+                                    break;
+                                }
+                                case VE::ScriptPropertyType::Int: {
+                                    auto it = sc.Properties.find(cp.Name);
+                                    int val = (it != sc.Properties.end() && std::holds_alternative<int>(it->second))
+                                        ? std::get<int>(it->second) : cp.DefaultInt;
+                                    if (ImGui::DragInt(cp.Name.c_str(), &val))
+                                        sc.Properties[cp.Name] = val;
+                                    break;
+                                }
+                                case VE::ScriptPropertyType::Bool: {
+                                    auto it = sc.Properties.find(cp.Name);
+                                    bool val = (it != sc.Properties.end() && std::holds_alternative<bool>(it->second))
+                                        ? std::get<bool>(it->second) : cp.DefaultBool;
+                                    if (ImGui::Checkbox(cp.Name.c_str(), &val))
+                                        sc.Properties[cp.Name] = val;
+                                    break;
+                                }
+                                default: break;
+                            }
+                        }
+                    }
                 }
 
                 if (ImGui::Button("Remove Script"))
@@ -1149,9 +1192,34 @@ private:
             ImGui::OpenPopup("AddComponentPopup");
         if (ImGui::BeginPopup("AddComponentPopup")) {
             bool anyAdded = false;
+
+            // Scripts submenu — list all available scripts from DLL or ScriptProject scan
             if (!m_SelectedEntity.HasComponent<VE::ScriptComponent>()) {
-                if (ImGui::MenuItem("Script")) {
-                    m_SelectedEntity.AddComponent<VE::ScriptComponent>();
+                auto scriptNames = VE::ScriptEngine::IsLoaded()
+                    ? VE::ScriptEngine::GetRegisteredClassNames()
+                    : VE::ScriptEngine::ScanScriptClassNames();
+
+                if (!scriptNames.empty() && ImGui::BeginMenu("Scripts")) {
+                    for (auto& name : scriptNames) {
+                        if (ImGui::MenuItem(name.c_str())) {
+                            auto& sc = m_SelectedEntity.AddComponent<VE::ScriptComponent>();
+                            sc.ClassName = name;
+                            // Initialize properties with defaults
+                            auto cachedProps = VE::ScriptEngine::GetScriptProperties(name);
+                            for (auto& cp : cachedProps) {
+                                switch (static_cast<VE::ScriptPropertyType>(cp.Type)) {
+                                    case VE::ScriptPropertyType::Float:
+                                        sc.Properties[cp.Name] = cp.DefaultFloat; break;
+                                    case VE::ScriptPropertyType::Int:
+                                        sc.Properties[cp.Name] = cp.DefaultInt; break;
+                                    case VE::ScriptPropertyType::Bool:
+                                        sc.Properties[cp.Name] = cp.DefaultBool; break;
+                                    default: break;
+                                }
+                            }
+                        }
+                    }
+                    ImGui::EndMenu();
                 }
                 anyAdded = true;
             }
@@ -1197,34 +1265,124 @@ private:
         if (!m_ShowScripting) return;
         ImGui::Begin("Scripting", &m_ShowScripting);
 
-        // DLL path display + load button
-        ImGui::Text("Script DLL: %s",
-            VE::ScriptEngine::IsLoaded()
-                ? VE::ScriptEngine::GetDLLPath().c_str()
-                : "(none)");
+        // ── Script Project ──────────────────────────────────────────
+        if (ImGui::CollapsingHeader("Script Project", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Project: %s", VE::ScriptEngine::GetScriptProjectPath().c_str());
 
-        if (ImGui::Button("Load Script DLL...")) {
-            static const char* dllFilter = "DLL Files (*.dll)\0*.dll\0All Files\0*.*\0";
-            std::string path = VE::FileDialog::OpenFile(dllFilter, GetWindow().GetNativeWindow());
-            if (!path.empty()) {
-                VE::ScriptEngine::LoadScriptDLL(path);
-                m_ScriptDLLPath = path;
+            // New Script button + popup
+            if (ImGui::Button("New Script..."))
+                ImGui::OpenPopup("NewScriptPopup");
+
+            if (ImGui::BeginPopup("NewScriptPopup")) {
+                static char newClassName[128] = {};
+                ImGui::Text("Class Name:");
+                ImGui::InputText("##newscriptname", newClassName, sizeof(newClassName));
+                if (ImGui::Button("Create") && newClassName[0] != '\0') {
+                    if (VE::ScriptEngine::CreateNewScript(newClassName))
+                        VE_INFO("Created script: {0}", newClassName);
+                    newClassName[0] = '\0';
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel"))
+                    ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Regenerate Registry"))
+                VE::ScriptEngine::RegenerateScriptRegistry();
+        }
+
+        ImGui::Separator();
+
+        // ── Build ───────────────────────────────────────────────────
+        if (ImGui::CollapsingHeader("Build", ImGuiTreeNodeFlags_DefaultOpen)) {
+            auto buildStatus = VE::ScriptEngine::GetBuildStatus();
+            bool building = (buildStatus == VE::ScriptEngine::BuildStatus::Building);
+
+            if (building) {
+                ImGui::BeginDisabled();
+                ImGui::Button("Building...");
+                ImGui::EndDisabled();
+            } else {
+                if (ImGui::Button("Build Scripts")) {
+                    VE::ScriptEngine::BuildScriptProject();
+                }
+            }
+
+            // Auto-load DLL on successful build
+            if (buildStatus == VE::ScriptEngine::BuildStatus::Success && m_BuildAutoLoad) {
+                auto dllPath = VE::ScriptEngine::GetBuildDLLOutputPath();
+                if (!dllPath.empty() && std::filesystem::exists(dllPath)) {
+                    VE::ScriptEngine::LoadScriptDLL(dllPath);
+                    m_ScriptDLLPath = dllPath;
+                    VE_INFO("Auto-loaded built DLL: {0}", dllPath);
+                }
+                m_BuildAutoLoad = false;
+            }
+            if (buildStatus == VE::ScriptEngine::BuildStatus::Building) {
+                m_BuildAutoLoad = true;
+            }
+
+            // Status
+            switch (buildStatus) {
+                case VE::ScriptEngine::BuildStatus::Building:
+                    ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f), "Building...");
+                    break;
+                case VE::ScriptEngine::BuildStatus::Success:
+                    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Build Succeeded");
+                    break;
+                case VE::ScriptEngine::BuildStatus::Failed:
+                    ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "Build Failed");
+                    break;
+                default: break;
+            }
+
+            // Build log
+            auto& buildOutput = VE::ScriptEngine::GetBuildOutput();
+            if (!buildOutput.empty()) {
+                if (ImGui::TreeNode("Build Log")) {
+                    ImGui::BeginChild("BuildLog", ImVec2(0, 200), true);
+                    ImGui::TextUnformatted(buildOutput.c_str());
+                    ImGui::EndChild();
+                    ImGui::TreePop();
+                }
             }
         }
 
-        if (VE::ScriptEngine::IsLoaded()) {
-            ImGui::SameLine();
-            if (ImGui::Button("Unload"))
-                VE::ScriptEngine::UnloadScriptDLL();
+        ImGui::Separator();
 
-            ImGui::Separator();
-            ImGui::Text("Registered Scripts:");
-            auto names = VE::ScriptEngine::GetRegisteredClassNames();
-            for (auto& name : names)
-                ImGui::BulletText("%s", name.c_str());
+        // ── DLL Management ──────────────────────────────────────────
+        if (ImGui::CollapsingHeader("DLL", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Script DLL: %s",
+                VE::ScriptEngine::IsLoaded()
+                    ? VE::ScriptEngine::GetDLLPath().c_str()
+                    : "(none)");
 
-            if (VE::ScriptEngine::WasReloadedThisFrame())
-                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Hot-reloaded!");
+            if (ImGui::Button("Load Script DLL...")) {
+                static const char* dllFilter = "DLL Files (*.dll)\0*.dll\0All Files\0*.*\0";
+                std::string path = VE::FileDialog::OpenFile(dllFilter, GetWindow().GetNativeWindow());
+                if (!path.empty()) {
+                    VE::ScriptEngine::LoadScriptDLL(path);
+                    m_ScriptDLLPath = path;
+                }
+            }
+
+            if (VE::ScriptEngine::IsLoaded()) {
+                ImGui::SameLine();
+                if (ImGui::Button("Unload"))
+                    VE::ScriptEngine::UnloadScriptDLL();
+
+                ImGui::Separator();
+                ImGui::Text("Registered Scripts:");
+                auto names = VE::ScriptEngine::GetRegisteredClassNames();
+                for (auto& name : names)
+                    ImGui::BulletText("%s", name.c_str());
+
+                if (VE::ScriptEngine::WasReloadedThisFrame())
+                    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Hot-reloaded!");
+            }
         }
 
         ImGui::End();
@@ -1775,6 +1933,7 @@ private:
 
     // Scripting
     std::string m_ScriptDLLPath;
+    bool m_BuildAutoLoad = false;
 
     // Asset management
     VE::AssetDatabase m_AssetDatabase;

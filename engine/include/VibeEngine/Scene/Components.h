@@ -18,6 +18,8 @@
 #include <array>
 #include <vector>
 #include <memory>
+#include <unordered_map>
+#include <variant>
 
 namespace VE {
 
@@ -86,9 +88,15 @@ struct ColliderComponent {
 // Forward declaration — full definition in Scripting/NativeScript.h
 class NativeScript;
 
+// Stored property value — persists across play/stop, serialized in scene files
+using ScriptPropertyValue = std::variant<float, int, bool>;
+
 struct ScriptComponent {
     std::string ClassName;               // e.g. "PlayerController"
     NativeScript* _Instance = nullptr;   // runtime only, not serialized
+
+    // Property values — editable in Inspector, applied to instance on play
+    std::unordered_map<std::string, ScriptPropertyValue> Properties;
 
     ScriptComponent() = default;
     ScriptComponent(const std::string& cls) : ClassName(cls) {}

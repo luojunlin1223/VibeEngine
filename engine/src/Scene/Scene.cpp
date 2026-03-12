@@ -176,6 +176,8 @@ void Scene::StartScripts() {
         if (sc._Instance) {
             auto& id = m_Registry.get<IDComponent>(entity);
             sc._Instance->m_EntityID = static_cast<uint64_t>(id.ID);
+            // Apply stored property values before OnCreate
+            ScriptEngine::ApplyPropertiesToInstance(sc._Instance, sc.ClassName, sc.Properties);
             sc._Instance->OnCreate();
         }
     }
@@ -187,6 +189,8 @@ void Scene::StopScripts() {
     for (auto entity : view) {
         auto& sc = view.get<ScriptComponent>(entity);
         if (sc._Instance) {
+            // Read back property values before destroying
+            ScriptEngine::ReadPropertiesFromInstance(sc._Instance, sc.ClassName, sc.Properties);
             sc._Instance->OnDestroy();
             ScriptEngine::DestroyInstance(sc._Instance);
             sc._Instance = nullptr;
