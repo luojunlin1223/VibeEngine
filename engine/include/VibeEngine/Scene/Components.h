@@ -21,6 +21,8 @@
 #include <unordered_map>
 #include <variant>
 
+namespace VE { class Animator; }
+
 namespace VE {
 
 struct IDComponent {
@@ -30,10 +32,32 @@ struct IDComponent {
     IDComponent(UUID id) : ID(id) {}
 };
 
+// Built-in tags (user can extend at runtime)
+inline const char* kDefaultTags[] = {
+    "Untagged", "Respawn", "Finish", "EditorOnly",
+    "MainCamera", "Player", "GameController"
+};
+inline constexpr int kDefaultTagCount = 7;
+
+// Built-in layer names (32 layers, 0-31)
+inline const char* kDefaultLayers[] = {
+    "Default",        // 0
+    "TransparentFX",  // 1
+    "Ignore Raycast", // 2
+    "",               // 3
+    "Water",          // 4
+    "UI",             // 5
+    "", "", "",       // 6-8
+    "", "", "", "", "", "", "", // 9-15
+    "", "", "", "", "", "", "", "", // 16-23
+    "", "", "", "", "", "", "", ""  // 24-31
+};
+inline constexpr int kLayerCount = 32;
+
 struct TagComponent {
-    std::string Tag;
-    std::string EntityTag = "Untagged"; // Unity-style tag (Player, Enemy, etc.)
-    int Layer = 0;                       // Layer index (0 = Default)
+    std::string Tag;                         // entity name (like Unity's gameObject.name)
+    std::string GameObjectTag = "Untagged";  // categorical tag (like Unity's gameObject.tag)
+    int Layer = 0;                           // layer index 0-31 (like Unity's gameObject.layer)
 
     TagComponent() = default;
     TagComponent(const std::string& tag) : Tag(tag) {}
@@ -120,6 +144,17 @@ struct ScriptComponent {
 
     ScriptComponent() = default;
     ScriptComponent(const std::string& cls) : ClassName(cls) {}
+};
+
+struct AnimatorComponent {
+    std::string AnimationSourcePath; // FBX file with animation clips (can differ from mesh FBX)
+    int   ClipIndex = 0;
+    bool  PlayOnStart = true;
+    bool  Loop = true;
+    float Speed = 1.0f;
+    std::shared_ptr<Animator> _Animator; // runtime only, not serialized
+
+    AnimatorComponent() = default;
 };
 
 struct MeshRendererComponent {

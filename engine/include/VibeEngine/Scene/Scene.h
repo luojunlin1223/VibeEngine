@@ -110,6 +110,9 @@ public:
     void StartScripts();
     void StopScripts();
 
+    void StartAnimations();
+    void StopAnimations();
+
     template<typename... Components>
     auto GetAllEntitiesWith() { return m_Registry.view<Components...>(); }
 

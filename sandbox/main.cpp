@@ -238,6 +238,7 @@ protected:
         DrawPipelineSettingsPanel();
         DrawScriptingPanel();
         DrawContentBrowserPanel();
+        DrawProjectSettingsPanel();
 
         if (m_ShowDemo)
             ImGui::ShowDemoWindow(&m_ShowDemo);
@@ -619,6 +620,33 @@ private:
                         m_SelectedEntity = {};
                     });
                 }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Settings")) {
+                ImGui::MenuItem("Project Settings", nullptr, &m_ShowProjectSettings);
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("GameObject")) {
+                if (ImGui::MenuItem("Create Empty"))
+                    m_Scene->CreateEntity("GameObject");
+                if (ImGui::MenuItem("Create Triangle")) {
+                    auto e = m_Scene->CreateEntity("Triangle");
+                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = VE::MeshLibrary::GetTriangle();
+                    mr.Mat = VE::MaterialLibrary::Get("Default");
+                }
+                if (ImGui::MenuItem("Create Quad")) {
+                    auto e = m_Scene->CreateEntity("Quad");
+                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = VE::MeshLibrary::GetQuad();
+                    mr.Mat = VE::MaterialLibrary::Get("Default");
+                }
+                if (ImGui::MenuItem("Create Cube")) {
+                    auto e = m_Scene->CreateEntity("Cube");
+                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = VE::MeshLibrary::GetCube();
+                    mr.Mat = VE::MaterialLibrary::Get("Lit");
+                }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Select All", "Ctrl+A")) {
                     // Select first entity if none selected (no multi-select yet)
@@ -785,6 +813,7 @@ private:
         m_Scene->StartPhysics();
         VE::ScriptEngine::SetActiveScene(m_Scene.get());
         m_Scene->StartScripts();
+        m_Scene->StartAnimations();
         m_PlayMode = true;
         m_CommandHistory.Clear();
         VE_INFO("Entered Play mode");
@@ -793,6 +822,7 @@ private:
     void ExitPlayMode() {
         if (!m_PlayMode) return;
 
+        m_Scene->StopAnimations();
         m_Scene->StopScripts();
         m_Scene->StopPhysics();
 
@@ -1139,6 +1169,8 @@ private:
                     m_InspectedMeshSettings.VertexCount   = probe.VertexCount;
                     m_InspectedMeshSettings.TriangleCount  = probe.TriangleCount;
                     m_InspectedMeshSettings.SubMeshCount   = probe.SubMeshCount;
+                    m_InspectedMeshSettings.BoneCount      = probe.BoneCount;
+                    m_InspectedMeshSettings.ClipCount      = probe.ClipCount;
                     VE::FBXImporter::SaveSettings(metaPath, m_InspectedMeshSettings);
                 }
             }
@@ -1152,6 +1184,10 @@ private:
         ImGui::Text("Vertices:   %u", m_InspectedMeshSettings.VertexCount);
         ImGui::Text("Triangles:  %u", m_InspectedMeshSettings.TriangleCount);
         ImGui::Text("Sub-meshes: %u", m_InspectedMeshSettings.SubMeshCount);
+        if (m_InspectedMeshSettings.BoneCount > 0)
+            ImGui::Text("Bones:      %u", m_InspectedMeshSettings.BoneCount);
+        if (m_InspectedMeshSettings.ClipCount > 0)
+            ImGui::Text("Anim clips: %u", m_InspectedMeshSettings.ClipCount);
         ImGui::Separator();
 
         // ── Import Settings ──
@@ -1174,6 +1210,10 @@ private:
             m_MeshSettingsDirty = true;
         if (ImGui::Checkbox("Import Vertex Colors", &m_InspectedMeshSettings.ImportVertexColors))
             m_MeshSettingsDirty = true;
+        if (ImGui::Checkbox("Import Skin Weights", &m_InspectedMeshSettings.ImportSkinWeights))
+            m_MeshSettingsDirty = true;
+        if (ImGui::Checkbox("Import Animations", &m_InspectedMeshSettings.ImportAnimations))
+            m_MeshSettingsDirty = true;
 
         ImGui::Separator();
 
@@ -1188,6 +1228,8 @@ private:
                 m_InspectedMeshSettings.VertexCount   = newSettings.VertexCount;
                 m_InspectedMeshSettings.TriangleCount  = newSettings.TriangleCount;
                 m_InspectedMeshSettings.SubMeshCount   = newSettings.SubMeshCount;
+                m_InspectedMeshSettings.BoneCount      = newSettings.BoneCount;
+                m_InspectedMeshSettings.ClipCount      = newSettings.ClipCount;
 
                 VE::FBXImporter::SaveSettings(metaPath, m_InspectedMeshSettings);
                 VE::MeshImporter::InvalidateCache(absPath);
@@ -1341,6 +1383,72 @@ private:
         ImGui::PopID();
     }
 
+    // ── Unity-style Object Field for Animation Source ──────────────────
+
+    void DrawAnimationObjectField(const char* label, VE::AnimatorComponent& ac) {
+        bool hasSource = !ac.AnimationSourcePath.empty();
+        std::string displayName = hasSource
+            ? std::filesystem::path(ac.AnimationSourcePath).stem().generic_string() + " (FBX)"
+            : "None (Animation)";
+
+        ImGui::PushID(label);
+
+        ImGui::Text("%s", label);
+        ImGui::SameLine(80.0f);
+
+        float availW = ImGui::GetContentRegionAvail().x;
+        float clearBtnW = ImGui::GetFrameHeight();
+        float fieldW = availW - clearBtnW - ImGui::GetStyle().ItemSpacing.x;
+
+        // --- Main field ---
+        {
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImVec2 size(fieldW, ImGui::GetFrameHeight());
+
+            ImU32 bgCol = IM_COL32(40, 40, 40, 255);
+            ImU32 borderCol = IM_COL32(80, 80, 80, 255);
+            bool hovered = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+            if (hovered) borderCol = IM_COL32(120, 160, 255, 255);
+
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bgCol, 3.0f);
+            dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderCol, 3.0f);
+
+            // Anim icon (orange tint)
+            ImU32 iconCol = hasSource ? IM_COL32(255, 180, 80, 255) : IM_COL32(160, 160, 160, 255);
+            float iconSize = size.y * 0.6f;
+            float iconPad = (size.y - iconSize) * 0.5f;
+            ImVec2 iconMin(pos.x + 4.0f + iconPad, pos.y + iconPad);
+            ImVec2 iconMax(iconMin.x + iconSize, iconMin.y + iconSize);
+            dl->AddRectFilled(iconMin, iconMax, iconCol, 2.0f);
+
+            // Text
+            float textX = iconMax.x + 6.0f;
+            float textY = pos.y + (size.y - ImGui::GetTextLineHeight()) * 0.5f;
+            dl->AddText(ImVec2(textX, textY), IM_COL32(200, 200, 200, 255), displayName.c_str());
+
+            ImGui::InvisibleButton("##animfield", size);
+
+            // Accept drag-drop from Content Browser (ASSET_MESH = FBX files)
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_MESH")) {
+                    std::string path(static_cast<const char*>(payload->Data));
+                    ac.AnimationSourcePath = path;
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        // --- Clear button (x) ---
+        ImGui::SameLine();
+        if (ImGui::Button("x", ImVec2(clearBtnW, 0))) {
+            ac.AnimationSourcePath.clear();
+            ac.ClipIndex = 0;
+        }
+
+        ImGui::PopID();
+    }
+
     void DrawMaterialObjectField(const char* label, VE::MeshRendererComponent& mr) {
         bool hasMat = mr.Mat != nullptr;
         bool isAssetMat = !mr.MaterialPath.empty(); // .vmat file on disk
@@ -1488,35 +1596,53 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::TagComponent>()) {
             auto& tag = m_SelectedEntity.GetComponent<VE::TagComponent>();
+
+            // Name
             char buffer[256];
             strncpy(buffer, tag.Tag.c_str(), sizeof(buffer) - 1);
             buffer[sizeof(buffer) - 1] = '\0';
-            if (ImGui::InputText("Name", buffer, sizeof(buffer)))
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+            if (ImGui::InputText("##Name", buffer, sizeof(buffer)))
                 tag.Tag = buffer;
             if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Rename Entity");
             if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
 
             // Tag dropdown
-            static const char* s_Tags[] = { "Untagged", "Player", "Enemy", "MainCamera", "GameController", "Respawn", "Finish", "EditorOnly" };
-            static constexpr int s_TagCount = sizeof(s_Tags) / sizeof(s_Tags[0]);
-            int currentTag = 0;
-            for (int i = 0; i < s_TagCount; i++) {
-                if (tag.EntityTag == s_Tags[i]) { currentTag = i; break; }
-            }
-            if (ImGui::Combo("Tag", &currentTag, s_Tags, s_TagCount)) {
-                auto before = m_CommandHistory.CaptureSnapshot();
-                tag.EntityTag = s_Tags[currentTag];
-                m_CommandHistory.RecordPropertyEdit("Change Tag", std::move(before));
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+            if (ImGui::BeginCombo("Tag", tag.GameObjectTag.c_str())) {
+                for (int i = 0; i < VE::kDefaultTagCount; i++) {
+                    bool selected = (tag.GameObjectTag == VE::kDefaultTags[i]);
+                    if (ImGui::Selectable(VE::kDefaultTags[i], selected)) {
+                        auto before = m_CommandHistory.CaptureSnapshot();
+                        tag.GameObjectTag = VE::kDefaultTags[i];
+                        m_CommandHistory.RecordPropertyEdit("Change Tag", std::move(before));
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
 
             // Layer dropdown
-            static const char* s_Layers[] = { "Default", "TransparentFX", "Ignore Raycast", "Water", "UI", "Layer 5", "Layer 6", "Layer 7" };
-            static constexpr int s_LayerCount = sizeof(s_Layers) / sizeof(s_Layers[0]);
-            int currentLayer = (tag.Layer >= 0 && tag.Layer < s_LayerCount) ? tag.Layer : 0;
-            if (ImGui::Combo("Layer", &currentLayer, s_Layers, s_LayerCount)) {
-                auto before = m_CommandHistory.CaptureSnapshot();
-                tag.Layer = currentLayer;
-                m_CommandHistory.RecordPropertyEdit("Change Layer", std::move(before));
+            const char* currentLayerName = (tag.Layer >= 0 && tag.Layer < VE::kLayerCount && VE::kDefaultLayers[tag.Layer][0] != '\0')
+                ? VE::kDefaultLayers[tag.Layer] : "Unnamed";
+            char layerLabel[64];
+            snprintf(layerLabel, sizeof(layerLabel), "%d: %s", tag.Layer, currentLayerName);
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+            if (ImGui::BeginCombo("Layer", layerLabel)) {
+                for (int i = 0; i < VE::kLayerCount; i++) {
+                    const char* lname = VE::kDefaultLayers[i];
+                    if (lname[0] == '\0') continue; // skip unnamed layers
+                    char itemLabel[64];
+                    snprintf(itemLabel, sizeof(itemLabel), "%d: %s", i, lname);
+                    bool selected = (tag.Layer == i);
+                    if (ImGui::Selectable(itemLabel, selected)) {
+                        auto before = m_CommandHistory.CaptureSnapshot();
+                        tag.Layer = i;
+                        m_CommandHistory.RecordPropertyEdit("Change Layer", std::move(before));
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
 
             ImGui::Separator();
@@ -1769,6 +1895,46 @@ private:
             ImGui::Separator();
         }
 
+        if (m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
+            auto& ac = m_SelectedEntity.GetComponent<VE::AnimatorComponent>();
+            bool removeAnimator = false;
+            if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
+                // Show clip info from the associated MeshAsset
+                int clipCount = 0;
+                int boneCount = 0;
+                if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
+                    auto& mr = m_SelectedEntity.GetComponent<VE::MeshRendererComponent>();
+                    if (!mr.MeshSourcePath.empty()) {
+                        auto meshAsset = VE::MeshImporter::GetOrLoad(mr.MeshSourcePath);
+                        if (meshAsset) {
+                            clipCount = static_cast<int>(meshAsset->Clips.size());
+                            if (meshAsset->SkeletonRef)
+                                boneCount = meshAsset->SkeletonRef->GetBoneCount();
+                        }
+                    }
+                }
+                ImGui::Text("Bones: %d", boneCount);
+
+                // Animation source — Object Field with drag-drop
+                DrawAnimationObjectField("Animation", ac);
+
+                ImGui::DragInt("Clip Index", &ac.ClipIndex, 1, 0, 100);
+
+                ImGui::Checkbox("Play On Start", &ac.PlayOnStart);
+                ImGui::Checkbox("Loop", &ac.Loop);
+                ImGui::DragFloat("Speed", &ac.Speed, 0.05f, 0.0f, 10.0f);
+
+                if (ac._Animator)
+                    ImGui::Text("Status: %s", ac._Animator->IsPlaying() ? "Playing" : "Stopped");
+
+                if (ImGui::Button("Remove Component##Animator"))
+                    removeAnimator = true;
+            }
+            if (removeAnimator)
+                m_SelectedEntity.RemoveComponent<VE::AnimatorComponent>();
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             bool removeComponent = false;
             bool openMR = ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen);
@@ -1943,6 +2109,12 @@ private:
                     m_CommandHistory.Execute("Add Mesh Collider", [this]() {
                         m_SelectedEntity.AddComponent<VE::MeshColliderComponent>();
                     });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
+                if (ImGui::MenuItem("Animator")) {
+                    m_SelectedEntity.AddComponent<VE::AnimatorComponent>();
+                }
                 anyAdded = true;
             }
             if (!anyAdded) {
@@ -2321,6 +2493,90 @@ private:
         ImGui::End();
     }
 
+    // ── Project Settings Panel ──────────────────────────────────────────
+
+    void DrawProjectSettingsPanel() {
+        if (!m_ShowProjectSettings) return;
+        ImGui::Begin("Project Settings", &m_ShowProjectSettings);
+
+        // Left-side category list + right-side content
+        static int selectedCategory = 0;
+        const char* categories[] = { "Tags and Layers" };
+        constexpr int categoryCount = 1;
+
+        ImGui::BeginChild("##categories", ImVec2(150, 0), true);
+        for (int i = 0; i < categoryCount; i++) {
+            if (ImGui::Selectable(categories[i], selectedCategory == i))
+                selectedCategory = i;
+        }
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+        ImGui::BeginChild("##content", ImVec2(0, 0), true);
+
+        if (selectedCategory == 0) {
+            // ── Tags ──
+            if (ImGui::CollapsingHeader("Tags", ImGuiTreeNodeFlags_DefaultOpen)) {
+                for (int i = 0; i < (int)m_CustomTags.size(); i++) {
+                    ImGui::PushID(i);
+                    char buf[128];
+                    strncpy(buf, m_CustomTags[i].c_str(), sizeof(buf) - 1);
+                    buf[sizeof(buf) - 1] = '\0';
+
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 30);
+                    if (ImGui::InputText("##tag", buf, sizeof(buf)))
+                        m_CustomTags[i] = buf;
+
+                    // Don't allow removing built-in tags (first 7)
+                    if (i >= VE::kDefaultTagCount) {
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("-")) {
+                            m_CustomTags.erase(m_CustomTags.begin() + i);
+                            ImGui::PopID();
+                            break;
+                        }
+                    }
+                    ImGui::PopID();
+                }
+                if (ImGui::Button("+ Add Tag")) {
+                    m_CustomTags.push_back("New Tag");
+                }
+            }
+
+            ImGui::Spacing();
+
+            // ── Layers ──
+            if (ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen)) {
+                for (int i = 0; i < 32; i++) {
+                    ImGui::PushID(i + 1000);
+                    char label[16];
+                    snprintf(label, sizeof(label), "Layer %d", i);
+
+                    char buf[64];
+                    strncpy(buf, m_LayerNames[i].c_str(), sizeof(buf) - 1);
+                    buf[sizeof(buf) - 1] = '\0';
+
+                    // Built-in layers (0-5) are read-only
+                    if (i <= 5 && m_LayerNames[i].length() > 0) {
+                        ImGui::Text("%s", label);
+                        ImGui::SameLine(80);
+                        ImGui::TextDisabled("%s (Built-in)", m_LayerNames[i].c_str());
+                    } else {
+                        ImGui::Text("%s", label);
+                        ImGui::SameLine(80);
+                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                        if (ImGui::InputText("##layer", buf, sizeof(buf)))
+                            m_LayerNames[i] = buf;
+                    }
+                    ImGui::PopID();
+                }
+            }
+        }
+
+        ImGui::EndChild();
+        ImGui::End();
+    }
+
     // Navigate Content Browser to the asset and select it
     void PingAsset(const std::string& absolutePath) {
         std::string relPath = m_AssetDatabase.GetRelativePath(absolutePath);
@@ -2426,7 +2682,6 @@ private:
             float thumbSize = cellSize - 16.0f;
             // Use InvisibleButton as the base interactive item (gives us an ID for popups/clicks)
             ImGui::InvisibleButton("##item", ImVec2(thumbSize, thumbSize));
-            bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
             bool hovered = ImGui::IsItemHovered();
             ImVec2 itemMin = ImGui::GetItemRectMin();
             ImVec2 itemMax = ImGui::GetItemRectMax();
@@ -2476,8 +2731,8 @@ private:
             else if (hovered)
                 dl->AddRect(itemMin, itemMax, IM_COL32(255, 200, 100, 200), 0.0f, 0, 2.0f);
 
-            // Single-click: select asset in inspector
-            if (clicked) {
+            // Single-click: select asset in inspector (on release, skip if drag in progress)
+            if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::GetDragDropPayload()) {
                 m_SelectedAssetPath = relPath;
                 m_SelectedEntity = {}; // deselect entity
             }
@@ -2657,6 +2912,20 @@ private:
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
     bool m_ShowDemo = false;
+    bool m_ShowProjectSettings = false;
+
+    // Project settings: custom tags & layers
+    std::vector<std::string> m_CustomTags = {
+        "Untagged", "Respawn", "Finish", "EditorOnly",
+        "MainCamera", "Player", "GameController"
+    };
+    std::array<std::string, 32> m_LayerNames = {
+        "Default", "TransparentFX", "Ignore Raycast", "",
+        "Water", "UI", "", "", "",
+        "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", ""
+    };
 
     // Play mode
     bool m_PlayMode = false;

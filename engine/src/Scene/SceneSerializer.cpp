@@ -37,7 +37,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         auto& tc = entity.GetComponent<TagComponent>();
         out << YAML::Key << "TagComponent" << YAML::Value << YAML::BeginMap;
         out << YAML::Key << "Tag" << YAML::Value << tc.Tag;
-        out << YAML::Key << "EntityTag" << YAML::Value << tc.EntityTag;
+        out << YAML::Key << "GameObjectTag" << YAML::Value << tc.GameObjectTag;
         out << YAML::Key << "Layer" << YAML::Value << tc.Layer;
         out << YAML::EndMap;
     }
@@ -136,6 +136,19 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
             }
             out << YAML::EndMap;
         }
+        out << YAML::EndMap;
+    }
+
+    // AnimatorComponent
+    if (entity.HasComponent<AnimatorComponent>()) {
+        auto& ac = entity.GetComponent<AnimatorComponent>();
+        out << YAML::Key << "AnimatorComponent" << YAML::Value << YAML::BeginMap;
+        if (!ac.AnimationSourcePath.empty())
+            out << YAML::Key << "AnimationSource" << YAML::Value << ac.AnimationSourcePath;
+        out << YAML::Key << "ClipIndex" << YAML::Value << ac.ClipIndex;
+        out << YAML::Key << "PlayOnStart" << YAML::Value << ac.PlayOnStart;
+        out << YAML::Key << "Loop" << YAML::Value << ac.Loop;
+        out << YAML::Key << "Speed" << YAML::Value << ac.Speed;
         out << YAML::EndMap;
     }
 
@@ -357,18 +370,18 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         uint64_t uuid = entityNode["Entity"].as<uint64_t>();
 
         std::string name = "GameObject";
-        std::string entityTag = "Untagged";
+        std::string goTag = "Untagged";
         int layer = 0;
         if (auto tagNode = entityNode["TagComponent"]) {
             name = tagNode["Tag"].as<std::string>();
-            if (tagNode["EntityTag"]) entityTag = tagNode["EntityTag"].as<std::string>();
+            if (tagNode["GameObjectTag"]) goTag = tagNode["GameObjectTag"].as<std::string>();
             if (tagNode["Layer"]) layer = tagNode["Layer"].as<int>();
         }
 
         Entity entity = scene->CreateEntityWithUUID(UUID(uuid), name);
-        auto& tagComp = entity.GetComponent<TagComponent>();
-        tagComp.EntityTag = entityTag;
-        tagComp.Layer = layer;
+        auto& tc = entity.GetComponent<TagComponent>();
+        tc.GameObjectTag = goTag;
+        tc.Layer = layer;
 
         if (auto tcNode = entityNode["TransformComponent"]) {
             auto& tc = entity.GetComponent<TransformComponent>();
@@ -477,6 +490,15 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     }
                 }
             }
+        }
+
+        if (auto acNode = entityNode["AnimatorComponent"]) {
+            auto& ac = entity.AddComponent<AnimatorComponent>();
+            if (acNode["AnimationSource"]) ac.AnimationSourcePath = acNode["AnimationSource"].as<std::string>();
+            if (acNode["ClipIndex"])   ac.ClipIndex   = acNode["ClipIndex"].as<int>();
+            if (acNode["PlayOnStart"]) ac.PlayOnStart = acNode["PlayOnStart"].as<bool>();
+            if (acNode["Loop"])        ac.Loop        = acNode["Loop"].as<bool>();
+            if (acNode["Speed"])       ac.Speed       = acNode["Speed"].as<float>();
         }
 
         if (auto mrNode = entityNode["MeshRendererComponent"]) {

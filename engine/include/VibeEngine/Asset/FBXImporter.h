@@ -23,12 +23,19 @@ struct FBXImportSettings {
     bool ImportUVs = true;
     bool MergeAllMeshes = true;
     bool ImportVertexColors = false;
+    bool ImportSkinWeights = true;
+    bool ImportAnimations = true;
 
     // Read-only mesh info (populated after import)
     uint32_t VertexCount = 0;
     uint32_t TriangleCount = 0;
     uint32_t SubMeshCount = 0;
+    uint32_t BoneCount = 0;
+    uint32_t ClipCount = 0;
 };
+
+class Skeleton;
+class AnimationClip;
 
 class FBXImporter {
 public:
@@ -39,6 +46,11 @@ public:
     // Import mesh with given settings.  Populates info fields on settings.
     static std::shared_ptr<MeshAsset> Import(const std::string& absPath,
                                               FBXImportSettings& settings);
+
+    // Import only animation clips from an FBX, remapping bone names to an existing skeleton.
+    // Returns empty vector if no animations found.
+    static std::vector<AnimationClip> ImportAnimations(const std::string& absPath,
+                                                        const std::shared_ptr<Skeleton>& skeleton);
 };
 
 } // namespace VE
