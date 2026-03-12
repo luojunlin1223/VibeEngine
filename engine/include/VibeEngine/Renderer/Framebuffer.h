@@ -8,6 +8,7 @@ namespace VE {
 struct FramebufferSpec {
     uint32_t Width = 1280;
     uint32_t Height = 720;
+    bool HDR = false;   // true → RGBA16F, false → RGBA8
 };
 
 class Framebuffer {

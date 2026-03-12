@@ -16,6 +16,7 @@
 #include "Renderer/Texture.h"
 #include "Renderer/Material.h"
 #include "Renderer/Framebuffer.h"
+#include "Renderer/PostProcessing.h"
 #include "Renderer/GizmoRenderer.h"
 
 #include "Scene/Components.h"

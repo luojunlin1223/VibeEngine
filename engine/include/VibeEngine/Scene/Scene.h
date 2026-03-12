@@ -14,6 +14,8 @@
 #include <glm/glm.hpp>
 #include <string>
 #include <array>
+#include <vector>
+#include <utility>
 #include <memory>
 
 namespace VE {
@@ -27,6 +29,46 @@ struct RenderPipelineSettings {
     std::array<float, 3> SkyBottomColor = { 0.9f, 0.9f, 0.95f };
     std::shared_ptr<Texture2D> SkyTexture;
     std::string SkyTexturePath;
+
+    // Bloom
+    bool BloomEnabled = false;
+    float BloomThreshold = 0.8f;
+    float BloomIntensity = 1.0f;
+    int BloomIterations = 5;
+
+    // Vignette
+    bool VignetteEnabled = false;
+    float VignetteIntensity = 0.5f;
+    float VignetteSmoothness = 0.5f;
+
+    // Color Adjustments
+    bool ColorAdjustEnabled = false;
+    float ColorExposure = 0.0f;
+    float ColorContrast = 0.0f;
+    float ColorSaturation = 0.0f;
+    std::array<float, 3> ColorFilter = { 1.0f, 1.0f, 1.0f };
+    float ColorGamma = 1.0f;
+
+    // Shadows / Midtones / Highlights
+    bool SMHEnabled = false;
+    std::array<float, 3> SMH_Shadows    = { 1.0f, 1.0f, 1.0f };
+    std::array<float, 3> SMH_Midtones   = { 1.0f, 1.0f, 1.0f };
+    std::array<float, 3> SMH_Highlights = { 1.0f, 1.0f, 1.0f };
+    float SMH_ShadowStart    = 0.0f;
+    float SMH_ShadowEnd      = 0.3f;
+    float SMH_HighlightStart = 0.55f;
+    float SMH_HighlightEnd   = 1.0f;
+
+    // Color Curves (per-channel control points in [0,1])
+    bool CurvesEnabled = false;
+    std::vector<std::pair<float, float>> CurvesMaster = { {0.0f, 0.0f}, {1.0f, 1.0f} };
+    std::vector<std::pair<float, float>> CurvesRed    = { {0.0f, 0.0f}, {1.0f, 1.0f} };
+    std::vector<std::pair<float, float>> CurvesGreen  = { {0.0f, 0.0f}, {1.0f, 1.0f} };
+    std::vector<std::pair<float, float>> CurvesBlue   = { {0.0f, 0.0f}, {1.0f, 1.0f} };
+
+    // Tonemapping
+    bool TonemapEnabled = false;
+    int  TonemapMode = 2; // 0=None, 1=Reinhard, 2=ACES, 3=Uncharted2
 };
 
 class Scene {

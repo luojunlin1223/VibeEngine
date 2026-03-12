@@ -165,6 +165,44 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
         << YAML::BeginSeq << ps.SkyBottomColor[0] << ps.SkyBottomColor[1] << ps.SkyBottomColor[2] << YAML::EndSeq;
     if (!ps.SkyTexturePath.empty())
         out << YAML::Key << "SkyTexturePath" << YAML::Value << ps.SkyTexturePath;
+    out << YAML::Key << "BloomEnabled" << YAML::Value << ps.BloomEnabled;
+    out << YAML::Key << "BloomThreshold" << YAML::Value << ps.BloomThreshold;
+    out << YAML::Key << "BloomIntensity" << YAML::Value << ps.BloomIntensity;
+    out << YAML::Key << "BloomIterations" << YAML::Value << ps.BloomIterations;
+    out << YAML::Key << "VignetteEnabled" << YAML::Value << ps.VignetteEnabled;
+    out << YAML::Key << "VignetteIntensity" << YAML::Value << ps.VignetteIntensity;
+    out << YAML::Key << "VignetteSmoothness" << YAML::Value << ps.VignetteSmoothness;
+    out << YAML::Key << "ColorAdjustEnabled" << YAML::Value << ps.ColorAdjustEnabled;
+    out << YAML::Key << "ColorExposure" << YAML::Value << ps.ColorExposure;
+    out << YAML::Key << "ColorContrast" << YAML::Value << ps.ColorContrast;
+    out << YAML::Key << "ColorSaturation" << YAML::Value << ps.ColorSaturation;
+    out << YAML::Key << "ColorFilter" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.ColorFilter[0] << ps.ColorFilter[1] << ps.ColorFilter[2] << YAML::EndSeq;
+    out << YAML::Key << "ColorGamma" << YAML::Value << ps.ColorGamma;
+    out << YAML::Key << "SMHEnabled" << YAML::Value << ps.SMHEnabled;
+    out << YAML::Key << "SMH_Shadows" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.SMH_Shadows[0] << ps.SMH_Shadows[1] << ps.SMH_Shadows[2] << YAML::EndSeq;
+    out << YAML::Key << "SMH_Midtones" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.SMH_Midtones[0] << ps.SMH_Midtones[1] << ps.SMH_Midtones[2] << YAML::EndSeq;
+    out << YAML::Key << "SMH_Highlights" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.SMH_Highlights[0] << ps.SMH_Highlights[1] << ps.SMH_Highlights[2] << YAML::EndSeq;
+    out << YAML::Key << "SMH_ShadowStart" << YAML::Value << ps.SMH_ShadowStart;
+    out << YAML::Key << "SMH_ShadowEnd" << YAML::Value << ps.SMH_ShadowEnd;
+    out << YAML::Key << "SMH_HighlightStart" << YAML::Value << ps.SMH_HighlightStart;
+    out << YAML::Key << "SMH_HighlightEnd" << YAML::Value << ps.SMH_HighlightEnd;
+    out << YAML::Key << "CurvesEnabled" << YAML::Value << ps.CurvesEnabled;
+    auto serializeCurve = [&](const std::string& key, const std::vector<std::pair<float,float>>& pts) {
+        out << YAML::Key << key << YAML::Value << YAML::BeginSeq;
+        for (auto& p : pts)
+            out << YAML::Flow << YAML::BeginSeq << p.first << p.second << YAML::EndSeq;
+        out << YAML::EndSeq;
+    };
+    serializeCurve("CurvesMaster", ps.CurvesMaster);
+    serializeCurve("CurvesRed", ps.CurvesRed);
+    serializeCurve("CurvesGreen", ps.CurvesGreen);
+    serializeCurve("CurvesBlue", ps.CurvesBlue);
+    out << YAML::Key << "TonemapEnabled" << YAML::Value << ps.TonemapEnabled;
+    out << YAML::Key << "TonemapMode" << YAML::Value << ps.TonemapMode;
     out << YAML::EndMap;
 
     out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
@@ -196,6 +234,45 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             ps.SkyTexturePath = tex.as<std::string>();
             ps.SkyTexture = Texture2D::Create(ps.SkyTexturePath);
         }
+        if (psNode["BloomEnabled"]) ps.BloomEnabled = psNode["BloomEnabled"].as<bool>();
+        if (psNode["BloomThreshold"]) ps.BloomThreshold = psNode["BloomThreshold"].as<float>();
+        if (psNode["BloomIntensity"]) ps.BloomIntensity = psNode["BloomIntensity"].as<float>();
+        if (psNode["BloomIterations"]) ps.BloomIterations = psNode["BloomIterations"].as<int>();
+        if (psNode["VignetteEnabled"]) ps.VignetteEnabled = psNode["VignetteEnabled"].as<bool>();
+        if (psNode["VignetteIntensity"]) ps.VignetteIntensity = psNode["VignetteIntensity"].as<float>();
+        if (psNode["VignetteSmoothness"]) ps.VignetteSmoothness = psNode["VignetteSmoothness"].as<float>();
+        if (psNode["ColorAdjustEnabled"]) ps.ColorAdjustEnabled = psNode["ColorAdjustEnabled"].as<bool>();
+        if (psNode["ColorExposure"]) ps.ColorExposure = psNode["ColorExposure"].as<float>();
+        if (psNode["ColorContrast"]) ps.ColorContrast = psNode["ColorContrast"].as<float>();
+        if (psNode["ColorSaturation"]) ps.ColorSaturation = psNode["ColorSaturation"].as<float>();
+        if (auto cf = psNode["ColorFilter"])
+            ps.ColorFilter = { cf[0].as<float>(), cf[1].as<float>(), cf[2].as<float>() };
+        if (psNode["ColorGamma"]) ps.ColorGamma = psNode["ColorGamma"].as<float>();
+        if (psNode["SMHEnabled"]) ps.SMHEnabled = psNode["SMHEnabled"].as<bool>();
+        if (auto v = psNode["SMH_Shadows"])
+            ps.SMH_Shadows = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+        if (auto v = psNode["SMH_Midtones"])
+            ps.SMH_Midtones = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+        if (auto v = psNode["SMH_Highlights"])
+            ps.SMH_Highlights = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+        if (psNode["SMH_ShadowStart"]) ps.SMH_ShadowStart = psNode["SMH_ShadowStart"].as<float>();
+        if (psNode["SMH_ShadowEnd"]) ps.SMH_ShadowEnd = psNode["SMH_ShadowEnd"].as<float>();
+        if (psNode["SMH_HighlightStart"]) ps.SMH_HighlightStart = psNode["SMH_HighlightStart"].as<float>();
+        if (psNode["SMH_HighlightEnd"]) ps.SMH_HighlightEnd = psNode["SMH_HighlightEnd"].as<float>();
+        if (psNode["CurvesEnabled"]) ps.CurvesEnabled = psNode["CurvesEnabled"].as<bool>();
+        auto deserializeCurve = [&](const std::string& key, std::vector<std::pair<float,float>>& pts) {
+            if (auto node = psNode[key]) {
+                pts.clear();
+                for (auto pt : node)
+                    pts.push_back({ pt[0].as<float>(), pt[1].as<float>() });
+            }
+        };
+        deserializeCurve("CurvesMaster", ps.CurvesMaster);
+        deserializeCurve("CurvesRed", ps.CurvesRed);
+        deserializeCurve("CurvesGreen", ps.CurvesGreen);
+        deserializeCurve("CurvesBlue", ps.CurvesBlue);
+        if (psNode["TonemapEnabled"]) ps.TonemapEnabled = psNode["TonemapEnabled"].as<bool>();
+        if (psNode["TonemapMode"]) ps.TonemapMode = psNode["TonemapMode"].as<int>();
     }
 
     auto entities = data["Entities"];

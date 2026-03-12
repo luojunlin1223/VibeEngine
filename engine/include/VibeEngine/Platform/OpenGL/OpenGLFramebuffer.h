@@ -25,6 +25,7 @@ private:
     uint32_t m_ColorAttachment = 0;
     uint32_t m_DepthAttachment = 0;
     uint32_t m_Width, m_Height;
+    bool m_HDR = false;
 };
 
 } // namespace VE
