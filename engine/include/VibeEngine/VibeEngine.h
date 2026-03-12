@@ -5,6 +5,7 @@
 #include "Core/Window.h"
 #include "Core/Application.h"
 #include "Core/UUID.h"
+#include "Core/Object.h"
 #include "Core/FileDialog.h"
 
 #include "Renderer/Renderer.h"

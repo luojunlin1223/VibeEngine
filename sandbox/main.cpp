@@ -554,7 +554,7 @@ private:
                 std::string path(static_cast<const char*>(payload->Data));
                 auto meshAsset = VE::MeshImporter::GetOrLoad(path);
                 if (meshAsset && meshAsset->VAO) {
-                    auto entity = m_Scene->CreateEntity(meshAsset->Name);
+                    auto entity = m_Scene->CreateEntity(meshAsset->GetName());
                     auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
                     mr.Mesh = meshAsset->VAO;
                     mr.Mat = VE::MaterialLibrary::Get("Lit");
@@ -749,6 +749,16 @@ private:
             m_SelectedAssetPath.clear(); // deselect asset
         }
 
+        // Right-click context menu on entity node
+        if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem("Delete")) {
+                m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
+                if (m_SelectedEntity.GetHandle() == entityID)
+                    m_SelectedEntity = {};
+            }
+            ImGui::EndPopup();
+        }
+
         // Drag source
         if (ImGui::BeginDragDropSource()) {
             ImGui::SetDragDropPayload("ENTITY_NODE", &entityID, sizeof(entt::entity));
@@ -801,7 +811,7 @@ private:
         } else if (meta->Type == VE::AssetType::Shader) {
             ImGui::Text("Type: Shader (.shader)");
         } else if (meta->Type == VE::AssetType::Mesh) {
-            ImGui::Text("Type: Mesh");
+            DrawMeshAssetInspector();
         } else if (meta->Type == VE::AssetType::Scene) {
             ImGui::Text("Type: Scene");
         } else {
@@ -926,6 +936,352 @@ private:
         if (ImGui::Button("Save Material")) {
             m_InspectedMaterial->Save(absPath);
         }
+    }
+
+    void DrawMeshAssetInspector() {
+        std::string absPath = m_AssetDatabase.GetAbsolutePath(m_SelectedAssetPath);
+        std::string metaPath = absPath + ".meta";
+
+        // Load settings if asset changed
+        if (m_InspectedMeshPath != absPath) {
+            m_InspectedMeshPath = absPath;
+            m_InspectedMeshSettings = VE::FBXImporter::LoadSettings(metaPath);
+            m_MeshSettingsDirty = false;
+
+            // If no cached info, do a quick import to populate counts
+            if (m_InspectedMeshSettings.VertexCount == 0) {
+                VE::FBXImportSettings probe = m_InspectedMeshSettings;
+                auto mesh = VE::FBXImporter::Import(absPath, probe);
+                if (mesh) {
+                    m_InspectedMeshSettings.VertexCount   = probe.VertexCount;
+                    m_InspectedMeshSettings.TriangleCount  = probe.TriangleCount;
+                    m_InspectedMeshSettings.SubMeshCount   = probe.SubMeshCount;
+                    VE::FBXImporter::SaveSettings(metaPath, m_InspectedMeshSettings);
+                }
+            }
+        }
+
+        ImGui::Text("Type: Mesh (FBX Importer)");
+        ImGui::Separator();
+
+        // ── Mesh Info ──
+        ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "Mesh Info");
+        ImGui::Text("Vertices:   %u", m_InspectedMeshSettings.VertexCount);
+        ImGui::Text("Triangles:  %u", m_InspectedMeshSettings.TriangleCount);
+        ImGui::Text("Sub-meshes: %u", m_InspectedMeshSettings.SubMeshCount);
+        ImGui::Separator();
+
+        // ── Import Settings ──
+        ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "Import Settings");
+
+        if (ImGui::DragFloat("Scale Factor", &m_InspectedMeshSettings.ScaleFactor, 0.01f, 0.001f, 1000.0f))
+            m_MeshSettingsDirty = true;
+
+        // Normals combo
+        const char* normalItems[] = { "Import", "Calculate", "None" };
+        int normalIdx = static_cast<int>(m_InspectedMeshSettings.Normals);
+        if (ImGui::Combo("Normals", &normalIdx, normalItems, 3)) {
+            m_InspectedMeshSettings.Normals = static_cast<VE::FBXImportSettings::NormalMode>(normalIdx);
+            m_MeshSettingsDirty = true;
+        }
+
+        if (ImGui::Checkbox("Import UVs", &m_InspectedMeshSettings.ImportUVs))
+            m_MeshSettingsDirty = true;
+        if (ImGui::Checkbox("Merge All Meshes", &m_InspectedMeshSettings.MergeAllMeshes))
+            m_MeshSettingsDirty = true;
+        if (ImGui::Checkbox("Import Vertex Colors", &m_InspectedMeshSettings.ImportVertexColors))
+            m_MeshSettingsDirty = true;
+
+        ImGui::Separator();
+
+        // ── Apply / Revert ──
+        bool canApply = m_MeshSettingsDirty;
+        if (!canApply) ImGui::BeginDisabled();
+        if (ImGui::Button("Apply")) {
+            // Re-import with new settings
+            VE::FBXImportSettings newSettings = m_InspectedMeshSettings;
+            auto mesh = VE::FBXImporter::Import(absPath, newSettings);
+            if (mesh) {
+                m_InspectedMeshSettings.VertexCount   = newSettings.VertexCount;
+                m_InspectedMeshSettings.TriangleCount  = newSettings.TriangleCount;
+                m_InspectedMeshSettings.SubMeshCount   = newSettings.SubMeshCount;
+
+                VE::FBXImporter::SaveSettings(metaPath, m_InspectedMeshSettings);
+                VE::MeshImporter::InvalidateCache(absPath);
+                m_MeshSettingsDirty = false;
+            }
+        }
+        if (!canApply) ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        if (!canApply) ImGui::BeginDisabled();
+        if (ImGui::Button("Revert")) {
+            m_InspectedMeshSettings = VE::FBXImporter::LoadSettings(metaPath);
+            m_MeshSettingsDirty = false;
+        }
+        if (!canApply) ImGui::EndDisabled();
+
+        if (m_MeshSettingsDirty) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "(unsaved)");
+        }
+    }
+
+    // ── Unity-style Object Field for Mesh ──────────────────────────────
+
+    void DrawObjectField(const char* label, VE::MeshRendererComponent& mr) {
+        bool isImportedMesh = !mr.MeshSourcePath.empty();
+
+        // Determine display text
+        std::string displayName = "None (Mesh)";
+        if (isImportedMesh) {
+            displayName = std::filesystem::path(mr.MeshSourcePath).stem().generic_string() + " (Mesh)";
+        } else {
+            for (int i = 0; i < VE::MeshLibrary::GetMeshCount(); i++) {
+                if (VE::MeshLibrary::GetMeshByIndex(i) == mr.Mesh) {
+                    displayName = std::string(VE::MeshLibrary::GetMeshName(i)) + " (Built-in)";
+                    break;
+                }
+            }
+        }
+
+        ImGui::PushID(label);
+
+        // Label on left
+        ImGui::Text("%s", label);
+        ImGui::SameLine(80.0f);
+
+        // Object field box: [ icon  assetName          (o) ]
+        float availW = ImGui::GetContentRegionAvail().x;
+        float pickerBtnW = ImGui::GetFrameHeight(); // square button
+        float fieldW = availW - pickerBtnW - ImGui::GetStyle().ItemSpacing.x;
+
+        // --- Main field (clickable → ping asset) ---
+        {
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImVec2 size(fieldW, ImGui::GetFrameHeight());
+
+            // Background
+            ImU32 bgCol = IM_COL32(40, 40, 40, 255);
+            ImU32 borderCol = IM_COL32(80, 80, 80, 255);
+            bool hovered = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+            if (hovered) borderCol = IM_COL32(120, 160, 255, 255);
+
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bgCol, 3.0f);
+            dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderCol, 3.0f);
+
+            // Mesh icon indicator
+            ImU32 iconCol = isImportedMesh ? IM_COL32(100, 200, 255, 255) : IM_COL32(160, 160, 160, 255);
+            float iconSize = size.y * 0.6f;
+            float iconPad = (size.y - iconSize) * 0.5f;
+            ImVec2 iconMin(pos.x + 4.0f + iconPad, pos.y + iconPad);
+            ImVec2 iconMax(iconMin.x + iconSize, iconMin.y + iconSize);
+            dl->AddRectFilled(iconMin, iconMax, iconCol, 2.0f);
+
+            // Text
+            float textX = iconMax.x + 6.0f;
+            float textY = pos.y + (size.y - ImGui::GetTextLineHeight()) * 0.5f;
+            dl->AddText(ImVec2(textX, textY), IM_COL32(200, 200, 200, 255), displayName.c_str());
+
+            // Invisible button for interaction
+            ImGui::InvisibleButton("##field", size);
+
+            // Click → ping/locate asset in Content Browser
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && isImportedMesh) {
+                PingAsset(mr.MeshSourcePath);
+            }
+
+            // Accept drag-drop from Content Browser (ASSET_MESH payload)
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_MESH")) {
+                    std::string path(static_cast<const char*>(payload->Data));
+                    auto meshAsset = VE::MeshImporter::GetOrLoad(path);
+                    if (meshAsset && meshAsset->VAO) {
+                        mr.Mesh = meshAsset->VAO;
+                        mr.MeshSourcePath = path;
+                        mr.Mat = VE::MaterialLibrary::Get("Lit");
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        // --- Picker button (o) → opens asset picker popup ---
+        ImGui::SameLine();
+        if (ImGui::Button("o", ImVec2(pickerBtnW, 0)))
+            ImGui::OpenPopup("MeshPickerPopup");
+
+        if (ImGui::BeginPopup("MeshPickerPopup")) {
+            ImGui::TextDisabled("Built-in");
+            // "None" option
+            if (ImGui::Selectable("None")) {
+                mr.Mesh = nullptr;
+                mr.MeshSourcePath.clear();
+            }
+            for (int i = 0; i < VE::MeshLibrary::GetMeshCount(); i++) {
+                if (ImGui::Selectable(VE::MeshLibrary::GetMeshName(i))) {
+                    mr.Mesh = VE::MeshLibrary::GetMeshByIndex(i);
+                    mr.MeshSourcePath.clear();
+                    mr.Mat = VE::MeshLibrary::IsLitMesh(i)
+                        ? VE::MaterialLibrary::Get("Lit")
+                        : VE::MaterialLibrary::Get("Default");
+                }
+            }
+            ImGui::Separator();
+            ImGui::TextDisabled("Assets");
+            std::function<void(const std::string&)> listMeshAssets;
+            listMeshAssets = [&](const std::string& relDir) {
+                for (auto& childPath : m_AssetDatabase.GetDirectoryContents(relDir)) {
+                    auto* childMeta = m_AssetDatabase.GetMetaByPath(childPath);
+                    if (!childMeta) continue;
+                    if (childMeta->Type == VE::AssetType::Folder) {
+                        listMeshAssets(childPath);
+                    } else if (childMeta->Type == VE::AssetType::Mesh) {
+                        std::string absChildPath = m_AssetDatabase.GetAbsolutePath(childPath);
+                        std::string itemLabel = std::filesystem::path(childPath).filename().generic_string();
+                        if (ImGui::Selectable(itemLabel.c_str())) {
+                            auto meshAsset = VE::MeshImporter::GetOrLoad(absChildPath);
+                            if (meshAsset && meshAsset->VAO) {
+                                mr.Mesh = meshAsset->VAO;
+                                mr.MeshSourcePath = absChildPath;
+                                mr.Mat = VE::MaterialLibrary::Get("Lit");
+                            }
+                        }
+                    }
+                }
+            };
+            listMeshAssets("");
+            ImGui::EndPopup();
+        }
+
+        ImGui::PopID();
+    }
+
+    void DrawMaterialObjectField(const char* label, VE::MeshRendererComponent& mr) {
+        bool hasMat = mr.Mat != nullptr;
+        bool isAssetMat = !mr.MaterialPath.empty(); // .vmat file on disk
+
+        // Display text
+        std::string displayName = "None (Material)";
+        if (hasMat) {
+            displayName = mr.Mat->GetName();
+            if (isAssetMat)
+                displayName += " (Material)";
+            else
+                displayName += " (Built-in)";
+        }
+
+        ImGui::PushID(label);
+
+        ImGui::Text("%s", label);
+        ImGui::SameLine(80.0f);
+
+        float availW = ImGui::GetContentRegionAvail().x;
+        float pickerBtnW = ImGui::GetFrameHeight();
+        float fieldW = availW - pickerBtnW - ImGui::GetStyle().ItemSpacing.x;
+
+        // --- Main field ---
+        {
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImVec2 size(fieldW, ImGui::GetFrameHeight());
+
+            ImU32 bgCol = IM_COL32(40, 40, 40, 255);
+            ImU32 borderCol = IM_COL32(80, 80, 80, 255);
+            bool hovered = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+            if (hovered) borderCol = IM_COL32(120, 160, 255, 255);
+
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bgCol, 3.0f);
+            dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderCol, 3.0f);
+
+            // Material icon (green sphere-ish circle for materials)
+            ImU32 iconCol = hasMat ? IM_COL32(180, 100, 255, 255) : IM_COL32(160, 160, 160, 255);
+            float iconSize = size.y * 0.6f;
+            float iconPad = (size.y - iconSize) * 0.5f;
+            ImVec2 iconCenter(pos.x + 4.0f + iconPad + iconSize * 0.5f, pos.y + size.y * 0.5f);
+            dl->AddCircleFilled(iconCenter, iconSize * 0.5f, iconCol);
+
+            // Text
+            float textX = pos.x + 4.0f + iconPad + iconSize + 6.0f;
+            float textY = pos.y + (size.y - ImGui::GetTextLineHeight()) * 0.5f;
+            dl->AddText(ImVec2(textX, textY), IM_COL32(200, 200, 200, 255), displayName.c_str());
+
+            ImGui::InvisibleButton("##matfield", size);
+
+            // Click → ping asset material in Content Browser
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && isAssetMat) {
+                PingAsset(mr.MaterialPath);
+            }
+
+            // Accept drag-drop from Content Browser
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_MATERIAL")) {
+                    std::string path(static_cast<const char*>(payload->Data));
+                    auto mat = VE::Material::Load(path);
+                    if (mat) {
+                        VE::MaterialLibrary::Register(mat);
+                        mr.Mat = mat;
+                        mr.MaterialPath = path;
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        // --- Picker button ---
+        ImGui::SameLine();
+        if (ImGui::Button("o", ImVec2(pickerBtnW, 0)))
+            ImGui::OpenPopup("MaterialPickerPopup");
+
+        if (ImGui::BeginPopup("MaterialPickerPopup")) {
+            // "None"
+            if (ImGui::Selectable("None")) {
+                mr.Mat = nullptr;
+                mr.MaterialPath.clear();
+            }
+            ImGui::Separator();
+            ImGui::TextDisabled("Registered");
+            auto matNames = VE::MaterialLibrary::GetAllNames();
+            std::sort(matNames.begin(), matNames.end());
+            for (auto& name : matNames) {
+                bool selected = hasMat && mr.Mat->GetName() == name;
+                if (ImGui::Selectable(name.c_str(), selected)) {
+                    mr.Mat = VE::MaterialLibrary::Get(name);
+                    mr.MaterialPath.clear(); // built-in, no file path
+                }
+            }
+
+            // Asset .vmat files
+            ImGui::Separator();
+            ImGui::TextDisabled("Assets");
+            std::function<void(const std::string&)> listMatAssets;
+            listMatAssets = [&](const std::string& relDir) {
+                for (auto& childPath : m_AssetDatabase.GetDirectoryContents(relDir)) {
+                    auto* childMeta = m_AssetDatabase.GetMetaByPath(childPath);
+                    if (!childMeta) continue;
+                    if (childMeta->Type == VE::AssetType::Folder) {
+                        listMatAssets(childPath);
+                    } else if (childMeta->Type == VE::AssetType::MaterialAsset) {
+                        std::string absChildPath = m_AssetDatabase.GetAbsolutePath(childPath);
+                        std::string itemLabel = std::filesystem::path(childPath).stem().generic_string();
+                        bool selected = (isAssetMat && mr.MaterialPath == absChildPath);
+                        if (ImGui::Selectable(itemLabel.c_str(), selected)) {
+                            auto mat = VE::Material::Load(absChildPath);
+                            if (mat) {
+                                VE::MaterialLibrary::Register(mat);
+                                mr.Mat = mat;
+                                mr.MaterialPath = absChildPath;
+                            }
+                        }
+                    }
+                }
+            };
+            listMatAssets("");
+            ImGui::EndPopup();
+        }
+
+        ImGui::PopID();
     }
 
     // ── Inspector Panel ────────────────────────────────────────────────
@@ -1116,45 +1472,11 @@ private:
             if (ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
                 auto& mr = m_SelectedEntity.GetComponent<VE::MeshRendererComponent>();
 
-                const char* currentMesh = "None";
-                int currentIndex = -1;
-                for (int i = 0; i < VE::MeshLibrary::GetMeshCount(); i++) {
-                    if (VE::MeshLibrary::GetMeshByIndex(i) == mr.Mesh) {
-                        currentMesh = VE::MeshLibrary::GetMeshName(i);
-                        currentIndex = i;
-                        break;
-                    }
-                }
+                // ── Mesh Object Field (Unity-style) ──
+                DrawObjectField("Mesh", mr);
 
-                if (ImGui::BeginCombo("Mesh", currentMesh)) {
-                    for (int i = 0; i < VE::MeshLibrary::GetMeshCount(); i++) {
-                        bool selected = (i == currentIndex);
-                        if (ImGui::Selectable(VE::MeshLibrary::GetMeshName(i), selected)) {
-                            mr.Mesh = VE::MeshLibrary::GetMeshByIndex(i);
-                            mr.Mat = VE::MeshLibrary::IsLitMesh(i)
-                                ? VE::MaterialLibrary::Get("Lit")
-                                : VE::MaterialLibrary::Get("Default");
-                        }
-                        if (selected) ImGui::SetItemDefaultFocus();
-                    }
-                    ImGui::EndCombo();
-                }
-
-                // Material picker
-                {
-                    const char* currentMatName = mr.Mat ? mr.Mat->GetName().c_str() : "None";
-                    if (ImGui::BeginCombo("Material", currentMatName)) {
-                        auto matNames = VE::MaterialLibrary::GetAllNames();
-                        std::sort(matNames.begin(), matNames.end());
-                        for (auto& name : matNames) {
-                            bool selected = mr.Mat && mr.Mat->GetName() == name;
-                            if (ImGui::Selectable(name.c_str(), selected))
-                                mr.Mat = VE::MaterialLibrary::Get(name);
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-                }
+                // ── Material Object Field (Unity-style) ──
+                DrawMaterialObjectField("Material", mr);
 
                 ImGui::ColorEdit4("Color", mr.Color.data());
 
@@ -1620,6 +1942,23 @@ private:
         ImGui::End();
     }
 
+    // Navigate Content Browser to the asset and select it
+    void PingAsset(const std::string& absolutePath) {
+        std::string relPath = m_AssetDatabase.GetRelativePath(absolutePath);
+        if (relPath.empty()) return;
+
+        // Navigate browser to the parent directory
+        auto slashPos = relPath.rfind('/');
+        m_BrowserCurrentDir = (slashPos != std::string::npos) ? relPath.substr(0, slashPos) : "";
+
+        // Select the asset and show it in inspector
+        m_SelectedAssetPath = relPath;
+        m_SelectedEntity = {};
+
+        // Ensure Content Browser is visible
+        m_ShowContentBrowser = true;
+    }
+
     // ── Content Browser Panel ─────────────────────────────────────────
 
     void DrawContentBrowserPanel() {
@@ -1779,7 +2118,7 @@ private:
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     auto meshAsset = VE::MeshImporter::GetOrLoad(absPath);
                     if (meshAsset && meshAsset->VAO) {
-                        auto entity = m_Scene->CreateEntity(meshAsset->Name);
+                        auto entity = m_Scene->CreateEntity(meshAsset->GetName());
                         auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = meshAsset->VAO;
                         mr.Mat = VE::MaterialLibrary::Get("Lit");
@@ -1793,6 +2132,16 @@ private:
                 if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     ImGui::SetDragDropPayload("ASSET_MESH", absPath.c_str(), absPath.size() + 1);
+                    ImGui::Text("%s", filename.c_str());
+                    ImGui::EndDragDropSource();
+                }
+            }
+
+            // Drag-drop source for material files
+            if (meta->Type == VE::AssetType::MaterialAsset) {
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    ImGui::SetDragDropPayload("ASSET_MATERIAL", absPath.c_str(), absPath.size() + 1);
                     ImGui::Text("%s", filename.c_str());
                     ImGui::EndDragDropSource();
                 }
@@ -1945,6 +2294,11 @@ private:
     std::string m_SelectedAssetPath; // selected asset in Content Browser
     std::shared_ptr<VE::Material> m_InspectedMaterial;
     std::string m_InspectedMaterialPath;
+
+    // Mesh asset inspector
+    VE::FBXImportSettings m_InspectedMeshSettings;
+    std::string m_InspectedMeshPath;
+    bool m_MeshSettingsDirty = false;
 
     // Post-processing
     VE::PostProcessing m_PostProcessing;

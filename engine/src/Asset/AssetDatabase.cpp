@@ -228,6 +228,19 @@ std::string AssetDatabase::GetAbsolutePath(const std::string& relativePath) cons
     return (fs::path(m_AssetsRoot) / relativePath).generic_string();
 }
 
+std::string AssetDatabase::GetRelativePath(const std::string& absolutePath) const {
+    // Normalize both to generic (forward-slash) for comparison
+    std::string absNorm = fs::path(absolutePath).generic_string();
+    std::string rootNorm = fs::path(m_AssetsRoot).generic_string();
+    if (!rootNorm.empty() && rootNorm.back() != '/')
+        rootNorm += '/';
+
+    if (absNorm.size() > rootNorm.size() && absNorm.substr(0, rootNorm.size()) == rootNorm)
+        return absNorm.substr(rootNorm.size());
+
+    return {};
+}
+
 void AssetDatabase::OnFileEvents(const std::vector<FileEvent>& events) {
     bool needRefresh = false;
     for (auto& e : events) {

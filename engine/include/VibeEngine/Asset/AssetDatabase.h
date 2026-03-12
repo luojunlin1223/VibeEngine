@@ -34,6 +34,7 @@ public:
     bool DeleteAsset(const std::string& relativePath);
 
     std::string GetAbsolutePath(const std::string& relativePath) const;
+    std::string GetRelativePath(const std::string& absolutePath) const;
     std::string GetAssetsRoot() const { return m_AssetsRoot; }
 
 private:
