@@ -17,6 +17,9 @@ public:
 
     Window& GetWindow() { return *m_Window; }
     RendererAPI::API GetCurrentAPI() const { return m_CurrentAPI; }
+    float GetDeltaTime() const { return m_DeltaTime; }
+
+    static Application* GetInstance() { return s_Instance; }
 
     // Request a backend switch — takes effect at the end of the current frame
     void RequestSwitchAPI(RendererAPI::API newAPI);
@@ -39,6 +42,8 @@ private:
     RendererAPI::API m_PendingAPI = RendererAPI::API::None; // None = no switch pending
     bool m_Running = true;
     float m_LastFrameTime = 0.0f;
+
+    static Application* s_Instance;
 
 protected:
     float m_DeltaTime = 0.0f;

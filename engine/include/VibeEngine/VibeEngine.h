@@ -29,5 +29,8 @@
 #include "Asset/MeshAsset.h"
 #include "Asset/MeshImporter.h"
 
+#include "Scripting/NativeScript.h"
+#include "Scripting/ScriptEngine.h"
+
 #include "ImGui/ImGuiLayer.h"
 #include <imgui.h>

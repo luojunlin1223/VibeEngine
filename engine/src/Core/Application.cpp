@@ -9,9 +9,12 @@
 
 namespace VE {
 
+Application* Application::s_Instance = nullptr;
+
 Application::Application(RendererAPI::API api)
     : m_CurrentAPI(api)
 {
+    s_Instance = this;
     Log::Init();
     VE_ENGINE_INFO("VibeEngine v0.1.0 initializing...");
 

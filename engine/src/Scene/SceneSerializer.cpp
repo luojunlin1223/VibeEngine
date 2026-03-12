@@ -94,6 +94,14 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // ScriptComponent
+    if (entity.HasComponent<ScriptComponent>()) {
+        auto& sc = entity.GetComponent<ScriptComponent>();
+        out << YAML::Key << "ScriptComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "ClassName" << YAML::Value << sc.ClassName;
+        out << YAML::EndMap;
+    }
+
     // MeshRendererComponent
     if (entity.HasComponent<MeshRendererComponent>()) {
         auto& mr = entity.GetComponent<MeshRendererComponent>();
@@ -234,6 +242,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
             auto off = colNode["Offset"];
             col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+        }
+
+        if (auto scNode = entityNode["ScriptComponent"]) {
+            auto& sc = entity.AddComponent<ScriptComponent>();
+            sc.ClassName = scNode["ClassName"].as<std::string>();
         }
 
         if (auto mrNode = entityNode["MeshRendererComponent"]) {

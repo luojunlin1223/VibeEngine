@@ -15,6 +15,7 @@ public:
         : VE::Application(VE::RendererAPI::API::OpenGL)
     {
         VE_INFO("Sandbox application created");
+        VE::ScriptEngine::Init();
         VE::MeshLibrary::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
@@ -28,6 +29,7 @@ public:
     }
 
     ~Sandbox() override {
+        VE::ScriptEngine::Shutdown();
         VE_INFO("Sandbox application destroyed");
     }
 
@@ -35,6 +37,8 @@ protected:
     void OnUpdate() override {
         m_Scene->OnUpdate(m_DeltaTime);
         m_AssetDatabase.Update(m_DeltaTime);
+        if (m_PlayMode)
+            VE::ScriptEngine::CheckForReload();
     }
 
     void OnRender() override {
@@ -148,6 +152,7 @@ protected:
         DrawInspectorPanel();
         DrawSceneInfoPanel();
         DrawPipelineSettingsPanel();
+        DrawScriptingPanel();
         DrawContentBrowserPanel();
 
         if (m_ShowDemo)
@@ -215,13 +220,14 @@ private:
         std::string assetsRoot = m_AssetDatabase.GetAssetsRoot();
         std::string relDir = dir;
 
-        // Find a unique name
+        // Find a unique name (scripts use no spaces so class name stays valid C++)
+        std::string sep = (ext == ".cpp") ? "" : " ";
         std::string name = baseName;
         std::string relPath = relDir.empty() ? name + ext : relDir + "/" + name + ext;
         std::string absPath = (std::filesystem::path(assetsRoot) / relPath).generic_string();
         int counter = 1;
         while (std::filesystem::exists(absPath)) {
-            name = baseName + " " + std::to_string(counter++);
+            name = baseName + sep + std::to_string(counter++);
             relPath = relDir.empty() ? name + ext : relDir + "/" + name + ext;
             absPath = (std::filesystem::path(assetsRoot) / relPath).generic_string();
         }
@@ -233,6 +239,38 @@ private:
             mat->SetVec4("u_EntityColor", glm::vec4(1.0f));
             mat->Save(absPath);
             VE::MaterialLibrary::Register(mat);
+        } else if (ext == ".cpp") {
+            // Create a script template
+            std::ofstream fout(absPath);
+            fout << "#include <VibeEngine/Scripting/NativeScript.h>\n"
+                 << "using namespace VE;\n\n"
+                 << "static const ScriptAPI* API = nullptr;\n\n"
+                 << "class " << name << " : public NativeScript {\n"
+                 << "public:\n"
+                 << "    void OnCreate() override {\n"
+                 << "        if (API && API->Log_Info)\n"
+                 << "            API->Log_Info(\"" << name << " created!\");\n"
+                 << "    }\n\n"
+                 << "    void OnUpdate(float dt) override {\n"
+                 << "        // auto t = GetTransform();\n"
+                 << "        // SetTransform(t);\n"
+                 << "    }\n\n"
+                 << "    void OnDestroy() override {\n"
+                 << "    }\n"
+                 << "};\n\n"
+                 << "REGISTER_SCRIPT(" << name << ")\n\n"
+                 << "// ── DLL exports (add all scripts to s_Scripts) ──\n\n"
+                 << "static ScriptEntry s_Scripts[] = {\n"
+                 << "    { \"" << name << "\", Create_" << name << " },\n"
+                 << "};\n\n"
+                 << "extern \"C\" VE_SCRIPT_API ScriptEntry* GetScriptEntries(int* count) {\n"
+                 << "    *count = sizeof(s_Scripts) / sizeof(s_Scripts[0]);\n"
+                 << "    return s_Scripts;\n"
+                 << "}\n\n"
+                 << "extern \"C\" VE_SCRIPT_API void SetScriptAPI(const VE::ScriptAPI* api) {\n"
+                 << "    API = api;\n"
+                 << "}\n";
+            fout.close();
         } else if (ext == ".shader") {
             // Create a default ShaderLab template
             std::ofstream fout(absPath);
@@ -445,6 +483,7 @@ private:
                 ImGui::MenuItem("Scene Info", nullptr, &m_ShowSceneInfo);
                 ImGui::Separator();
                 ImGui::MenuItem("Render Pipeline", nullptr, &m_ShowPipelineSettings);
+                ImGui::MenuItem("Scripting", nullptr, &m_ShowScripting);
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::Separator();
                 ImGui::MenuItem("Demo Window", nullptr, &m_ShowDemo);
@@ -547,6 +586,8 @@ private:
         m_SceneSnapshot = serializer.SerializeToString();
 
         m_Scene->StartPhysics();
+        VE::ScriptEngine::SetActiveScene(m_Scene.get());
+        m_Scene->StartScripts();
         m_PlayMode = true;
         VE_INFO("Entered Play mode");
     }
@@ -554,6 +595,7 @@ private:
     void ExitPlayMode() {
         if (!m_PlayMode) return;
 
+        m_Scene->StopScripts();
         m_Scene->StopPhysics();
 
         // Restore scene from snapshot
@@ -961,6 +1003,39 @@ private:
             ImGui::Separator();
         }
 
+        if (m_SelectedEntity.HasComponent<VE::ScriptComponent>()) {
+            bool removeScript = false;
+            if (ImGui::CollapsingHeader("Script", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& sc = m_SelectedEntity.GetComponent<VE::ScriptComponent>();
+
+                // Class name: dropdown if DLL loaded, text input otherwise
+                if (VE::ScriptEngine::IsLoaded()) {
+                    auto classNames = VE::ScriptEngine::GetRegisteredClassNames();
+                    const char* current = sc.ClassName.empty() ? "(none)" : sc.ClassName.c_str();
+                    if (ImGui::BeginCombo("Class", current)) {
+                        for (auto& name : classNames) {
+                            bool selected = (name == sc.ClassName);
+                            if (ImGui::Selectable(name.c_str(), selected))
+                                sc.ClassName = name;
+                            if (selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+                } else {
+                    char buf[256] = {};
+                    strncpy(buf, sc.ClassName.c_str(), sizeof(buf) - 1);
+                    if (ImGui::InputText("Class", buf, sizeof(buf)))
+                        sc.ClassName = buf;
+                }
+
+                if (ImGui::Button("Remove Script"))
+                    removeScript = true;
+            }
+            if (removeScript)
+                m_SelectedEntity.RemoveComponent<VE::ScriptComponent>();
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             bool removeComponent = false;
             if (ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1043,6 +1118,12 @@ private:
             ImGui::OpenPopup("AddComponentPopup");
         if (ImGui::BeginPopup("AddComponentPopup")) {
             bool anyAdded = false;
+            if (!m_SelectedEntity.HasComponent<VE::ScriptComponent>()) {
+                if (ImGui::MenuItem("Script")) {
+                    m_SelectedEntity.AddComponent<VE::ScriptComponent>();
+                }
+                anyAdded = true;
+            }
             if (!m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
                 if (ImGui::MenuItem("Mesh Renderer")) {
                     auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
@@ -1080,6 +1161,43 @@ private:
     }
 
     // ── Render Pipeline Settings Panel ────────────────────────────────
+
+    void DrawScriptingPanel() {
+        if (!m_ShowScripting) return;
+        ImGui::Begin("Scripting", &m_ShowScripting);
+
+        // DLL path display + load button
+        ImGui::Text("Script DLL: %s",
+            VE::ScriptEngine::IsLoaded()
+                ? VE::ScriptEngine::GetDLLPath().c_str()
+                : "(none)");
+
+        if (ImGui::Button("Load Script DLL...")) {
+            static const char* dllFilter = "DLL Files (*.dll)\0*.dll\0All Files\0*.*\0";
+            std::string path = VE::FileDialog::OpenFile(dllFilter, GetWindow().GetNativeWindow());
+            if (!path.empty()) {
+                VE::ScriptEngine::LoadScriptDLL(path);
+                m_ScriptDLLPath = path;
+            }
+        }
+
+        if (VE::ScriptEngine::IsLoaded()) {
+            ImGui::SameLine();
+            if (ImGui::Button("Unload"))
+                VE::ScriptEngine::UnloadScriptDLL();
+
+            ImGui::Separator();
+            ImGui::Text("Registered Scripts:");
+            auto names = VE::ScriptEngine::GetRegisteredClassNames();
+            for (auto& name : names)
+                ImGui::BulletText("%s", name.c_str());
+
+            if (VE::ScriptEngine::WasReloadedThisFrame())
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Hot-reloaded!");
+        }
+
+        ImGui::End();
+    }
 
     void DrawPipelineSettingsPanel() {
         if (!m_ShowPipelineSettings) return;
@@ -1177,6 +1295,9 @@ private:
             }
             if (ImGui::MenuItem("New Shader")) {
                 CreateAssetFile(m_BrowserCurrentDir, "New Shader", ".shader");
+            }
+            if (ImGui::MenuItem("New Script")) {
+                CreateAssetFile(m_BrowserCurrentDir, "NewScript", ".cpp");
             }
             ImGui::EndPopup();
         }
@@ -1420,11 +1541,15 @@ private:
     bool m_ShowSceneInfo = true;
     bool m_ShowPipelineSettings = false;
     bool m_ShowContentBrowser = true;
+    bool m_ShowScripting = false;
     bool m_ShowDemo = false;
 
     // Play mode
     bool m_PlayMode = false;
     std::string m_SceneSnapshot;
+
+    // Scripting
+    std::string m_ScriptDLLPath;
 
     // Asset management
     VE::AssetDatabase m_AssetDatabase;

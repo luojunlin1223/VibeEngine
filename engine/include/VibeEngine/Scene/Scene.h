@@ -52,6 +52,9 @@ public:
     void StopPhysics();
     bool IsPhysicsRunning() const { return m_PhysicsRunning; }
 
+    void StartScripts();
+    void StopScripts();
+
     template<typename... Components>
     auto GetAllEntitiesWith() { return m_Registry.view<Components...>(); }
 

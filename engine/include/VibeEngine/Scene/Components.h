@@ -83,6 +83,17 @@ struct ColliderComponent {
     ColliderComponent() = default;
 };
 
+// Forward declaration — full definition in Scripting/NativeScript.h
+class NativeScript;
+
+struct ScriptComponent {
+    std::string ClassName;               // e.g. "PlayerController"
+    NativeScript* _Instance = nullptr;   // runtime only, not serialized
+
+    ScriptComponent() = default;
+    ScriptComponent(const std::string& cls) : ClassName(cls) {}
+};
+
 struct MeshRendererComponent {
     std::shared_ptr<VertexArray>  Mesh;
     std::shared_ptr<VE::Material> Mat;            // material (shader + properties)

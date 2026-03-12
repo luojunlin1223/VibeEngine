@@ -3,6 +3,8 @@
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
+#include "VibeEngine/Scripting/ScriptEngine.h"
+#include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -124,6 +126,16 @@ void Scene::OnUpdate(float deltaTime) {
         }
         m_PhysicsWorld->SyncTransformsToScene(m_Registry);
     }
+
+    // Run scripts after physics
+    {
+        auto scriptView = m_Registry.view<ScriptComponent>();
+        for (auto entity : scriptView) {
+            auto& sc = scriptView.get<ScriptComponent>(entity);
+            if (sc._Instance)
+                sc._Instance->OnUpdate(deltaTime);
+        }
+    }
 }
 
 void Scene::StartPhysics() {
@@ -149,6 +161,38 @@ void Scene::StopPhysics() {
     m_PhysicsWorld.reset();
     m_PhysicsRunning = false;
     VE_ENGINE_INFO("Physics simulation stopped");
+}
+
+void Scene::StartScripts() {
+    ScriptEngine::SetActiveScene(this);
+
+    auto view = m_Registry.view<ScriptComponent>();
+    for (auto entity : view) {
+        auto& sc = view.get<ScriptComponent>(entity);
+        if (sc.ClassName.empty()) continue;
+        if (sc._Instance) continue; // already running
+
+        sc._Instance = ScriptEngine::CreateInstance(sc.ClassName);
+        if (sc._Instance) {
+            auto& id = m_Registry.get<IDComponent>(entity);
+            sc._Instance->m_EntityID = static_cast<uint64_t>(id.ID);
+            sc._Instance->OnCreate();
+        }
+    }
+    VE_ENGINE_INFO("Scripts started");
+}
+
+void Scene::StopScripts() {
+    auto view = m_Registry.view<ScriptComponent>();
+    for (auto entity : view) {
+        auto& sc = view.get<ScriptComponent>(entity);
+        if (sc._Instance) {
+            sc._Instance->OnDestroy();
+            ScriptEngine::DestroyInstance(sc._Instance);
+            sc._Instance = nullptr;
+        }
+    }
+    VE_ENGINE_INFO("Scripts stopped");
 }
 
 static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
