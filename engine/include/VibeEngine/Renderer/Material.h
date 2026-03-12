@@ -22,6 +22,7 @@ enum class MaterialPropertyType { Float, Int, Vec3, Vec4, Texture2D };
 
 struct MaterialProperty {
     std::string Name;
+    std::string DisplayName; // from ShaderLab (e.g. "Roughness")
     MaterialPropertyType Type;
     // Values
     float       FloatValue = 0.0f;
@@ -30,6 +31,10 @@ struct MaterialProperty {
     glm::vec4   Vec4Value  = glm::vec4(1.0f);
     std::string TexturePath;
     std::shared_ptr<Texture2D> TextureRef;
+    // Range metadata (for Range properties in ShaderLab)
+    bool  IsRange  = false;
+    float RangeMin = 0.0f;
+    float RangeMax = 1.0f;
 };
 
 class Material {
@@ -50,6 +55,10 @@ public:
 
     // Bind shader and upload all material properties as uniforms
     void Bind() const;
+
+    /// Auto-populate properties from the shader's ShaderLab property declarations.
+    /// Only adds properties that don't already exist.
+    void PopulateFromShader();
 
     // Property accessors
     void SetFloat(const std::string& name, float value);

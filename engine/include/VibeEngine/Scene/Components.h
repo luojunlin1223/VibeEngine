@@ -108,6 +108,11 @@ struct MeshRendererComponent {
     std::array<float, 4>          Color = { 1.0f, 1.0f, 1.0f, 1.0f }; // per-instance color override
     std::string                   MaterialPath;   // .vmat path for custom materials
     std::string                   MeshSourcePath; // for imported meshes (FBX etc.)
+    bool                          CastShadows = true;
+
+    /// Per-entity material property overrides (like script property reflection).
+    /// Populated from material defaults, editable per-entity, serialized with scene.
+    std::vector<VE::MaterialProperty> MaterialOverrides;
 
     MeshRendererComponent() = default;
 };

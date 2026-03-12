@@ -9,6 +9,7 @@
 
 #include "VibeEngine/Core/UUID.h"
 #include "VibeEngine/Renderer/Texture.h"
+#include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -69,6 +70,12 @@ struct RenderPipelineSettings {
     // Tonemapping
     bool TonemapEnabled = false;
     int  TonemapMode = 2; // 0=None, 1=Reinhard, 2=ACES, 3=Uncharted2
+
+    // Shadows (CSM)
+    bool ShadowEnabled = true;
+    float ShadowBias = 0.0005f;
+    float ShadowNormalBias = 0.02f;
+    int   ShadowPCFRadius = 1; // 0=hard, 1=3x3, 2=5x5
 };
 
 class Scene {
@@ -87,6 +94,12 @@ public:
 
     void OnUpdate(float deltaTime = 0.0f);
     void OnRenderSky(const glm::mat4& skyViewProjection);
+
+    // Compute shadow maps (call before OnRender each frame)
+    void ComputeShadows(const glm::mat4& viewMatrix,
+                        const glm::mat4& projMatrix,
+                        float nearClip, float farClip);
+
     void OnRender(const glm::mat4& viewProjection,
                   const glm::vec3& cameraPos = glm::vec3(0.0f));
 
@@ -113,6 +126,10 @@ private:
     std::unique_ptr<PhysicsWorld> m_PhysicsWorld;
     bool  m_PhysicsRunning = false;
     float m_PhysicsAccumulator = 0.0f;
+
+    std::unique_ptr<ShadowMap> m_ShadowMap;
+    bool m_ShadowsComputed = false; // true if ComputeShadows ran this frame
+    glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
 
     friend class Entity;
 };

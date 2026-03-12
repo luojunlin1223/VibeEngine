@@ -24,7 +24,9 @@ MaterialProperty* Material::FindProperty(const std::string& name) {
 
 void Material::SetFloat(const std::string& name, float value) {
     if (auto* p = FindProperty(name)) { p->FloatValue = value; return; }
-    m_Properties.push_back({ name, MaterialPropertyType::Float, value });
+    MaterialProperty prop;
+    prop.Name = name; prop.Type = MaterialPropertyType::Float; prop.FloatValue = value;
+    m_Properties.push_back(prop);
 }
 
 void Material::SetInt(const std::string& name, int value) {
@@ -59,6 +61,49 @@ void Material::SetTexture(const std::string& name, const std::string& path) {
     prop.TexturePath = path;
     prop.TextureRef = path.empty() ? nullptr : Texture2D::Create(path);
     m_Properties.push_back(prop);
+}
+
+void Material::PopulateFromShader() {
+    if (!m_Shader) return;
+    for (const auto& info : m_Shader->GetPropertyInfos()) {
+        if (FindProperty(info.Name)) continue; // don't overwrite existing
+
+        MaterialProperty prop;
+        prop.Name = info.Name;
+        prop.DisplayName = info.DisplayName;
+
+        switch (info.Type) {
+            case ShaderPropertyType::Float:
+                prop.Type = MaterialPropertyType::Float;
+                prop.FloatValue = info.FloatDefault;
+                break;
+            case ShaderPropertyType::Range:
+                prop.Type = MaterialPropertyType::Float;
+                prop.FloatValue = info.FloatDefault;
+                prop.IsRange = true;
+                prop.RangeMin = info.RangeMin;
+                prop.RangeMax = info.RangeMax;
+                break;
+            case ShaderPropertyType::Int:
+                prop.Type = MaterialPropertyType::Int;
+                prop.IntValue = info.IntDefault;
+                break;
+            case ShaderPropertyType::Color:
+                prop.Type = MaterialPropertyType::Vec4;
+                prop.Vec4Value = info.VectorDefault;
+                prop.DisplayName = info.DisplayName;
+                break;
+            case ShaderPropertyType::Vector:
+                prop.Type = MaterialPropertyType::Vec4;
+                prop.Vec4Value = info.VectorDefault;
+                break;
+            case ShaderPropertyType::Texture2D:
+                prop.Type = MaterialPropertyType::Texture2D;
+                prop.TexturePath = info.TextureDefault;
+                break;
+        }
+        m_Properties.push_back(std::move(prop));
+    }
 }
 
 void Material::Bind() const {

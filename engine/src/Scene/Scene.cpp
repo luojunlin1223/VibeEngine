@@ -3,6 +3,7 @@
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
+#include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Scripting/ScriptEngine.h"
 #include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Core/Log.h"
@@ -242,6 +243,61 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
     RenderCommand::SetDepthFunc(RendererAPI::DepthFunc::Less);
 }
 
+void Scene::ComputeShadows(const glm::mat4& viewMatrix,
+                            const glm::mat4& projMatrix,
+                            float nearClip, float farClip) {
+    m_ShadowsComputed = false;
+
+    if (!m_PipelineSettings.ShadowEnabled)
+        return;
+
+    // Find directional light
+    glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+    {
+        auto lightView = m_Registry.view<DirectionalLightComponent>();
+        for (auto lightEntity : lightView) {
+            auto& dl = lightView.get<DirectionalLightComponent>(lightEntity);
+            glm::vec3 dir(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
+            float len = glm::length(dir);
+            if (len > 0.0001f)
+                lightDir = dir / len;
+            break;
+        }
+    }
+
+    // Create shadow map lazily
+    if (!m_ShadowMap)
+        m_ShadowMap = std::make_unique<ShadowMap>();
+
+    m_CachedViewMatrix = viewMatrix;
+    m_ShadowMap->ComputeCascades(viewMatrix, projMatrix, lightDir, nearClip, farClip);
+
+    // Render depth for each cascade
+    auto depthShader = m_ShadowMap->GetDepthShader();
+    if (!depthShader) return;
+
+    auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
+
+    for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c) {
+        m_ShadowMap->BeginPass(c);
+        depthShader->Bind();
+        depthShader->SetMat4("u_LightSpaceMatrix", m_ShadowMap->GetLightSpaceMatrix(c));
+
+        for (auto entityID : meshView) {
+            auto [tc, mr] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
+            if (!mr.Mesh || !mr.CastShadows) continue;
+
+            glm::mat4 model = GetWorldTransform(entityID);
+            depthShader->SetMat4("u_Model", model);
+            RenderCommand::DrawIndexed(mr.Mesh);
+        }
+
+        m_ShadowMap->EndPass();
+    }
+
+    m_ShadowsComputed = true;
+}
+
 void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos) {
     // Find directional light in the scene (use first one found, fallback to default)
     glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
@@ -296,6 +352,28 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetFloat("u_LightIntensity", lightIntensity);
             shader->SetVec3("u_ViewPos", cameraPos);
 
+            // Shadow uniforms
+            if (m_ShadowsComputed && m_ShadowMap) {
+                shader->SetInt("u_ShadowEnabled", 1);
+                m_ShadowMap->BindForReading(2); // texture unit 2
+                shader->SetInt("u_ShadowMap", 2);
+                shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
+                shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
+                shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
+                shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
+
+                for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c) {
+                    std::string name = "u_LightSpaceMatrices[" + std::to_string(c) + "]";
+                    shader->SetMat4(name, m_ShadowMap->GetLightSpaceMatrix(c));
+                }
+                shader->SetVec3("u_CascadeSplits",
+                    glm::vec3(m_ShadowMap->GetCascadeSplit(0),
+                              m_ShadowMap->GetCascadeSplit(1),
+                              m_ShadowMap->GetCascadeSplit(2)));
+            } else {
+                shader->SetInt("u_ShadowEnabled", 0);
+            }
+
             // PBR defaults (if not set by material)
             bool hasMetallic = false, hasRoughness = false, hasAO = false;
             for (auto& prop : mr.Mat->GetProperties()) {
@@ -308,9 +386,36 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             if (!hasAO)        shader->SetFloat("u_AO", 1.0f);
         }
 
-        // Per-instance color override
-        shader->SetVec4("u_EntityColor",
-            glm::vec4(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]));
+        // Per-instance color: use override if present, else fallback to mr.Color
+        bool hasColorOverride = false;
+        for (const auto& ov : mr.MaterialOverrides) {
+            if (ov.Name == "u_EntityColor") { hasColorOverride = true; break; }
+        }
+        if (!hasColorOverride) {
+            shader->SetVec4("u_EntityColor",
+                glm::vec4(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]));
+        }
+
+        // Per-entity material property overrides
+        for (const auto& ov : mr.MaterialOverrides) {
+            switch (ov.Type) {
+                case MaterialPropertyType::Float:
+                    shader->SetFloat(ov.Name, ov.FloatValue); break;
+                case MaterialPropertyType::Int:
+                    shader->SetInt(ov.Name, ov.IntValue); break;
+                case MaterialPropertyType::Vec3:
+                    shader->SetVec3(ov.Name, ov.Vec3Value); break;
+                case MaterialPropertyType::Vec4:
+                    shader->SetVec4(ov.Name, ov.Vec4Value); break;
+                case MaterialPropertyType::Texture2D:
+                    if (ov.TextureRef) {
+                        ov.TextureRef->Bind(0);
+                        shader->SetInt(ov.Name, 0);
+                        shader->SetInt("u_UseTexture", 1);
+                    }
+                    break;
+            }
+        }
 
         RenderCommand::DrawIndexed(mr.Mesh);
     }
