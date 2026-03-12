@@ -19,7 +19,7 @@ public:
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
-        ScanAndRegisterShaders();
+        ScanAndRegisterAssets();
 
         VE::FramebufferSpec fbSpec;
         fbSpec.Width = 1280;
@@ -299,23 +299,30 @@ private:
         VE_INFO("Created asset: {0}", relPath);
     }
 
-    /// Scan Assets/ for .shader files and compile+register any not yet in ShaderLibrary.
-    void ScanAndRegisterShaders() {
+    /// Scan Assets/ for .shader and .vmat files, compile+register any not yet in libraries.
+    void ScanAndRegisterAssets() {
         std::string assetsRoot = m_AssetDatabase.GetAssetsRoot();
         if (!std::filesystem::exists(assetsRoot)) return;
 
         for (auto& entry : std::filesystem::recursive_directory_iterator(assetsRoot)) {
             if (!entry.is_regular_file()) continue;
             auto ext = entry.path().extension().string();
-            if (ext != ".shader") continue;
-
             std::string name = entry.path().stem().string();
-            if (VE::ShaderLibrary::Exists(name)) continue;
 
-            auto shader = VE::Shader::CreateFromFile(entry.path().generic_string());
-            if (shader) {
-                VE::ShaderLibrary::Register(name, shader);
-                VE_INFO("ShaderLibrary: Registered '{0}' from Assets", name);
+            if (ext == ".shader") {
+                if (VE::ShaderLibrary::Exists(name)) continue;
+                auto shader = VE::Shader::CreateFromFile(entry.path().generic_string());
+                if (shader) {
+                    VE::ShaderLibrary::Register(name, shader);
+                    VE_INFO("ShaderLibrary: Registered '{0}' from Assets", name);
+                }
+            } else if (ext == ".vmat") {
+                if (VE::MaterialLibrary::Get(name)) continue;
+                auto mat = VE::Material::Load(entry.path().generic_string());
+                if (mat) {
+                    VE::MaterialLibrary::Register(mat);
+                    VE_INFO("MaterialLibrary: Registered '{0}' from Assets", name);
+                }
             }
         }
     }
@@ -988,6 +995,7 @@ private:
                     const char* currentMatName = mr.Mat ? mr.Mat->GetName().c_str() : "None";
                     if (ImGui::BeginCombo("Material", currentMatName)) {
                         auto matNames = VE::MaterialLibrary::GetAllNames();
+                        std::sort(matNames.begin(), matNames.end());
                         for (auto& name : matNames) {
                             bool selected = mr.Mat && mr.Mat->GetName() == name;
                             if (ImGui::Selectable(name.c_str(), selected))
@@ -1139,7 +1147,7 @@ private:
             ImGui::SameLine(ImGui::GetWindowWidth() - 80);
             if (ImGui::Button("Refresh")) {
                 m_AssetDatabase.Refresh();
-                ScanAndRegisterShaders();
+                ScanAndRegisterAssets();
             }
         }
 
