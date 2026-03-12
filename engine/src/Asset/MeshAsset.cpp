@@ -21,7 +21,7 @@ void MeshAsset::Upload() {
         static_cast<uint32_t>(Indices.size())));
 
     VE_ENGINE_INFO("MeshAsset uploaded: {0} ({1} verts, {2} tris)",
-        Name, Vertices.size() / 11, Indices.size() / 3);
+        GetName(), Vertices.size() / 11, Indices.size() / 3);
 }
 
 void MeshAsset::Release() {

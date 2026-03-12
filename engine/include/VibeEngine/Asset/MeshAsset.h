@@ -1,5 +1,6 @@
 #pragma once
 
+#include "VibeEngine/Core/Object.h"
 #include "VibeEngine/Renderer/VertexArray.h"
 #include <string>
 #include <vector>
@@ -7,9 +8,8 @@
 
 namespace VE {
 
-struct MeshAsset {
-    std::string Name;
-    std::string SourcePath; // relative to Assets/
+struct MeshAsset : public Object {
+    std::string SourcePath; // absolute path to source file
 
     // CPU data: interleaved pos(3)+normal(3)+color(3)+uv(2) = 11 floats per vertex
     std::vector<float>    Vertices;
