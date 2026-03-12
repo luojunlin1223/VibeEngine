@@ -2,11 +2,20 @@
 
 #include "VibeEngine/Core/Object.h"
 #include "VibeEngine/Renderer/VertexArray.h"
+#include "VibeEngine/Animation/AnimationClip.h"
 #include <string>
 #include <vector>
 #include <memory>
 
 namespace VE {
+
+class Skeleton;
+
+// Per-vertex skin weights (up to 4 bone influences)
+struct SkinVertex {
+    int   BoneIndices[4] = { 0, 0, 0, 0 };
+    float BoneWeights[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+};
 
 struct MeshAsset : public Object {
     std::string SourcePath; // absolute path to source file
@@ -17,6 +26,14 @@ struct MeshAsset : public Object {
 
     // GPU data
     std::shared_ptr<VertexArray> VAO;
+
+    // Skinning data (populated by FBXImporter for skinned meshes)
+    std::vector<float>      BindPoseVertices; // immutable copy of original vertices
+    std::vector<SkinVertex> SkinData;         // per-vertex bone indices + weights
+    std::shared_ptr<Skeleton> SkeletonRef;
+    std::vector<AnimationClip> Clips;
+
+    bool IsSkinned() const { return SkeletonRef != nullptr && !SkinData.empty(); }
 
     void Upload();  // create GPU buffers from CPU data
     void Release(); // destroy GPU buffers (keeps CPU data)

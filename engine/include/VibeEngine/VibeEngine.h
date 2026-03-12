@@ -31,6 +31,10 @@
 #include "Asset/MeshAsset.h"
 #include "Asset/MeshImporter.h"
 
+#include "Animation/Skeleton.h"
+#include "Animation/AnimationClip.h"
+#include "Animation/Animator.h"
+
 #include "Scripting/NativeScript.h"
 #include "Scripting/ScriptEngine.h"
 

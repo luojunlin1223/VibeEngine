@@ -6,6 +6,10 @@
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Scripting/ScriptEngine.h"
 #include "VibeEngine/Scripting/NativeScript.h"
+#include "VibeEngine/Animation/Animator.h"
+#include "VibeEngine/Asset/MeshAsset.h"
+#include "VibeEngine/Asset/MeshImporter.h"
+#include "VibeEngine/Asset/FBXImporter.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -137,6 +141,16 @@ void Scene::OnUpdate(float deltaTime) {
                 sc._Instance->OnUpdate(deltaTime);
         }
     }
+
+    // Update animations after scripts
+    {
+        auto animView = m_Registry.view<AnimatorComponent>();
+        for (auto entity : animView) {
+            auto& ac = animView.get<AnimatorComponent>(entity);
+            if (ac._Animator)
+                ac._Animator->Update(deltaTime);
+        }
+    }
 }
 
 void Scene::StartPhysics() {
@@ -198,6 +212,46 @@ void Scene::StopScripts() {
         }
     }
     VE_ENGINE_INFO("Scripts stopped");
+}
+
+void Scene::StartAnimations() {
+    auto view = m_Registry.view<AnimatorComponent, MeshRendererComponent>();
+    for (auto entity : view) {
+        auto& ac = view.get<AnimatorComponent>(entity);
+        auto& mr = view.get<MeshRendererComponent>(entity);
+
+        // Need a skinned MeshAsset — look it up from MeshSourcePath
+        if (mr.MeshSourcePath.empty()) continue;
+        auto meshAsset = MeshImporter::GetOrLoad(mr.MeshSourcePath);
+        if (!meshAsset || !meshAsset->IsSkinned()) continue;
+
+        ac._Animator = std::make_shared<Animator>();
+        ac._Animator->SetTarget(meshAsset);
+
+        // If an external animation source is specified, load clips from it
+        if (!ac.AnimationSourcePath.empty() && meshAsset->SkeletonRef) {
+            auto externalClips = FBXImporter::ImportAnimations(ac.AnimationSourcePath, meshAsset->SkeletonRef);
+            if (!externalClips.empty())
+                ac._Animator->SetClips(std::move(externalClips));
+        }
+
+        int clipCount = ac._Animator->GetClipCount();
+        if (ac.PlayOnStart && ac.ClipIndex < clipCount)
+            ac._Animator->Play(ac.ClipIndex, ac.Loop, ac.Speed);
+    }
+    VE_ENGINE_INFO("Animations started");
+}
+
+void Scene::StopAnimations() {
+    auto view = m_Registry.view<AnimatorComponent>();
+    for (auto entity : view) {
+        auto& ac = view.get<AnimatorComponent>(entity);
+        if (ac._Animator) {
+            ac._Animator->Stop();
+            ac._Animator.reset();
+        }
+    }
+    VE_ENGINE_INFO("Animations stopped");
 }
 
 static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
@@ -287,9 +341,16 @@ void Scene::ComputeShadows(const glm::mat4& viewMatrix,
             auto [tc, mr] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
             if (!mr.Mesh || !mr.CastShadows) continue;
 
+            std::shared_ptr<VertexArray> shadowVAO = mr.Mesh;
+            if (m_Registry.all_of<AnimatorComponent>(entityID)) {
+                auto& ac = m_Registry.get<AnimatorComponent>(entityID);
+                if (ac._Animator && ac._Animator->GetSkinnedVAO())
+                    shadowVAO = ac._Animator->GetSkinnedVAO();
+            }
+
             glm::mat4 model = GetWorldTransform(entityID);
             depthShader->SetMat4("u_Model", model);
-            RenderCommand::DrawIndexed(mr.Mesh);
+            RenderCommand::DrawIndexed(shadowVAO);
         }
 
         m_ShadowMap->EndPass();
@@ -323,6 +384,14 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
         if (!mr.Mesh || !mr.Mat)
             continue;
+
+        // Use skinned VAO if animator is active
+        std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
+        if (m_Registry.all_of<AnimatorComponent>(entityID)) {
+            auto& ac = m_Registry.get<AnimatorComponent>(entityID);
+            if (ac._Animator && ac._Animator->GetSkinnedVAO())
+                drawVAO = ac._Animator->GetSkinnedVAO();
+        }
 
         glm::mat4 model = GetWorldTransform(entityID);
         glm::mat4 mvp = viewProjection * model;
@@ -417,7 +486,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             }
         }
 
-        RenderCommand::DrawIndexed(mr.Mesh);
+        RenderCommand::DrawIndexed(drawVAO);
     }
 }
 
