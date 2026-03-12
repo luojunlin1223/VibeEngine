@@ -47,6 +47,7 @@ in vec2 v_TexCoord;
 
 uniform sampler2D u_Texture;
 uniform int u_UseTexture;
+uniform vec4 u_EntityColor;
 
 out vec4 FragColor;
 
@@ -54,7 +55,8 @@ void main() {
     vec3 baseColor = v_Color;
     if (u_UseTexture == 1)
         baseColor = texture(u_Texture, v_TexCoord).rgb;
-    FragColor = vec4(baseColor, 1.0);
+    baseColor *= u_EntityColor.rgb;
+    FragColor = vec4(baseColor, u_EntityColor.a);
 }
 #endif
 
