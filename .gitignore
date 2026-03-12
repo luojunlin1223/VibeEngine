@@ -1,36 +1,42 @@
-# Build outputs
+# ── Build ─────────────────────────────────────────────────────────────
 build/
 out/
-bin/
-obj/
-*.o
-*.a
-*.so
-*.dll
-*.exe
-*.lib
+cmake-build-*/
 
-# IDE / Editor
+# ── IDE / Editor ─────────────────────────────────────────────────────
 .vs/
 .vscode/
 .idea/
 *.suo
 *.user
 *.sln.docstates
+*.swp
+*~
 
-# OS files
+# ── OS ───────────────────────────────────────────────────────────────
 Thumbs.db
 Desktop.ini
 .DS_Store
 
-# Dependencies
-node_modules/
-vendor/
-third_party/build/
+# ── C++ artifacts ────────────────────────────────────────────────────
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+*.pdb
+*.ilk
+*.exp
 
-# Logs
+# ── SPIR-V intermediates (generated header is tracked) ───────────────
+*.spv
+
+# ── Logs ─────────────────────────────────────────────────────────────
 *.log
 
-# Environment
+# ── Environment / secrets ────────────────────────────────────────────
 .env
-.env.local
+.env.*

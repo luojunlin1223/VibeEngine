@@ -1,0 +1,124 @@
+/*
+ * PostProcessing — Fullscreen post-processing effects pipeline.
+ *
+ * Supported effects (applied in this order in the composite pass):
+ *   1. Bloom: brightness extraction → multi-pass Gaussian blur → additive composite
+ *   2. Color Curves: per-channel (Master/R/G/B) remapping via 1D LUT
+ *   3. Shadows/Midtones/Highlights: tonal-range color grading
+ *   4. Color Adjustments: exposure, contrast, saturation, color filter
+ *   5. Tonemapping: HDR → LDR (Reinhard / ACES / Uncharted 2)
+ *   6. Gamma correction
+ *   7. Vignette: darkened screen edges
+ *
+ * OpenGL-only for now. Uses internal shaders and ping-pong framebuffers.
+ */
+#pragma once
+
+#include <cstdint>
+#include <array>
+#include <vector>
+#include <utility>
+
+namespace VE {
+
+struct BloomSettings {
+    bool Enabled = false;
+    float Threshold = 0.8f;
+    float Intensity = 1.0f;
+    int Iterations = 5;
+};
+
+struct VignetteSettings {
+    bool Enabled = false;
+    float Intensity = 0.5f;
+    float Smoothness = 0.5f;
+};
+
+struct ColorAdjustments {
+    bool Enabled = false;
+    float Exposure = 0.0f;
+    float Contrast = 0.0f;
+    float Saturation = 0.0f;
+    std::array<float, 3> ColorFilter = { 1.0f, 1.0f, 1.0f };
+    float Gamma = 1.0f;
+};
+
+struct SMHSettings {
+    bool Enabled = false;
+    std::array<float, 3> Shadows    = { 1.0f, 1.0f, 1.0f };
+    std::array<float, 3> Midtones   = { 1.0f, 1.0f, 1.0f };
+    std::array<float, 3> Highlights = { 1.0f, 1.0f, 1.0f };
+    float ShadowStart    = 0.0f;
+    float ShadowEnd      = 0.3f;
+    float HighlightStart = 0.55f;
+    float HighlightEnd   = 1.0f;
+};
+
+/// A curve channel defined by sorted control points (x,y) in [0,1].
+struct CurveChannel {
+    std::vector<std::pair<float, float>> Points = { {0.0f, 0.0f}, {1.0f, 1.0f} };
+};
+
+struct ColorCurvesSettings {
+    bool Enabled = false;
+    CurveChannel Master;
+    CurveChannel Red;
+    CurveChannel Green;
+    CurveChannel Blue;
+};
+
+enum class TonemapMode { None = 0, Reinhard, ACES, Uncharted2 };
+
+struct TonemappingSettings {
+    bool Enabled = false;
+    TonemapMode Mode = TonemapMode::ACES;
+};
+
+struct PostProcessSettings {
+    BloomSettings       Bloom;
+    VignetteSettings    Vignette;
+    ColorAdjustments    Color;
+    SMHSettings         SMH;
+    ColorCurvesSettings Curves;
+    TonemappingSettings Tonemap;
+};
+
+class PostProcessing {
+public:
+    PostProcessing() = default;
+    ~PostProcessing();
+
+    void Init(uint32_t width, uint32_t height);
+    void Shutdown();
+    void Resize(uint32_t width, uint32_t height);
+
+    uint32_t Apply(uint32_t sceneColorTexture, uint32_t width, uint32_t height,
+                   const PostProcessSettings& settings);
+
+private:
+    void CreateResources();
+    void DestroyResources();
+    void CompileShaders();
+    void RenderFullscreenQuad();
+
+    void BakeCurvesLUT(const ColorCurvesSettings& curves);
+
+    uint32_t m_Width = 0, m_Height = 0;
+    bool m_Initialized = false;
+
+    uint32_t m_QuadVAO = 0;
+
+    uint32_t m_BrightExtractShader = 0;
+    uint32_t m_BlurShader = 0;
+    uint32_t m_CompositeShader = 0;
+
+    uint32_t m_BrightFBO = 0, m_BrightTexture = 0;
+    uint32_t m_BlurFBO[2] = { 0, 0 };
+    uint32_t m_BlurTexture[2] = { 0, 0 };
+    uint32_t m_CompositeFBO = 0, m_CompositeTexture = 0;
+
+    // Color curves 1D LUT (256x1 RGBA)
+    uint32_t m_CurvesLUT = 0;
+};
+
+} // namespace VE
