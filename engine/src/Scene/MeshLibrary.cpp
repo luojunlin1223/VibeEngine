@@ -27,8 +27,9 @@ std::shared_ptr<Shader>      MeshLibrary::s_SkyShader;
 static const char* s_DefaultVertexSrc = R"(
 #version 460 core
 layout(location = 0) in vec3 a_Position;
-layout(location = 1) in vec3 a_Color;
-layout(location = 2) in vec2 a_TexCoord;
+layout(location = 1) in vec3 a_Normal;
+layout(location = 2) in vec3 a_Color;
+layout(location = 3) in vec2 a_TexCoord;
 
 uniform mat4 u_MVP;
 
@@ -49,6 +50,7 @@ in vec2 v_TexCoord;
 
 uniform sampler2D u_Texture;
 uniform int u_UseTexture;
+uniform vec4 u_EntityColor;
 
 out vec4 FragColor;
 
@@ -56,7 +58,8 @@ void main() {
     vec3 baseColor = v_Color;
     if (u_UseTexture == 1)
         baseColor = texture(u_Texture, v_TexCoord).rgb;
-    FragColor = vec4(baseColor, 1.0);
+    baseColor *= u_EntityColor.rgb;
+    FragColor = vec4(baseColor, u_EntityColor.a);
 }
 )";
 
@@ -216,13 +219,13 @@ void main() {
 )";
 
 void MeshLibrary::Init() {
-    // ── Triangle (2D, unlit) ────────────────────────────────────────
+    // ── Triangle ────────────────────────────────────────────────────
     {
         float vertices[] = {
-            // position            // color              // uv
-            -0.5f, -0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
-             0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
-             0.0f,  0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.5f, 1.0f,
+            // position            // normal             // color              // uv
+            -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+             0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
+             0.0f,  0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f, 1.0f,   0.5f, 1.0f,
         };
         uint32_t indices[] = { 0, 1, 2 };
 
@@ -230,6 +233,7 @@ void MeshLibrary::Init() {
         auto vb = VertexBuffer::Create(vertices, sizeof(vertices));
         vb->SetLayout({
             { ShaderDataType::Float3, "a_Position" },
+            { ShaderDataType::Float3, "a_Normal"   },
             { ShaderDataType::Float3, "a_Color"    },
             { ShaderDataType::Float2, "a_TexCoord" },
         });
@@ -237,14 +241,14 @@ void MeshLibrary::Init() {
         s_Triangle->SetIndexBuffer(IndexBuffer::Create(indices, 3));
     }
 
-    // ── Quad (2D, unlit) ────────────────────────────────────────────
+    // ── Quad ────────────────────────────────────────────────────────
     {
         float vertices[] = {
-            // position            // color              // uv
-            -0.5f, -0.5f, 0.0f,   0.8f, 0.2f, 0.2f,   0.0f, 0.0f,
-             0.5f, -0.5f, 0.0f,   0.2f, 0.8f, 0.2f,   1.0f, 0.0f,
-             0.5f,  0.5f, 0.0f,   0.2f, 0.2f, 0.8f,   1.0f, 1.0f,
-            -0.5f,  0.5f, 0.0f,   0.8f, 0.8f, 0.2f,   0.0f, 1.0f,
+            // position            // normal             // color              // uv
+            -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,   0.0f, 0.0f,
+             0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,   1.0f, 0.0f,
+             0.5f,  0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,   1.0f, 1.0f,
+            -0.5f,  0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,   0.0f, 1.0f,
         };
         uint32_t indices[] = { 0, 1, 2, 2, 3, 0 };
 
@@ -252,6 +256,7 @@ void MeshLibrary::Init() {
         auto vb = VertexBuffer::Create(vertices, sizeof(vertices));
         vb->SetLayout({
             { ShaderDataType::Float3, "a_Position" },
+            { ShaderDataType::Float3, "a_Normal"   },
             { ShaderDataType::Float3, "a_Color"    },
             { ShaderDataType::Float2, "a_TexCoord" },
         });
@@ -400,7 +405,6 @@ void MeshLibrary::Init() {
 
         auto litMat = Material::Create("Lit", s_LitShader);
         litMat->SetLit(true);
-        litMat->SetVec4("u_EntityColor", glm::vec4(1.0f));
         litMat->SetFloat("u_Metallic", 0.0f);
         litMat->SetFloat("u_Roughness", 0.5f);
         litMat->SetFloat("u_AO", 1.0f);

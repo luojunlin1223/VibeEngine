@@ -22,6 +22,7 @@ public:
                            float viewportX, float viewportY,
                            float viewportW, float viewportH,
                            CameraMode cameraMode = CameraMode::Perspective3D);
+    static void EndScene();
 
     static void DrawGrid(float gridSize = 20.0f, float spacing = 1.0f);
     static void DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis = GizmoAxis::None,

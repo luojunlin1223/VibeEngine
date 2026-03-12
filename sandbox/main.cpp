@@ -273,7 +273,6 @@ private:
             // Create a default material file
             auto mat = VE::Material::Create(name, VE::MeshLibrary::GetLitShader());
             mat->SetLit(true);
-            mat->SetVec4("u_EntityColor", glm::vec4(1.0f));
             mat->Save(absPath);
             VE::MaterialLibrary::Register(mat);
         } else if (ext == ".cpp") {
@@ -594,6 +593,8 @@ private:
             }
             VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
         }
+
+        VE::GizmoRenderer::EndScene();
 
         ImGui::End();
         ImGui::PopStyleVar();
@@ -1162,6 +1163,8 @@ private:
                     ImGui::Separator();
                     ImGui::Text("Material: %s", mr.Mat->GetName().c_str());
                     for (auto& prop : mr.Mat->GetProperties()) {
+                        // u_EntityColor is driven by per-entity Color above
+                        if (prop.Name == "u_EntityColor") continue;
                         switch (prop.Type) {
                             case VE::MaterialPropertyType::Float:
                                 ImGui::DragFloat(prop.Name.c_str(), &prop.FloatValue, 0.01f);
