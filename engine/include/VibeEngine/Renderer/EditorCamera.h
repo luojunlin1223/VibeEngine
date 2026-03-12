@@ -26,7 +26,11 @@ public:
 
     const glm::mat4& GetViewProjection() const { return m_ViewProjection; }
     const glm::mat4& GetSkyViewProjection() const { return m_SkyViewProjection; }
+    const glm::mat4& GetViewMatrix() const { return m_ViewMatrix; }
+    const glm::mat4& GetProjectionMatrix() const { return m_ProjectionMatrix; }
     CameraMode GetMode() const { return m_Mode; }
+    float GetNearClip() const { return m_NearClip; }
+    float GetFarClip() const { return m_FarClip; }
 
     // 2D accessors
     float GetZoom() const { return m_Zoom; }
@@ -48,6 +52,8 @@ private:
     float m_AspectRatio = 16.0f / 9.0f;
     glm::mat4 m_ViewProjection    = glm::mat4(1.0f);
     glm::mat4 m_SkyViewProjection = glm::mat4(1.0f);
+    glm::mat4 m_ViewMatrix        = glm::mat4(1.0f);
+    glm::mat4 m_ProjectionMatrix  = glm::mat4(1.0f);
 
     // 2D state
     glm::vec2 m_Position2D = { 0.0f, 0.0f };

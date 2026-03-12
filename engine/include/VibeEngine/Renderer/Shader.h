@@ -9,6 +9,22 @@
 
 namespace VE {
 
+/// Metadata for a shader property declared in ShaderLab's Properties {} block.
+/// Stored on the Shader so Material can auto-populate its defaults.
+enum class ShaderPropertyType { Float, Range, Int, Color, Vector, Texture2D };
+
+struct ShaderPropertyInfo {
+    std::string Name;          // uniform name (e.g. "_Metallic" → "u_Metallic")
+    std::string DisplayName;   // human-readable (e.g. "Metallic")
+    ShaderPropertyType Type = ShaderPropertyType::Float;
+    float       FloatDefault = 0.0f;
+    int         IntDefault   = 0;
+    glm::vec4   VectorDefault = glm::vec4(0.0f);
+    std::string TextureDefault;  // "white", "black", etc.
+    float RangeMin = 0.0f;
+    float RangeMax = 1.0f;
+};
+
 class Shader {
 public:
     virtual ~Shader() = default;
@@ -25,6 +41,10 @@ public:
     const std::string& GetName() const { return m_Name; }
     void SetName(const std::string& name) { m_Name = name; }
 
+    /// Property metadata from ShaderLab Properties {} block
+    const std::vector<ShaderPropertyInfo>& GetPropertyInfos() const { return m_PropertyInfos; }
+    void SetPropertyInfos(std::vector<ShaderPropertyInfo> infos) { m_PropertyInfos = std::move(infos); }
+
     static std::shared_ptr<Shader> Create(const std::string& vertexSrc, const std::string& fragmentSrc);
 
     /// Load and compile a .shader (ShaderLab) file from disk.
@@ -32,6 +52,7 @@ public:
 
 protected:
     std::string m_Name;
+    std::vector<ShaderPropertyInfo> m_PropertyInfos;
 };
 
 /// Global shader registry — tracks all loaded shaders by name.

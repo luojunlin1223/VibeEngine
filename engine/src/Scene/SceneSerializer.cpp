@@ -142,6 +142,47 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
                 out << YAML::Key << "MaterialName" << YAML::Value << mr.Mat->GetName();
         }
 
+        out << YAML::Key << "CastShadows" << YAML::Value << mr.CastShadows;
+
+        // Per-entity material property overrides
+        if (!mr.MaterialOverrides.empty()) {
+            out << YAML::Key << "MaterialOverrides" << YAML::Value << YAML::BeginSeq;
+            for (const auto& ov : mr.MaterialOverrides) {
+                out << YAML::BeginMap;
+                out << YAML::Key << "Name" << YAML::Value << ov.Name;
+                switch (ov.Type) {
+                    case MaterialPropertyType::Float:
+                        out << YAML::Key << "Type" << YAML::Value << "Float";
+                        out << YAML::Key << "Value" << YAML::Value << ov.FloatValue;
+                        if (ov.IsRange) {
+                            out << YAML::Key << "RangeMin" << YAML::Value << ov.RangeMin;
+                            out << YAML::Key << "RangeMax" << YAML::Value << ov.RangeMax;
+                        }
+                        break;
+                    case MaterialPropertyType::Int:
+                        out << YAML::Key << "Type" << YAML::Value << "Int";
+                        out << YAML::Key << "Value" << YAML::Value << ov.IntValue;
+                        break;
+                    case MaterialPropertyType::Vec3:
+                        out << YAML::Key << "Type" << YAML::Value << "Vec3";
+                        out << YAML::Key << "Value" << YAML::Value << YAML::Flow
+                            << YAML::BeginSeq << ov.Vec3Value.x << ov.Vec3Value.y << ov.Vec3Value.z << YAML::EndSeq;
+                        break;
+                    case MaterialPropertyType::Vec4:
+                        out << YAML::Key << "Type" << YAML::Value << "Vec4";
+                        out << YAML::Key << "Value" << YAML::Value << YAML::Flow
+                            << YAML::BeginSeq << ov.Vec4Value.x << ov.Vec4Value.y << ov.Vec4Value.z << ov.Vec4Value.w << YAML::EndSeq;
+                        break;
+                    case MaterialPropertyType::Texture2D:
+                        out << YAML::Key << "Type" << YAML::Value << "Texture2D";
+                        out << YAML::Key << "Value" << YAML::Value << ov.TexturePath;
+                        break;
+                }
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+        }
+
         out << YAML::EndMap;
     }
 
@@ -203,6 +244,10 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     serializeCurve("CurvesBlue", ps.CurvesBlue);
     out << YAML::Key << "TonemapEnabled" << YAML::Value << ps.TonemapEnabled;
     out << YAML::Key << "TonemapMode" << YAML::Value << ps.TonemapMode;
+    out << YAML::Key << "ShadowEnabled" << YAML::Value << ps.ShadowEnabled;
+    out << YAML::Key << "ShadowBias" << YAML::Value << ps.ShadowBias;
+    out << YAML::Key << "ShadowNormalBias" << YAML::Value << ps.ShadowNormalBias;
+    out << YAML::Key << "ShadowPCFRadius" << YAML::Value << ps.ShadowPCFRadius;
     out << YAML::EndMap;
 
     out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
@@ -273,6 +318,10 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         deserializeCurve("CurvesBlue", ps.CurvesBlue);
         if (psNode["TonemapEnabled"]) ps.TonemapEnabled = psNode["TonemapEnabled"].as<bool>();
         if (psNode["TonemapMode"]) ps.TonemapMode = psNode["TonemapMode"].as<int>();
+        if (psNode["ShadowEnabled"]) ps.ShadowEnabled = psNode["ShadowEnabled"].as<bool>();
+        if (psNode["ShadowBias"]) ps.ShadowBias = psNode["ShadowBias"].as<float>();
+        if (psNode["ShadowNormalBias"]) ps.ShadowNormalBias = psNode["ShadowNormalBias"].as<float>();
+        if (psNode["ShadowPCFRadius"]) ps.ShadowPCFRadius = psNode["ShadowPCFRadius"].as<int>();
     }
 
     auto entities = data["Entities"];
@@ -394,6 +443,56 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             } else if (auto matNameNode = mrNode["MaterialName"]) {
                 auto mat = MaterialLibrary::Get(matNameNode.as<std::string>());
                 if (mat) mr.Mat = mat;
+            }
+            if (auto castNode = mrNode["CastShadows"])
+                mr.CastShadows = castNode.as<bool>();
+            // Per-entity material property overrides
+            if (auto ovNode = mrNode["MaterialOverrides"]) {
+                for (auto propNode : ovNode) {
+                    MaterialProperty ov;
+                    ov.Name = propNode["Name"].as<std::string>();
+                    std::string type = propNode["Type"].as<std::string>();
+                    if (type == "Float") {
+                        ov.Type = MaterialPropertyType::Float;
+                        ov.FloatValue = propNode["Value"].as<float>();
+                        if (propNode["RangeMin"]) {
+                            ov.IsRange = true;
+                            ov.RangeMin = propNode["RangeMin"].as<float>();
+                            ov.RangeMax = propNode["RangeMax"].as<float>();
+                        }
+                    } else if (type == "Int") {
+                        ov.Type = MaterialPropertyType::Int;
+                        ov.IntValue = propNode["Value"].as<int>();
+                    } else if (type == "Vec3") {
+                        ov.Type = MaterialPropertyType::Vec3;
+                        auto v = propNode["Value"];
+                        ov.Vec3Value = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+                    } else if (type == "Vec4") {
+                        ov.Type = MaterialPropertyType::Vec4;
+                        auto v = propNode["Value"];
+                        ov.Vec4Value = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>(), v[3].as<float>() };
+                    } else if (type == "Texture2D") {
+                        ov.Type = MaterialPropertyType::Texture2D;
+                        ov.TexturePath = propNode["Value"].as<std::string>();
+                        if (!ov.TexturePath.empty())
+                            ov.TextureRef = Texture2D::Create(ov.TexturePath);
+                    }
+                    // Restore display name from material if available
+                    if (mr.Mat) {
+                        for (const auto& mp : mr.Mat->GetProperties()) {
+                            if (mp.Name == ov.Name) {
+                                ov.DisplayName = mp.DisplayName;
+                                if (mp.IsRange) {
+                                    ov.IsRange = true;
+                                    ov.RangeMin = mp.RangeMin;
+                                    ov.RangeMax = mp.RangeMax;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    mr.MaterialOverrides.push_back(std::move(ov));
+                }
             }
             // Backward compat: old TexturePath field → set as material texture
             if (auto texNode = mrNode["TexturePath"]) {

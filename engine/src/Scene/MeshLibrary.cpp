@@ -401,17 +401,17 @@ void MeshLibrary::Init() {
     {
         auto defaultMat = Material::Create("Default", s_DefaultShader);
         defaultMat->SetLit(false);
+        defaultMat->PopulateFromShader();
         MaterialLibrary::Register(defaultMat);
 
         auto litMat = Material::Create("Lit", s_LitShader);
         litMat->SetLit(true);
-        litMat->SetFloat("u_Metallic", 0.0f);
-        litMat->SetFloat("u_Roughness", 0.5f);
-        litMat->SetFloat("u_AO", 1.0f);
+        litMat->PopulateFromShader(); // auto-fill from ShaderLab Properties
         MaterialLibrary::Register(litMat);
 
         auto skyMat = Material::Create("Sky", s_SkyShader);
         skyMat->SetLit(false);
+        skyMat->PopulateFromShader();
         MaterialLibrary::Register(skyMat);
     }
 

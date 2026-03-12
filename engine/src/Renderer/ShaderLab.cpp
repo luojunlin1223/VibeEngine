@@ -747,7 +747,39 @@ std::shared_ptr<Shader> ShaderLabCompiler::Compile(const ShaderLabShader& shader
 
     auto result = Shader::Create(pass.VertexSource, pass.FragmentSource);
     if (result) {
-        VE_ENGINE_INFO("ShaderLab: Compiled shader '{}'", shader.Name);
+        result->SetName(shader.Name);
+
+        // Propagate ShaderLab Properties to Shader metadata
+        std::vector<ShaderPropertyInfo> infos;
+        for (const auto& prop : shader.Properties) {
+            ShaderPropertyInfo info;
+            // Convert ShaderLab name (_Foo) to uniform name (u_Foo)
+            if (prop.Name.size() > 1 && prop.Name[0] == '_')
+                info.Name = "u_" + prop.Name.substr(1);
+            else
+                info.Name = prop.Name;
+            info.DisplayName = prop.DisplayName;
+            info.FloatDefault = prop.FloatDefault;
+            info.IntDefault = prop.IntDefault;
+            info.VectorDefault = prop.VectorDefault;
+            info.TextureDefault = prop.TextureDefault;
+            info.RangeMin = prop.RangeMin;
+            info.RangeMax = prop.RangeMax;
+
+            switch (prop.Type) {
+                case ShaderLabPropertyType::Float:   info.Type = ShaderPropertyType::Float;     break;
+                case ShaderLabPropertyType::Range:   info.Type = ShaderPropertyType::Range;     break;
+                case ShaderLabPropertyType::Int:     info.Type = ShaderPropertyType::Int;       break;
+                case ShaderLabPropertyType::Color:   info.Type = ShaderPropertyType::Color;     break;
+                case ShaderLabPropertyType::Vector:  info.Type = ShaderPropertyType::Vector;    break;
+                case ShaderLabPropertyType::Texture2D: info.Type = ShaderPropertyType::Texture2D; break;
+                default: info.Type = ShaderPropertyType::Float; break;
+            }
+            infos.push_back(std::move(info));
+        }
+        result->SetPropertyInfos(std::move(infos));
+
+        VE_ENGINE_INFO("ShaderLab: Compiled shader '{}' ({} properties)", shader.Name, shader.Properties.size());
     }
     return result;
 }

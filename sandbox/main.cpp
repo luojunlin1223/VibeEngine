@@ -56,6 +56,15 @@ protected:
             ? m_Camera.GetPosition3D()
             : glm::vec3(m_Camera.GetPosition(), 5.0f);
 
+        // Compute CSM shadows before main render (only in 3D perspective mode)
+        // Must run before binding the scene framebuffer since it uses its own FBO
+        if (m_Camera.GetMode() == VE::CameraMode::Perspective3D) {
+            m_Scene->ComputeShadows(m_Camera.GetViewMatrix(),
+                                    m_Camera.GetProjectionMatrix(),
+                                    m_Camera.GetNearClip(),
+                                    m_Camera.GetFarClip());
+        }
+
         if (m_Framebuffer) {
             m_Framebuffer->Bind();
             VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -1156,29 +1165,63 @@ private:
                     }
                 }
 
-                ImGui::ColorEdit4("Color", mr.Color.data());
+                ImGui::Checkbox("Cast Shadows", &mr.CastShadows);
 
-                // Inline material properties
+                // Per-entity material property overrides
                 if (mr.Mat) {
-                    ImGui::Separator();
-                    ImGui::Text("Material: %s", mr.Mat->GetName().c_str());
-                    for (auto& prop : mr.Mat->GetProperties()) {
-                        // u_EntityColor is driven by per-entity Color above
-                        if (prop.Name == "u_EntityColor") continue;
-                        switch (prop.Type) {
-                            case VE::MaterialPropertyType::Float:
-                                ImGui::DragFloat(prop.Name.c_str(), &prop.FloatValue, 0.01f);
-                                break;
-                            case VE::MaterialPropertyType::Vec3:
-                                ImGui::ColorEdit3(prop.Name.c_str(), &prop.Vec3Value.x);
-                                break;
-                            case VE::MaterialPropertyType::Vec4:
-                                ImGui::ColorEdit4(prop.Name.c_str(), &prop.Vec4Value.x);
-                                break;
-                            case VE::MaterialPropertyType::Texture2D:
-                                ImGui::Text("Tex: %s", prop.TexturePath.empty() ? "(none)" : prop.TexturePath.c_str());
-                                break;
-                            default: break;
+                    // Ensure overrides are populated from material defaults
+                    if (mr.MaterialOverrides.empty()) {
+                        for (const auto& prop : mr.Mat->GetProperties()) {
+                            if (prop.Name == "u_MainTex") continue; // texture handled separately
+                            mr.MaterialOverrides.push_back(prop);
+                        }
+                    }
+
+                    if (!mr.MaterialOverrides.empty()) {
+                        ImGui::Separator();
+                        ImGui::Text("Material Properties");
+                        for (auto& ov : mr.MaterialOverrides) {
+                            const char* label = ov.DisplayName.empty() ? ov.Name.c_str() : ov.DisplayName.c_str();
+                            ImGui::PushID(ov.Name.c_str());
+                            switch (ov.Type) {
+                                case VE::MaterialPropertyType::Float:
+                                    if (ov.IsRange)
+                                        ImGui::SliderFloat(label, &ov.FloatValue, ov.RangeMin, ov.RangeMax, "%.3f");
+                                    else
+                                        ImGui::DragFloat(label, &ov.FloatValue, 0.01f);
+                                    break;
+                                case VE::MaterialPropertyType::Int:
+                                    ImGui::DragInt(label, &ov.IntValue, 1);
+                                    break;
+                                case VE::MaterialPropertyType::Vec3:
+                                    ImGui::ColorEdit3(label, &ov.Vec3Value.x);
+                                    break;
+                                case VE::MaterialPropertyType::Vec4:
+                                    ImGui::ColorEdit4(label, &ov.Vec4Value.x);
+                                    break;
+                                case VE::MaterialPropertyType::Texture2D: {
+                                    ImGui::Text("%s: %s", label,
+                                        ov.TexturePath.empty() ? "(none)" : ov.TexturePath.c_str());
+                                    ImGui::SameLine();
+                                    if (ImGui::SmallButton("Load")) {
+                                        static const char* texFilter =
+                                            "Image Files (*.png;*.jpg;*.hdr)\0*.png;*.jpg;*.jpeg;*.hdr\0All Files\0*.*\0";
+                                        std::string path = VE::FileDialog::OpenFile(texFilter, GetWindow().GetNativeWindow());
+                                        if (!path.empty()) {
+                                            ov.TexturePath = path;
+                                            ov.TextureRef = VE::Texture2D::Create(path);
+                                        }
+                                    }
+                                    ImGui::SameLine();
+                                    if (ImGui::SmallButton("Clear")) {
+                                        ov.TexturePath.clear();
+                                        ov.TextureRef.reset();
+                                    }
+                                    break;
+                                }
+                                default: break;
+                            }
+                            ImGui::PopID();
                         }
                     }
                 }
@@ -1552,6 +1595,16 @@ private:
                     ps.SkyTexturePath.clear();
                     ps.SkyTexture.reset();
                 }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Shadows (CSM)", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Shadows", &ps.ShadowEnabled);
+            if (ps.ShadowEnabled) {
+                ImGui::SliderFloat("Shadow Bias", &ps.ShadowBias, 0.0f, 0.01f, "%.5f");
+                ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.1f, "%.3f");
+                const char* pcfModes[] = { "Hard (1x1)", "Soft (3x3)", "Softer (5x5)" };
+                ImGui::Combo("PCF Quality", &ps.ShadowPCFRadius, pcfModes, 3);
             }
         }
 

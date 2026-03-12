@@ -4,7 +4,7 @@
 Shader "VibeEngine/Unlit" {
     Properties {
         _MainTex ("Main Texture", 2D) = "white" {}
-        _Color ("Color", Color) = (1, 1, 1, 1)
+        _EntityColor ("Entity Color", Color) = (1, 1, 1, 1)
     }
 
     SubShader {

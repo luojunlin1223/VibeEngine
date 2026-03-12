@@ -79,11 +79,11 @@ void EditorCamera::RecalculateMatrix() {
         m_ViewProjection = glm::ortho(left, right, bottom, top, -10.0f, 10.0f);
     } else {
         RecalculatePosition3D();
-        glm::mat4 proj = glm::perspective(glm::radians(m_FOV), m_AspectRatio, m_NearClip, m_FarClip);
-        glm::mat4 view = glm::lookAt(m_Position3D, m_FocalPoint, glm::vec3(0, 1, 0));
-        m_ViewProjection = proj * view;
+        m_ProjectionMatrix = glm::perspective(glm::radians(m_FOV), m_AspectRatio, m_NearClip, m_FarClip);
+        m_ViewMatrix = glm::lookAt(m_Position3D, m_FocalPoint, glm::vec3(0, 1, 0));
+        m_ViewProjection = m_ProjectionMatrix * m_ViewMatrix;
         // Sky VP strips translation so the sky sphere stays centered on camera
-        m_SkyViewProjection = proj * glm::mat4(glm::mat3(view));
+        m_SkyViewProjection = m_ProjectionMatrix * glm::mat4(glm::mat3(m_ViewMatrix));
     }
 }
 
