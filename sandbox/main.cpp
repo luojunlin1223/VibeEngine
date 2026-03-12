@@ -231,26 +231,55 @@ private:
             mat->SetVec4("u_EntityColor", glm::vec4(1.0f));
             mat->Save(absPath);
             VE::MaterialLibrary::Register(mat);
-        } else if (ext == ".glsl") {
-            // Create a default shader template
+        } else if (ext == ".shader") {
+            // Create a default ShaderLab template
             std::ofstream fout(absPath);
-            fout << "#type vertex\n"
-                 << "#version 460 core\n"
+            fout << "Shader \"Custom/" << name << "\" {\n"
+                 << "    Properties {\n"
+                 << "        _MainTex (\"Main Texture\", 2D) = \"white\" {}\n"
+                 << "        _Color (\"Color\", Color) = (1, 1, 1, 1)\n"
+                 << "    }\n\n"
+                 << "    SubShader {\n"
+                 << "        Tags { \"RenderType\"=\"Opaque\" \"Queue\"=\"Geometry\" }\n\n"
+                 << "        Pass {\n"
+                 << "            Name \"Default\"\n\n"
+                 << "            Cull Back\n"
+                 << "            ZWrite On\n"
+                 << "            ZTest LEqual\n\n"
+                 << "            GLSLPROGRAM\n"
+                 << "            #pragma vertex vert\n"
+                 << "            #pragma fragment frag\n\n"
+                 << "#version 460 core\n\n"
+                 << "#ifdef VERTEX\n"
                  << "layout(location = 0) in vec3 a_Position;\n"
                  << "layout(location = 1) in vec3 a_Color;\n"
                  << "layout(location = 2) in vec2 a_TexCoord;\n\n"
                  << "uniform mat4 u_MVP;\n\n"
-                 << "out vec3 v_Color;\n\n"
+                 << "out vec3 v_Color;\n"
+                 << "out vec2 v_TexCoord;\n\n"
                  << "void main() {\n"
-                 << "    v_Color = a_Color;\n"
+                 << "    v_Color    = a_Color;\n"
+                 << "    v_TexCoord = a_TexCoord;\n"
                  << "    gl_Position = u_MVP * vec4(a_Position, 1.0);\n"
-                 << "}\n\n"
-                 << "#type fragment\n"
-                 << "#version 460 core\n"
+                 << "}\n"
+                 << "#endif\n\n"
+                 << "#ifdef FRAGMENT\n"
                  << "in vec3 v_Color;\n"
+                 << "in vec2 v_TexCoord;\n\n"
+                 << "uniform sampler2D u_Texture;\n"
+                 << "uniform int u_UseTexture;\n\n"
                  << "out vec4 FragColor;\n\n"
                  << "void main() {\n"
-                 << "    FragColor = vec4(v_Color, 1.0);\n"
+                 << "    vec3 baseColor = v_Color;\n"
+                 << "    if (u_UseTexture == 1)\n"
+                 << "        baseColor = texture(u_Texture, v_TexCoord).rgb;\n"
+                 << "    FragColor = vec4(baseColor, 1.0);\n"
+                 << "}\n"
+                 << "#endif\n\n"
+                 << "            ENDGLSL\n"
+                 << "        }\n"
+                 << "    }\n\n"
+                 << "    FallBack \"VibeEngine/Unlit\"\n"
                  << "}\n";
             fout.close();
         }
@@ -1108,7 +1137,7 @@ private:
                 CreateAssetFile(m_BrowserCurrentDir, "New Material", ".vmat");
             }
             if (ImGui::MenuItem("New Shader")) {
-                CreateAssetFile(m_BrowserCurrentDir, "New Shader", ".glsl");
+                CreateAssetFile(m_BrowserCurrentDir, "New Shader", ".shader");
             }
             ImGui::EndPopup();
         }
