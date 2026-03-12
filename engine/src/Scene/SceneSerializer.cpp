@@ -34,8 +34,11 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
 
     // TagComponent
     if (entity.HasComponent<TagComponent>()) {
+        auto& tc = entity.GetComponent<TagComponent>();
         out << YAML::Key << "TagComponent" << YAML::Value << YAML::BeginMap;
-        out << YAML::Key << "Tag" << YAML::Value << entity.GetComponent<TagComponent>().Tag;
+        out << YAML::Key << "Tag" << YAML::Value << tc.Tag;
+        out << YAML::Key << "EntityTag" << YAML::Value << tc.EntityTag;
+        out << YAML::Key << "Layer" << YAML::Value << tc.Layer;
         out << YAML::EndMap;
     }
 
@@ -80,15 +83,37 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
-    // ColliderComponent
-    if (entity.HasComponent<ColliderComponent>()) {
-        auto& col = entity.GetComponent<ColliderComponent>();
-        out << YAML::Key << "ColliderComponent" << YAML::Value << YAML::BeginMap;
-        const char* shapeStr = col.Shape == ColliderShape::Box ? "Box" :
-                               col.Shape == ColliderShape::Sphere ? "Sphere" : "Capsule";
-        out << YAML::Key << "Shape"  << YAML::Value << shapeStr;
+    // Collider components (one per type)
+    if (entity.HasComponent<BoxColliderComponent>()) {
+        auto& col = entity.GetComponent<BoxColliderComponent>();
+        out << YAML::Key << "BoxColliderComponent" << YAML::Value << YAML::BeginMap;
         out << YAML::Key << "Size"   << YAML::Value << YAML::Flow
             << YAML::BeginSeq << col.Size[0] << col.Size[1] << col.Size[2] << YAML::EndSeq;
+        out << YAML::Key << "Offset" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << col.Offset[0] << col.Offset[1] << col.Offset[2] << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+    if (entity.HasComponent<SphereColliderComponent>()) {
+        auto& col = entity.GetComponent<SphereColliderComponent>();
+        out << YAML::Key << "SphereColliderComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Radius" << YAML::Value << col.Radius;
+        out << YAML::Key << "Offset" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << col.Offset[0] << col.Offset[1] << col.Offset[2] << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+    if (entity.HasComponent<CapsuleColliderComponent>()) {
+        auto& col = entity.GetComponent<CapsuleColliderComponent>();
+        out << YAML::Key << "CapsuleColliderComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Radius" << YAML::Value << col.Radius;
+        out << YAML::Key << "Height" << YAML::Value << col.Height;
+        out << YAML::Key << "Offset" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << col.Offset[0] << col.Offset[1] << col.Offset[2] << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+    if (entity.HasComponent<MeshColliderComponent>()) {
+        auto& col = entity.GetComponent<MeshColliderComponent>();
+        out << YAML::Key << "MeshColliderComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Convex" << YAML::Value << col.Convex;
         out << YAML::Key << "Offset" << YAML::Value << YAML::Flow
             << YAML::BeginSeq << col.Offset[0] << col.Offset[1] << col.Offset[2] << YAML::EndSeq;
         out << YAML::EndMap;
@@ -332,10 +357,18 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         uint64_t uuid = entityNode["Entity"].as<uint64_t>();
 
         std::string name = "GameObject";
-        if (auto tagNode = entityNode["TagComponent"])
+        std::string entityTag = "Untagged";
+        int layer = 0;
+        if (auto tagNode = entityNode["TagComponent"]) {
             name = tagNode["Tag"].as<std::string>();
+            if (tagNode["EntityTag"]) entityTag = tagNode["EntityTag"].as<std::string>();
+            if (tagNode["Layer"]) layer = tagNode["Layer"].as<int>();
+        }
 
         Entity entity = scene->CreateEntityWithUUID(UUID(uuid), name);
+        auto& tagComp = entity.GetComponent<TagComponent>();
+        tagComp.EntityTag = entityTag;
+        tagComp.Layer = layer;
 
         if (auto tcNode = entityNode["TransformComponent"]) {
             auto& tc = entity.GetComponent<TransformComponent>();
@@ -370,16 +403,52 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             rb.UseGravity     = rbNode["UseGravity"].as<bool>();
         }
 
-        if (auto colNode = entityNode["ColliderComponent"]) {
-            auto& col = entity.AddComponent<ColliderComponent>();
-            std::string sh = colNode["Shape"].as<std::string>();
-            if (sh == "Box") col.Shape = ColliderShape::Box;
-            else if (sh == "Sphere") col.Shape = ColliderShape::Sphere;
-            else col.Shape = ColliderShape::Capsule;
-            auto sz = colNode["Size"];
+        // New separate collider components
+        if (auto n = entityNode["BoxColliderComponent"]) {
+            auto& col = entity.AddComponent<BoxColliderComponent>();
+            auto sz = n["Size"];
             col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
-            auto off = colNode["Offset"];
+            auto off = n["Offset"];
             col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+        }
+        if (auto n = entityNode["SphereColliderComponent"]) {
+            auto& col = entity.AddComponent<SphereColliderComponent>();
+            col.Radius = n["Radius"].as<float>();
+            auto off = n["Offset"];
+            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+        }
+        if (auto n = entityNode["CapsuleColliderComponent"]) {
+            auto& col = entity.AddComponent<CapsuleColliderComponent>();
+            col.Radius = n["Radius"].as<float>();
+            col.Height = n["Height"].as<float>();
+            auto off = n["Offset"];
+            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+        }
+        if (auto n = entityNode["MeshColliderComponent"]) {
+            auto& col = entity.AddComponent<MeshColliderComponent>();
+            col.Convex = n["Convex"].as<bool>(true);
+            auto off = n["Offset"];
+            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+        }
+        // Backward compat: old ColliderComponent → convert to new type
+        if (auto colNode = entityNode["ColliderComponent"]) {
+            std::string sh = colNode["Shape"].as<std::string>("Box");
+            auto sz = colNode["Size"];
+            auto off = colNode["Offset"];
+            if (sh == "Box") {
+                auto& col = entity.AddComponent<BoxColliderComponent>();
+                col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
+                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            } else if (sh == "Sphere") {
+                auto& col = entity.AddComponent<SphereColliderComponent>();
+                col.Radius = sz[0].as<float>() * 0.5f;
+                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            } else {
+                auto& col = entity.AddComponent<CapsuleColliderComponent>();
+                col.Radius = sz[0].as<float>() * 0.5f;
+                col.Height = sz[1].as<float>();
+                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            }
         }
 
         if (auto scNode = entityNode["ScriptComponent"]) {

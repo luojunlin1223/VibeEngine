@@ -6,6 +6,7 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
+#include <any>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
 
@@ -35,6 +36,23 @@ public:
         fbSpec.Height = 720;
         fbSpec.HDR = true;
         m_Framebuffer = VE::Framebuffer::Create(fbSpec);
+
+        // Command history (undo/redo)
+        m_CommandHistory.SetScene(&m_Scene);
+        m_CommandHistory.SetRestoreCallback([this]() {
+            m_SelectedEntity = {};
+            uint64_t uuid = m_CommandHistory.GetSelectedEntityUUID();
+            if (uuid != 0) {
+                auto view = m_Scene->GetAllEntitiesWith<VE::IDComponent>();
+                for (auto e : view) {
+                    auto& id = view.get<VE::IDComponent>(e);
+                    if (static_cast<uint64_t>(id.ID) == uuid) {
+                        m_SelectedEntity = VE::Entity(e, &*m_Scene);
+                        break;
+                    }
+                }
+            }
+        });
     }
 
     ~Sandbox() override {
@@ -133,6 +151,27 @@ protected:
             ImGui::End();
         }
 
+        // ── Undo/Redo keyboard shortcuts ────────────────────────────
+        if (!m_PlayMode) {
+            // Update selected entity UUID for undo system
+            if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::IDComponent>())
+                m_CommandHistory.SetSelectedEntityUUID(static_cast<uint64_t>(m_SelectedEntity.GetComponent<VE::IDComponent>().ID));
+            else
+                m_CommandHistory.SetSelectedEntityUUID(0);
+
+            bool ctrl = io.KeyCtrl;
+            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+                if (io.KeyShift)
+                    m_CommandHistory.Redo();
+                else
+                    m_CommandHistory.Undo();
+            }
+            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false))
+                m_CommandHistory.Redo();
+            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && m_SelectedEntity.GetHandle() != entt::null)
+                DuplicateSelectedEntity();
+        }
+
         // ── Gizmo drag continuation (runs even over ImGui panels) ────
         if (m_DraggingAxis != VE::GizmoAxis::None) {
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -145,6 +184,7 @@ protected:
                          : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
                 tc.Position[comp] = m_DragStartPos[comp] + (val - m_DragOriginVal);
             } else {
+                if (!m_PlayMode) m_CommandHistory.EndPropertyEdit();
                 m_DraggingAxis = VE::GizmoAxis::None;
             }
         }
@@ -175,6 +215,7 @@ protected:
                 }
 
                 if (axis != VE::GizmoAxis::None) {
+                    if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit("Move Entity");
                     m_DraggingAxis = axis;
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                     glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
@@ -398,6 +439,7 @@ private:
         m_Scene = std::make_shared<VE::Scene>();
         m_SelectedEntity = {};
         m_CurrentScenePath.clear();
+        m_CommandHistory.Clear();
         VE_INFO("New scene created");
     }
 
@@ -424,6 +466,7 @@ private:
             VE::SceneSerializer serializer(m_Scene);
             if (serializer.Deserialize(path))
                 m_CurrentScenePath = path;
+            m_CommandHistory.Clear();
         }
     }
 
@@ -463,6 +506,90 @@ private:
             ps.SkyTexture = VE::Texture2D::Create(ps.SkyTexturePath);
     }
 
+    // ── Component Context Menu (Reset / Copy / Paste / Remove) ─────
+
+    template<typename T>
+    bool DrawComponentContextMenu(const char* popupID, const char* typeName, bool& outRemove) {
+        // Returns true if component was reset (caller should re-read ref)
+        bool wasReset = false;
+        if (ImGui::BeginPopupContextItem(popupID)) {
+            if (ImGui::MenuItem("Reset")) {
+                auto before = m_CommandHistory.CaptureSnapshot();
+                m_SelectedEntity.GetComponent<T>() = T{};
+                m_CommandHistory.RecordPropertyEdit("Reset Component", std::move(before));
+                wasReset = true;
+            }
+            if (ImGui::MenuItem("Copy Component")) {
+                m_ClipboardComponentType = typeName;
+                m_ClipboardComponentData = m_SelectedEntity.GetComponent<T>();
+            }
+            bool canPaste = (m_ClipboardComponentType == typeName);
+            if (ImGui::MenuItem("Paste Component", nullptr, false, canPaste)) {
+                auto before = m_CommandHistory.CaptureSnapshot();
+                m_SelectedEntity.GetComponent<T>() = std::any_cast<T>(m_ClipboardComponentData);
+                m_CommandHistory.RecordPropertyEdit("Paste Component", std::move(before));
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Remove Component"))
+                outRemove = true;
+            ImGui::EndPopup();
+        }
+        return wasReset;
+    }
+
+    // ── Duplicate Entity ─────────────────────────────────────────────
+
+    void DuplicateSelectedEntity() {
+        if (m_SelectedEntity.GetHandle() == entt::null) return;
+
+        m_CommandHistory.Execute("Duplicate Entity", [this]() {
+            auto& reg = m_Scene->GetRegistry();
+            auto srcEntity = m_SelectedEntity.GetHandle();
+
+            auto& srcTag = reg.get<VE::TagComponent>(srcEntity);
+            auto newEntity = m_Scene->CreateEntity(srcTag.Tag + " (Copy)");
+            auto dst = newEntity.GetHandle();
+
+            // Copy TransformComponent
+            if (reg.any_of<VE::TransformComponent>(srcEntity))
+                reg.get_or_emplace<VE::TransformComponent>(dst) = reg.get<VE::TransformComponent>(srcEntity);
+
+            // Copy MeshRendererComponent
+            if (reg.any_of<VE::MeshRendererComponent>(srcEntity))
+                reg.get_or_emplace<VE::MeshRendererComponent>(dst) = reg.get<VE::MeshRendererComponent>(srcEntity);
+
+            // Copy DirectionalLightComponent
+            if (reg.any_of<VE::DirectionalLightComponent>(srcEntity))
+                reg.get_or_emplace<VE::DirectionalLightComponent>(dst) = reg.get<VE::DirectionalLightComponent>(srcEntity);
+
+            // Copy RigidbodyComponent (reset runtime body ID)
+            if (reg.any_of<VE::RigidbodyComponent>(srcEntity)) {
+                auto rb = reg.get<VE::RigidbodyComponent>(srcEntity);
+                rb._JoltBodyID = 0xFFFFFFFF;
+                reg.get_or_emplace<VE::RigidbodyComponent>(dst) = rb;
+            }
+
+            // Copy colliders
+            if (reg.any_of<VE::BoxColliderComponent>(srcEntity))
+                reg.get_or_emplace<VE::BoxColliderComponent>(dst) = reg.get<VE::BoxColliderComponent>(srcEntity);
+            if (reg.any_of<VE::SphereColliderComponent>(srcEntity))
+                reg.get_or_emplace<VE::SphereColliderComponent>(dst) = reg.get<VE::SphereColliderComponent>(srcEntity);
+            if (reg.any_of<VE::CapsuleColliderComponent>(srcEntity))
+                reg.get_or_emplace<VE::CapsuleColliderComponent>(dst) = reg.get<VE::CapsuleColliderComponent>(srcEntity);
+            if (reg.any_of<VE::MeshColliderComponent>(srcEntity))
+                reg.get_or_emplace<VE::MeshColliderComponent>(dst) = reg.get<VE::MeshColliderComponent>(srcEntity);
+
+            // Copy ScriptComponent (reset runtime instance)
+            if (reg.any_of<VE::ScriptComponent>(srcEntity)) {
+                auto sc = reg.get<VE::ScriptComponent>(srcEntity);
+                sc._Instance = nullptr;
+                reg.get_or_emplace<VE::ScriptComponent>(dst) = sc;
+            }
+
+            m_SelectedEntity = newEntity;
+        });
+    }
+
     // ── Main Menu Bar ──────────────────────────────────────────────────
 
     void DrawMainMenuBar() {
@@ -478,32 +605,60 @@ private:
                     glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
                 ImGui::EndMenu();
             }
-            if (ImGui::BeginMenu("GameObject")) {
-                if (ImGui::MenuItem("Create Empty"))
-                    m_Scene->CreateEntity("GameObject");
-                if (ImGui::MenuItem("Create Triangle")) {
-                    auto e = m_Scene->CreateEntity("Triangle");
-                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = VE::MeshLibrary::GetTriangle();
-                    mr.Mat = VE::MaterialLibrary::Get("Default");
-                }
-                if (ImGui::MenuItem("Create Quad")) {
-                    auto e = m_Scene->CreateEntity("Quad");
-                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = VE::MeshLibrary::GetQuad();
-                    mr.Mat = VE::MaterialLibrary::Get("Default");
-                }
-                if (ImGui::MenuItem("Create Cube")) {
-                    auto e = m_Scene->CreateEntity("Cube");
-                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = VE::MeshLibrary::GetCube();
-                    mr.Mat = VE::MaterialLibrary::Get("Lit");
+            if (ImGui::BeginMenu("Edit")) {
+                if (ImGui::MenuItem("Undo", "Ctrl+Z", false, m_CommandHistory.CanUndo()))
+                    m_CommandHistory.Undo();
+                if (ImGui::MenuItem("Redo", "Ctrl+Y", false, m_CommandHistory.CanRedo()))
+                    m_CommandHistory.Redo();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, m_SelectedEntity.GetHandle() != entt::null))
+                    DuplicateSelectedEntity();
+                if (ImGui::MenuItem("Delete", "Del", false, m_SelectedEntity.GetHandle() != entt::null)) {
+                    m_CommandHistory.Execute("Delete Entity", [this]() {
+                        m_Scene->DestroyEntity(m_SelectedEntity);
+                        m_SelectedEntity = {};
+                    });
                 }
                 ImGui::Separator();
-                if (ImGui::MenuItem("Create Directional Light")) {
-                    auto e = m_Scene->CreateEntity("Directional Light");
-                    e.AddComponent<VE::DirectionalLightComponent>();
+                if (ImGui::MenuItem("Select All", "Ctrl+A")) {
+                    // Select first entity if none selected (no multi-select yet)
+                    auto& reg = m_Scene->GetRegistry();
+                    auto view = reg.view<VE::TagComponent>();
+                    if (!view.empty())
+                        m_SelectedEntity = VE::Entity(*view.begin(), &*m_Scene);
                 }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("GameObject")) {
+                if (ImGui::MenuItem("Create Empty"))
+                    m_CommandHistory.Execute("Create Entity", [this]() { m_Scene->CreateEntity("GameObject"); });
+                if (ImGui::MenuItem("Create Triangle"))
+                    m_CommandHistory.Execute("Create Triangle", [this]() {
+                        auto e = m_Scene->CreateEntity("Triangle");
+                        auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetTriangle();
+                        mr.Mat = VE::MaterialLibrary::Get("Default");
+                    });
+                if (ImGui::MenuItem("Create Quad"))
+                    m_CommandHistory.Execute("Create Quad", [this]() {
+                        auto e = m_Scene->CreateEntity("Quad");
+                        auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetQuad();
+                        mr.Mat = VE::MaterialLibrary::Get("Default");
+                    });
+                if (ImGui::MenuItem("Create Cube"))
+                    m_CommandHistory.Execute("Create Cube", [this]() {
+                        auto e = m_Scene->CreateEntity("Cube");
+                        auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetCube();
+                        mr.Mat = VE::MaterialLibrary::Get("Lit");
+                    });
+                ImGui::Separator();
+                if (ImGui::MenuItem("Create Directional Light"))
+                    m_CommandHistory.Execute("Create Light", [this]() {
+                        auto e = m_Scene->CreateEntity("Directional Light");
+                        e.AddComponent<VE::DirectionalLightComponent>();
+                    });
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
@@ -563,11 +718,14 @@ private:
                 std::string path(static_cast<const char*>(payload->Data));
                 auto meshAsset = VE::MeshImporter::GetOrLoad(path);
                 if (meshAsset && meshAsset->VAO) {
-                    auto entity = m_Scene->CreateEntity(meshAsset->GetName());
-                    auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = meshAsset->VAO;
-                    mr.Mat = VE::MaterialLibrary::Get("Lit");
-                    mr.MeshSourcePath = path;
+                    auto vao = meshAsset->VAO;
+                    m_CommandHistory.Execute("Import Mesh", [this, vao, path]() {
+                        auto entity = m_Scene->CreateEntity("Imported Mesh");
+                        auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = vao;
+                        mr.Mat = VE::MaterialLibrary::Get("Lit");
+                        mr.MeshSourcePath = path;
+                    });
                 }
             }
             ImGui::EndDragDropTarget();
@@ -628,6 +786,7 @@ private:
         VE::ScriptEngine::SetActiveScene(m_Scene.get());
         m_Scene->StartScripts();
         m_PlayMode = true;
+        m_CommandHistory.Clear();
         VE_INFO("Entered Play mode");
     }
 
@@ -645,6 +804,7 @@ private:
         m_SceneSnapshot.clear();
 
         m_PlayMode = false;
+        m_CommandHistory.Clear();
         VE_INFO("Exited Play mode (scene restored)");
     }
 
@@ -694,43 +854,52 @@ private:
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENTITY_NODE")) {
                 entt::entity dropped = *static_cast<const entt::entity*>(payload->Data);
-                m_Scene->RemoveParent(dropped);
+                m_CommandHistory.Execute("Reparent Entity", [this, dropped]() {
+                    m_Scene->RemoveParent(dropped);
+                });
             }
             ImGui::EndDragDropTarget();
         }
 
         if (ImGui::BeginPopupContextWindow("HierarchyPopup",
                 ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
-            if (ImGui::MenuItem("Create Empty")) m_Scene->CreateEntity("GameObject");
-            if (ImGui::MenuItem("Create Triangle")) {
-                auto e = m_Scene->CreateEntity("Triangle");
-                auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                mr.Mesh = VE::MeshLibrary::GetTriangle();
-                mr.Mat = VE::MaterialLibrary::Get("Default");
-            }
-            if (ImGui::MenuItem("Create Quad")) {
-                auto e = m_Scene->CreateEntity("Quad");
-                auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                mr.Mesh = VE::MeshLibrary::GetQuad();
-                mr.Mat = VE::MaterialLibrary::Get("Default");
-            }
-            if (ImGui::MenuItem("Create Cube")) {
-                auto e = m_Scene->CreateEntity("Cube");
-                auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                mr.Mesh = VE::MeshLibrary::GetCube();
-                mr.Mat = VE::MaterialLibrary::Get("Lit");
-            }
+            if (ImGui::MenuItem("Create Empty"))
+                m_CommandHistory.Execute("Create Entity", [this]() { m_Scene->CreateEntity("GameObject"); });
+            if (ImGui::MenuItem("Create Triangle"))
+                m_CommandHistory.Execute("Create Triangle", [this]() {
+                    auto e = m_Scene->CreateEntity("Triangle");
+                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = VE::MeshLibrary::GetTriangle();
+                    mr.Mat = VE::MaterialLibrary::Get("Default");
+                });
+            if (ImGui::MenuItem("Create Quad"))
+                m_CommandHistory.Execute("Create Quad", [this]() {
+                    auto e = m_Scene->CreateEntity("Quad");
+                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = VE::MeshLibrary::GetQuad();
+                    mr.Mat = VE::MaterialLibrary::Get("Default");
+                });
+            if (ImGui::MenuItem("Create Cube"))
+                m_CommandHistory.Execute("Create Cube", [this]() {
+                    auto e = m_Scene->CreateEntity("Cube");
+                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = VE::MeshLibrary::GetCube();
+                    mr.Mat = VE::MaterialLibrary::Get("Lit");
+                });
             ImGui::Separator();
-            if (ImGui::MenuItem("Create Directional Light")) {
-                auto e = m_Scene->CreateEntity("Directional Light");
-                e.AddComponent<VE::DirectionalLightComponent>();
-            }
+            if (ImGui::MenuItem("Create Directional Light"))
+                m_CommandHistory.Execute("Create Light", [this]() {
+                    auto e = m_Scene->CreateEntity("Directional Light");
+                    e.AddComponent<VE::DirectionalLightComponent>();
+                });
             ImGui::EndPopup();
         }
 
         if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
-            m_Scene->DestroyEntity(m_SelectedEntity);
-            m_SelectedEntity = {};
+            m_CommandHistory.Execute("Delete Entity", [this]() {
+                m_Scene->DestroyEntity(m_SelectedEntity);
+                m_SelectedEntity = {};
+            });
         }
         ImGui::End();
     }
@@ -761,9 +930,11 @@ private:
         // Right-click context menu on entity node
         if (ImGui::BeginPopupContextItem()) {
             if (ImGui::MenuItem("Delete")) {
-                m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
-                if (m_SelectedEntity.GetHandle() == entityID)
-                    m_SelectedEntity = {};
+                m_CommandHistory.Execute("Delete Entity", [this, entityID]() {
+                    m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
+                    if (m_SelectedEntity.GetHandle() == entityID)
+                        m_SelectedEntity = {};
+                });
             }
             ImGui::EndPopup();
         }
@@ -779,8 +950,11 @@ private:
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENTITY_NODE")) {
                 entt::entity dropped = *static_cast<const entt::entity*>(payload->Data);
-                if (dropped != entityID)
-                    m_Scene->SetParent(dropped, entityID);
+                if (dropped != entityID) {
+                    m_CommandHistory.Execute("Reparent Entity", [this, dropped, entityID]() {
+                        m_Scene->SetParent(dropped, entityID);
+                    });
+                }
             }
             ImGui::EndDragDropTarget();
         }
@@ -1319,6 +1493,32 @@ private:
             buffer[sizeof(buffer) - 1] = '\0';
             if (ImGui::InputText("Name", buffer, sizeof(buffer)))
                 tag.Tag = buffer;
+            if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Rename Entity");
+            if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+
+            // Tag dropdown
+            static const char* s_Tags[] = { "Untagged", "Player", "Enemy", "MainCamera", "GameController", "Respawn", "Finish", "EditorOnly" };
+            static constexpr int s_TagCount = sizeof(s_Tags) / sizeof(s_Tags[0]);
+            int currentTag = 0;
+            for (int i = 0; i < s_TagCount; i++) {
+                if (tag.EntityTag == s_Tags[i]) { currentTag = i; break; }
+            }
+            if (ImGui::Combo("Tag", &currentTag, s_Tags, s_TagCount)) {
+                auto before = m_CommandHistory.CaptureSnapshot();
+                tag.EntityTag = s_Tags[currentTag];
+                m_CommandHistory.RecordPropertyEdit("Change Tag", std::move(before));
+            }
+
+            // Layer dropdown
+            static const char* s_Layers[] = { "Default", "TransparentFX", "Ignore Raycast", "Water", "UI", "Layer 5", "Layer 6", "Layer 7" };
+            static constexpr int s_LayerCount = sizeof(s_Layers) / sizeof(s_Layers[0]);
+            int currentLayer = (tag.Layer >= 0 && tag.Layer < s_LayerCount) ? tag.Layer : 0;
+            if (ImGui::Combo("Layer", &currentLayer, s_Layers, s_LayerCount)) {
+                auto before = m_CommandHistory.CaptureSnapshot();
+                tag.Layer = currentLayer;
+                m_CommandHistory.RecordPropertyEdit("Change Layer", std::move(before));
+            }
+
             ImGui::Separator();
         }
 
@@ -1326,75 +1526,166 @@ private:
             if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
                 auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                 ImGui::DragFloat3("Position", tc.Position.data(), 0.1f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Position");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 ImGui::DragFloat3("Rotation", tc.Rotation.data(), 1.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Rotation");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 ImGui::DragFloat3("Scale",    tc.Scale.data(),    0.1f, 0.01f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Scale");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
             }
             ImGui::Separator();
         }
 
         if (m_SelectedEntity.HasComponent<VE::DirectionalLightComponent>()) {
             bool removeLight = false;
-            if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openLight = ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::DirectionalLightComponent>("##DirLightCtx", "DirectionalLight", removeLight);
+            if (openLight) {
                 auto& dl = m_SelectedEntity.GetComponent<VE::DirectionalLightComponent>();
                 ImGui::DragFloat3("Direction", dl.Direction.data(), 0.01f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Light Direction");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 ImGui::ColorEdit3("Light Color", dl.Color.data());
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Light Color");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 ImGui::DragFloat("Intensity", &dl.Intensity, 0.01f, 0.0f, 10.0f);
-                if (ImGui::Button("Remove Light"))
-                    removeLight = true;
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Light Intensity");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
             }
             if (removeLight)
-                m_SelectedEntity.RemoveComponent<VE::DirectionalLightComponent>();
+                m_CommandHistory.Execute("Remove Light", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::DirectionalLightComponent>();
+                });
             ImGui::Separator();
         }
 
         if (m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
             bool removeRB = false;
-            if (ImGui::CollapsingHeader("Rigidbody", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openRB = ImGui::CollapsingHeader("Rigidbody", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::RigidbodyComponent>("##RigidbodyCtx", "Rigidbody", removeRB);
+            if (openRB) {
                 auto& rb = m_SelectedEntity.GetComponent<VE::RigidbodyComponent>();
                 const char* bodyTypes[] = { "Static", "Kinematic", "Dynamic" };
                 int currentType = static_cast<int>(rb.Type);
-                if (ImGui::Combo("Body Type", &currentType, bodyTypes, 3))
+                if (ImGui::Combo("Body Type", &currentType, bodyTypes, 3)) {
+                    auto before = m_CommandHistory.CaptureSnapshot();
                     rb.Type = static_cast<VE::BodyType>(currentType);
+                    m_CommandHistory.RecordPropertyEdit("Change Body Type", std::move(before));
+                }
                 if (rb.Type == VE::BodyType::Dynamic) {
                     ImGui::DragFloat("Mass", &rb.Mass, 0.1f, 0.01f, 1000.0f);
+                    if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Mass");
+                    if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 }
                 ImGui::DragFloat("Linear Damping", &rb.LinearDamping, 0.01f, 0.0f, 10.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Linear Damping");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 ImGui::DragFloat("Angular Damping", &rb.AngularDamping, 0.01f, 0.0f, 10.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Angular Damping");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 ImGui::DragFloat("Restitution", &rb.Restitution, 0.01f, 0.0f, 1.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Restitution");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
                 ImGui::DragFloat("Friction", &rb.Friction, 0.01f, 0.0f, 2.0f);
-                ImGui::Checkbox("Use Gravity", &rb.UseGravity);
-                if (!m_SelectedEntity.HasComponent<VE::ColliderComponent>())
-                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Needs Collider component to work!");
-                if (ImGui::Button("Remove Rigidbody"))
-                    removeRB = true;
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Friction");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                {
+                    bool useGravity = rb.UseGravity;
+                    if (ImGui::Checkbox("Use Gravity", &useGravity)) {
+                        auto before = m_CommandHistory.CaptureSnapshot();
+                        rb.UseGravity = useGravity;
+                        m_CommandHistory.RecordPropertyEdit("Toggle Gravity", std::move(before));
+                    }
+                }
+                bool hasAnyCollider = m_SelectedEntity.HasComponent<VE::BoxColliderComponent>()
+                    || m_SelectedEntity.HasComponent<VE::SphereColliderComponent>()
+                    || m_SelectedEntity.HasComponent<VE::CapsuleColliderComponent>()
+                    || m_SelectedEntity.HasComponent<VE::MeshColliderComponent>();
+                if (!hasAnyCollider)
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Needs a Collider component to work!");
             }
             if (removeRB)
-                m_SelectedEntity.RemoveComponent<VE::RigidbodyComponent>();
+                m_CommandHistory.Execute("Remove Rigidbody", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::RigidbodyComponent>();
+                });
             ImGui::Separator();
         }
 
-        if (m_SelectedEntity.HasComponent<VE::ColliderComponent>()) {
-            bool removeCol = false;
-            if (ImGui::CollapsingHeader("Collider", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& col = m_SelectedEntity.GetComponent<VE::ColliderComponent>();
-                const char* shapes[] = { "Box", "Sphere", "Capsule" };
-                int currentShape = static_cast<int>(col.Shape);
-                if (ImGui::Combo("Shape", &currentShape, shapes, 3))
-                    col.Shape = static_cast<VE::ColliderShape>(currentShape);
-                if (col.Shape == VE::ColliderShape::Box)
-                    ImGui::DragFloat3("Size", col.Size.data(), 0.1f, 0.01f, 100.0f);
-                else if (col.Shape == VE::ColliderShape::Sphere)
-                    ImGui::DragFloat("Diameter", &col.Size[0], 0.1f, 0.01f, 100.0f);
-                else {
-                    ImGui::DragFloat("Diameter", &col.Size[0], 0.1f, 0.01f, 100.0f);
-                    ImGui::DragFloat("Height", &col.Size[1], 0.1f, 0.01f, 100.0f);
-                }
-                ImGui::DragFloat3("Offset", col.Offset.data(), 0.1f);
-                if (ImGui::Button("Remove Collider"))
-                    removeCol = true;
+        if (m_SelectedEntity.HasComponent<VE::BoxColliderComponent>()) {
+            bool remove = false;
+            bool openBoxCol = ImGui::CollapsingHeader("Box Collider", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::BoxColliderComponent>("##BoxColCtx", "BoxCollider", remove);
+            if (openBoxCol) {
+                auto& col = m_SelectedEntity.GetComponent<VE::BoxColliderComponent>();
+                ImGui::DragFloat3("Size", col.Size.data(), 0.1f, 0.01f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Box Size");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat3("Offset##Box", col.Offset.data(), 0.1f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Box Offset");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
             }
-            if (removeCol)
-                m_SelectedEntity.RemoveComponent<VE::ColliderComponent>();
+            if (remove) m_CommandHistory.Execute("Remove Box Collider", [this]() { m_SelectedEntity.RemoveComponent<VE::BoxColliderComponent>(); });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::SphereColliderComponent>()) {
+            bool remove = false;
+            bool openSphereCol = ImGui::CollapsingHeader("Sphere Collider", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::SphereColliderComponent>("##SphereColCtx", "SphereCollider", remove);
+            if (openSphereCol) {
+                auto& col = m_SelectedEntity.GetComponent<VE::SphereColliderComponent>();
+                ImGui::DragFloat("Radius", &col.Radius, 0.05f, 0.01f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Sphere Radius");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat3("Offset##Sphere", col.Offset.data(), 0.1f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Sphere Offset");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+            }
+            if (remove) m_CommandHistory.Execute("Remove Sphere Collider", [this]() { m_SelectedEntity.RemoveComponent<VE::SphereColliderComponent>(); });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::CapsuleColliderComponent>()) {
+            bool remove = false;
+            bool openCapsuleCol = ImGui::CollapsingHeader("Capsule Collider", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::CapsuleColliderComponent>("##CapsuleColCtx", "CapsuleCollider", remove);
+            if (openCapsuleCol) {
+                auto& col = m_SelectedEntity.GetComponent<VE::CapsuleColliderComponent>();
+                ImGui::DragFloat("Radius##Cap", &col.Radius, 0.05f, 0.01f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Capsule Radius");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Height##Cap", &col.Height, 0.1f, 0.01f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Capsule Height");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat3("Offset##Capsule", col.Offset.data(), 0.1f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Capsule Offset");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+            }
+            if (remove) m_CommandHistory.Execute("Remove Capsule Collider", [this]() { m_SelectedEntity.RemoveComponent<VE::CapsuleColliderComponent>(); });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::MeshColliderComponent>()) {
+            bool remove = false;
+            bool openMeshCol = ImGui::CollapsingHeader("Mesh Collider", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::MeshColliderComponent>("##MeshColCtx", "MeshCollider", remove);
+            if (openMeshCol) {
+                auto& col = m_SelectedEntity.GetComponent<VE::MeshColliderComponent>();
+                {
+                    bool convex = col.Convex;
+                    if (ImGui::Checkbox("Convex", &convex)) {
+                        auto before = m_CommandHistory.CaptureSnapshot();
+                        col.Convex = convex;
+                        m_CommandHistory.RecordPropertyEdit("Toggle Convex", std::move(before));
+                    }
+                }
+                ImGui::DragFloat3("Offset##Mesh", col.Offset.data(), 0.1f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Mesh Offset");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+            }
+            if (remove) m_CommandHistory.Execute("Remove Mesh Collider", [this]() { m_SelectedEntity.RemoveComponent<VE::MeshColliderComponent>(); });
             ImGui::Separator();
         }
 
@@ -1402,7 +1693,9 @@ private:
             auto& sc = m_SelectedEntity.GetComponent<VE::ScriptComponent>();
             bool removeScript = false;
             std::string headerLabel = sc.ClassName.empty() ? "Script" : sc.ClassName;
-            if (ImGui::CollapsingHeader(headerLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openScript = ImGui::CollapsingHeader(headerLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::ScriptComponent>("##ScriptCtx", "Script", removeScript);
+            if (openScript) {
                 ImGui::Text("Script: %s", sc.ClassName.empty() ? "(none)" : sc.ClassName.c_str());
 
                 // Show properties — from live instance in play mode, or from stored values in edit mode
@@ -1468,17 +1761,19 @@ private:
                     }
                 }
 
-                if (ImGui::Button("Remove Script"))
-                    removeScript = true;
             }
             if (removeScript)
-                m_SelectedEntity.RemoveComponent<VE::ScriptComponent>();
+                m_CommandHistory.Execute("Remove Script", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::ScriptComponent>();
+                });
             ImGui::Separator();
         }
 
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             bool removeComponent = false;
-            if (ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openMR = ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::MeshRendererComponent>("##MeshRendererCtx", "MeshRenderer", removeComponent);
+            if (openMR) {
                 auto& mr = m_SelectedEntity.GetComponent<VE::MeshRendererComponent>();
 
                 // ── Mesh Object Field (Unity-style) ──
@@ -1548,11 +1843,11 @@ private:
                     }
                 }
 
-                if (ImGui::Button("Remove Component"))
-                    removeComponent = true;
             }
             if (removeComponent)
-                m_SelectedEntity.RemoveComponent<VE::MeshRendererComponent>();
+                m_CommandHistory.Execute("Remove Mesh Renderer", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::MeshRendererComponent>();
+                });
             ImGui::Separator();
         }
 
@@ -1570,21 +1865,23 @@ private:
                 if (!scriptNames.empty() && ImGui::BeginMenu("Scripts")) {
                     for (auto& name : scriptNames) {
                         if (ImGui::MenuItem(name.c_str())) {
-                            auto& sc = m_SelectedEntity.AddComponent<VE::ScriptComponent>();
-                            sc.ClassName = name;
-                            // Initialize properties with defaults
-                            auto cachedProps = VE::ScriptEngine::GetScriptProperties(name);
-                            for (auto& cp : cachedProps) {
-                                switch (static_cast<VE::ScriptPropertyType>(cp.Type)) {
-                                    case VE::ScriptPropertyType::Float:
-                                        sc.Properties[cp.Name] = cp.DefaultFloat; break;
-                                    case VE::ScriptPropertyType::Int:
-                                        sc.Properties[cp.Name] = cp.DefaultInt; break;
-                                    case VE::ScriptPropertyType::Bool:
-                                        sc.Properties[cp.Name] = cp.DefaultBool; break;
-                                    default: break;
+                            std::string scriptName = name;
+                            m_CommandHistory.Execute("Add Script", [this, scriptName]() {
+                                auto& sc = m_SelectedEntity.AddComponent<VE::ScriptComponent>();
+                                sc.ClassName = scriptName;
+                                auto cachedProps = VE::ScriptEngine::GetScriptProperties(scriptName);
+                                for (auto& cp : cachedProps) {
+                                    switch (static_cast<VE::ScriptPropertyType>(cp.Type)) {
+                                        case VE::ScriptPropertyType::Float:
+                                            sc.Properties[cp.Name] = cp.DefaultFloat; break;
+                                        case VE::ScriptPropertyType::Int:
+                                            sc.Properties[cp.Name] = cp.DefaultInt; break;
+                                        case VE::ScriptPropertyType::Bool:
+                                            sc.Properties[cp.Name] = cp.DefaultBool; break;
+                                        default: break;
+                                    }
                                 }
-                            }
+                            });
                         }
                     }
                     ImGui::EndMenu();
@@ -1592,31 +1889,60 @@ private:
                 anyAdded = true;
             }
             if (!m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
-                if (ImGui::MenuItem("Mesh Renderer")) {
-                    auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = VE::MeshLibrary::GetCube();
-                    mr.Mat = VE::MaterialLibrary::Get("Lit");
-                }
+                if (ImGui::MenuItem("Mesh Renderer"))
+                    m_CommandHistory.Execute("Add Mesh Renderer", [this]() {
+                        auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetCube();
+                        mr.Mat = VE::MaterialLibrary::Get("Lit");
+                    });
                 anyAdded = true;
             }
             if (!m_SelectedEntity.HasComponent<VE::DirectionalLightComponent>()) {
-                if (ImGui::MenuItem("Directional Light")) {
-                    m_SelectedEntity.AddComponent<VE::DirectionalLightComponent>();
-                }
+                if (ImGui::MenuItem("Directional Light"))
+                    m_CommandHistory.Execute("Add Light", [this]() {
+                        m_SelectedEntity.AddComponent<VE::DirectionalLightComponent>();
+                    });
                 anyAdded = true;
             }
             if (!m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
-                if (ImGui::MenuItem("Rigidbody")) {
-                    m_SelectedEntity.AddComponent<VE::RigidbodyComponent>();
-                    if (!m_SelectedEntity.HasComponent<VE::ColliderComponent>())
-                        m_SelectedEntity.AddComponent<VE::ColliderComponent>();
-                }
+                if (ImGui::MenuItem("Rigidbody"))
+                    m_CommandHistory.Execute("Add Rigidbody", [this]() {
+                        m_SelectedEntity.AddComponent<VE::RigidbodyComponent>();
+                        bool hasCol = m_SelectedEntity.HasComponent<VE::BoxColliderComponent>()
+                            || m_SelectedEntity.HasComponent<VE::SphereColliderComponent>()
+                            || m_SelectedEntity.HasComponent<VE::CapsuleColliderComponent>()
+                            || m_SelectedEntity.HasComponent<VE::MeshColliderComponent>();
+                        if (!hasCol)
+                            m_SelectedEntity.AddComponent<VE::BoxColliderComponent>();
+                    });
                 anyAdded = true;
             }
-            if (!m_SelectedEntity.HasComponent<VE::ColliderComponent>()) {
-                if (ImGui::MenuItem("Collider")) {
-                    m_SelectedEntity.AddComponent<VE::ColliderComponent>();
-                }
+            if (!m_SelectedEntity.HasComponent<VE::BoxColliderComponent>()) {
+                if (ImGui::MenuItem("Box Collider"))
+                    m_CommandHistory.Execute("Add Box Collider", [this]() {
+                        m_SelectedEntity.AddComponent<VE::BoxColliderComponent>();
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::SphereColliderComponent>()) {
+                if (ImGui::MenuItem("Sphere Collider"))
+                    m_CommandHistory.Execute("Add Sphere Collider", [this]() {
+                        m_SelectedEntity.AddComponent<VE::SphereColliderComponent>();
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::CapsuleColliderComponent>()) {
+                if (ImGui::MenuItem("Capsule Collider"))
+                    m_CommandHistory.Execute("Add Capsule Collider", [this]() {
+                        m_SelectedEntity.AddComponent<VE::CapsuleColliderComponent>();
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::MeshColliderComponent>()) {
+                if (ImGui::MenuItem("Mesh Collider"))
+                    m_CommandHistory.Execute("Add Mesh Collider", [this]() {
+                        m_SelectedEntity.AddComponent<VE::MeshColliderComponent>();
+                    });
                 anyAdded = true;
             }
             if (!anyAdded) {
@@ -2356,6 +2682,13 @@ private:
     // Post-processing
     VE::PostProcessing m_PostProcessing;
     uint32_t m_PostProcessedTexture = 0;
+
+    // Undo system
+    VE::CommandHistory m_CommandHistory;
+
+    // Component clipboard
+    std::string m_ClipboardComponentType;
+    std::any    m_ClipboardComponentData;
 };
 
 int main() {

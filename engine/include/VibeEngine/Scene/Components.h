@@ -32,6 +32,8 @@ struct IDComponent {
 
 struct TagComponent {
     std::string Tag;
+    std::string EntityTag = "Untagged"; // Unity-style tag (Player, Enemy, etc.)
+    int Layer = 0;                       // Layer index (0 = Default)
 
     TagComponent() = default;
     TagComponent(const std::string& tag) : Tag(tag) {}
@@ -75,14 +77,32 @@ struct RigidbodyComponent {
     RigidbodyComponent() = default;
 };
 
-enum class ColliderShape { Box, Sphere, Capsule };
+// Individual collider components (Unity-style: one component per collider type)
 
-struct ColliderComponent {
-    ColliderShape Shape = ColliderShape::Box;
-    std::array<float, 3> Size   = { 1.0f, 1.0f, 1.0f }; // box half-extents, or radius in [0]
+struct BoxColliderComponent {
+    std::array<float, 3> Size   = { 1.0f, 1.0f, 1.0f }; // full extents (width, height, depth)
     std::array<float, 3> Offset = { 0.0f, 0.0f, 0.0f };
+    BoxColliderComponent() = default;
+};
 
-    ColliderComponent() = default;
+struct SphereColliderComponent {
+    float Radius = 0.5f;
+    std::array<float, 3> Offset = { 0.0f, 0.0f, 0.0f };
+    SphereColliderComponent() = default;
+};
+
+struct CapsuleColliderComponent {
+    float Radius = 0.5f;
+    float Height = 2.0f; // total height including hemispheres
+    std::array<float, 3> Offset = { 0.0f, 0.0f, 0.0f };
+    CapsuleColliderComponent() = default;
+};
+
+struct MeshColliderComponent {
+    bool Convex = true; // true = ConvexHullShape (dynamic OK), false = MeshShape (static only)
+    std::array<float, 3> Offset = { 0.0f, 0.0f, 0.0f };
+    // Mesh data sourced from entity's MeshRendererComponent at physics start
+    MeshColliderComponent() = default;
 };
 
 // Forward declaration — full definition in Scripting/NativeScript.h

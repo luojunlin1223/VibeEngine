@@ -21,6 +21,10 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
+
+#include "VibeEngine/Renderer/VertexArray.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -173,45 +177,75 @@ void PhysicsWorld::SetGravity(float x, float y, float z) {
     m_Impl->PhysicsSystem->SetGravity(JPH::Vec3(x, y, z));
 }
 
+// Helper: resolve collider shape and offset from whichever collider component is present
+static bool ResolveCollider(entt::registry& registry, entt::entity entity,
+                             JPH::ShapeRefC& outShape, std::array<float, 3>& outOffset) {
+    if (auto* box = registry.try_get<BoxColliderComponent>(entity)) {
+        outShape = new JPH::BoxShape(JPH::Vec3(
+            box->Size[0] * 0.5f, box->Size[1] * 0.5f, box->Size[2] * 0.5f));
+        outOffset = box->Offset;
+        return true;
+    }
+    if (auto* sphere = registry.try_get<SphereColliderComponent>(entity)) {
+        outShape = new JPH::SphereShape(sphere->Radius);
+        outOffset = sphere->Offset;
+        return true;
+    }
+    if (auto* capsule = registry.try_get<CapsuleColliderComponent>(entity)) {
+        // Jolt CapsuleShape: half-height of cylinder part + radius
+        float halfCylinder = std::max(0.0f, capsule->Height * 0.5f - capsule->Radius);
+        outShape = new JPH::CapsuleShape(halfCylinder, capsule->Radius);
+        outOffset = capsule->Offset;
+        return true;
+    }
+    if (auto* mesh = registry.try_get<MeshColliderComponent>(entity)) {
+        // Get mesh vertices from MeshRendererComponent
+        auto* mr = registry.try_get<MeshRendererComponent>(entity);
+        if (!mr || !mr->Mesh) {
+            VE_ENGINE_WARN("MeshCollider: entity has no mesh — falling back to unit box");
+            outShape = new JPH::BoxShape(JPH::Vec3(0.5f, 0.5f, 0.5f));
+            outOffset = mesh->Offset;
+            return true;
+        }
+
+        // For now, use a box approximation based on mesh bounds
+        // TODO: extract actual vertex data for ConvexHull / TriangleMesh
+        outShape = new JPH::BoxShape(JPH::Vec3(0.5f, 0.5f, 0.5f));
+        outOffset = mesh->Offset;
+        VE_ENGINE_WARN("MeshCollider: using box approximation (full mesh collision WIP)");
+        return true;
+    }
+    return false;
+}
+
 void PhysicsWorld::SyncBodiesFromScene(entt::registry& registry) {
     auto& bodyInterface = m_Impl->PhysicsSystem->GetBodyInterface();
 
-    auto view = registry.view<TransformComponent, RigidbodyComponent, ColliderComponent>();
+    auto view = registry.view<TransformComponent, RigidbodyComponent>();
     for (auto entity : view) {
         auto& tc = view.get<TransformComponent>(entity);
         auto& rb = view.get<RigidbodyComponent>(entity);
-        auto& col = view.get<ColliderComponent>(entity);
+
+        // Resolve collider
+        JPH::ShapeRefC shape;
+        std::array<float, 3> offset = { 0.0f, 0.0f, 0.0f };
+        if (!ResolveCollider(registry, entity, shape, offset))
+            continue; // no collider component
 
         // Already has a Jolt body
         if (rb._JoltBodyID != 0xFFFFFFFF) {
-            // Update kinematic body position from transform
             if (rb.Type == BodyType::Kinematic) {
                 JPH::BodyID id(rb._JoltBodyID);
                 bodyInterface.SetPosition(id,
-                    JPH::Vec3(tc.Position[0] + col.Offset[0],
-                              tc.Position[1] + col.Offset[1],
-                              tc.Position[2] + col.Offset[2]),
+                    JPH::Vec3(tc.Position[0] + offset[0],
+                              tc.Position[1] + offset[1],
+                              tc.Position[2] + offset[2]),
                     JPH::EActivation::DontActivate);
                 bodyInterface.SetRotation(id,
                     EulerDegreesToJoltQuat(tc.Rotation),
                     JPH::EActivation::DontActivate);
             }
             continue;
-        }
-
-        // Create collision shape
-        JPH::ShapeRefC shape;
-        switch (col.Shape) {
-            case ColliderShape::Box:
-                shape = new JPH::BoxShape(JPH::Vec3(
-                    col.Size[0] * 0.5f, col.Size[1] * 0.5f, col.Size[2] * 0.5f));
-                break;
-            case ColliderShape::Sphere:
-                shape = new JPH::SphereShape(col.Size[0] * 0.5f);
-                break;
-            case ColliderShape::Capsule:
-                shape = new JPH::CapsuleShape(col.Size[1] * 0.5f, col.Size[0] * 0.5f);
-                break;
         }
 
         // Map body type
@@ -234,9 +268,9 @@ void PhysicsWorld::SyncBodiesFromScene(entt::registry& registry) {
 
         JPH::BodyCreationSettings bodySettings(
             shape,
-            JPH::Vec3(tc.Position[0] + col.Offset[0],
-                       tc.Position[1] + col.Offset[1],
-                       tc.Position[2] + col.Offset[2]),
+            JPH::Vec3(tc.Position[0] + offset[0],
+                       tc.Position[1] + offset[1],
+                       tc.Position[2] + offset[2]),
             EulerDegreesToJoltQuat(tc.Rotation),
             motionType,
             layer);
@@ -284,14 +318,19 @@ void PhysicsWorld::SyncTransformsToScene(entt::registry& registry) {
         JPH::Quat rot = bodyInterface.GetRotation(id);
 
         // Subtract collider offset if entity has one
-        auto* col = registry.try_get<ColliderComponent>(entity);
-        if (col) {
-            tc.Position = { pos.GetX() - col->Offset[0],
-                            pos.GetY() - col->Offset[1],
-                            pos.GetZ() - col->Offset[2] };
-        } else {
-            tc.Position = { pos.GetX(), pos.GetY(), pos.GetZ() };
-        }
+        std::array<float, 3> offset = { 0.0f, 0.0f, 0.0f };
+        if (auto* box = registry.try_get<BoxColliderComponent>(entity))
+            offset = box->Offset;
+        else if (auto* sphere = registry.try_get<SphereColliderComponent>(entity))
+            offset = sphere->Offset;
+        else if (auto* capsule = registry.try_get<CapsuleColliderComponent>(entity))
+            offset = capsule->Offset;
+        else if (auto* mesh = registry.try_get<MeshColliderComponent>(entity))
+            offset = mesh->Offset;
+
+        tc.Position = { pos.GetX() - offset[0],
+                        pos.GetY() - offset[1],
+                        pos.GetZ() - offset[2] };
 
         tc.Rotation = JoltQuatToEulerDegrees(rot);
     }

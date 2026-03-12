@@ -34,5 +34,7 @@
 #include "Scripting/NativeScript.h"
 #include "Scripting/ScriptEngine.h"
 
+#include "Editor/EditorCommand.h"
+
 #include "ImGui/ImGuiLayer.h"
 #include <imgui.h>
