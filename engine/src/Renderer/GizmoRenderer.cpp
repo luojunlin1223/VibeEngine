@@ -63,6 +63,17 @@ void GizmoRenderer::BeginScene(const glm::mat4& viewProjection,
     s_VpW        = viewportW;
     s_VpH        = viewportH;
     s_CameraMode = cameraMode;
+
+    // Clip all gizmo drawing to the viewport rectangle
+    ImVec2 clipMin(viewportX, viewportY);
+    ImVec2 clipMax(viewportX + viewportW, viewportY + viewportH);
+    ImGui::GetBackgroundDrawList()->PushClipRect(clipMin, clipMax, true);
+    ImGui::GetForegroundDrawList()->PushClipRect(clipMin, clipMax, true);
+}
+
+void GizmoRenderer::EndScene() {
+    ImGui::GetBackgroundDrawList()->PopClipRect();
+    ImGui::GetForegroundDrawList()->PopClipRect();
 }
 
 glm::vec2 GizmoRenderer::ScreenToWorld(float screenX, float screenY) {

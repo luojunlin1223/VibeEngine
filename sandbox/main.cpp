@@ -603,6 +603,8 @@ private:
             VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
         }
 
+        VE::GizmoRenderer::EndScene();
+
         ImGui::End();
         ImGui::PopStyleVar();
     }
