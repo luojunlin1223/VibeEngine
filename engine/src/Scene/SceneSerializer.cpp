@@ -139,6 +139,27 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // AudioSourceComponent
+    if (entity.HasComponent<AudioSourceComponent>()) {
+        auto& as = entity.GetComponent<AudioSourceComponent>();
+        out << YAML::Key << "AudioSourceComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "ClipPath" << YAML::Value << as.ClipPath;
+        out << YAML::Key << "Volume" << YAML::Value << as.Volume;
+        out << YAML::Key << "Pitch" << YAML::Value << as.Pitch;
+        out << YAML::Key << "Loop" << YAML::Value << as.Loop;
+        out << YAML::Key << "Spatial" << YAML::Value << as.Spatial;
+        out << YAML::Key << "PlayOnAwake" << YAML::Value << as.PlayOnAwake;
+        out << YAML::Key << "MinDistance" << YAML::Value << as.MinDistance;
+        out << YAML::Key << "MaxDistance" << YAML::Value << as.MaxDistance;
+        out << YAML::EndMap;
+    }
+
+    // AudioListenerComponent
+    if (entity.HasComponent<AudioListenerComponent>()) {
+        out << YAML::Key << "AudioListenerComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::EndMap;
+    }
+
     // AnimatorComponent
     if (entity.HasComponent<AnimatorComponent>()) {
         auto& ac = entity.GetComponent<AnimatorComponent>();
@@ -490,6 +511,22 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     }
                 }
             }
+        }
+
+        if (auto asNode = entityNode["AudioSourceComponent"]) {
+            auto& as = entity.AddComponent<AudioSourceComponent>();
+            if (asNode["ClipPath"])    as.ClipPath    = asNode["ClipPath"].as<std::string>();
+            if (asNode["Volume"])      as.Volume      = asNode["Volume"].as<float>();
+            if (asNode["Pitch"])       as.Pitch       = asNode["Pitch"].as<float>();
+            if (asNode["Loop"])        as.Loop        = asNode["Loop"].as<bool>();
+            if (asNode["Spatial"])     as.Spatial     = asNode["Spatial"].as<bool>();
+            if (asNode["PlayOnAwake"]) as.PlayOnAwake = asNode["PlayOnAwake"].as<bool>();
+            if (asNode["MinDistance"]) as.MinDistance = asNode["MinDistance"].as<float>();
+            if (asNode["MaxDistance"]) as.MaxDistance = asNode["MaxDistance"].as<float>();
+        }
+
+        if (entityNode["AudioListenerComponent"]) {
+            entity.AddComponent<AudioListenerComponent>();
         }
 
         if (auto acNode = entityNode["AnimatorComponent"]) {

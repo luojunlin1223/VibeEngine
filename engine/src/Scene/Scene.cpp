@@ -7,6 +7,7 @@
 #include "VibeEngine/Scripting/ScriptEngine.h"
 #include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Animation/Animator.h"
+#include "VibeEngine/Audio/AudioEngine.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -252,6 +253,58 @@ void Scene::StopAnimations() {
         }
     }
     VE_ENGINE_INFO("Animations stopped");
+}
+
+void Scene::StartAudio() {
+    if (!AudioEngine::IsInitialized()) return;
+
+    auto view = m_Registry.view<AudioSourceComponent>();
+    for (auto entity : view) {
+        auto& as = view.get<AudioSourceComponent>(entity);
+        if (as.ClipPath.empty()) continue;
+
+        if (as.PlayOnAwake) {
+            as._SoundHandle = AudioEngine::Play(as.ClipPath, as.Volume, as.Pitch, as.Loop);
+            if (as._SoundHandle != 0 && as.Spatial) {
+                AudioEngine::SetSoundSpatial(as._SoundHandle, true);
+                AudioEngine::SetSoundMinMaxDistance(as._SoundHandle, as.MinDistance, as.MaxDistance);
+                if (m_Registry.all_of<TransformComponent>(entity)) {
+                    auto& tc = m_Registry.get<TransformComponent>(entity);
+                    AudioEngine::SetSoundPosition(as._SoundHandle, tc.Position.data());
+                }
+            }
+        }
+    }
+    VE_ENGINE_INFO("Audio started");
+}
+
+void Scene::StopAudio() {
+    auto view = m_Registry.view<AudioSourceComponent>();
+    for (auto entity : view) {
+        auto& as = view.get<AudioSourceComponent>(entity);
+        if (as._SoundHandle != 0) {
+            AudioEngine::Stop(as._SoundHandle);
+            as._SoundHandle = 0;
+        }
+    }
+    VE_ENGINE_INFO("Audio stopped");
+}
+
+void Scene::UpdateAudio(const float listenerPos[3], const float listenerForward[3], const float listenerUp[3]) {
+    if (!AudioEngine::IsInitialized()) return;
+
+    // Update listener position
+    AudioEngine::SetListenerPosition(listenerPos, listenerForward, listenerUp);
+
+    // Update spatial sound positions
+    auto view = m_Registry.view<AudioSourceComponent, TransformComponent>();
+    for (auto entity : view) {
+        auto& as = view.get<AudioSourceComponent>(entity);
+        if (as.Spatial && as._SoundHandle != 0) {
+            auto& tc = view.get<TransformComponent>(entity);
+            AudioEngine::SetSoundPosition(as._SoundHandle, tc.Position.data());
+        }
+    }
 }
 
 static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {

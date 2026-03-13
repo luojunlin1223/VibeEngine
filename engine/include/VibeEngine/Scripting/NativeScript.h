@@ -30,6 +30,11 @@ struct ScriptAPI {
     void (*Entity_GetTransform)(uint64_t entityID, ScriptTransform* out) = nullptr;
     void (*Entity_SetTransform)(uint64_t entityID, const ScriptTransform* in) = nullptr;
     uint64_t (*Entity_FindByName)(const char* name) = nullptr;
+    // Audio
+    uint32_t (*Audio_Play)(const char* clipPath, float volume, float pitch, bool loop) = nullptr;
+    void (*Audio_Stop)(uint32_t soundHandle)         = nullptr;
+    void (*Audio_SetVolume)(uint32_t soundHandle, float volume) = nullptr;
+    void (*Audio_SetMasterVolume)(float volume)       = nullptr;
 };
 
 // ── Property reflection ─────────────────────────────────────────────

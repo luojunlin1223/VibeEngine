@@ -113,6 +113,10 @@ public:
     void StartAnimations();
     void StopAnimations();
 
+    void StartAudio();
+    void StopAudio();
+    void UpdateAudio(const float listenerPos[3], const float listenerForward[3], const float listenerUp[3]);
+
     template<typename... Components>
     auto GetAllEntitiesWith() { return m_Registry.view<Components...>(); }
 

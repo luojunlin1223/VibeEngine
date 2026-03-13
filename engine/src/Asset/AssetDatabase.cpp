@@ -82,6 +82,7 @@ AssetMeta AssetDatabase::LoadOrCreateMeta(const std::string& absPath,
                 else if (t == "Mesh") meta.Type = AssetType::Mesh;
                 else if (t == "Shader") meta.Type = AssetType::Shader;
                 else if (t == "Material") meta.Type = AssetType::MaterialAsset;
+                else if (t == "Audio") meta.Type = AssetType::Audio;
                 else meta.Type = AssetType::Unknown;
             }
             return meta;
@@ -117,6 +118,7 @@ void AssetDatabase::WriteMeta(const std::string& absPath, const AssetMeta& meta)
         case AssetType::Mesh:          typeStr = "Mesh"; break;
         case AssetType::Shader:        typeStr = "Shader"; break;
         case AssetType::MaterialAsset: typeStr = "Material"; break;
+        case AssetType::Audio:         typeStr = "Audio"; break;
         default: break;
     }
     out << YAML::Key << "type" << YAML::Value << typeStr;
@@ -138,6 +140,8 @@ AssetType AssetDatabase::DeduceType(const std::string& extension) const {
         return AssetType::Shader;
     if (extension == ".vmat")
         return AssetType::MaterialAsset;
+    if (extension == ".wav" || extension == ".mp3" || extension == ".ogg" || extension == ".flac")
+        return AssetType::Audio;
     return AssetType::Unknown;
 }
 
