@@ -1,4 +1,5 @@
 #include <VibeEngine/VibeEngine.h>
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <yaml-cpp/yaml.h>
@@ -97,6 +98,77 @@ protected:
         }
     }
 
+    void RenderSelectedOutline() {
+        if (!m_OutlineEnabled || !m_SelectedEntity) return;
+        if (!m_SelectedEntity.HasComponent<VE::TransformComponent>()) return;
+
+        // Determine the VAO to draw
+        std::shared_ptr<VE::VertexArray> vao;
+        if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
+            vao = m_SelectedEntity.GetComponent<VE::MeshRendererComponent>().Mesh;
+        }
+        if (!vao) return;
+
+        auto shader = VE::MeshLibrary::GetDefaultShader(); // unlit shader (known to work)
+        if (!shader) return;
+
+        glm::mat4 model = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
+        glm::mat4 mvp = m_FrameVP * model;
+
+        // Pass 1: draw the mesh into stencil buffer only (no color/depth writes)
+        // Must use GL_LEQUAL because the mesh was already rendered to the depth buffer
+        // at this exact depth — GL_LESS would fail and stencil would never be written.
+        glEnable(GL_STENCIL_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        glStencilMask(0xFF);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_FALSE);
+
+        shader->Bind();
+        shader->SetMat4("u_MVP", mvp);
+        shader->SetInt("u_UseTexture", 0);
+        shader->SetVec4("u_EntityColor", glm::vec4(1.0f));
+        vao->Bind();
+        glDrawElements(GL_TRIANGLES,
+            static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
+            GL_UNSIGNED_INT, nullptr);
+
+        // Pass 2: draw scaled-up mesh in outline color, only where stencil != 1
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glStencilMask(0x00);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDisable(GL_DEPTH_TEST);
+
+        // Scale from mesh AABB center (not origin) so the outline is uniform
+        VE::AABB localBox = VE::AABB{ glm::vec3(-0.5f), glm::vec3(0.5f) };
+        if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>())
+            localBox = GetEntityLocalAABB(m_SelectedEntity.GetComponent<VE::MeshRendererComponent>());
+        glm::vec3 center = localBox.Center();
+
+        float outlineScale = 1.05f;
+        glm::mat4 scaledModel = model
+            * glm::translate(glm::mat4(1.0f), center)
+            * glm::scale(glm::mat4(1.0f), glm::vec3(outlineScale))
+            * glm::translate(glm::mat4(1.0f), -center);
+        glm::mat4 scaledMVP = m_FrameVP * scaledModel;
+
+        shader->SetMat4("u_MVP", scaledMVP);
+        shader->SetVec4("u_EntityColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f)); // orange
+        glDrawElements(GL_TRIANGLES,
+            static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
+            GL_UNSIGNED_INT, nullptr);
+
+        // Restore GL state
+        glStencilMask(0xFF);
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glDisable(GL_STENCIL_TEST);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glDepthMask(GL_TRUE);
+    }
+
     void OnRender() override {
         m_FrameVP = m_Camera.GetViewProjection();
         glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
@@ -122,6 +194,7 @@ protected:
         m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
         m_Scene->OnRender(m_FrameVP, camPos);
         m_Scene->OnRenderSprites(m_FrameVP);
+        RenderSelectedOutline();
 
         if (m_Framebuffer) {
             m_Framebuffer->Unbind();
@@ -302,6 +375,22 @@ protected:
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Right))
                 m_Camera.OnMouseRotate(io.MouseDelta.x, io.MouseDelta.y);
 
+            // Focus camera on selected entity (F key) — zoom in and align to object's +Z
+            if (ImGui::IsKeyPressed(ImGuiKey_F) && m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
+                auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
+                glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                float objectSize = std::max({tc.Scale[0], tc.Scale[1], tc.Scale[2]});
+                if (m_Camera.GetMode() == VE::CameraMode::Perspective3D) {
+                    m_Camera.SetFocalPoint(pos);
+                    m_Camera.SetDistance(objectSize * 3.0f);
+                    m_Camera.SetYaw(90.0f);
+                    m_Camera.SetPitch(0.0f);
+                } else {
+                    m_Camera.SetPosition2D(glm::vec2(pos.x, pos.y));
+                    m_Camera.SetZoom(1.0f / std::max(objectSize, 0.1f));
+                }
+            }
+
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                 VE::GizmoAxis axis = VE::GizmoAxis::None;
                 bool canDrag = m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>();
@@ -377,34 +466,67 @@ protected:
 private:
     // ── Scene picking ─────────────────────────────────────────────────
 
+    // Ray-AABB intersection (slab method). Returns hit distance or -1.
+    static float RayAABBIntersect(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
+                                   const glm::vec3& boxMin, const glm::vec3& boxMax) {
+        glm::vec3 invDir = 1.0f / rayDir;
+        glm::vec3 t1 = (boxMin - rayOrigin) * invDir;
+        glm::vec3 t2 = (boxMax - rayOrigin) * invDir;
+        glm::vec3 tMin = glm::min(t1, t2);
+        glm::vec3 tMax = glm::max(t1, t2);
+        float tNear = std::max({ tMin.x, tMin.y, tMin.z });
+        float tFar  = std::min({ tMax.x, tMax.y, tMax.z });
+        if (tNear > tFar || tFar < 0.0f) return -1.0f;
+        return tNear >= 0.0f ? tNear : tFar;
+    }
+
+    // Get local-space AABB for an entity's mesh
+    VE::AABB GetEntityLocalAABB(const VE::MeshRendererComponent& mr) {
+        // Check imported meshes first
+        if (!mr.MeshSourcePath.empty()) {
+            auto meshAsset = VE::MeshImporter::GetOrLoad(mr.MeshSourcePath);
+            if (meshAsset && meshAsset->BoundingBox.Valid())
+                return meshAsset->BoundingBox;
+        }
+        // Built-in mesh: find index by comparing VAO pointer
+        for (int i = 0; i < VE::MeshLibrary::GetMeshCount(); i++) {
+            if (mr.Mesh == VE::MeshLibrary::GetMeshByIndex(i))
+                return VE::MeshLibrary::GetMeshAABB(i);
+        }
+        // Fallback: unit cube
+        return VE::AABB{ glm::vec3(-0.5f), glm::vec3(0.5f) };
+    }
+
     VE::Entity HitTestEntities(float screenX, float screenY) {
+        // Convert screen coords to NDC
+        float ndcX = ((screenX - m_SceneVpX) / m_SceneVpW) * 2.0f - 1.0f;
+        float ndcY = 1.0f - ((screenY - m_SceneVpY) / m_SceneVpH) * 2.0f;
+
+        // Unproject to world-space ray
+        glm::mat4 invVP = glm::inverse(m_FrameVP);
+        glm::vec4 nearH = invVP * glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+        glm::vec4 farH  = invVP * glm::vec4(ndcX, ndcY,  1.0f, 1.0f);
+        glm::vec3 nearW = glm::vec3(nearH) / nearH.w;
+        glm::vec3 farW  = glm::vec3(farH)  / farH.w;
+        glm::vec3 rayDir = glm::normalize(farW - nearW);
+
         VE::Entity best;
         float bestDist = std::numeric_limits<float>::max();
 
         auto view = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::MeshRendererComponent>();
         for (auto entityID : view) {
-            auto& tc = view.get<VE::TransformComponent>(entityID);
-            glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+            auto& mr = view.get<VE::MeshRendererComponent>(entityID);
+            VE::AABB localBox = GetEntityLocalAABB(mr);
 
-            glm::vec4 clip = m_FrameVP * glm::vec4(pos, 1.0f);
-            if (clip.w <= 0.0f) continue;
-            glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            // Transform ray into local space (test against local AABB = OBB test)
+            glm::mat4 worldMat = m_Scene->GetWorldTransform(entityID);
+            glm::mat4 invWorld = glm::inverse(worldMat);
+            glm::vec3 localOrigin = glm::vec3(invWorld * glm::vec4(nearW, 1.0f));
+            glm::vec3 localDir    = glm::normalize(glm::vec3(invWorld * glm::vec4(rayDir, 0.0f)));
 
-            ImVec2 vpPos  = ImGui::GetMainViewport()->Pos;
-            ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-            float sx = vpPos.x + (ndc.x * 0.5f + 0.5f) * vpSize.x;
-            float sy = vpPos.y + (1.0f - (ndc.y * 0.5f + 0.5f)) * vpSize.y;
-
-            float worldRadius = std::max({tc.Scale[0], tc.Scale[1], tc.Scale[2]}) * 0.5f;
-            glm::vec4 edgeClip = m_FrameVP * glm::vec4(pos + glm::vec3(worldRadius, 0, 0), 1.0f);
-            float edgeSx = vpPos.x + ((edgeClip.x / edgeClip.w) * 0.5f + 0.5f) * vpSize.x;
-            float screenRadius = std::abs(edgeSx - sx);
-            screenRadius = std::max(screenRadius, 20.0f);
-
-            float dx = screenX - sx, dy = screenY - sy;
-            float dist = std::sqrt(dx * dx + dy * dy);
-            if (dist < screenRadius && dist < bestDist) {
-                bestDist = dist;
+            float t = RayAABBIntersect(localOrigin, localDir, localBox.Min, localBox.Max);
+            if (t >= 0.0f && t < bestDist) {
+                bestDist = t;
                 best = VE::Entity(entityID, &*m_Scene);
             }
         }
@@ -994,36 +1116,43 @@ private:
         float vpY = wPos.y + vpMin.y;
         float vpW = vpMax.x - vpMin.x;
         float vpH = vpMax.y - vpMin.y;
+        m_SceneVpX = vpX; m_SceneVpY = vpY; m_SceneVpW = vpW; m_SceneVpH = vpH;
 
-        // Gizmos toggle button (top-right corner of viewport)
+        // Viewport toggle buttons (top-right corner)
         {
             float btnSize = 24.0f;
             float padding = 8.0f;
-            ImVec2 btnPos(vpX + vpW - btnSize - padding, vpY + padding);
+            float spacing = 4.0f;
 
-            ImGui::SetCursorScreenPos(btnPos);
-            ImVec4 btnColor = m_GizmosEnabled
-                ? ImVec4(0.2f, 0.4f, 0.9f, 1.0f)   // blue = on
-                : ImVec4(0.4f, 0.4f, 0.4f, 1.0f);   // gray = off
-            ImVec4 btnHover = m_GizmosEnabled
-                ? ImVec4(0.3f, 0.5f, 1.0f, 1.0f)
-                : ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+            // Helper lambda for toggle buttons
+            auto DrawToggleButton = [&](const char* label, bool& state, const char* tooltip, float xOffset) {
+                ImVec2 btnPos(vpX + vpW - xOffset, vpY + padding);
+                ImGui::SetCursorScreenPos(btnPos);
+                ImVec4 btnColor = state
+                    ? ImVec4(0.2f, 0.4f, 0.9f, 1.0f)
+                    : ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+                ImVec4 btnHover = state
+                    ? ImVec4(0.3f, 0.5f, 1.0f, 1.0f)
+                    : ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Button, btnColor);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, btnHover);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, btnColor);
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+                if (ImGui::Button(label, ImVec2(btnSize, btnSize)))
+                    state = !state;
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s: %s", tooltip, state ? "ON" : "OFF");
+                ImGui::PopStyleVar();
+                ImGui::PopStyleColor(3);
+            };
 
-            ImGui::PushStyleColor(ImGuiCol_Button, btnColor);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, btnHover);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, btnColor);
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-            if (ImGui::Button("G##GizmosToggle", ImVec2(btnSize, btnSize)))
-                m_GizmosEnabled = !m_GizmosEnabled;
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(m_GizmosEnabled ? "Gizmos: ON" : "Gizmos: OFF");
-            ImGui::PopStyleVar();
-            ImGui::PopStyleColor(3);
+            // Right to left: Gizmos, Outline
+            DrawToggleButton("G##GizmosToggle",  m_GizmosEnabled, "Gizmos",  btnSize + padding);
+            DrawToggleButton("O##OutlineToggle", m_OutlineEnabled, "Outline", (btnSize + spacing) * 2 + padding - spacing);
         }
 
         if (m_GizmosEnabled) {
-            VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode(),
-                                              ImGui::GetWindowDrawList());
+            VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
             VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
 
             // Draw point light gizmos for all point lights
@@ -3599,6 +3728,8 @@ private:
     bool m_ViewportHovered = false;
     bool m_ViewportFocused = false;
     bool m_GizmosEnabled   = true;
+    bool m_OutlineEnabled  = true;
+    float m_SceneVpX = 0, m_SceneVpY = 0, m_SceneVpW = 1, m_SceneVpH = 1;
 
     // Gizmo drag state
     VE::GizmoAxis m_DraggingAxis = VE::GizmoAxis::None;
