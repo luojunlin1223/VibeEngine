@@ -102,10 +102,15 @@ protected:
         if (!m_OutlineEnabled || !m_SelectedEntity) return;
         if (!m_SelectedEntity.HasComponent<VE::TransformComponent>()) return;
 
-        // Determine the VAO to draw
+        // Determine the VAO to draw (use skinned VAO if animation is active)
         std::shared_ptr<VE::VertexArray> vao;
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             vao = m_SelectedEntity.GetComponent<VE::MeshRendererComponent>().Mesh;
+        }
+        if (m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
+            auto& ac = m_SelectedEntity.GetComponent<VE::AnimatorComponent>();
+            if (ac._Animator && ac._Animator->GetSkinnedVAO())
+                vao = ac._Animator->GetSkinnedVAO();
         }
         if (!vao) return;
 

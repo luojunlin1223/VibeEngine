@@ -23,6 +23,7 @@ struct Bone {
 class Skeleton {
 public:
     std::vector<Bone> Bones;
+    float ImportScale = 1.0f; // scale factor applied during FBX import
 
     int FindBoneIndex(const std::string& name) const;
     int GetBoneCount() const { return static_cast<int>(Bones.size()); }
