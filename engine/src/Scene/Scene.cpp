@@ -16,6 +16,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <sstream>
+#include <random>
 
 namespace VE {
 
@@ -188,6 +189,9 @@ void Scene::OnUpdate(float deltaTime) {
             }
         }
     }
+
+    // Update particle systems
+    OnUpdateParticles(deltaTime);
 }
 
 void Scene::StartPhysics() {
@@ -696,6 +700,152 @@ void Scene::StopSpriteAnimations() {
         sa._Timer = 0.0f;
         sa._CurrentFrame = sa.StartFrame;
     }
+}
+
+// ── Particle System ─────────────────────────────────────────────────
+
+static thread_local std::mt19937 s_RNG{ std::random_device{}() };
+
+static float RandomFloat(float min, float max) {
+    std::uniform_real_distribution<float> dist(min, max);
+    return dist(s_RNG);
+}
+
+void Scene::StartParticles() {
+    auto view = m_Registry.view<ParticleSystemComponent>();
+    for (auto e : view) {
+        auto& ps = view.get<ParticleSystemComponent>(e);
+        ps._Particles.resize(ps.MaxParticles);
+        for (auto& p : ps._Particles)
+            p.Active = false;
+        ps._EmissionAccumulator = 0.0f;
+        ps._Playing = ps.PlayOnStart;
+    }
+    VE_ENGINE_INFO("Particles started");
+}
+
+void Scene::StopParticles() {
+    auto view = m_Registry.view<ParticleSystemComponent>();
+    for (auto e : view) {
+        auto& ps = view.get<ParticleSystemComponent>(e);
+        ps._Particles.clear();
+        ps._EmissionAccumulator = 0.0f;
+        ps._Playing = false;
+    }
+    VE_ENGINE_INFO("Particles stopped");
+}
+
+void Scene::OnUpdateParticles(float dt) {
+    auto view = m_Registry.view<TransformComponent, ParticleSystemComponent>();
+    for (auto entity : view) {
+        auto& tc = view.get<TransformComponent>(entity);
+        auto& ps = view.get<ParticleSystemComponent>(entity);
+        if (!ps._Playing) continue;
+
+        // Resize pool if MaxParticles changed at runtime
+        if ((int)ps._Particles.size() != ps.MaxParticles) {
+            ps._Particles.resize(ps.MaxParticles);
+            for (auto& p : ps._Particles)
+                p.Active = false;
+        }
+
+        glm::vec3 gravity(ps.Gravity[0], ps.Gravity[1], ps.Gravity[2]);
+        glm::vec3 emitterPos(tc.Position[0], tc.Position[1], tc.Position[2]);
+
+        // 1) Age existing particles, apply gravity, lerp color/size
+        for (auto& p : ps._Particles) {
+            if (!p.Active) continue;
+            p.Lifetime += dt;
+            if (p.Lifetime >= p.MaxLife) {
+                p.Active = false;
+                continue;
+            }
+            p.Velocity += gravity * dt;
+            p.Position += p.Velocity * dt;
+
+            float t = p.Lifetime / p.MaxLife;
+            glm::vec4 sc(ps.StartColor[0], ps.StartColor[1], ps.StartColor[2], ps.StartColor[3]);
+            glm::vec4 ec(ps.EndColor[0], ps.EndColor[1], ps.EndColor[2], ps.EndColor[3]);
+            p.Color = glm::mix(sc, ec, t);
+            p.Size = glm::mix(ps.StartSize, ps.EndSize, t);
+        }
+
+        // 2) Emit new particles via accumulator
+        ps._EmissionAccumulator += ps.EmissionRate * dt;
+        while (ps._EmissionAccumulator >= 1.0f) {
+            ps._EmissionAccumulator -= 1.0f;
+            // Find inactive slot
+            for (auto& p : ps._Particles) {
+                if (p.Active) continue;
+                p.Active = true;
+                p.Position = emitterPos;
+                p.Velocity = glm::vec3(
+                    RandomFloat(ps.VelocityMin[0], ps.VelocityMax[0]),
+                    RandomFloat(ps.VelocityMin[1], ps.VelocityMax[1]),
+                    RandomFloat(ps.VelocityMin[2], ps.VelocityMax[2]));
+                p.MaxLife = ps.ParticleLifetime + RandomFloat(-ps.LifetimeVariance, ps.LifetimeVariance);
+                if (p.MaxLife < 0.01f) p.MaxLife = 0.01f;
+                p.Lifetime = 0.0f;
+                p.Size = ps.StartSize;
+                p.Color = glm::vec4(ps.StartColor[0], ps.StartColor[1], ps.StartColor[2], ps.StartColor[3]);
+                break;
+            }
+        }
+    }
+}
+
+void Scene::OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& cameraPos) {
+    auto view = m_Registry.view<ParticleSystemComponent>();
+
+    bool anyActive = false;
+    for (auto e : view) {
+        auto& ps = view.get<ParticleSystemComponent>(e);
+        if (!ps._Playing) continue;
+        for (auto& p : ps._Particles) {
+            if (p.Active) { anyActive = true; break; }
+        }
+        if (anyActive) break;
+    }
+    if (!anyActive) return;
+
+    SpriteBatchRenderer::BeginBatch(viewProjection);
+
+    for (auto entity : view) {
+        auto& ps = view.get<ParticleSystemComponent>(entity);
+        if (!ps._Playing) continue;
+
+        for (auto& p : ps._Particles) {
+            if (!p.Active) continue;
+
+            // Billboard: face camera
+            glm::vec3 toCamera = cameraPos - p.Position;
+            float dist = glm::length(toCamera);
+            if (dist < 0.0001f)
+                toCamera = glm::vec3(0.0f, 0.0f, 1.0f);
+            else
+                toCamera /= dist;
+
+            glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+            // Fallback when particle is directly above/below camera
+            if (std::abs(glm::dot(toCamera, worldUp)) > 0.999f)
+                worldUp = glm::vec3(0.0f, 0.0f, 1.0f);
+
+            glm::vec3 right = glm::normalize(glm::cross(worldUp, toCamera));
+            glm::vec3 up    = glm::cross(toCamera, right);
+
+            float s = p.Size;
+            glm::mat4 transform(1.0f);
+            transform[0] = glm::vec4(right * s, 0.0f);
+            transform[1] = glm::vec4(up * s, 0.0f);
+            transform[2] = glm::vec4(toCamera * s, 0.0f);
+            transform[3] = glm::vec4(p.Position, 1.0f);
+
+            std::array<float, 4> uvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
+            SpriteBatchRenderer::DrawSprite(transform, p.Color, ps.Texture, uvRect);
+        }
+    }
+
+    SpriteBatchRenderer::EndBatch();
 }
 
 } // namespace VE
