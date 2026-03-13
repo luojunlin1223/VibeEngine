@@ -2275,12 +2275,14 @@ private:
 
                 // Per-entity material property overrides
                 if (mr.Mat) {
-                    // Ensure overrides are populated from material defaults
-                    if (mr.MaterialOverrides.empty()) {
-                        for (const auto& prop : mr.Mat->GetProperties()) {
-                            if (prop.Name == "u_MainTex") continue; // texture handled separately
+                    // Ensure overrides are synced with material properties (add missing ones)
+                    for (const auto& prop : mr.Mat->GetProperties()) {
+                        if (prop.Name == "u_MainTex" || prop.Name == "u_EntityColor") continue;
+                        bool found = false;
+                        for (auto& ov : mr.MaterialOverrides)
+                            if (ov.Name == prop.Name) { found = true; break; }
+                        if (!found)
                             mr.MaterialOverrides.push_back(prop);
-                        }
                     }
 
                     if (!mr.MaterialOverrides.empty()) {
@@ -2306,20 +2308,91 @@ private:
                                     ImGui::ColorEdit4(label, &ov.Vec4Value.x);
                                     break;
                                 case VE::MaterialPropertyType::Texture2D: {
-                                    ImGui::Text("%s: %s", label,
-                                        ov.TexturePath.empty() ? "(none)" : ov.TexturePath.c_str());
-                                    ImGui::SameLine();
-                                    if (ImGui::SmallButton("Load")) {
-                                        static const char* texFilter =
-                                            "Image Files (*.png;*.jpg;*.hdr)\0*.png;*.jpg;*.jpeg;*.hdr\0All Files\0*.*\0";
-                                        std::string path = VE::FileDialog::OpenFile(texFilter, GetWindow().GetNativeWindow());
-                                        if (!path.empty()) {
-                                            ov.TexturePath = path;
-                                            ov.TextureRef = VE::Texture2D::Create(path);
+                                    // Texture Object Field (Unity-style drag-drop)
+                                    bool hasTex = ov.TextureRef != nullptr;
+                                    std::string texDisplay = hasTex
+                                        ? std::filesystem::path(ov.TexturePath).filename().generic_string() + " (Texture2D)"
+                                        : "None (Texture2D)";
+
+                                    ImGui::Text("%s", label);
+                                    ImGui::SameLine(120.0f);
+
+                                    float texAvailW = ImGui::GetContentRegionAvail().x;
+                                    float texClearW = ImGui::GetFrameHeight();
+                                    float texFieldW = texAvailW - texClearW - ImGui::GetStyle().ItemSpacing.x;
+
+                                    {
+                                        ImVec2 pos = ImGui::GetCursorScreenPos();
+                                        float fieldH = ImGui::GetFrameHeight();
+                                        // If texture is loaded, show thumbnail — make field taller
+                                        float thumbSize = hasTex ? 48.0f : 0.0f;
+                                        float totalH = hasTex ? std::max(fieldH, thumbSize + 4.0f) : fieldH;
+                                        ImVec2 size(texFieldW, totalH);
+
+                                        ImU32 bgCol = IM_COL32(40, 40, 40, 255);
+                                        ImU32 borderCol = IM_COL32(80, 80, 80, 255);
+                                        bool texHovered = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+                                        if (texHovered) borderCol = IM_COL32(120, 160, 255, 255);
+
+                                        ImDrawList* dl = ImGui::GetWindowDrawList();
+                                        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bgCol, 3.0f);
+                                        dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderCol, 3.0f);
+
+                                        // Thumbnail preview
+                                        float textStartX = pos.x + 6.0f;
+                                        if (hasTex) {
+                                            uint64_t texID = ov.TextureRef->GetNativeTextureID();
+                                            if (texID != 0) {
+                                                float pad = 2.0f;
+                                                ImVec2 thumbMin(pos.x + pad, pos.y + pad);
+                                                ImVec2 thumbMax(thumbMin.x + thumbSize, thumbMin.y + thumbSize);
+                                                dl->AddImage((ImTextureID)texID, thumbMin, thumbMax);
+                                                textStartX = thumbMax.x + 6.0f;
+                                            }
+                                        }
+
+                                        // Icon (blue square for textures)
+                                        if (!hasTex) {
+                                            ImU32 iconCol = IM_COL32(100, 160, 220, 255);
+                                            float iconSize2 = fieldH * 0.5f;
+                                            float iconPad2 = (fieldH - iconSize2) * 0.5f;
+                                            ImVec2 iconMin(pos.x + 4.0f + iconPad2, pos.y + iconPad2);
+                                            ImVec2 iconMax(iconMin.x + iconSize2, iconMin.y + iconSize2);
+                                            dl->AddRectFilled(iconMin, iconMax, iconCol, 2.0f);
+                                            textStartX = iconMax.x + 6.0f;
+                                        }
+
+                                        // Text
+                                        float textY = pos.y + (totalH - ImGui::GetTextLineHeight()) * 0.5f;
+                                        dl->AddText(ImVec2(textStartX, textY), IM_COL32(200, 200, 200, 255), texDisplay.c_str());
+
+                                        ImGui::InvisibleButton("##texfield", size);
+
+                                        // Click → file dialog
+                                        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                                            static const char* texFilter =
+                                                "Image Files (*.png;*.jpg;*.hdr)\0*.png;*.jpg;*.jpeg;*.hdr\0All Files\0*.*\0";
+                                            std::string path = VE::FileDialog::OpenFile(texFilter, GetWindow().GetNativeWindow());
+                                            if (!path.empty()) {
+                                                ov.TexturePath = path;
+                                                ov.TextureRef = VE::Texture2D::Create(path);
+                                            }
+                                        }
+
+                                        // Accept drag-drop from Content Browser (ASSET_TEXTURE)
+                                        if (ImGui::BeginDragDropTarget()) {
+                                            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                                                std::string path(static_cast<const char*>(payload->Data));
+                                                ov.TexturePath = path;
+                                                ov.TextureRef = VE::Texture2D::Create(path);
+                                            }
+                                            ImGui::EndDragDropTarget();
                                         }
                                     }
+
+                                    // Clear button (x)
                                     ImGui::SameLine();
-                                    if (ImGui::SmallButton("Clear")) {
+                                    if (ImGui::Button("x", ImVec2(texClearW, 0))) {
                                         ov.TexturePath.clear();
                                         ov.TextureRef.reset();
                                     }
@@ -3121,6 +3194,16 @@ private:
                 if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     ImGui::SetDragDropPayload("ASSET_AUDIO", absPath.c_str(), absPath.size() + 1);
+                    ImGui::Text("%s", filename.c_str());
+                    ImGui::EndDragDropSource();
+                }
+            }
+
+            // Drag-drop source for texture files
+            if (meta->Type == VE::AssetType::Texture2D) {
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    ImGui::SetDragDropPayload("ASSET_TEXTURE", absPath.c_str(), absPath.size() + 1);
                     ImGui::Text("%s", filename.c_str());
                     ImGui::EndDragDropSource();
                 }
