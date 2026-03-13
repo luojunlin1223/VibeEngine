@@ -38,6 +38,8 @@
 #include "Scripting/NativeScript.h"
 #include "Scripting/ScriptEngine.h"
 
+#include "Audio/AudioEngine.h"
+
 #include "Editor/EditorCommand.h"
 
 #include "ImGui/ImGuiLayer.h"

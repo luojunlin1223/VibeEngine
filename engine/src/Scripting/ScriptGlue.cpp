@@ -13,6 +13,7 @@
 #include "VibeEngine/Core/Log.h"
 #include "VibeEngine/Core/Application.h"
 #include "VibeEngine/Core/Window.h"
+#include "VibeEngine/Audio/AudioEngine.h"
 
 #include <GLFW/glfw3.h>
 
@@ -124,6 +125,24 @@ static uint64_t Glue_Entity_FindByName(const char* name) {
     return 0;
 }
 
+// ── Audio glue ──────────────────────────────────────────────────────
+
+static uint32_t Glue_Audio_Play(const char* clipPath, float volume, float pitch, bool loop) {
+    return AudioEngine::Play(clipPath ? clipPath : "", volume, pitch, loop);
+}
+
+static void Glue_Audio_Stop(uint32_t handle) {
+    AudioEngine::Stop(handle);
+}
+
+static void Glue_Audio_SetVolume(uint32_t handle, float volume) {
+    AudioEngine::SetVolume(handle, volume);
+}
+
+static void Glue_Audio_SetMasterVolume(float volume) {
+    AudioEngine::SetMasterVolume(volume);
+}
+
 // ── Init ────────────────────────────────────────────────────────────
 
 void InitScriptGlue(ScriptAPI& api) {
@@ -137,6 +156,10 @@ void InitScriptGlue(ScriptAPI& api) {
     api.Entity_GetTransform  = Glue_Entity_GetTransform;
     api.Entity_SetTransform  = Glue_Entity_SetTransform;
     api.Entity_FindByName    = Glue_Entity_FindByName;
+    api.Audio_Play           = Glue_Audio_Play;
+    api.Audio_Stop           = Glue_Audio_Stop;
+    api.Audio_SetVolume      = Glue_Audio_SetVolume;
+    api.Audio_SetMasterVolume = Glue_Audio_SetMasterVolume;
 }
 
 } // namespace VE

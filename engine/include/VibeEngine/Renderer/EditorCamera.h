@@ -40,6 +40,17 @@ public:
     const glm::vec3& GetPosition3D() const { return m_Position3D; }
     const glm::vec3& GetFocalPoint() const { return m_FocalPoint; }
     float GetDistance() const { return m_Distance; }
+    float GetYaw() const { return m_Yaw; }
+    float GetPitch() const { return m_Pitch; }
+    float GetFOV() const { return m_FOV; }
+
+    // Setters for restoring saved state
+    void SetPosition2D(const glm::vec2& pos) { m_Position2D = pos; RecalculateMatrix(); }
+    void SetZoom(float z) { m_Zoom = z; RecalculateMatrix(); }
+    void SetFocalPoint(const glm::vec3& fp) { m_FocalPoint = fp; RecalculatePosition3D(); RecalculateMatrix(); }
+    void SetDistance(float d) { m_Distance = d; RecalculatePosition3D(); RecalculateMatrix(); }
+    void SetYaw(float y) { m_Yaw = y; RecalculatePosition3D(); RecalculateMatrix(); }
+    void SetPitch(float p) { m_Pitch = p; RecalculatePosition3D(); RecalculateMatrix(); }
 
 private:
     void RecalculateMatrix();

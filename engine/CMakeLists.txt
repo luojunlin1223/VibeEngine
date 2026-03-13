@@ -11,6 +11,7 @@ target_include_directories(VibeEngineLib
     PRIVATE
         ${CMAKE_SOURCE_DIR}/vendor/stb
         ${CMAKE_SOURCE_DIR}/vendor/ufbx
+        ${CMAKE_SOURCE_DIR}/vendor/miniaudio
 )
 
 target_link_libraries(VibeEngineLib

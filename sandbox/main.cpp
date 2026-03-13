@@ -1,6 +1,7 @@
 #include <VibeEngine/VibeEngine.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <yaml-cpp/yaml.h>
 #include <limits>
 #include <filesystem>
 #include <sstream>
@@ -16,6 +17,7 @@ public:
         : VE::Application(VE::RendererAPI::API::OpenGL)
     {
         VE_INFO("Sandbox application created");
+        VE::AudioEngine::Init();
         VE::ScriptEngine::Init();
         VE::ScriptEngine::SetEngineIncludePath(std::string(VE_PROJECT_ROOT) + "/engine/include");
 
@@ -53,10 +55,15 @@ public:
                 }
             }
         });
+
+        // Restore last session (scene + camera)
+        LoadEditorSettings();
     }
 
     ~Sandbox() override {
+        SaveEditorSettings();
         VE::ScriptEngine::Shutdown();
+        VE::AudioEngine::Shutdown();
         VE_INFO("Sandbox application destroyed");
     }
 
@@ -64,8 +71,27 @@ protected:
     void OnUpdate() override {
         m_Scene->OnUpdate(m_DeltaTime);
         m_AssetDatabase.Update(m_DeltaTime);
-        if (m_PlayMode)
+        if (m_PlayMode) {
             VE::ScriptEngine::CheckForReload();
+
+            // Update 3D audio listener from camera
+            glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
+                ? m_Camera.GetPosition3D()
+                : glm::vec3(m_Camera.GetPosition(), 5.0f);
+            // Use a simple forward vector; for the editor camera the view matrix encodes this
+            glm::vec3 forward(0.0f, 0.0f, -1.0f);
+            glm::vec3 up(0.0f, 1.0f, 0.0f);
+            if (m_Camera.GetMode() == VE::CameraMode::Perspective3D) {
+                // Extract forward/up from view matrix
+                auto view = m_Camera.GetViewMatrix();
+                forward = -glm::vec3(view[0][2], view[1][2], view[2][2]);
+                up      =  glm::vec3(view[0][1], view[1][1], view[2][1]);
+            }
+            float pos[3] = { camPos.x, camPos.y, camPos.z };
+            float fwd[3] = { forward.x, forward.y, forward.z };
+            float u[3]   = { up.x, up.y, up.z };
+            m_Scene->UpdateAudio(pos, fwd, u);
+        }
     }
 
     void OnRender() override {
@@ -471,6 +497,100 @@ private:
         }
     }
 
+    // ── Editor settings persistence ──────────────────────────────────
+
+    void SaveEditorSettings() {
+        YAML::Emitter out;
+        out << YAML::BeginMap;
+
+        // Last opened scene
+        out << YAML::Key << "LastScene" << YAML::Value << m_CurrentScenePath;
+
+        // Camera state
+        out << YAML::Key << "Camera" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Mode" << YAML::Value
+            << (m_Camera.GetMode() == VE::CameraMode::Perspective3D ? "Perspective3D" : "Orthographic2D");
+
+        // 2D state
+        out << YAML::Key << "Position2D" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << m_Camera.GetPosition().x << m_Camera.GetPosition().y << YAML::EndSeq;
+        out << YAML::Key << "Zoom" << YAML::Value << m_Camera.GetZoom();
+
+        // 3D state
+        auto fp = m_Camera.GetFocalPoint();
+        out << YAML::Key << "FocalPoint" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << fp.x << fp.y << fp.z << YAML::EndSeq;
+        out << YAML::Key << "Distance" << YAML::Value << m_Camera.GetDistance();
+        out << YAML::Key << "Yaw" << YAML::Value << m_Camera.GetYaw();
+        out << YAML::Key << "Pitch" << YAML::Value << m_Camera.GetPitch();
+
+        out << YAML::EndMap; // Camera
+
+        out << YAML::EndMap;
+
+        std::filesystem::create_directories("ProjectSettings");
+        std::ofstream fout("ProjectSettings/EditorSettings.yaml");
+        if (fout) {
+            fout << out.c_str();
+            VE_INFO("Editor settings saved");
+        }
+    }
+
+    void LoadEditorSettings() {
+        const std::string path = "ProjectSettings/EditorSettings.yaml";
+        if (!std::filesystem::exists(path)) return;
+
+        try {
+            YAML::Node root = YAML::LoadFile(path);
+
+            // Restore last scene
+            if (root["LastScene"]) {
+                std::string scenePath = root["LastScene"].as<std::string>("");
+                if (!scenePath.empty() && std::filesystem::exists(scenePath)) {
+                    m_Scene = std::make_shared<VE::Scene>();
+                    VE::SceneSerializer serializer(m_Scene);
+                    if (serializer.Deserialize(scenePath))
+                        m_CurrentScenePath = scenePath;
+                }
+            }
+
+            // Restore camera
+            if (root["Camera"]) {
+                auto cam = root["Camera"];
+                std::string mode = cam["Mode"].as<std::string>("Perspective3D");
+                m_Camera.SetMode(mode == "Orthographic2D"
+                    ? VE::CameraMode::Orthographic2D : VE::CameraMode::Perspective3D);
+
+                // 2D state
+                if (cam["Position2D"] && cam["Position2D"].size() == 2) {
+                    glm::vec2 pos(cam["Position2D"][0].as<float>(0.0f),
+                                  cam["Position2D"][1].as<float>(0.0f));
+                    m_Camera.SetPosition2D(pos);
+                }
+                if (cam["Zoom"])
+                    m_Camera.SetZoom(cam["Zoom"].as<float>(1.0f));
+
+                // 3D state
+                if (cam["FocalPoint"] && cam["FocalPoint"].size() == 3) {
+                    glm::vec3 fp(cam["FocalPoint"][0].as<float>(0.0f),
+                                 cam["FocalPoint"][1].as<float>(0.0f),
+                                 cam["FocalPoint"][2].as<float>(0.0f));
+                    m_Camera.SetFocalPoint(fp);
+                }
+                if (cam["Distance"])
+                    m_Camera.SetDistance(cam["Distance"].as<float>(5.0f));
+                if (cam["Yaw"])
+                    m_Camera.SetYaw(cam["Yaw"].as<float>(-45.0f));
+                if (cam["Pitch"])
+                    m_Camera.SetPitch(cam["Pitch"].as<float>(30.0f));
+            }
+
+            VE_INFO("Editor settings restored");
+        } catch (const std::exception& e) {
+            VE_WARN("Failed to load editor settings: {}", e.what());
+        }
+    }
+
     // ── GPU resource management ───────────────────────────────────────
 
     void ClearEntityGPUResources() {
@@ -854,6 +974,7 @@ private:
         VE::ScriptEngine::SetActiveScene(m_Scene.get());
         m_Scene->StartScripts();
         m_Scene->StartAnimations();
+        m_Scene->StartAudio();
         m_PlayMode = true;
         m_CommandHistory.Clear();
         VE_INFO("Entered Play mode");
@@ -862,6 +983,7 @@ private:
     void ExitPlayMode() {
         if (!m_PlayMode) return;
 
+        m_Scene->StopAudio();
         m_Scene->StopAnimations();
         m_Scene->StopScripts();
         m_Scene->StopPhysics();
@@ -1489,6 +1611,80 @@ private:
         ImGui::PopID();
     }
 
+    // ── Unity-style Object Field for Audio Clip ────────────────────────
+
+    void DrawAudioClipObjectField(const char* label, VE::AudioSourceComponent& as) {
+        bool hasClip = !as.ClipPath.empty();
+        std::string displayName = hasClip
+            ? std::filesystem::path(as.ClipPath).stem().generic_string() + " (AudioClip)"
+            : "None (AudioClip)";
+
+        ImGui::PushID(label);
+
+        ImGui::Text("%s", label);
+        ImGui::SameLine(80.0f);
+
+        float availW = ImGui::GetContentRegionAvail().x;
+        float clearBtnW = ImGui::GetFrameHeight();
+        float fieldW = availW - clearBtnW - ImGui::GetStyle().ItemSpacing.x;
+
+        // --- Main field ---
+        {
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImVec2 size(fieldW, ImGui::GetFrameHeight());
+
+            ImU32 bgCol = IM_COL32(40, 40, 40, 255);
+            ImU32 borderCol = IM_COL32(80, 80, 80, 255);
+            bool hovered = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+            if (hovered) borderCol = IM_COL32(120, 160, 255, 255);
+
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bgCol, 3.0f);
+            dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderCol, 3.0f);
+
+            // Audio icon (green tint)
+            ImU32 iconCol = hasClip ? IM_COL32(80, 200, 120, 255) : IM_COL32(160, 160, 160, 255);
+            float iconSize = size.y * 0.6f;
+            float iconPad = (size.y - iconSize) * 0.5f;
+            ImVec2 iconMin(pos.x + 4.0f + iconPad, pos.y + iconPad);
+            ImVec2 iconMax(iconMin.x + iconSize, iconMin.y + iconSize);
+            dl->AddRectFilled(iconMin, iconMax, iconCol, 2.0f);
+
+            // Text
+            float textX = iconMax.x + 6.0f;
+            float textY = pos.y + (size.y - ImGui::GetTextLineHeight()) * 0.5f;
+            dl->AddText(ImVec2(textX, textY), IM_COL32(200, 200, 200, 255), displayName.c_str());
+
+            ImGui::InvisibleButton("##audiofield", size);
+
+            // Accept drag-drop from Content Browser (ASSET_AUDIO)
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_AUDIO")) {
+                    std::string path(static_cast<const char*>(payload->Data));
+                    // Stop any preview that was playing with old clip
+                    if (as._SoundHandle != 0) {
+                        VE::AudioEngine::Stop(as._SoundHandle);
+                        as._SoundHandle = 0;
+                    }
+                    as.ClipPath = path;
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        // --- Clear button (x) ---
+        ImGui::SameLine();
+        if (ImGui::Button("x", ImVec2(clearBtnW, 0))) {
+            if (as._SoundHandle != 0) {
+                VE::AudioEngine::Stop(as._SoundHandle);
+                as._SoundHandle = 0;
+            }
+            as.ClipPath.clear();
+        }
+
+        ImGui::PopID();
+    }
+
     void DrawMaterialObjectField(const char* label, VE::MeshRendererComponent& mr) {
         bool hasMat = mr.Mat != nullptr;
         bool isAssetMat = !mr.MaterialPath.empty(); // .vmat file on disk
@@ -1998,6 +2194,70 @@ private:
             ImGui::Separator();
         }
 
+        // AudioSourceComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::AudioSourceComponent>()) {
+            auto& as = m_SelectedEntity.GetComponent<VE::AudioSourceComponent>();
+            bool removeAudio = false;
+            if (ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen)) {
+                // ── Audio Clip Object Field (Unity-style) ──
+                DrawAudioClipObjectField("Audio Clip", as);
+
+                ImGui::SliderFloat("Volume", &as.Volume, 0.0f, 1.0f);
+                ImGui::SliderFloat("Pitch", &as.Pitch, 0.1f, 3.0f);
+                ImGui::Checkbox("Loop", &as.Loop);
+                ImGui::Checkbox("Play On Awake", &as.PlayOnAwake);
+                ImGui::Checkbox("Spatial (3D)", &as.Spatial);
+                if (as.Spatial) {
+                    ImGui::DragFloat("Min Distance", &as.MinDistance, 0.1f, 0.0f, 1000.0f);
+                    ImGui::DragFloat("Max Distance", &as.MaxDistance, 1.0f, 0.0f, 10000.0f);
+                }
+
+                // Preview controls (works outside play mode)
+                if (!as.ClipPath.empty()) {
+                    bool playing = as._SoundHandle != 0 && VE::AudioEngine::IsPlaying(as._SoundHandle);
+                    if (playing) {
+                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f));
+                        if (ImGui::Button("Stop Preview")) {
+                            VE::AudioEngine::Stop(as._SoundHandle);
+                            as._SoundHandle = 0;
+                        }
+                        ImGui::PopStyleColor();
+                    } else {
+                        if (ImGui::Button("Play Preview")) {
+                            if (as._SoundHandle != 0) {
+                                VE::AudioEngine::Stop(as._SoundHandle);
+                                as._SoundHandle = 0;
+                            }
+                            as._SoundHandle = VE::AudioEngine::Play(as.ClipPath, as.Volume, as.Pitch, as.Loop);
+                        }
+                    }
+                }
+
+                if (ImGui::Button("Remove Component##AudioSource"))
+                    removeAudio = true;
+            }
+            if (removeAudio) {
+                if (as._SoundHandle != 0) {
+                    VE::AudioEngine::Stop(as._SoundHandle);
+                }
+                m_SelectedEntity.RemoveComponent<VE::AudioSourceComponent>();
+            }
+            ImGui::Separator();
+        }
+
+        // AudioListenerComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::AudioListenerComponent>()) {
+            bool removeListener = false;
+            if (ImGui::CollapsingHeader("Audio Listener", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::TextWrapped("This entity acts as the 3D audio listener.");
+                if (ImGui::Button("Remove Component##AudioListener"))
+                    removeListener = true;
+            }
+            if (removeListener)
+                m_SelectedEntity.RemoveComponent<VE::AudioListenerComponent>();
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             bool removeComponent = false;
             bool openMR = ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen);
@@ -2185,6 +2445,16 @@ private:
                 if (ImGui::MenuItem("Animator")) {
                     m_SelectedEntity.AddComponent<VE::AnimatorComponent>();
                 }
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::AudioSourceComponent>()) {
+                if (ImGui::MenuItem("Audio Source"))
+                    m_SelectedEntity.AddComponent<VE::AudioSourceComponent>();
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::AudioListenerComponent>()) {
+                if (ImGui::MenuItem("Audio Listener"))
+                    m_SelectedEntity.AddComponent<VE::AudioListenerComponent>();
                 anyAdded = true;
             }
             if (!anyAdded) {
@@ -2790,6 +3060,11 @@ private:
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
                 float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
                 dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "MAT");
+            } else if (meta->Type == VE::AssetType::Audio) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(70, 130, 100, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SND");
             } else {
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
             }
@@ -2836,6 +3111,16 @@ private:
                 if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     ImGui::SetDragDropPayload("ASSET_MESH", absPath.c_str(), absPath.size() + 1);
+                    ImGui::Text("%s", filename.c_str());
+                    ImGui::EndDragDropSource();
+                }
+            }
+
+            // Drag-drop source for audio files
+            if (meta->Type == VE::AssetType::Audio) {
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    ImGui::SetDragDropPayload("ASSET_AUDIO", absPath.c_str(), absPath.size() + 1);
                     ImGui::Text("%s", filename.c_str());
                     ImGui::EndDragDropSource();
                 }

@@ -165,6 +165,28 @@ struct AnimatorComponent {
     AnimatorComponent() = default;
 };
 
+struct AudioSourceComponent {
+    std::string ClipPath;           // path to audio file (.wav, .mp3, .ogg)
+    float Volume = 1.0f;           // 0.0 – 1.0
+    float Pitch  = 1.0f;           // 0.1 – 3.0
+    bool  Loop   = false;
+    bool  Spatial = false;          // true = 3D positional audio
+    bool  PlayOnAwake = true;
+    float MinDistance = 1.0f;       // 3D: distance at full volume
+    float MaxDistance = 100.0f;     // 3D: distance at zero volume
+
+    // Runtime only (not serialized)
+    uint32_t _SoundHandle = 0;
+
+    AudioSourceComponent() = default;
+};
+
+struct AudioListenerComponent {
+    // Marker component — the entity with this + TransformComponent is the listener.
+    bool Active = true;
+    AudioListenerComponent() = default;
+};
+
 struct MeshRendererComponent {
     std::shared_ptr<VertexArray>  Mesh;
     std::shared_ptr<VE::Material> Mat;            // material (shader + properties)
