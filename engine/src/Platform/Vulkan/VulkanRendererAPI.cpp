@@ -64,6 +64,10 @@ void VulkanRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexAr
     ctx.SetCurrentUseTexture(0);
 }
 
+void VulkanRendererAPI::DrawIndexedInstanced(const std::shared_ptr<VertexArray>&, uint32_t) {
+    // Not yet implemented for Vulkan
+}
+
 void VulkanRendererAPI::DrawLines(const std::shared_ptr<VertexArray>&, uint32_t) {
     // Not yet implemented for Vulkan
 }

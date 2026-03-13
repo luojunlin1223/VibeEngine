@@ -21,6 +21,7 @@
 #include "Renderer/GizmoRenderer.h"
 #include "Renderer/SpriteBatchRenderer.h"
 #include "Renderer/RenderGraph.h"
+#include "Renderer/InstancedRenderer.h"
 
 #include "Scene/Components.h"
 #include "Scene/Entity.h"

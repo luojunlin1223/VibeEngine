@@ -16,6 +16,7 @@ public:
     void SetClearColor(float r, float g, float b, float a) override;
     void Clear() override;
     void DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray) override;
+    void DrawIndexedInstanced(const std::shared_ptr<VertexArray>& vertexArray, uint32_t instanceCount) override;
     void DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) override;
     void SetLineWidth(float width) override;
     void SetDepthFunc(DepthFunc func) override;

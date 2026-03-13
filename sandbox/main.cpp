@@ -30,6 +30,7 @@ public:
 
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
+        VE::InstancedRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
@@ -65,6 +66,7 @@ public:
 
     ~Sandbox() override {
         SaveEditorSettings();
+        VE::InstancedRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
         VE::AudioEngine::Shutdown();

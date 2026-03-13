@@ -9,6 +9,7 @@
 #include "VibeEngine/Animation/Animator.h"
 #include "VibeEngine/Audio/AudioEngine.h"
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
+#include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -512,6 +513,68 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
+    // Helper: set lighting uniforms on a shader (used for both individual and instanced paths)
+    auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader, bool isLit) {
+        if (!isLit) return;
+        shader->SetVec3("u_LightDir", lightDir);
+        shader->SetVec3("u_LightColor", lightColor);
+        shader->SetFloat("u_LightIntensity", lightIntensity);
+        shader->SetVec3("u_ViewPos", cameraPos);
+
+        if (m_ShadowsComputed && m_ShadowMap) {
+            shader->SetInt("u_ShadowEnabled", 1);
+            m_ShadowMap->BindForReading(8);
+            shader->SetInt("u_ShadowMap", 8);
+            shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
+            shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
+            shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
+            shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
+            for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c) {
+                std::string name = "u_LightSpaceMatrices[" + std::to_string(c) + "]";
+                shader->SetMat4(name, m_ShadowMap->GetLightSpaceMatrix(c));
+            }
+            shader->SetVec3("u_CascadeSplits",
+                glm::vec3(m_ShadowMap->GetCascadeSplit(0),
+                          m_ShadowMap->GetCascadeSplit(1),
+                          m_ShadowMap->GetCascadeSplit(2)));
+        } else {
+            shader->SetInt("u_ShadowEnabled", 0);
+        }
+
+        shader->SetInt("u_NumPointLights", numPointLights);
+        for (int i = 0; i < numPointLights; ++i) {
+            std::string idx = std::to_string(i);
+            shader->SetVec3("u_PointLightPositions[" + idx + "]",  pointPositions[i]);
+            shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
+            shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
+            shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
+        }
+    };
+
+    auto setPBRDefaults = [](const std::shared_ptr<Shader>& shader, const std::shared_ptr<Material>& mat) {
+        bool hasMetallic = false, hasRoughness = false, hasAO = false;
+        bool hasBumpScale = false, hasOccStr = false, hasEmission = false, hasCutoff = false;
+        for (auto& prop : mat->GetProperties()) {
+            if (prop.Name == "u_Metallic") hasMetallic = true;
+            if (prop.Name == "u_Roughness") hasRoughness = true;
+            if (prop.Name == "u_AO") hasAO = true;
+            if (prop.Name == "u_BumpScale") hasBumpScale = true;
+            if (prop.Name == "u_OcclusionStrength") hasOccStr = true;
+            if (prop.Name == "u_EmissionColor") hasEmission = true;
+            if (prop.Name == "u_Cutoff") hasCutoff = true;
+        }
+        if (!hasMetallic)  shader->SetFloat("u_Metallic", 0.0f);
+        if (!hasRoughness) shader->SetFloat("u_Roughness", 0.5f);
+        if (!hasAO)        shader->SetFloat("u_AO", 1.0f);
+        if (!hasBumpScale) shader->SetFloat("u_BumpScale", 1.0f);
+        if (!hasOccStr)    shader->SetFloat("u_OcclusionStrength", 1.0f);
+        if (!hasEmission)  shader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        if (!hasCutoff)    shader->SetFloat("u_Cutoff", 0.0f);
+    };
+
+    // ── Begin instanced batching ────────────────────────────────────
+    InstancedRenderer::BeginScene(viewProjection);
+
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entityID : view) {
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
@@ -519,26 +582,37 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         if (!mr.Mesh || !mr.Mat)
             continue;
 
-        // Use skinned VAO if animator is active
-        std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
-        if (m_Registry.all_of<AnimatorComponent>(entityID)) {
-            auto& ac = m_Registry.get<AnimatorComponent>(entityID);
-            if (ac._Animator && ac._Animator->GetSkinnedVAO())
-                drawVAO = ac._Animator->GetSkinnedVAO();
+        glm::mat4 model = GetWorldTransform(entityID);
+        glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
+
+        // Determine if this entity can be GPU-instanced:
+        // - No animator (skinned meshes have unique VAOs per frame)
+        // - No per-entity material overrides (they require individual uniform setup)
+        bool hasAnimator = m_Registry.all_of<AnimatorComponent>(entityID) &&
+                           m_Registry.get<AnimatorComponent>(entityID)._Animator &&
+                           m_Registry.get<AnimatorComponent>(entityID)._Animator->GetSkinnedVAO();
+        bool hasOverrides = !mr.MaterialOverrides.empty();
+
+        if (!hasAnimator && !hasOverrides) {
+            // Submit to instanced renderer for batching
+            InstancedRenderer::Submit(mr.Mesh, mr.Mat, model, entityColor);
+            continue;
         }
 
-        glm::mat4 model = GetWorldTransform(entityID);
+        // ── Individual (non-instanced) draw path ────────────────────
+        std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
+        if (hasAnimator) {
+            auto& ac = m_Registry.get<AnimatorComponent>(entityID);
+            drawVAO = ac._Animator->GetSkinnedVAO();
+        }
+
         glm::mat4 mvp = viewProjection * model;
-
-        // Bind material (shader + material properties including textures)
         mr.Mat->Bind();
-
         auto shader = mr.Mat->GetShader();
         if (!shader) continue;
 
         shader->SetMat4("u_MVP", mvp);
 
-        // If material has no texture property set, ensure UseTexture=0
         bool hasTexInMat = false;
         for (auto& prop : mr.Mat->GetProperties()) {
             if (prop.Type == MaterialPropertyType::Texture2D && prop.TextureRef)
@@ -547,78 +621,19 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         if (!hasTexInMat)
             shader->SetInt("u_UseTexture", 0);
 
-        // Lighting + PBR uniforms for lit materials
         if (mr.Mat->IsLit()) {
             shader->SetMat4("u_Model", model);
-            shader->SetVec3("u_LightDir", lightDir);
-            shader->SetVec3("u_LightColor", lightColor);
-            shader->SetFloat("u_LightIntensity", lightIntensity);
-            shader->SetVec3("u_ViewPos", cameraPos);
-
-            // Shadow uniforms
-            if (m_ShadowsComputed && m_ShadowMap) {
-                shader->SetInt("u_ShadowEnabled", 1);
-                m_ShadowMap->BindForReading(8); // texture unit 8 (slots 0-5 reserved for material textures)
-                shader->SetInt("u_ShadowMap", 8);
-                shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
-                shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
-                shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
-                shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
-
-                for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c) {
-                    std::string name = "u_LightSpaceMatrices[" + std::to_string(c) + "]";
-                    shader->SetMat4(name, m_ShadowMap->GetLightSpaceMatrix(c));
-                }
-                shader->SetVec3("u_CascadeSplits",
-                    glm::vec3(m_ShadowMap->GetCascadeSplit(0),
-                              m_ShadowMap->GetCascadeSplit(1),
-                              m_ShadowMap->GetCascadeSplit(2)));
-            } else {
-                shader->SetInt("u_ShadowEnabled", 0);
-            }
-
-            // Point lights
-            shader->SetInt("u_NumPointLights", numPointLights);
-            for (int i = 0; i < numPointLights; ++i) {
-                std::string idx = std::to_string(i);
-                shader->SetVec3("u_PointLightPositions[" + idx + "]",  pointPositions[i]);
-                shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
-                shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
-                shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
-            }
-
-            // PBR defaults (if not set by material)
-            bool hasMetallic = false, hasRoughness = false, hasAO = false;
-            bool hasBumpScale = false, hasOccStr = false, hasEmission = false, hasCutoff = false;
-            for (auto& prop : mr.Mat->GetProperties()) {
-                if (prop.Name == "u_Metallic") hasMetallic = true;
-                if (prop.Name == "u_Roughness") hasRoughness = true;
-                if (prop.Name == "u_AO") hasAO = true;
-                if (prop.Name == "u_BumpScale") hasBumpScale = true;
-                if (prop.Name == "u_OcclusionStrength") hasOccStr = true;
-                if (prop.Name == "u_EmissionColor") hasEmission = true;
-                if (prop.Name == "u_Cutoff") hasCutoff = true;
-            }
-            if (!hasMetallic)  shader->SetFloat("u_Metallic", 0.0f);
-            if (!hasRoughness) shader->SetFloat("u_Roughness", 0.5f);
-            if (!hasAO)        shader->SetFloat("u_AO", 1.0f);
-            if (!hasBumpScale) shader->SetFloat("u_BumpScale", 1.0f);
-            if (!hasOccStr)    shader->SetFloat("u_OcclusionStrength", 1.0f);
-            if (!hasEmission)  shader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-            if (!hasCutoff)    shader->SetFloat("u_Cutoff", 0.0f);
+            setLightingUniforms(shader, true);
+            setPBRDefaults(shader, mr.Mat);
         }
 
-        // Per-instance color: use override if present, else fallback to mr.Color
         bool hasColorOverride = false;
         for (const auto& ov : mr.MaterialOverrides) {
             if (ov.Name == "u_EntityColor") { hasColorOverride = true; break; }
         }
-        if (!hasColorOverride) {
-            shader->SetVec4("u_EntityColor",
-                glm::vec4(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]));
-        }
+        if (!hasColorOverride)
+            shader->SetVec4("u_EntityColor", entityColor);
 
-        // Per-entity material property overrides
         for (const auto& ov : mr.MaterialOverrides) {
             switch (ov.Type) {
                 case MaterialPropertyType::Float:
@@ -641,6 +656,23 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
         RenderCommand::DrawIndexed(drawVAO);
     }
+
+    // ── Set lighting uniforms on instanced shaders, then flush ──────
+    auto litInstShader = InstancedRenderer::GetLitInstancedShader();
+    if (litInstShader) {
+        litInstShader->Bind();
+        setLightingUniforms(litInstShader, true);
+        // PBR defaults for instanced lit
+        litInstShader->SetFloat("u_Metallic", 0.0f);
+        litInstShader->SetFloat("u_Roughness", 0.5f);
+        litInstShader->SetFloat("u_AO", 1.0f);
+        litInstShader->SetFloat("u_BumpScale", 1.0f);
+        litInstShader->SetFloat("u_OcclusionStrength", 1.0f);
+        litInstShader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        litInstShader->SetFloat("u_Cutoff", 0.0f);
+    }
+
+    InstancedRenderer::EndScene();
 }
 
 // ── Sprite Rendering ────────────────────────────────────────────────

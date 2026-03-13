@@ -10,6 +10,7 @@ public:
     void Unbind() const override {}
 
     void AddVertexBuffer(const std::shared_ptr<VertexBuffer>& vb) override { m_VertexBuffers.push_back(vb); }
+    void AddInstanceBuffer(const std::shared_ptr<VertexBuffer>& ib) override { m_VertexBuffers.push_back(ib); }
     void SetIndexBuffer(const std::shared_ptr<IndexBuffer>& ib) override { m_IndexBuffer = ib; }
 
     const std::vector<std::shared_ptr<VertexBuffer>>& GetVertexBuffers() const override { return m_VertexBuffers; }

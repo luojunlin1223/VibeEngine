@@ -33,6 +33,14 @@ void OpenGLRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexAr
                    GL_UNSIGNED_INT, nullptr);
 }
 
+void OpenGLRendererAPI::DrawIndexedInstanced(const std::shared_ptr<VertexArray>& vertexArray, uint32_t instanceCount) {
+    vertexArray->Bind();
+    glDrawElementsInstanced(GL_TRIANGLES,
+                            static_cast<GLsizei>(vertexArray->GetIndexBuffer()->GetCount()),
+                            GL_UNSIGNED_INT, nullptr,
+                            static_cast<GLsizei>(instanceCount));
+}
+
 void OpenGLRendererAPI::DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) {
     vertexArray->Bind();
     glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertexCount));
