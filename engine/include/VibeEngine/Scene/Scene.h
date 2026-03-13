@@ -117,6 +117,11 @@ public:
     void StopAudio();
     void UpdateAudio(const float listenerPos[3], const float listenerForward[3], const float listenerUp[3]);
 
+    // Camera helpers — compute view/projection from CameraComponent + transform
+    static glm::mat4 ComputeCameraView(const glm::mat4& worldTransform);
+    static glm::mat4 ComputeCameraProjection(int projType, float fov, float size,
+                                              float nearClip, float farClip, float aspectRatio);
+
     template<typename... Components>
     auto GetAllEntitiesWith() { return m_Registry.view<Components...>(); }
 

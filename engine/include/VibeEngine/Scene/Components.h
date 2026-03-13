@@ -165,6 +165,20 @@ struct AnimatorComponent {
     AnimatorComponent() = default;
 };
 
+enum class CameraProjection { Perspective, Orthographic };
+
+struct CameraComponent {
+    CameraProjection ProjectionType = CameraProjection::Perspective;
+    float FOV  = 60.0f;          // degrees (perspective)
+    float Size = 5.0f;           // half-height in world units (orthographic)
+    float NearClip = 0.1f;
+    float FarClip  = 1000.0f;
+    int   Priority = 0;          // highest priority = main camera
+    bool  IsMain   = true;
+
+    CameraComponent() = default;
+};
+
 struct AudioSourceComponent {
     std::string ClipPath;           // path to audio file (.wav, .mp3, .ogg)
     float Volume = 1.0f;           // 0.0 – 1.0

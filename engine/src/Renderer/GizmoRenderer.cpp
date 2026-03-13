@@ -285,6 +285,73 @@ void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
     DrawLineWorld(dl, position - glm::vec3(0, 0, crossLen), position + glm::vec3(0, 0, crossLen), wireColor, 1.0f);
 }
 
+void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
+                                       int projType, float fov, float size,
+                                       float nearClip, float farClip, float aspect) {
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImU32 wireColor = IM_COL32(220, 220, 220, 160);
+
+    // Compute near/far plane half-extents
+    float nearH, nearW, farH, farW;
+    if (projType == 0) { // Perspective
+        float halfFovRad = glm::radians(fov * 0.5f);
+        nearH = nearClip * std::tan(halfFovRad);
+        nearW = nearH * aspect;
+        farH  = farClip * std::tan(halfFovRad);
+        farW  = farH * aspect;
+    } else { // Orthographic
+        nearH = farH = size;
+        nearW = farW = size * aspect;
+    }
+
+    // 8 corners in camera local space (camera looks down -Z)
+    glm::vec3 local[8] = {
+        // Near plane
+        { -nearW, -nearH, -nearClip },
+        {  nearW, -nearH, -nearClip },
+        {  nearW,  nearH, -nearClip },
+        { -nearW,  nearH, -nearClip },
+        // Far plane (clamped for visualization)
+        { -farW, -farH, -std::min(farClip, 50.0f) },
+        {  farW, -farH, -std::min(farClip, 50.0f) },
+        {  farW,  farH, -std::min(farClip, 50.0f) },
+        { -farW,  farH, -std::min(farClip, 50.0f) },
+    };
+
+    // Recompute far extents with clamped distance for perspective
+    if (projType == 0) {
+        float clampedFar = std::min(farClip, 50.0f);
+        float halfFovRad = glm::radians(fov * 0.5f);
+        float cFarH = clampedFar * std::tan(halfFovRad);
+        float cFarW = cFarH * aspect;
+        local[4] = { -cFarW, -cFarH, -clampedFar };
+        local[5] = {  cFarW, -cFarH, -clampedFar };
+        local[6] = {  cFarW,  cFarH, -clampedFar };
+        local[7] = { -cFarW,  cFarH, -clampedFar };
+    }
+
+    // Transform to world space
+    glm::vec3 corners[8];
+    for (int i = 0; i < 8; i++)
+        corners[i] = glm::vec3(worldTransform * glm::vec4(local[i], 1.0f));
+
+    // Draw 12 edges
+    // Near plane
+    for (int i = 0; i < 4; i++)
+        DrawLineWorld(dl, corners[i], corners[(i + 1) % 4], wireColor, 1.5f);
+    // Far plane
+    for (int i = 0; i < 4; i++)
+        DrawLineWorld(dl, corners[4 + i], corners[4 + (i + 1) % 4], wireColor, 1.5f);
+    // Connecting edges
+    for (int i = 0; i < 4; i++)
+        DrawLineWorld(dl, corners[i], corners[i + 4], wireColor, 1.0f);
+
+    // Draw camera icon (small triangle at position pointing forward)
+    glm::vec3 camPos = glm::vec3(worldTransform[3]);
+    ImVec2 center = WorldToScreen(camPos);
+    dl->AddCircleFilled(center, 4.0f, IM_COL32(255, 255, 255, 200));
+}
+
 void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     glm::mat4 model = worldMatrix;

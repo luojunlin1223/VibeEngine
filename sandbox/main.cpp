@@ -38,6 +38,7 @@ public:
         fbSpec.Height = 720;
         fbSpec.HDR = true;
         m_Framebuffer = VE::Framebuffer::Create(fbSpec);
+        m_GameFramebuffer = VE::Framebuffer::Create(fbSpec);
 
         // Command history (undo/redo)
         m_CommandHistory.SetScene(&m_Scene);
@@ -144,6 +145,67 @@ protected:
             // If no effects active, Apply returns the original texture
             if (m_PostProcessedTexture == sceneTex)
                 m_PostProcessedTexture = 0;
+        }
+
+        // ── Game Camera Render Pass ──
+        if (m_ShowGameView && m_GameFramebuffer) {
+            entt::entity mainCamEntity = entt::null;
+            int highestPriority = std::numeric_limits<int>::min();
+            auto camView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::CameraComponent>();
+            for (auto e : camView) {
+                auto& cam = camView.get<VE::CameraComponent>(e);
+                if (cam.IsMain && cam.Priority >= highestPriority) {
+                    highestPriority = cam.Priority;
+                    mainCamEntity = e;
+                }
+            }
+
+            if (mainCamEntity != entt::null) {
+                auto& cam = m_Scene->GetRegistry().get<VE::CameraComponent>(mainCamEntity);
+                glm::mat4 worldXform = m_Scene->GetWorldTransform(mainCamEntity);
+                float aspect = static_cast<float>(m_GameFramebuffer->GetWidth())
+                             / static_cast<float>(m_GameFramebuffer->GetHeight());
+
+                glm::mat4 gameView = VE::Scene::ComputeCameraView(worldXform);
+                glm::mat4 gameProj = VE::Scene::ComputeCameraProjection(
+                    static_cast<int>(cam.ProjectionType), cam.FOV, cam.Size,
+                    cam.NearClip, cam.FarClip, aspect);
+                glm::mat4 gameVP = gameProj * gameView;
+                glm::vec3 gameCamPos = glm::vec3(worldXform[3]);
+
+                m_GameFramebuffer->Bind();
+                VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+                VE::RenderCommand::Clear();
+
+                // Sky (strip translation from view)
+                glm::mat4 skyView = glm::mat4(glm::mat3(gameView));
+                m_Scene->OnRenderSky(gameProj * skyView);
+
+                m_Scene->OnRender(gameVP, gameCamPos);
+                m_GameFramebuffer->Unbind();
+
+                // Post-processing
+                auto& ps = m_Scene->GetPipelineSettings();
+                VE::PostProcessSettings gppSettings;
+                gppSettings.Bloom = { ps.BloomEnabled, ps.BloomThreshold, ps.BloomIntensity, ps.BloomIterations };
+                gppSettings.Vignette = { ps.VignetteEnabled, ps.VignetteIntensity, ps.VignetteSmoothness };
+                gppSettings.Color = { ps.ColorAdjustEnabled, ps.ColorExposure, ps.ColorContrast,
+                                     ps.ColorSaturation, ps.ColorFilter, ps.ColorGamma };
+                gppSettings.SMH = { ps.SMHEnabled, ps.SMH_Shadows, ps.SMH_Midtones, ps.SMH_Highlights,
+                                   ps.SMH_ShadowStart, ps.SMH_ShadowEnd, ps.SMH_HighlightStart, ps.SMH_HighlightEnd };
+                gppSettings.Curves.Enabled = ps.CurvesEnabled;
+                gppSettings.Curves.Master.Points = ps.CurvesMaster;
+                gppSettings.Curves.Red.Points    = ps.CurvesRed;
+                gppSettings.Curves.Green.Points  = ps.CurvesGreen;
+                gppSettings.Curves.Blue.Points   = ps.CurvesBlue;
+                gppSettings.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+
+                uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
+                m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
+                    gameTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(), gppSettings);
+                if (m_GamePostProcessedTexture == gameTex)
+                    m_GamePostProcessedTexture = 0;
+            }
         }
     }
 
@@ -265,6 +327,7 @@ protected:
         DrawScriptingPanel();
         DrawContentBrowserPanel();
         DrawProjectSettingsPanel();
+        DrawGameViewPanel();
 
         if (m_ShowDemo)
             ImGui::ShowDemoWindow(&m_ShowDemo);
@@ -276,8 +339,11 @@ protected:
             VE::MeshLibrary::Shutdown();
             VE::MeshImporter::ClearCache();
             m_Framebuffer.reset();
+            m_GameFramebuffer.reset();
             m_PostProcessing.Shutdown();
+            m_GamePostProcessing.Shutdown();
             m_PostProcessedTexture = 0;
+            m_GamePostProcessedTexture = 0;
         } else {
             VE::MeshLibrary::Init();
             VE::MeshImporter::ReuploadCache();
@@ -287,6 +353,7 @@ protected:
             fbSpec.Height = 720;
             fbSpec.HDR = true;
             m_Framebuffer = VE::Framebuffer::Create(fbSpec);
+            m_GameFramebuffer = VE::Framebuffer::Create(fbSpec);
         }
         m_ThumbnailCache.Clear();
     }
@@ -700,6 +767,10 @@ private:
             if (reg.any_of<VE::MeshColliderComponent>(srcEntity))
                 reg.get_or_emplace<VE::MeshColliderComponent>(dst) = reg.get<VE::MeshColliderComponent>(srcEntity);
 
+            // Copy CameraComponent
+            if (reg.any_of<VE::CameraComponent>(srcEntity))
+                reg.get_or_emplace<VE::CameraComponent>(dst) = reg.get<VE::CameraComponent>(srcEntity);
+
             // Copy ScriptComponent (reset runtime instance)
             if (reg.any_of<VE::ScriptComponent>(srcEntity)) {
                 auto sc = reg.get<VE::ScriptComponent>(srcEntity);
@@ -817,6 +888,7 @@ private:
                 ImGui::MenuItem("Render Pipeline", nullptr, &m_ShowPipelineSettings);
                 ImGui::MenuItem("Scripting", nullptr, &m_ShowScripting);
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
+                ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
                 ImGui::Separator();
                 ImGui::MenuItem("Demo Window", nullptr, &m_ShowDemo);
                 ImGui::EndMenu();
@@ -927,6 +999,21 @@ private:
                     auto& pl = plView.get<VE::PointLightComponent>(e);
                     VE::GizmoRenderer::DrawPointLightGizmo(pos, pl.Range,
                         glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]));
+                }
+            }
+
+            // Draw camera frustum gizmos
+            {
+                auto camGizView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::CameraComponent>();
+                for (auto e : camGizView) {
+                    auto& cam = camGizView.get<VE::CameraComponent>(e);
+                    glm::mat4 wm = m_Scene->GetWorldTransform(e);
+                    float aspect = m_Framebuffer
+                        ? static_cast<float>(m_Framebuffer->GetWidth()) / static_cast<float>(m_Framebuffer->GetHeight())
+                        : 16.0f / 9.0f;
+                    VE::GizmoRenderer::DrawCameraFrustum(wm,
+                        static_cast<int>(cam.ProjectionType), cam.FOV, cam.Size,
+                        cam.NearClip, cam.FarClip, aspect);
                 }
             }
 
@@ -2258,6 +2345,35 @@ private:
             ImGui::Separator();
         }
 
+        // CameraComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
+            bool removeCam = false;
+            if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& cam = m_SelectedEntity.GetComponent<VE::CameraComponent>();
+
+                const char* projTypes[] = { "Perspective", "Orthographic" };
+                int currentProj = static_cast<int>(cam.ProjectionType);
+                if (ImGui::Combo("Projection", &currentProj, projTypes, 2))
+                    cam.ProjectionType = static_cast<VE::CameraProjection>(currentProj);
+
+                if (cam.ProjectionType == VE::CameraProjection::Perspective)
+                    ImGui::DragFloat("Field of View", &cam.FOV, 0.5f, 1.0f, 179.0f);
+                else
+                    ImGui::DragFloat("Size", &cam.Size, 0.1f, 0.01f, 100.0f);
+
+                ImGui::DragFloat("Near Clip", &cam.NearClip, 0.01f, 0.001f, cam.FarClip - 0.001f);
+                ImGui::DragFloat("Far Clip",  &cam.FarClip,  1.0f, cam.NearClip + 0.001f, 10000.0f);
+                ImGui::DragInt("Priority", &cam.Priority, 1);
+                ImGui::Checkbox("Is Main", &cam.IsMain);
+
+                if (ImGui::Button("Remove Component##Camera"))
+                    removeCam = true;
+            }
+            if (removeCam)
+                m_SelectedEntity.RemoveComponent<VE::CameraComponent>();
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             bool removeComponent = false;
             bool openMR = ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen);
@@ -2445,6 +2561,11 @@ private:
                 if (ImGui::MenuItem("Animator")) {
                     m_SelectedEntity.AddComponent<VE::AnimatorComponent>();
                 }
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
+                if (ImGui::MenuItem("Camera"))
+                    m_SelectedEntity.AddComponent<VE::CameraComponent>();
                 anyAdded = true;
             }
             if (!m_SelectedEntity.HasComponent<VE::AudioSourceComponent>()) {
@@ -2934,6 +3055,48 @@ private:
         m_ShowContentBrowser = true;
     }
 
+    // ── Game View Panel ──────────────────────────────────────────────
+
+    void DrawGameViewPanel() {
+        if (!m_ShowGameView) return;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin("Game", &m_ShowGameView);
+
+        ImVec2 viewportSize = ImGui::GetContentRegionAvail();
+        if (viewportSize.x > 0 && viewportSize.y > 0 && m_GameFramebuffer) {
+            uint32_t w = static_cast<uint32_t>(viewportSize.x);
+            uint32_t h = static_cast<uint32_t>(viewportSize.y);
+            if (m_GameFramebuffer->GetWidth() != w || m_GameFramebuffer->GetHeight() != h)
+                m_GameFramebuffer->Resize(w, h);
+        }
+
+        // Check if there's a main camera
+        bool hasCam = false;
+        auto camView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::CameraComponent>();
+        for (auto e : camView) {
+            auto& cam = camView.get<VE::CameraComponent>(e);
+            if (cam.IsMain) { hasCam = true; break; }
+        }
+
+        if (hasCam && m_GameFramebuffer) {
+            uint64_t texID = (m_GamePostProcessedTexture != 0)
+                ? static_cast<uint64_t>(m_GamePostProcessedTexture)
+                : m_GameFramebuffer->GetColorAttachmentID();
+            if (texID != 0)
+                ImGui::Image((ImTextureID)texID, viewportSize, ImVec2(0, 1), ImVec2(1, 0));
+        } else {
+            ImVec2 center(ImGui::GetWindowWidth() * 0.5f, ImGui::GetWindowHeight() * 0.5f);
+            const char* msg = "No camera in scene";
+            ImVec2 textSize = ImGui::CalcTextSize(msg);
+            ImGui::SetCursorPos(ImVec2(center.x - textSize.x * 0.5f, center.y - textSize.y * 0.5f));
+            ImGui::TextDisabled("%s", msg);
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar();
+    }
+
     // ── Content Browser Panel ─────────────────────────────────────────
 
     void DrawContentBrowserPanel() {
@@ -3307,6 +3470,12 @@ private:
     // Post-processing
     VE::PostProcessing m_PostProcessing;
     uint32_t m_PostProcessedTexture = 0;
+
+    // Game viewport
+    bool m_ShowGameView = false;
+    std::shared_ptr<VE::Framebuffer> m_GameFramebuffer;
+    VE::PostProcessing m_GamePostProcessing;
+    uint32_t m_GamePostProcessedTexture = 0;
 
     // Undo system
     VE::CommandHistory m_CommandHistory;

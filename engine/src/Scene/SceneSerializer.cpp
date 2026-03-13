@@ -150,6 +150,21 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // CameraComponent
+    if (entity.HasComponent<CameraComponent>()) {
+        auto& cam = entity.GetComponent<CameraComponent>();
+        out << YAML::Key << "CameraComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "ProjectionType" << YAML::Value
+            << (cam.ProjectionType == CameraProjection::Perspective ? "Perspective" : "Orthographic");
+        out << YAML::Key << "FOV"      << YAML::Value << cam.FOV;
+        out << YAML::Key << "Size"     << YAML::Value << cam.Size;
+        out << YAML::Key << "NearClip" << YAML::Value << cam.NearClip;
+        out << YAML::Key << "FarClip"  << YAML::Value << cam.FarClip;
+        out << YAML::Key << "Priority" << YAML::Value << cam.Priority;
+        out << YAML::Key << "IsMain"   << YAML::Value << cam.IsMain;
+        out << YAML::EndMap;
+    }
+
     // AudioSourceComponent
     if (entity.HasComponent<AudioSourceComponent>()) {
         auto& as = entity.GetComponent<AudioSourceComponent>();
@@ -530,6 +545,19 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     }
                 }
             }
+        }
+
+        if (auto camNode = entityNode["CameraComponent"]) {
+            auto& cam = entity.AddComponent<CameraComponent>();
+            std::string pt = camNode["ProjectionType"].as<std::string>("Perspective");
+            cam.ProjectionType = (pt == "Orthographic")
+                ? CameraProjection::Orthographic : CameraProjection::Perspective;
+            if (camNode["FOV"])      cam.FOV      = camNode["FOV"].as<float>();
+            if (camNode["Size"])     cam.Size     = camNode["Size"].as<float>();
+            if (camNode["NearClip"]) cam.NearClip = camNode["NearClip"].as<float>();
+            if (camNode["FarClip"])  cam.FarClip  = camNode["FarClip"].as<float>();
+            if (camNode["Priority"]) cam.Priority = camNode["Priority"].as<int>();
+            if (camNode["IsMain"])   cam.IsMain   = camNode["IsMain"].as<bool>();
         }
 
         if (auto asNode = entityNode["AudioSourceComponent"]) {

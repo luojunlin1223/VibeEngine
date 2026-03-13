@@ -307,6 +307,26 @@ void Scene::UpdateAudio(const float listenerPos[3], const float listenerForward[
     }
 }
 
+glm::mat4 Scene::ComputeCameraView(const glm::mat4& worldTransform) {
+    glm::vec3 position = glm::vec3(worldTransform[3]);
+    glm::mat3 rotMat   = glm::mat3(worldTransform); // upper-left 3x3 includes rotation+scale
+    // Camera looks down -Z in local space (OpenGL convention)
+    glm::vec3 forward = glm::normalize(rotMat * glm::vec3(0, 0, -1));
+    glm::vec3 up      = glm::normalize(rotMat * glm::vec3(0, 1,  0));
+    return glm::lookAt(position, position + forward, up);
+}
+
+glm::mat4 Scene::ComputeCameraProjection(int projType, float fov, float size,
+                                          float nearClip, float farClip, float aspectRatio) {
+    if (projType == 0) { // Perspective
+        return glm::perspective(glm::radians(fov), aspectRatio, nearClip, farClip);
+    } else { // Orthographic
+        float halfH = size;
+        float halfW = halfH * aspectRatio;
+        return glm::ortho(-halfW, halfW, -halfH, halfH, nearClip, farClip);
+    }
+}
+
 static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
     glm::mat4 model = glm::translate(glm::mat4(1.0f),
         glm::vec3(tc.Position[0], tc.Position[1], tc.Position[2]));
