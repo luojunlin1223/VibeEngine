@@ -20,6 +20,7 @@
 #include "Renderer/PostProcessing.h"
 #include "Renderer/GizmoRenderer.h"
 #include "Renderer/SpriteBatchRenderer.h"
+#include "Renderer/RenderGraph.h"
 
 #include "Scene/Components.h"
 #include "Scene/Entity.h"

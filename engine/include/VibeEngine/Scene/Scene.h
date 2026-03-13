@@ -99,6 +99,7 @@ public:
     void ComputeShadows(const glm::mat4& viewMatrix,
                         const glm::mat4& projMatrix,
                         float nearClip, float farClip);
+    ShadowMap* GetShadowMap() const { return m_ShadowMap.get(); }
 
     void OnRender(const glm::mat4& viewProjection,
                   const glm::vec3& cameraPos = glm::vec3(0.0f));
