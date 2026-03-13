@@ -111,6 +111,7 @@ void Material::Bind() const {
     m_Shader->Bind();
 
     int texSlot = 0;
+    bool hasMainTex = false;
     for (auto& prop : m_Properties) {
         switch (prop.Type) {
             case MaterialPropertyType::Float:
@@ -125,16 +126,27 @@ void Material::Bind() const {
             case MaterialPropertyType::Vec4:
                 m_Shader->SetVec4(prop.Name, prop.Vec4Value);
                 break;
-            case MaterialPropertyType::Texture2D:
+            case MaterialPropertyType::Texture2D: {
+                bool bound = false;
                 if (prop.TextureRef) {
                     prop.TextureRef->Bind(texSlot);
                     m_Shader->SetInt(prop.Name, texSlot);
-                    m_Shader->SetInt("u_UseTexture", 1);
                     texSlot++;
+                    bound = true;
+                    if (prop.Name == "u_MainTex" || prop.Name == "u_Texture")
+                        hasMainTex = true;
+                }
+                // Set per-texture presence flag: u_MainTex -> u_HasMainTex
+                if (prop.Name.size() > 2 && prop.Name[0] == 'u' && prop.Name[1] == '_') {
+                    std::string flagName = "u_Has" + prop.Name.substr(2);
+                    m_Shader->SetInt(flagName, bound ? 1 : 0);
                 }
                 break;
+            }
         }
     }
+    // Legacy backward compat for unlit shaders that use u_UseTexture
+    m_Shader->SetInt("u_UseTexture", hasMainTex ? 1 : 0);
 }
 
 void Material::Save(const std::string& filePath) const {

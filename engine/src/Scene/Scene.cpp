@@ -558,8 +558,8 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             // Shadow uniforms
             if (m_ShadowsComputed && m_ShadowMap) {
                 shader->SetInt("u_ShadowEnabled", 1);
-                m_ShadowMap->BindForReading(2); // texture unit 2
-                shader->SetInt("u_ShadowMap", 2);
+                m_ShadowMap->BindForReading(8); // texture unit 8 (slots 0-5 reserved for material textures)
+                shader->SetInt("u_ShadowMap", 8);
                 shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
                 shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
                 shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
@@ -589,14 +589,23 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
             // PBR defaults (if not set by material)
             bool hasMetallic = false, hasRoughness = false, hasAO = false;
+            bool hasBumpScale = false, hasOccStr = false, hasEmission = false, hasCutoff = false;
             for (auto& prop : mr.Mat->GetProperties()) {
                 if (prop.Name == "u_Metallic") hasMetallic = true;
                 if (prop.Name == "u_Roughness") hasRoughness = true;
                 if (prop.Name == "u_AO") hasAO = true;
+                if (prop.Name == "u_BumpScale") hasBumpScale = true;
+                if (prop.Name == "u_OcclusionStrength") hasOccStr = true;
+                if (prop.Name == "u_EmissionColor") hasEmission = true;
+                if (prop.Name == "u_Cutoff") hasCutoff = true;
             }
             if (!hasMetallic)  shader->SetFloat("u_Metallic", 0.0f);
             if (!hasRoughness) shader->SetFloat("u_Roughness", 0.5f);
             if (!hasAO)        shader->SetFloat("u_AO", 1.0f);
+            if (!hasBumpScale) shader->SetFloat("u_BumpScale", 1.0f);
+            if (!hasOccStr)    shader->SetFloat("u_OcclusionStrength", 1.0f);
+            if (!hasEmission)  shader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+            if (!hasCutoff)    shader->SetFloat("u_Cutoff", 0.0f);
         }
 
         // Per-instance color: use override if present, else fallback to mr.Color

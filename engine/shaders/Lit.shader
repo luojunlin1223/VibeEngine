@@ -1,13 +1,22 @@
-// VibeEngine ShaderLab — Lit Shader (PBR + CSM Shadows)
-// Used for 3D meshes (Cube, imported FBX) with physically-based lighting
-// and Cascaded Shadow Maps with PCF soft shadows.
+// VibeEngine ShaderLab — PBR Lit Shader
+// Physically-Based Rendering with Cook-Torrance BRDF, inspired by Unity URP Lit.
+// Supports: Base Map, Normal Map, Metallic Map, Occlusion Map, Emission,
+//           Alpha Clipping, Cascaded Shadow Maps, and up to 8 Point Lights.
 
 Shader "VibeEngine/Lit" {
     Properties {
-        _MainTex ("Main Texture", 2D) = "white" {}
-        _EntityColor ("Entity Color", Color) = (1, 1, 1, 1)
+        _MainTex ("Base Map", 2D) = "white" {}
+        _EntityColor ("Color", Color) = (1, 1, 1, 1)
         _Metallic ("Metallic", Range(0, 1)) = 0.0
         _Roughness ("Roughness", Range(0, 1)) = 0.5
+        _MetallicGlossMap ("Metallic Map", 2D) = "white" {}
+        _BumpMap ("Normal Map", 2D) = "bump" {}
+        _BumpScale ("Normal Scale", Range(0, 2)) = 1.0
+        _OcclusionMap ("Occlusion Map", 2D) = "white" {}
+        _OcclusionStrength ("Occlusion Strength", Range(0, 1)) = 1.0
+        _EmissionMap ("Emission Map", 2D) = "black" {}
+        _EmissionColor ("Emission Color", Color) = (0, 0, 0, 1)
+        _Cutoff ("Alpha Cutoff", Range(0, 1)) = 0.0
         _AO ("Ambient Occlusion", Range(0, 1)) = 1.0
     }
 
@@ -57,16 +66,39 @@ in vec3 v_Normal;
 in vec3 v_FragPos;
 in vec2 v_TexCoord;
 
-uniform vec3  u_LightDir;
-uniform vec3  u_LightColor;
-uniform float u_LightIntensity;
-uniform vec3  u_ViewPos;
+// Material properties
 uniform vec4  u_EntityColor;
 uniform float u_Metallic;
 uniform float u_Roughness;
 uniform float u_AO;
+uniform float u_BumpScale;
+uniform float u_OcclusionStrength;
+uniform vec4  u_EmissionColor;
+uniform float u_Cutoff;
+
+// Material textures
+uniform sampler2D u_MainTex;
+uniform sampler2D u_MetallicGlossMap;
+uniform sampler2D u_BumpMap;
+uniform sampler2D u_OcclusionMap;
+uniform sampler2D u_EmissionMap;
+
+// Per-texture presence flags (set by Material::Bind)
+uniform int u_HasMainTex;
+uniform int u_HasMetallicGlossMap;
+uniform int u_HasBumpMap;
+uniform int u_HasOcclusionMap;
+uniform int u_HasEmissionMap;
+
+// Legacy compat
 uniform sampler2D u_Texture;
 uniform int   u_UseTexture;
+
+// Lighting
+uniform vec3  u_LightDir;
+uniform vec3  u_LightColor;
+uniform float u_LightIntensity;
+uniform vec3  u_ViewPos;
 
 // Point lights (max 8)
 const int MAX_POINT_LIGHTS = 8;
@@ -116,15 +148,41 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// ── Cotangent-frame Normal Mapping ──────────────────────────────────
+// Compute TBN from screen-space derivatives — no tangent vertex attribute needed.
+
+mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
+    vec3 dp1 = dFdx(p);
+    vec3 dp2 = dFdy(p);
+    vec2 duv1 = dFdx(uv);
+    vec2 duv2 = dFdy(uv);
+
+    vec3 dp2perp = cross(dp2, N);
+    vec3 dp1perp = cross(N, dp1);
+
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+    float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
+    return mat3(T * invmax, B * invmax, N);
+}
+
+vec3 perturbNormal(vec3 N, vec3 V, vec2 uv) {
+    vec3 mapN = texture(u_BumpMap, uv).xyz * 2.0 - 1.0;
+    mapN.xy *= u_BumpScale;
+    mapN = normalize(mapN);
+    mat3 TBN = cotangentFrame(N, -V, uv);
+    return normalize(TBN * mapN);
+}
+
 // ── Shadow Functions ─────────────────────────────────────────────────
 
 float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {
     if (u_ShadowEnabled == 0)
-        return 1.0; // no shadow
+        return 1.0;
 
-    // Determine cascade by view-space depth
     vec4 fragPosViewSpace = u_ViewMatrix * vec4(fragPos, 1.0);
-    float depthValue = -fragPosViewSpace.z; // positive depth in view space
+    float depthValue = -fragPosViewSpace.z;
 
     int cascade = 2;
     if (depthValue < u_CascadeSplits.x)
@@ -132,26 +190,21 @@ float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {
     else if (depthValue < u_CascadeSplits.y)
         cascade = 1;
 
-    // Apply normal bias: push position along normal to reduce shadow acne
     vec3 biasedPos = fragPos + normal * u_ShadowNormalBias * (1.0 + float(cascade));
 
-    // Transform to light space
     vec4 fragPosLightSpace = u_LightSpaceMatrices[cascade] * vec4(biasedPos, 1.0);
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5; // [-1,1] -> [0,1]
+    projCoords = projCoords * 0.5 + 0.5;
 
-    // Outside shadow map bounds → no shadow
     if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
         projCoords.y < 0.0 || projCoords.y > 1.0 ||
         projCoords.z > 1.0)
         return 1.0;
 
-    // Slope-based bias
     float cosTheta = max(dot(normal, lightDir), 0.0);
     float bias = u_ShadowBias * (1.0 - cosTheta);
     float currentDepth = projCoords.z - bias;
 
-    // PCF (Percentage Closer Filtering)
     float shadow = 0.0;
     vec2 texelSize = 1.0 / vec2(textureSize(u_ShadowMap, 0).xy);
 
@@ -159,36 +212,62 @@ float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {
     for (int x = -u_PCFRadius; x <= u_PCFRadius; ++x) {
         for (int y = -u_PCFRadius; y <= u_PCFRadius; ++y) {
             vec2 offset = vec2(float(x), float(y)) * texelSize;
-            // sampler2DArrayShadow: texture(sampler, vec4(uv, layer, compareRef))
             shadow += texture(u_ShadowMap, vec4(projCoords.xy + offset, float(cascade), currentDepth));
             samples++;
         }
     }
     shadow /= float(samples);
 
-    return shadow; // 0.0 = fully in shadow, 1.0 = fully lit
+    return shadow;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
 
 void main() {
-    vec3 albedo = v_Color;
-    if (u_UseTexture == 1)
-        albedo = texture(u_Texture, v_TexCoord).rgb;
-    albedo *= u_EntityColor.rgb;
+    // ── Sample base color (albedo) ───────────────────────────────────
+    vec4 baseColor = u_EntityColor;
+    baseColor.rgb *= v_Color;
 
-    float metallic  = u_Metallic;
+    if (u_HasMainTex == 1)
+        baseColor *= texture(u_MainTex, v_TexCoord);
+    else if (u_UseTexture == 1)
+        baseColor *= texture(u_Texture, v_TexCoord);
+
+    // ── Alpha clipping ───────────────────────────────────────────────
+    if (u_Cutoff > 0.0 && baseColor.a < u_Cutoff)
+        discard;
+
+    vec3 albedo = baseColor.rgb;
+
+    // ── Metallic ─────────────────────────────────────────────────────
+    float metallic = u_Metallic;
+    if (u_HasMetallicGlossMap == 1) {
+        vec4 metallicSample = texture(u_MetallicGlossMap, v_TexCoord);
+        metallic *= metallicSample.r;
+    }
+
     float roughness = max(u_Roughness, 0.04);
-    float ao        = u_AO;
 
+    // ── Occlusion ────────────────────────────────────────────────────
+    float ao = u_AO;
+    if (u_HasOcclusionMap == 1) {
+        float occSample = texture(u_OcclusionMap, v_TexCoord).r;
+        ao *= mix(1.0, occSample, u_OcclusionStrength);
+    }
+
+    // ── Normal ───────────────────────────────────────────────────────
     vec3 N = normalize(v_Normal);
     vec3 V = normalize(u_ViewPos - v_FragPos);
 
+    if (u_HasBumpMap == 1)
+        N = perturbNormal(N, V, v_TexCoord);
+
+    // ── PBR setup ────────────────────────────────────────────────────
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 Lo = vec3(0.0);
 
-    // ── Directional light ───────────────────────────────────────────
+    // ── Directional light ────────────────────────────────────────────
     {
         vec3 L = normalize(u_LightDir);
         vec3 H = normalize(V + L);
@@ -203,13 +282,12 @@ void main() {
 
         float NdotL = max(dot(N, L), 0.0);
 
-        // Shadow factor
         float shadow = ShadowCalculation(v_FragPos, N, L);
 
         Lo += (kD * albedo / PI + spec) * radiance * NdotL * shadow;
     }
 
-    // ── Point lights ────────────────────────────────────────────────
+    // ── Point lights ─────────────────────────────────────────────────
     for (int i = 0; i < u_NumPointLights; ++i) {
         vec3  lightVec  = u_PointLightPositions[i] - v_FragPos;
         float dist      = length(lightVec);
@@ -220,7 +298,6 @@ void main() {
         vec3  L = lightVec / dist;
         vec3  H = normalize(V + L);
 
-        // Smooth attenuation: inverse-square with range-based windowing
         float attenuation = 1.0 / (dist * dist + 1.0);
         float window = 1.0 - pow(clamp(dist / range, 0.0, 1.0), 4.0);
         window = window * window;
@@ -240,14 +317,21 @@ void main() {
         Lo += (kD * albedo / PI + spec) * radiance * NdotL;
     }
 
+    // ── Ambient + Occlusion ──────────────────────────────────────────
     vec3 ambient = vec3(0.03) * albedo * ao;
     vec3 color = ambient + Lo;
 
-    // Tone mapping + gamma
+    // ── Emission ─────────────────────────────────────────────────────
+    vec3 emission = u_EmissionColor.rgb;
+    if (u_HasEmissionMap == 1)
+        emission *= texture(u_EmissionMap, v_TexCoord).rgb;
+    color += emission;
+
+    // ── Tone mapping + Gamma correction ──────────────────────────────
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(1.0 / 2.2));
 
-    FragColor = vec4(color, u_EntityColor.a);
+    FragColor = vec4(color, baseColor.a);
 }
 #endif
 

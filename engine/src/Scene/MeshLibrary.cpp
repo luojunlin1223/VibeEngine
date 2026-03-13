@@ -96,16 +96,47 @@ in vec3 v_Normal;
 in vec3 v_FragPos;
 in vec2 v_TexCoord;
 
-uniform vec3  u_LightDir;
-uniform vec3  u_LightColor;
-uniform float u_LightIntensity;
-uniform vec3  u_ViewPos;
+// Material properties
 uniform vec4  u_EntityColor;
 uniform float u_Metallic;
 uniform float u_Roughness;
 uniform float u_AO;
+uniform float u_BumpScale;
+uniform float u_OcclusionStrength;
+uniform vec4  u_EmissionColor;
+uniform float u_Cutoff;
+
+// Material textures
+uniform sampler2D u_MainTex;
+uniform sampler2D u_MetallicGlossMap;
+uniform sampler2D u_BumpMap;
+uniform sampler2D u_OcclusionMap;
+uniform sampler2D u_EmissionMap;
+
+// Per-texture presence flags
+uniform int u_HasMainTex;
+uniform int u_HasMetallicGlossMap;
+uniform int u_HasBumpMap;
+uniform int u_HasOcclusionMap;
+uniform int u_HasEmissionMap;
+
+// Legacy compat
 uniform sampler2D u_Texture;
 uniform int   u_UseTexture;
+
+// Lighting
+uniform vec3  u_LightDir;
+uniform vec3  u_LightColor;
+uniform float u_LightIntensity;
+uniform vec3  u_ViewPos;
+
+// Point lights (max 8)
+const int MAX_POINT_LIGHTS = 8;
+uniform int   u_NumPointLights;
+uniform vec3  u_PointLightPositions[MAX_POINT_LIGHTS];
+uniform vec3  u_PointLightColors[MAX_POINT_LIGHTS];
+uniform float u_PointLightIntensities[MAX_POINT_LIGHTS];
+uniform float u_PointLightRanges[MAX_POINT_LIGHTS];
 
 out vec4 FragColor;
 
@@ -135,43 +166,120 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-void main() {
-    vec3 albedo = v_Color;
-    if (u_UseTexture == 1)
-        albedo = texture(u_Texture, v_TexCoord).rgb;
-    albedo *= u_EntityColor.rgb;
+mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
+    vec3 dp1 = dFdx(p);
+    vec3 dp2 = dFdy(p);
+    vec2 duv1 = dFdx(uv);
+    vec2 duv2 = dFdy(uv);
+    vec3 dp2perp = cross(dp2, N);
+    vec3 dp1perp = cross(N, dp1);
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+    float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
+    return mat3(T * invmax, B * invmax, N);
+}
 
-    float metallic  = u_Metallic;
+vec3 perturbNormal(vec3 N, vec3 V, vec2 uv) {
+    vec3 mapN = texture(u_BumpMap, uv).xyz * 2.0 - 1.0;
+    mapN.xy *= u_BumpScale;
+    mapN = normalize(mapN);
+    mat3 TBN = cotangentFrame(N, -V, uv);
+    return normalize(TBN * mapN);
+}
+
+void main() {
+    vec4 baseColor = u_EntityColor;
+    baseColor.rgb *= v_Color;
+
+    if (u_HasMainTex == 1)
+        baseColor *= texture(u_MainTex, v_TexCoord);
+    else if (u_UseTexture == 1)
+        baseColor *= texture(u_Texture, v_TexCoord);
+
+    if (u_Cutoff > 0.0 && baseColor.a < u_Cutoff)
+        discard;
+
+    vec3 albedo = baseColor.rgb;
+
+    float metallic = u_Metallic;
+    if (u_HasMetallicGlossMap == 1)
+        metallic *= texture(u_MetallicGlossMap, v_TexCoord).r;
+
     float roughness = max(u_Roughness, 0.04);
-    float ao        = u_AO;
+
+    float ao = u_AO;
+    if (u_HasOcclusionMap == 1)
+        ao *= mix(1.0, texture(u_OcclusionMap, v_TexCoord).r, u_OcclusionStrength);
 
     vec3 N = normalize(v_Normal);
     vec3 V = normalize(u_ViewPos - v_FragPos);
 
+    if (u_HasBumpMap == 1)
+        N = perturbNormal(N, V, v_TexCoord);
+
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-    vec3 L = normalize(u_LightDir);
-    vec3 H = normalize(V + L);
-    vec3 radiance = u_LightColor * u_LightIntensity;
+    vec3 Lo = vec3(0.0);
 
-    float NDF = DistributionGGX(N, H, roughness);
-    float G   = GeometrySmith(N, V, L, roughness);
-    vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+    // Directional light
+    {
+        vec3 L = normalize(u_LightDir);
+        vec3 H = normalize(V + L);
+        vec3 radiance = u_LightColor * u_LightIntensity;
 
-    vec3  specular = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
-    vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+        float NDF = DistributionGGX(N, H, roughness);
+        float G   = GeometrySmith(N, V, L, roughness);
+        vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
 
-    float NdotL = max(dot(N, L), 0.0);
-    vec3 Lo = (kD * albedo / PI + specular) * radiance * NdotL;
+        vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
+        vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+        float NdotL = max(dot(N, L), 0.0);
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
+    }
+
+    // Point lights
+    for (int i = 0; i < u_NumPointLights; ++i) {
+        vec3  lightVec  = u_PointLightPositions[i] - v_FragPos;
+        float dist      = length(lightVec);
+        float range     = u_PointLightRanges[i];
+        if (dist > range) continue;
+
+        vec3  L = lightVec / dist;
+        vec3  H = normalize(V + L);
+
+        float attenuation = 1.0 / (dist * dist + 1.0);
+        float window = 1.0 - pow(clamp(dist / range, 0.0, 1.0), 4.0);
+        window = window * window;
+        attenuation *= window;
+
+        vec3 radiance = u_PointLightColors[i] * u_PointLightIntensities[i] * attenuation;
+
+        float NDF = DistributionGGX(N, H, roughness);
+        float G   = GeometrySmith(N, V, L, roughness);
+        vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+        vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
+        vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+        float NdotL = max(dot(N, L), 0.0);
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
+    }
 
     vec3 ambient = vec3(0.03) * albedo * ao;
     vec3 color = ambient + Lo;
+
+    // Emission
+    vec3 emission = u_EmissionColor.rgb;
+    if (u_HasEmissionMap == 1)
+        emission *= texture(u_EmissionMap, v_TexCoord).rgb;
+    color += emission;
 
     // Tone mapping + gamma
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(1.0 / 2.2));
 
-    FragColor = vec4(color, u_EntityColor.a);
+    FragColor = vec4(color, baseColor.a);
 }
 )";
 
