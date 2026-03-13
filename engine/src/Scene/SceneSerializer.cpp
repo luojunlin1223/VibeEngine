@@ -213,6 +213,32 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // ParticleSystemComponent
+    if (entity.HasComponent<ParticleSystemComponent>()) {
+        auto& ps = entity.GetComponent<ParticleSystemComponent>();
+        out << YAML::Key << "ParticleSystemComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "EmissionRate" << YAML::Value << ps.EmissionRate;
+        out << YAML::Key << "ParticleLifetime" << YAML::Value << ps.ParticleLifetime;
+        out << YAML::Key << "LifetimeVariance" << YAML::Value << ps.LifetimeVariance;
+        out << YAML::Key << "MaxParticles" << YAML::Value << ps.MaxParticles;
+        out << YAML::Key << "VelocityMin" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << ps.VelocityMin[0] << ps.VelocityMin[1] << ps.VelocityMin[2] << YAML::EndSeq;
+        out << YAML::Key << "VelocityMax" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << ps.VelocityMax[0] << ps.VelocityMax[1] << ps.VelocityMax[2] << YAML::EndSeq;
+        out << YAML::Key << "Gravity" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << ps.Gravity[0] << ps.Gravity[1] << ps.Gravity[2] << YAML::EndSeq;
+        out << YAML::Key << "StartColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << ps.StartColor[0] << ps.StartColor[1] << ps.StartColor[2] << ps.StartColor[3] << YAML::EndSeq;
+        out << YAML::Key << "EndColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << ps.EndColor[0] << ps.EndColor[1] << ps.EndColor[2] << ps.EndColor[3] << YAML::EndSeq;
+        out << YAML::Key << "StartSize" << YAML::Value << ps.StartSize;
+        out << YAML::Key << "EndSize" << YAML::Value << ps.EndSize;
+        if (!ps.TexturePath.empty())
+            out << YAML::Key << "TexturePath" << YAML::Value << ps.TexturePath;
+        out << YAML::Key << "PlayOnStart" << YAML::Value << ps.PlayOnStart;
+        out << YAML::EndMap;
+    }
+
     // AnimatorComponent
     if (entity.HasComponent<AnimatorComponent>()) {
         auto& ac = entity.GetComponent<AnimatorComponent>();
@@ -630,6 +656,32 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             if (saNode["FrameRate"])  sa.FrameRate  = saNode["FrameRate"].as<float>();
             if (saNode["Loop"])       sa.Loop       = saNode["Loop"].as<bool>();
             if (saNode["PlayOnStart"]) sa.PlayOnStart = saNode["PlayOnStart"].as<bool>();
+        }
+
+        if (auto psNode = entityNode["ParticleSystemComponent"]) {
+            auto& ps = entity.AddComponent<ParticleSystemComponent>();
+            if (psNode["EmissionRate"])     ps.EmissionRate     = psNode["EmissionRate"].as<float>();
+            if (psNode["ParticleLifetime"]) ps.ParticleLifetime = psNode["ParticleLifetime"].as<float>();
+            if (psNode["LifetimeVariance"]) ps.LifetimeVariance = psNode["LifetimeVariance"].as<float>();
+            if (psNode["MaxParticles"])     ps.MaxParticles     = psNode["MaxParticles"].as<int>();
+            if (auto v = psNode["VelocityMin"])
+                ps.VelocityMin = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+            if (auto v = psNode["VelocityMax"])
+                ps.VelocityMax = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+            if (auto v = psNode["Gravity"])
+                ps.Gravity = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+            if (auto c = psNode["StartColor"])
+                ps.StartColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (auto c = psNode["EndColor"])
+                ps.EndColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (psNode["StartSize"])  ps.StartSize  = psNode["StartSize"].as<float>();
+            if (psNode["EndSize"])    ps.EndSize    = psNode["EndSize"].as<float>();
+            if (psNode["TexturePath"]) {
+                ps.TexturePath = psNode["TexturePath"].as<std::string>();
+                if (!ps.TexturePath.empty())
+                    ps.Texture = Texture2D::Create(ps.TexturePath);
+            }
+            if (psNode["PlayOnStart"]) ps.PlayOnStart = psNode["PlayOnStart"].as<bool>();
         }
 
         if (auto acNode = entityNode["AnimatorComponent"]) {

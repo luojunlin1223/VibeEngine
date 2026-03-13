@@ -121,6 +121,11 @@ public:
     void StopAudio();
     void UpdateAudio(const float listenerPos[3], const float listenerForward[3], const float listenerUp[3]);
 
+    void StartParticles();
+    void StopParticles();
+    void OnUpdateParticles(float dt);
+    void OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
+
     // Camera helpers — compute view/projection from CameraComponent + transform
     static glm::mat4 ComputeCameraView(const glm::mat4& worldTransform);
     static glm::mat4 ComputeCameraProjection(int projType, float fov, float size,

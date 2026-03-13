@@ -194,6 +194,7 @@ protected:
         m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
         m_Scene->OnRender(m_FrameVP, camPos);
         m_Scene->OnRenderSprites(m_FrameVP);
+        m_Scene->OnRenderParticles(m_FrameVP, camPos);
         RenderSelectedOutline();
 
         if (m_Framebuffer) {
@@ -271,6 +272,7 @@ protected:
 
                 m_Scene->OnRender(gameVP, gameCamPos);
                 m_Scene->OnRenderSprites(gameVP);
+                m_Scene->OnRenderParticles(gameVP, gameCamPos);
                 m_GameFramebuffer->Unbind();
 
                 // Post-processing
@@ -1228,6 +1230,7 @@ private:
         m_Scene->StartAnimations();
         m_Scene->StartSpriteAnimations();
         m_Scene->StartAudio();
+        m_Scene->StartParticles();
         m_PlayMode = true;
         m_CommandHistory.Clear();
         VE_INFO("Entered Play mode");
@@ -1236,6 +1239,7 @@ private:
     void ExitPlayMode() {
         if (!m_PlayMode) return;
 
+        m_Scene->StopParticles();
         m_Scene->StopAudio();
         m_Scene->StopSpriteAnimations();
         m_Scene->StopAnimations();
@@ -2590,6 +2594,63 @@ private:
             ImGui::Separator();
         }
 
+        // ParticleSystemComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
+            bool removePS = false;
+            if (ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& ps = m_SelectedEntity.GetComponent<VE::ParticleSystemComponent>();
+
+                ImGui::DragFloat("Emission Rate", &ps.EmissionRate, 0.5f, 0.0f, 1000.0f);
+                ImGui::DragFloat("Lifetime", &ps.ParticleLifetime, 0.1f, 0.01f, 60.0f);
+                ImGui::DragFloat("Lifetime Variance", &ps.LifetimeVariance, 0.05f, 0.0f, 30.0f);
+                ImGui::DragInt("Max Particles", &ps.MaxParticles, 10, 1, 100000);
+                ImGui::DragFloat3("Velocity Min", ps.VelocityMin.data(), 0.1f);
+                ImGui::DragFloat3("Velocity Max", ps.VelocityMax.data(), 0.1f);
+                ImGui::DragFloat3("Gravity", ps.Gravity.data(), 0.1f);
+                ImGui::ColorEdit4("Start Color", ps.StartColor.data());
+                ImGui::ColorEdit4("End Color", ps.EndColor.data());
+                ImGui::DragFloat("Start Size", &ps.StartSize, 0.01f, 0.0f, 10.0f);
+                ImGui::DragFloat("End Size", &ps.EndSize, 0.01f, 0.0f, 10.0f);
+                ImGui::Checkbox("Play On Start##Particles", &ps.PlayOnStart);
+
+                // Texture field with drag-drop
+                ImGui::Text("Texture");
+                ImGui::SameLine();
+                float fieldW = ImGui::GetContentRegionAvail().x;
+                std::string texLabel = ps.TexturePath.empty() ? "None (Texture2D)" : ps.TexturePath;
+                ImGui::Button(texLabel.c_str(), ImVec2(fieldW, 20));
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                        std::string path(static_cast<const char*>(payload->Data));
+                        ps.TexturePath = path;
+                        ps.Texture = VE::Texture2D::Create(path);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                if (!ps.TexturePath.empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("X##ClearParticleTex")) {
+                        ps.TexturePath.clear();
+                        ps.Texture.reset();
+                    }
+                }
+
+                // Show active particle count in play mode
+                if (m_PlayMode && !ps._Particles.empty()) {
+                    int active = 0;
+                    for (auto& p : ps._Particles)
+                        if (p.Active) active++;
+                    ImGui::Text("Active Particles: %d / %d", active, ps.MaxParticles);
+                }
+
+                if (ImGui::Button("Remove Component##ParticleSystem"))
+                    removePS = true;
+            }
+            if (removePS)
+                m_SelectedEntity.RemoveComponent<VE::ParticleSystemComponent>();
+            ImGui::Separator();
+        }
+
         // CameraComponent inspector
         if (m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
             bool removeCam = false;
@@ -2830,6 +2891,11 @@ private:
             if (!m_SelectedEntity.HasComponent<VE::SpriteAnimatorComponent>()) {
                 if (ImGui::MenuItem("Sprite Animator"))
                     m_SelectedEntity.AddComponent<VE::SpriteAnimatorComponent>();
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
+                if (ImGui::MenuItem("Particle System"))
+                    m_SelectedEntity.AddComponent<VE::ParticleSystemComponent>();
                 anyAdded = true;
             }
             if (!anyAdded) {

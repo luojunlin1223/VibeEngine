@@ -14,6 +14,7 @@
 #include "VibeEngine/Renderer/Material.h"
 
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
 #include <string>
 #include <array>
 #include <vector>
@@ -226,6 +227,36 @@ struct SpriteAnimatorComponent {
     int   _CurrentFrame = 0;
 
     SpriteAnimatorComponent() = default;
+};
+
+struct Particle {
+    glm::vec3 Position{0.0f}, Velocity{0.0f};
+    float Lifetime = 0.0f, MaxLife = 1.0f, Size = 0.2f;
+    glm::vec4 Color{1.0f};
+    bool Active = false;
+};
+
+struct ParticleSystemComponent {
+    // Serialized config
+    float EmissionRate = 10.0f;          // particles/sec
+    float ParticleLifetime = 2.0f;       // seconds
+    float LifetimeVariance = 0.5f;
+    int   MaxParticles = 500;
+    std::array<float,3> VelocityMin = {-1.0f, 1.0f, -1.0f};
+    std::array<float,3> VelocityMax = { 1.0f, 3.0f,  1.0f};
+    std::array<float,3> Gravity = {0.0f, -9.81f, 0.0f};
+    std::array<float,4> StartColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    std::array<float,4> EndColor   = {1.0f, 1.0f, 1.0f, 0.0f};
+    float StartSize = 0.2f, EndSize = 0.0f;
+    std::string TexturePath;
+    std::shared_ptr<Texture2D> Texture;
+    bool PlayOnStart = true;
+    // Runtime only (not serialized)
+    std::vector<Particle> _Particles;
+    float _EmissionAccumulator = 0.0f;
+    bool _Playing = false;
+
+    ParticleSystemComponent() = default;
 };
 
 struct MeshRendererComponent {
