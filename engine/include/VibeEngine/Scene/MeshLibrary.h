@@ -9,6 +9,7 @@
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Asset/MeshAsset.h"
 #include <memory>
 
 namespace VE {
@@ -30,6 +31,7 @@ public:
     static std::shared_ptr<VertexArray> GetMeshByIndex(int index);
     static bool IsLitMesh(int index);
     static int GetMeshCount();
+    static AABB GetMeshAABB(int index);
 
 private:
     static std::shared_ptr<VertexArray> s_Triangle;

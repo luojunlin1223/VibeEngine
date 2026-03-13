@@ -569,4 +569,28 @@ bool MeshLibrary::IsLitMesh(int index) {
 
 int MeshLibrary::GetMeshCount() { return 4; }
 
+AABB MeshLibrary::GetMeshAABB(int index) {
+    AABB box;
+    switch (index) {
+        case 0: // Triangle
+        case 1: // Quad
+            box.Min = glm::vec3(-0.5f, -0.5f, 0.0f);
+            box.Max = glm::vec3( 0.5f,  0.5f, 0.0f);
+            break;
+        case 2: // Cube
+            box.Min = glm::vec3(-0.5f, -0.5f, -0.5f);
+            box.Max = glm::vec3( 0.5f,  0.5f,  0.5f);
+            break;
+        case 3: // Sphere
+            box.Min = glm::vec3(-1.0f, -1.0f, -1.0f);
+            box.Max = glm::vec3( 1.0f,  1.0f,  1.0f);
+            break;
+        default:
+            box.Min = glm::vec3(-0.5f);
+            box.Max = glm::vec3( 0.5f);
+            break;
+    }
+    return box;
+}
+
 } // namespace VE
