@@ -62,6 +62,14 @@ struct DirectionalLightComponent {
     DirectionalLightComponent() = default;
 };
 
+struct PointLightComponent {
+    std::array<float, 3> Color = { 1.0f, 1.0f, 1.0f };
+    float Intensity = 1.0f;
+    float Range     = 10.0f; // world-space radius of influence
+
+    PointLightComponent() = default;
+};
+
 enum class BodyType { Static, Kinematic, Dynamic };
 
 struct RigidbodyComponent {

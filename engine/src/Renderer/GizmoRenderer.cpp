@@ -232,6 +232,59 @@ void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis,
     DrawLineWorld(dl, zEnd, zEnd - axisZ * kGizmoArrowSize - zArrowPerp, zCol, zThick);
 }
 
+void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
+                                         const glm::vec3& color) {
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+
+    // Convert light color to ImU32 (clamped, semi-transparent)
+    ImU32 wireColor = IM_COL32(
+        (int)(std::min(color.x, 1.0f) * 200 + 55),
+        (int)(std::min(color.y, 1.0f) * 200 + 55),
+        (int)(std::min(color.z, 1.0f) * 200 + 55),
+        180);
+    ImU32 dotColor = IM_COL32(
+        (int)(std::min(color.x, 1.0f) * 255),
+        (int)(std::min(color.y, 1.0f) * 255),
+        (int)(std::min(color.z, 1.0f) * 255),
+        255);
+
+    // Draw center dot
+    ImVec2 center = WorldToScreen(position);
+    dl->AddCircleFilled(center, 5.0f, dotColor);
+
+    // Draw 3 wireframe circles (one per plane) to show range
+    constexpr int SEGMENTS = 32;
+
+    auto drawCircle = [&](auto getPoint) {
+        for (int i = 0; i < SEGMENTS; ++i) {
+            float a0 = (float)i / SEGMENTS * 2.0f * 3.14159265f;
+            float a1 = (float)(i + 1) / SEGMENTS * 2.0f * 3.14159265f;
+            DrawLineWorld(dl, getPoint(a0), getPoint(a1), wireColor, 1.0f);
+        }
+    };
+
+    // XY circle
+    drawCircle([&](float a) -> glm::vec3 {
+        return position + glm::vec3(std::cos(a), std::sin(a), 0.0f) * range;
+    });
+
+    // XZ circle
+    drawCircle([&](float a) -> glm::vec3 {
+        return position + glm::vec3(std::cos(a), 0.0f, std::sin(a)) * range;
+    });
+
+    // YZ circle
+    drawCircle([&](float a) -> glm::vec3 {
+        return position + glm::vec3(0.0f, std::cos(a), std::sin(a)) * range;
+    });
+
+    // Draw small cross-hair lines from center along each axis
+    float crossLen = range * 0.15f;
+    DrawLineWorld(dl, position - glm::vec3(crossLen, 0, 0), position + glm::vec3(crossLen, 0, 0), wireColor, 1.0f);
+    DrawLineWorld(dl, position - glm::vec3(0, crossLen, 0), position + glm::vec3(0, crossLen, 0), wireColor, 1.0f);
+    DrawLineWorld(dl, position - glm::vec3(0, 0, crossLen), position + glm::vec3(0, 0, crossLen), wireColor, 1.0f);
+}
+
 void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     glm::mat4 model = worldMatrix;

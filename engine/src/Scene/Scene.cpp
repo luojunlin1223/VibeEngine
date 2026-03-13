@@ -317,6 +317,27 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
+    // Gather point lights (max 8)
+    static constexpr int MAX_POINT_LIGHTS = 8;
+    int numPointLights = 0;
+    glm::vec3 pointPositions[MAX_POINT_LIGHTS];
+    glm::vec3 pointColors[MAX_POINT_LIGHTS];
+    float     pointIntensities[MAX_POINT_LIGHTS];
+    float     pointRanges[MAX_POINT_LIGHTS];
+    {
+        auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
+        for (auto plEntity : plView) {
+            if (numPointLights >= MAX_POINT_LIGHTS) break;
+            auto [tc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
+            glm::mat4 worldMat = GetWorldTransform(plEntity);
+            pointPositions[numPointLights]  = glm::vec3(worldMat[3]); // extract translation
+            pointColors[numPointLights]     = glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]);
+            pointIntensities[numPointLights] = pl.Intensity;
+            pointRanges[numPointLights]     = pl.Range;
+            numPointLights++;
+        }
+    }
+
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entityID : view) {
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
@@ -372,6 +393,16 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                               m_ShadowMap->GetCascadeSplit(2)));
             } else {
                 shader->SetInt("u_ShadowEnabled", 0);
+            }
+
+            // Point lights
+            shader->SetInt("u_NumPointLights", numPointLights);
+            for (int i = 0; i < numPointLights; ++i) {
+                std::string idx = std::to_string(i);
+                shader->SetVec3("u_PointLightPositions[" + idx + "]",  pointPositions[i]);
+                shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
+                shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
+                shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
             }
 
             // PBR defaults (if not set by material)

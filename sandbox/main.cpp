@@ -740,28 +740,68 @@ private:
         float vpW = vpMax.x - vpMin.x;
         float vpH = vpMax.y - vpMin.y;
 
-        VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
-        VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
-        if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
-            glm::mat4 worldMat = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
-            VE::GizmoRenderer::DrawWireframeBox(worldMat);
+        // Gizmos toggle button (top-right corner of viewport)
+        {
+            float btnSize = 24.0f;
+            float padding = 8.0f;
+            ImVec2 btnPos(vpX + vpW - btnSize - padding, vpY + padding);
 
-            glm::vec3 worldPos = glm::vec3(worldMat[3]);
-            glm::mat3 worldRot = glm::mat3(worldMat);
-            worldRot[0] = glm::normalize(worldRot[0]);
-            worldRot[1] = glm::normalize(worldRot[1]);
-            worldRot[2] = glm::normalize(worldRot[2]);
+            ImGui::SetCursorScreenPos(btnPos);
+            ImVec4 btnColor = m_GizmosEnabled
+                ? ImVec4(0.2f, 0.4f, 0.9f, 1.0f)   // blue = on
+                : ImVec4(0.4f, 0.4f, 0.4f, 1.0f);   // gray = off
+            ImVec4 btnHover = m_GizmosEnabled
+                ? ImVec4(0.3f, 0.5f, 1.0f, 1.0f)
+                : ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
 
-            VE::GizmoAxis displayAxis = m_DraggingAxis;
-            ImGuiIO& io = ImGui::GetIO();
-            if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered) {
-                displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                    worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
-            }
-            VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
+            ImGui::PushStyleColor(ImGuiCol_Button, btnColor);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, btnHover);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, btnColor);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+            if (ImGui::Button("G##GizmosToggle", ImVec2(btnSize, btnSize)))
+                m_GizmosEnabled = !m_GizmosEnabled;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(m_GizmosEnabled ? "Gizmos: ON" : "Gizmos: OFF");
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(3);
         }
 
-        VE::GizmoRenderer::EndScene();
+        if (m_GizmosEnabled) {
+            VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
+            VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
+
+            // Draw point light gizmos for all point lights
+            {
+                auto plView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::PointLightComponent>();
+                for (auto e : plView) {
+                    glm::mat4 wm = m_Scene->GetWorldTransform(e);
+                    glm::vec3 pos = glm::vec3(wm[3]);
+                    auto& pl = plView.get<VE::PointLightComponent>(e);
+                    VE::GizmoRenderer::DrawPointLightGizmo(pos, pl.Range,
+                        glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]));
+                }
+            }
+
+            if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
+                glm::mat4 worldMat = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
+
+                glm::vec3 worldPos = glm::vec3(worldMat[3]);
+                glm::mat3 worldRot = glm::mat3(worldMat);
+                worldRot[0] = glm::normalize(worldRot[0]);
+                worldRot[1] = glm::normalize(worldRot[1]);
+                worldRot[2] = glm::normalize(worldRot[2]);
+
+                VE::GizmoAxis displayAxis = m_DraggingAxis;
+                ImGuiIO& io = ImGui::GetIO();
+                if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered) {
+                    displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
+                        worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                }
+                VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
+            }
+
+            VE::GizmoRenderer::EndScene();
+        }
 
         ImGui::End();
         ImGui::PopStyleVar();
@@ -1561,6 +1601,29 @@ private:
             ImGui::Separator();
         }
 
+        if (m_SelectedEntity.HasComponent<VE::PointLightComponent>()) {
+            bool removePointLight = false;
+            bool openPointLight = ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::PointLightComponent>("##PointLightCtx", "PointLight", removePointLight);
+            if (openPointLight) {
+                auto& pl = m_SelectedEntity.GetComponent<VE::PointLightComponent>();
+                ImGui::ColorEdit3("Color##PL", pl.Color.data());
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Point Light Color");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Intensity##PL", &pl.Intensity, 0.01f, 0.0f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Point Light Intensity");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Range##PL", &pl.Range, 0.1f, 0.1f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Point Light Range");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+            }
+            if (removePointLight)
+                m_CommandHistory.Execute("Remove Point Light", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::PointLightComponent>();
+                });
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
             bool removeRB = false;
             bool openRB = ImGui::CollapsingHeader("Rigidbody", ImGuiTreeNodeFlags_DefaultOpen);
@@ -1901,6 +1964,13 @@ private:
                 if (ImGui::MenuItem("Directional Light"))
                     m_CommandHistory.Execute("Add Light", [this]() {
                         m_SelectedEntity.AddComponent<VE::DirectionalLightComponent>();
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::PointLightComponent>()) {
+                if (ImGui::MenuItem("Point Light"))
+                    m_CommandHistory.Execute("Add Point Light", [this]() {
+                        m_SelectedEntity.AddComponent<VE::PointLightComponent>();
                     });
                 anyAdded = true;
             }
@@ -2642,6 +2712,7 @@ private:
     std::shared_ptr<VE::Framebuffer> m_Framebuffer;
     bool m_ViewportHovered = false;
     bool m_ViewportFocused = false;
+    bool m_GizmosEnabled   = true;
 
     // Gizmo drag state
     VE::GizmoAxis m_DraggingAxis = VE::GizmoAxis::None;
