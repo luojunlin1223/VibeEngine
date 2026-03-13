@@ -17,4 +17,13 @@ std::shared_ptr<Texture2D> Texture2D::Create(const std::string& path) {
     }
 }
 
+std::shared_ptr<Texture2D> Texture2D::Create(uint32_t width, uint32_t height, const void* data) {
+    switch (RendererAPI::GetAPI()) {
+        case RendererAPI::API::OpenGL:
+            return std::make_shared<OpenGLTexture2D>(width, height, data);
+        default:
+            return nullptr;
+    }
+}
+
 } // namespace VE

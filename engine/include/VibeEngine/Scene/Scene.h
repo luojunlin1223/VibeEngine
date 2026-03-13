@@ -102,6 +102,7 @@ public:
 
     void OnRender(const glm::mat4& viewProjection,
                   const glm::vec3& cameraPos = glm::vec3(0.0f));
+    void OnRenderSprites(const glm::mat4& viewProjection);
 
     void StartPhysics();
     void StopPhysics();
@@ -112,6 +113,9 @@ public:
 
     void StartAnimations();
     void StopAnimations();
+
+    void StartSpriteAnimations();
+    void StopSpriteAnimations();
 
     void StartAudio();
     void StopAudio();

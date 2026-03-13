@@ -19,6 +19,7 @@
 #include "Renderer/Framebuffer.h"
 #include "Renderer/PostProcessing.h"
 #include "Renderer/GizmoRenderer.h"
+#include "Renderer/SpriteBatchRenderer.h"
 
 #include "Scene/Components.h"
 #include "Scene/Entity.h"

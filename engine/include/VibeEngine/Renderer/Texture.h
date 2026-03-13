@@ -19,6 +19,7 @@ public:
     virtual uint64_t GetNativeTextureID() const = 0;
 
     static std::shared_ptr<Texture2D> Create(const std::string& path);
+    static std::shared_ptr<Texture2D> Create(uint32_t width, uint32_t height, const void* data);
 };
 
 } // namespace VE

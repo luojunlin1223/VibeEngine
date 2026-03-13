@@ -13,6 +13,7 @@ static glm::mat4 s_VP(1.0f);
 static glm::mat4 s_InvVP(1.0f);
 static float s_VpX = 0, s_VpY = 0, s_VpW = 1280, s_VpH = 720;
 static CameraMode s_CameraMode = CameraMode::Perspective3D;
+static ImDrawList* s_DrawList = nullptr;
 
 static constexpr float kGizmoArmLength  = 0.4f;
 static constexpr float kGizmoArrowSize  = 0.06f;
@@ -55,7 +56,8 @@ static float PointToSegmentDistanceSS(ImVec2 p, ImVec2 a, ImVec2 b) {
 void GizmoRenderer::BeginScene(const glm::mat4& viewProjection,
                                float viewportX, float viewportY,
                                float viewportW, float viewportH,
-                               CameraMode cameraMode) {
+                               CameraMode cameraMode,
+                               ImDrawList* drawList) {
     s_VP         = viewProjection;
     s_InvVP      = glm::inverse(viewProjection);
     s_VpX        = viewportX;
@@ -63,17 +65,17 @@ void GizmoRenderer::BeginScene(const glm::mat4& viewProjection,
     s_VpW        = viewportW;
     s_VpH        = viewportH;
     s_CameraMode = cameraMode;
+    s_DrawList   = drawList ? drawList : ImGui::GetForegroundDrawList();
 
     // Clip all gizmo drawing to the viewport rectangle
     ImVec2 clipMin(viewportX, viewportY);
     ImVec2 clipMax(viewportX + viewportW, viewportY + viewportH);
-    ImGui::GetBackgroundDrawList()->PushClipRect(clipMin, clipMax, true);
-    ImGui::GetForegroundDrawList()->PushClipRect(clipMin, clipMax, true);
+    s_DrawList->PushClipRect(clipMin, clipMax, true);
 }
 
 void GizmoRenderer::EndScene() {
-    ImGui::GetBackgroundDrawList()->PopClipRect();
-    ImGui::GetForegroundDrawList()->PopClipRect();
+    s_DrawList->PopClipRect();
+    s_DrawList = nullptr;
 }
 
 glm::vec2 GizmoRenderer::ScreenToWorld(float screenX, float screenY) {
@@ -140,7 +142,7 @@ float GizmoRenderer::ProjectMouseOntoAxis(GizmoAxis axis,
 }
 
 void GizmoRenderer::DrawGrid(float gridSize, float spacing) {
-    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    ImDrawList* dl = s_DrawList;
     float half = gridSize * 0.5f;
 
     ImU32 gridColor  = IM_COL32(80, 80, 80, 100);
@@ -194,7 +196,7 @@ void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis,
     glm::vec3 axisY = rot * glm::vec3(0, 1, 0);
     glm::vec3 axisZ = rot * glm::vec3(0, 0, 1);
 
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImDrawList* dl = s_DrawList;
 
     ImU32 red      = IM_COL32(230, 50, 50, 255);
     ImU32 green    = IM_COL32(50, 200, 50, 255);
@@ -234,7 +236,7 @@ void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis,
 
 void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
                                          const glm::vec3& color) {
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImDrawList* dl = s_DrawList;
 
     // Convert light color to ImU32 (clamped, semi-transparent)
     ImU32 wireColor = IM_COL32(
@@ -288,7 +290,7 @@ void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
 void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
                                        int projType, float fov, float size,
                                        float nearClip, float farClip, float aspect) {
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImDrawList* dl = s_DrawList;
     ImU32 wireColor = IM_COL32(220, 220, 220, 160);
 
     // Compute near/far plane half-extents
@@ -353,7 +355,7 @@ void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
 }
 
 void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImDrawList* dl = s_DrawList;
     glm::mat4 model = worldMatrix;
     ImU32 wireColor = IM_COL32(255, 150, 0, 255);
 
