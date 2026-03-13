@@ -67,6 +67,17 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // PointLightComponent
+    if (entity.HasComponent<PointLightComponent>()) {
+        auto& pl = entity.GetComponent<PointLightComponent>();
+        out << YAML::Key << "PointLightComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << pl.Color[0] << pl.Color[1] << pl.Color[2] << YAML::EndSeq;
+        out << YAML::Key << "Intensity" << YAML::Value << pl.Intensity;
+        out << YAML::Key << "Range" << YAML::Value << pl.Range;
+        out << YAML::EndMap;
+    }
+
     // RigidbodyComponent
     if (entity.HasComponent<RigidbodyComponent>()) {
         auto& rb = entity.GetComponent<RigidbodyComponent>();
@@ -400,6 +411,14 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             auto col = dlNode["Color"];
             dl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
             dl.Intensity = dlNode["Intensity"].as<float>();
+        }
+
+        if (auto plNode = entityNode["PointLightComponent"]) {
+            auto& pl = entity.AddComponent<PointLightComponent>();
+            auto col = plNode["Color"];
+            pl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
+            pl.Intensity = plNode["Intensity"].as<float>();
+            pl.Range = plNode["Range"].as<float>();
         }
 
         if (auto rbNode = entityNode["RigidbodyComponent"]) {

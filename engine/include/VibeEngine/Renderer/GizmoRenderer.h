@@ -28,6 +28,8 @@ public:
     static void DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis = GizmoAxis::None,
                                       const glm::mat4& worldMatrix = glm::mat4(1.0f));
     static void DrawWireframeBox(const glm::mat4& worldMatrix);
+    static void DrawPointLightGizmo(const glm::vec3& position, float range,
+                                     const glm::vec3& color = glm::vec3(1.0f));
 
     // Screen ↔ World conversion
     static glm::vec2 ScreenToWorld(float screenX, float screenY);

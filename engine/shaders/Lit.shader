@@ -68,6 +68,14 @@ uniform float u_AO;
 uniform sampler2D u_Texture;
 uniform int   u_UseTexture;
 
+// Point lights (max 8)
+const int MAX_POINT_LIGHTS = 8;
+uniform int   u_NumPointLights;
+uniform vec3  u_PointLightPositions[MAX_POINT_LIGHTS];
+uniform vec3  u_PointLightColors[MAX_POINT_LIGHTS];
+uniform float u_PointLightIntensities[MAX_POINT_LIGHTS];
+uniform float u_PointLightRanges[MAX_POINT_LIGHTS];
+
 // Shadow uniforms
 uniform int   u_ShadowEnabled;
 uniform sampler2DArrayShadow u_ShadowMap;
@@ -178,23 +186,59 @@ void main() {
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-    vec3 L = normalize(u_LightDir);
-    vec3 H = normalize(V + L);
-    vec3 radiance = u_LightColor * u_LightIntensity;
+    vec3 Lo = vec3(0.0);
 
-    float NDF = DistributionGGX(N, H, roughness);
-    float G   = GeometrySmith(N, V, L, roughness);
-    vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+    // ── Directional light ───────────────────────────────────────────
+    {
+        vec3 L = normalize(u_LightDir);
+        vec3 H = normalize(V + L);
+        vec3 radiance = u_LightColor * u_LightIntensity;
 
-    vec3  specular = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
-    vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+        float NDF = DistributionGGX(N, H, roughness);
+        float G   = GeometrySmith(N, V, L, roughness);
+        vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
 
-    float NdotL = max(dot(N, L), 0.0);
+        vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
+        vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
 
-    // Shadow factor
-    float shadow = ShadowCalculation(v_FragPos, N, L);
+        float NdotL = max(dot(N, L), 0.0);
 
-    vec3 Lo = (kD * albedo / PI + specular) * radiance * NdotL * shadow;
+        // Shadow factor
+        float shadow = ShadowCalculation(v_FragPos, N, L);
+
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL * shadow;
+    }
+
+    // ── Point lights ────────────────────────────────────────────────
+    for (int i = 0; i < u_NumPointLights; ++i) {
+        vec3  lightVec  = u_PointLightPositions[i] - v_FragPos;
+        float dist      = length(lightVec);
+        float range     = u_PointLightRanges[i];
+
+        if (dist > range) continue;
+
+        vec3  L = lightVec / dist;
+        vec3  H = normalize(V + L);
+
+        // Smooth attenuation: inverse-square with range-based windowing
+        float attenuation = 1.0 / (dist * dist + 1.0);
+        float window = 1.0 - pow(clamp(dist / range, 0.0, 1.0), 4.0);
+        window = window * window;
+        attenuation *= window;
+
+        vec3 radiance = u_PointLightColors[i] * u_PointLightIntensities[i] * attenuation;
+
+        float NDF = DistributionGGX(N, H, roughness);
+        float G   = GeometrySmith(N, V, L, roughness);
+        vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+        vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
+        vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+        float NdotL = max(dot(N, L), 0.0);
+
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
+    }
 
     vec3 ambient = vec3(0.03) * albedo * ao;
     vec3 color = ambient + Lo;
