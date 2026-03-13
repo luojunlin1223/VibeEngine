@@ -318,9 +318,17 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
                         (float)m.m03, (float)m.m13, (float)m.m23, 1.0f
                     );
 
+                    // Apply import scale to IBM translation so skinning
+                    // produces correctly-scaled output (vertices are scaled,
+                    // so the entire skeleton space must match).
+                    float sf = settings.ScaleFactor;
+                    bone.InverseBindMatrix[3][0] *= sf;
+                    bone.InverseBindMatrix[3][1] *= sf;
+                    bone.InverseBindMatrix[3][2] *= sf;
+
                     // Local bind transform from node
                     ufbx_transform lt = boneNode->local_transform;
-                    glm::vec3 pos((float)lt.translation.x, (float)lt.translation.y, (float)lt.translation.z);
+                    glm::vec3 pos((float)lt.translation.x * sf, (float)lt.translation.y * sf, (float)lt.translation.z * sf);
                     glm::quat rot((float)lt.rotation.w, (float)lt.rotation.x, (float)lt.rotation.y, (float)lt.rotation.z);
                     glm::vec3 scl((float)lt.scale.x, (float)lt.scale.y, (float)lt.scale.z);
                     glm::mat4 T = glm::translate(glm::mat4(1.0f), pos);
@@ -342,6 +350,7 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
             }
         }
 
+        skeleton->ImportScale = settings.ScaleFactor;
         asset->SkeletonRef = skeleton;
 
         // Extract per-vertex skin weights
@@ -502,7 +511,7 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
                     for (double t : times) {
                         BoneKeyframe kf;
                         kf.Time = (float)(t - keyMin); // offset to start from 0
-                        kf.Position = sampleVec3(bakedNode->translation_keys, t);
+                        kf.Position = sampleVec3(bakedNode->translation_keys, t) * settings.ScaleFactor;
                         kf.Rotation = sampleQuat(bakedNode->rotation_keys, t);
                         kf.Scale = sampleVec3(bakedNode->scale_keys, t);
                         // Default scale to 1 if no keys
@@ -661,10 +670,11 @@ std::vector<AnimationClip> FBXImporter::ImportAnimations(const std::string& absP
                 return glm::quat((float)q.w, (float)q.x, (float)q.y, (float)q.z);
             };
 
+            float animSF = skeleton->ImportScale;
             for (double t : times) {
                 BoneKeyframe kf;
                 kf.Time = (float)(t - keyMin);
-                kf.Position = sampleVec3(bakedNode->translation_keys, t);
+                kf.Position = sampleVec3(bakedNode->translation_keys, t) * animSF;
                 kf.Rotation = sampleQuat(bakedNode->rotation_keys, t);
                 kf.Scale = sampleVec3(bakedNode->scale_keys, t);
                 if (bakedNode->scale_keys.count == 0)
