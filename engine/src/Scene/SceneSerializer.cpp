@@ -161,7 +161,6 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "NearClip" << YAML::Value << cam.NearClip;
         out << YAML::Key << "FarClip"  << YAML::Value << cam.FarClip;
         out << YAML::Key << "Priority" << YAML::Value << cam.Priority;
-        out << YAML::Key << "IsMain"   << YAML::Value << cam.IsMain;
         out << YAML::EndMap;
     }
 
@@ -183,6 +182,34 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
     // AudioListenerComponent
     if (entity.HasComponent<AudioListenerComponent>()) {
         out << YAML::Key << "AudioListenerComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::EndMap;
+    }
+
+    // SpriteRendererComponent
+    if (entity.HasComponent<SpriteRendererComponent>()) {
+        auto& sr = entity.GetComponent<SpriteRendererComponent>();
+        out << YAML::Key << "SpriteRendererComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << sr.Color[0] << sr.Color[1] << sr.Color[2] << sr.Color[3] << YAML::EndSeq;
+        if (!sr.TexturePath.empty())
+            out << YAML::Key << "TexturePath" << YAML::Value << sr.TexturePath;
+        out << YAML::Key << "UVRect" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << sr.UVRect[0] << sr.UVRect[1] << sr.UVRect[2] << sr.UVRect[3] << YAML::EndSeq;
+        out << YAML::Key << "SortingOrder" << YAML::Value << sr.SortingOrder;
+        out << YAML::EndMap;
+    }
+
+    // SpriteAnimatorComponent
+    if (entity.HasComponent<SpriteAnimatorComponent>()) {
+        auto& sa = entity.GetComponent<SpriteAnimatorComponent>();
+        out << YAML::Key << "SpriteAnimatorComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Columns" << YAML::Value << sa.Columns;
+        out << YAML::Key << "Rows" << YAML::Value << sa.Rows;
+        out << YAML::Key << "StartFrame" << YAML::Value << sa.StartFrame;
+        out << YAML::Key << "EndFrame" << YAML::Value << sa.EndFrame;
+        out << YAML::Key << "FrameRate" << YAML::Value << sa.FrameRate;
+        out << YAML::Key << "Loop" << YAML::Value << sa.Loop;
+        out << YAML::Key << "PlayOnStart" << YAML::Value << sa.PlayOnStart;
         out << YAML::EndMap;
     }
 
@@ -338,7 +365,10 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
     auto view = scene->GetAllEntitiesWith<IDComponent>();
-    for (auto entityID : view) {
+    // entt iterates in reverse creation order; collect and reverse to preserve original order
+    std::vector<entt::entity> entities(view.begin(), view.end());
+    std::reverse(entities.begin(), entities.end());
+    for (auto entityID : entities) {
         Entity entity(entityID, &*scene);
         SerializeEntity(out, entity, scene->GetRegistry());
     }
@@ -557,7 +587,6 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             if (camNode["NearClip"]) cam.NearClip = camNode["NearClip"].as<float>();
             if (camNode["FarClip"])  cam.FarClip  = camNode["FarClip"].as<float>();
             if (camNode["Priority"]) cam.Priority = camNode["Priority"].as<int>();
-            if (camNode["IsMain"])   cam.IsMain   = camNode["IsMain"].as<bool>();
         }
 
         if (auto asNode = entityNode["AudioSourceComponent"]) {
@@ -574,6 +603,33 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
 
         if (entityNode["AudioListenerComponent"]) {
             entity.AddComponent<AudioListenerComponent>();
+        }
+
+        if (auto srNode = entityNode["SpriteRendererComponent"]) {
+            auto& sr = entity.AddComponent<SpriteRendererComponent>();
+            if (auto c = srNode["Color"]) {
+                sr.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            }
+            if (srNode["TexturePath"]) {
+                sr.TexturePath = srNode["TexturePath"].as<std::string>();
+                if (!sr.TexturePath.empty())
+                    sr.Texture = Texture2D::Create(sr.TexturePath);
+            }
+            if (auto uv = srNode["UVRect"]) {
+                sr.UVRect = { uv[0].as<float>(), uv[1].as<float>(), uv[2].as<float>(), uv[3].as<float>() };
+            }
+            if (srNode["SortingOrder"]) sr.SortingOrder = srNode["SortingOrder"].as<int>();
+        }
+
+        if (auto saNode = entityNode["SpriteAnimatorComponent"]) {
+            auto& sa = entity.AddComponent<SpriteAnimatorComponent>();
+            if (saNode["Columns"])    sa.Columns    = saNode["Columns"].as<int>();
+            if (saNode["Rows"])       sa.Rows       = saNode["Rows"].as<int>();
+            if (saNode["StartFrame"]) sa.StartFrame = saNode["StartFrame"].as<int>();
+            if (saNode["EndFrame"])   sa.EndFrame   = saNode["EndFrame"].as<int>();
+            if (saNode["FrameRate"])  sa.FrameRate  = saNode["FrameRate"].as<float>();
+            if (saNode["Loop"])       sa.Loop       = saNode["Loop"].as<bool>();
+            if (saNode["PlayOnStart"]) sa.PlayOnStart = saNode["PlayOnStart"].as<bool>();
         }
 
         if (auto acNode = entityNode["AnimatorComponent"]) {

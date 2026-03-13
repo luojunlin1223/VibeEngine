@@ -49,6 +49,21 @@ OpenGLTexture2D::OpenGLTexture2D(const std::string& path)
     VE_ENGINE_INFO("Texture loaded: {0} ({1}x{2}, {3}ch) [GL ID={4}]", path, width, height, channels, m_RendererID);
 }
 
+OpenGLTexture2D::OpenGLTexture2D(uint32_t width, uint32_t height, const void* data)
+    : m_Width(width), m_Height(height)
+{
+    glGenTextures(1, &m_RendererID);
+    glBindTexture(GL_TEXTURE_2D, m_RendererID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 OpenGLTexture2D::~OpenGLTexture2D() {
     glDeleteTextures(1, &m_RendererID);
 }

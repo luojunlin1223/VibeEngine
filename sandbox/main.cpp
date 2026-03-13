@@ -28,6 +28,7 @@ public:
         }
 
         VE::MeshLibrary::Init();
+        VE::SpriteBatchRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
@@ -63,6 +64,7 @@ public:
 
     ~Sandbox() override {
         SaveEditorSettings();
+        VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
         VE::AudioEngine::Shutdown();
         VE_INFO("Sandbox application destroyed");
@@ -112,12 +114,14 @@ protected:
 
         if (m_Framebuffer) {
             m_Framebuffer->Bind();
+            VE::RenderCommand::SetDepthWrite(true); // ensure depth clear works
             VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
             VE::RenderCommand::Clear();
         }
 
         m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
         m_Scene->OnRender(m_FrameVP, camPos);
+        m_Scene->OnRenderSprites(m_FrameVP);
 
         if (m_Framebuffer) {
             m_Framebuffer->Unbind();
@@ -150,15 +154,25 @@ protected:
         // ── Game Camera Render Pass ──
         if (m_ShowGameView && m_GameFramebuffer) {
             entt::entity mainCamEntity = entt::null;
+            auto camView = m_Scene->GetAllEntitiesWith<VE::TagComponent, VE::TransformComponent, VE::CameraComponent>();
+            int camCount = 0;
+            entt::entity singleCam = entt::null;
             int highestPriority = std::numeric_limits<int>::min();
-            auto camView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::CameraComponent>();
             for (auto e : camView) {
-                auto& cam = camView.get<VE::CameraComponent>(e);
-                if (cam.IsMain && cam.Priority >= highestPriority) {
-                    highestPriority = cam.Priority;
-                    mainCamEntity = e;
+                camCount++;
+                singleCam = e;
+                auto& tag = camView.get<VE::TagComponent>(e);
+                if (tag.GameObjectTag == "MainCamera") {
+                    auto& cam = camView.get<VE::CameraComponent>(e);
+                    if (cam.Priority >= highestPriority) {
+                        highestPriority = cam.Priority;
+                        mainCamEntity = e;
+                    }
                 }
             }
+            // If only one camera in scene, use it regardless of tag
+            if (camCount == 1)
+                mainCamEntity = singleCam;
 
             if (mainCamEntity != entt::null) {
                 auto& cam = m_Scene->GetRegistry().get<VE::CameraComponent>(mainCamEntity);
@@ -174,6 +188,7 @@ protected:
                 glm::vec3 gameCamPos = glm::vec3(worldXform[3]);
 
                 m_GameFramebuffer->Bind();
+                VE::RenderCommand::SetDepthWrite(true);
                 VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
                 VE::RenderCommand::Clear();
 
@@ -182,6 +197,7 @@ protected:
                 m_Scene->OnRenderSky(gameProj * skyView);
 
                 m_Scene->OnRender(gameVP, gameCamPos);
+                m_Scene->OnRenderSprites(gameVP);
                 m_GameFramebuffer->Unbind();
 
                 // Post-processing
@@ -593,6 +609,13 @@ private:
 
         out << YAML::EndMap; // Camera
 
+        // Window visibility
+        out << YAML::Key << "ShowGameView" << YAML::Value << m_ShowGameView;
+        out << YAML::Key << "ShowRenderPipeline" << YAML::Value << m_ShowPipelineSettings;
+        out << YAML::Key << "ShowScripting" << YAML::Value << m_ShowScripting;
+        out << YAML::Key << "ShowContentBrowser" << YAML::Value << m_ShowContentBrowser;
+        out << YAML::Key << "ShowHierarchy" << YAML::Value << m_ShowHierarchy;
+
         out << YAML::EndMap;
 
         std::filesystem::create_directories("ProjectSettings");
@@ -651,6 +674,18 @@ private:
                 if (cam["Pitch"])
                     m_Camera.SetPitch(cam["Pitch"].as<float>(30.0f));
             }
+
+            // Window visibility
+            if (root["ShowGameView"])
+                m_ShowGameView = root["ShowGameView"].as<bool>(false);
+            if (root["ShowRenderPipeline"])
+                m_ShowPipelineSettings = root["ShowRenderPipeline"].as<bool>(false);
+            if (root["ShowScripting"])
+                m_ShowScripting = root["ShowScripting"].as<bool>(false);
+            if (root["ShowContentBrowser"])
+                m_ShowContentBrowser = root["ShowContentBrowser"].as<bool>(true);
+            if (root["ShowHierarchy"])
+                m_ShowHierarchy = root["ShowHierarchy"].as<bool>(true);
 
             VE_INFO("Editor settings restored");
         } catch (const std::exception& e) {
@@ -987,7 +1022,8 @@ private:
         }
 
         if (m_GizmosEnabled) {
-            VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
+            VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode(),
+                                              ImGui::GetWindowDrawList());
             VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
 
             // Draw point light gizmos for all point lights
@@ -1061,6 +1097,7 @@ private:
         VE::ScriptEngine::SetActiveScene(m_Scene.get());
         m_Scene->StartScripts();
         m_Scene->StartAnimations();
+        m_Scene->StartSpriteAnimations();
         m_Scene->StartAudio();
         m_PlayMode = true;
         m_CommandHistory.Clear();
@@ -1071,6 +1108,7 @@ private:
         if (!m_PlayMode) return;
 
         m_Scene->StopAudio();
+        m_Scene->StopSpriteAnimations();
         m_Scene->StopAnimations();
         m_Scene->StopScripts();
         m_Scene->StopPhysics();
@@ -2345,6 +2383,84 @@ private:
             ImGui::Separator();
         }
 
+        // SpriteRendererComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::SpriteRendererComponent>()) {
+            bool removeSprite = false;
+            if (ImGui::CollapsingHeader("Sprite Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& sr = m_SelectedEntity.GetComponent<VE::SpriteRendererComponent>();
+
+                ImGui::ColorEdit4("Color##Sprite", sr.Color.data());
+                ImGui::DragInt("Sorting Order", &sr.SortingOrder, 1);
+
+                // Texture field
+                ImGui::Text("Sprite");
+                ImGui::SameLine();
+                float fieldW = ImGui::GetContentRegionAvail().x;
+                ImVec2 btnSize(fieldW, 20);
+                std::string label = sr.TexturePath.empty() ? "None (Texture2D)" : sr.TexturePath;
+                ImGui::Button(label.c_str(), btnSize);
+
+                // Drag-drop texture onto field
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                        std::string path(static_cast<const char*>(payload->Data));
+                        sr.TexturePath = path;
+                        sr.Texture = VE::Texture2D::Create(path);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                if (!sr.TexturePath.empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("X##ClearSpriteTex")) {
+                        sr.TexturePath.clear();
+                        sr.Texture.reset();
+                    }
+                }
+
+                // Texture preview
+                if (sr.Texture) {
+                    ImGui::Image((ImTextureID)sr.Texture->GetNativeTextureID(),
+                        ImVec2(64, 64), ImVec2(sr.UVRect[0], sr.UVRect[1] + sr.UVRect[3]),
+                        ImVec2(sr.UVRect[0] + sr.UVRect[2], sr.UVRect[1]));
+                }
+
+                ImGui::DragFloat4("UV Rect", sr.UVRect.data(), 0.01f, 0.0f, 1.0f);
+
+                if (ImGui::Button("Remove Component##SpriteRenderer"))
+                    removeSprite = true;
+            }
+            if (removeSprite)
+                m_SelectedEntity.RemoveComponent<VE::SpriteRendererComponent>();
+            ImGui::Separator();
+        }
+
+        // SpriteAnimatorComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::SpriteAnimatorComponent>()) {
+            bool removeSA = false;
+            if (ImGui::CollapsingHeader("Sprite Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& sa = m_SelectedEntity.GetComponent<VE::SpriteAnimatorComponent>();
+
+                int totalFrames = sa.Columns * sa.Rows;
+                ImGui::DragInt("Columns", &sa.Columns, 1, 1, 64);
+                ImGui::DragInt("Rows", &sa.Rows, 1, 1, 64);
+                ImGui::DragInt("Start Frame", &sa.StartFrame, 1, 0, totalFrames - 1);
+                ImGui::DragInt("End Frame", &sa.EndFrame, 1, 0, totalFrames - 1);
+                ImGui::DragFloat("Frame Rate", &sa.FrameRate, 0.5f, 0.1f, 120.0f);
+                ImGui::Checkbox("Loop##SpriteAnim", &sa.Loop);
+                ImGui::Checkbox("Play On Start##SpriteAnim", &sa.PlayOnStart);
+
+                if (m_PlayMode)
+                    ImGui::Text("Frame: %d / %d", sa._CurrentFrame, sa.EndFrame);
+
+                if (ImGui::Button("Remove Component##SpriteAnimator"))
+                    removeSA = true;
+            }
+            if (removeSA)
+                m_SelectedEntity.RemoveComponent<VE::SpriteAnimatorComponent>();
+            ImGui::Separator();
+        }
+
         // CameraComponent inspector
         if (m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
             bool removeCam = false;
@@ -2364,7 +2480,6 @@ private:
                 ImGui::DragFloat("Near Clip", &cam.NearClip, 0.01f, 0.001f, cam.FarClip - 0.001f);
                 ImGui::DragFloat("Far Clip",  &cam.FarClip,  1.0f, cam.NearClip + 0.001f, 10000.0f);
                 ImGui::DragInt("Priority", &cam.Priority, 1);
-                ImGui::Checkbox("Is Main", &cam.IsMain);
 
                 if (ImGui::Button("Remove Component##Camera"))
                     removeCam = true;
@@ -2651,6 +2766,16 @@ private:
                     m_SelectedEntity.AddComponent<VE::AudioListenerComponent>();
                 anyAdded = true;
             }
+            if (!m_SelectedEntity.HasComponent<VE::SpriteRendererComponent>()) {
+                if (ImGui::MenuItem("Sprite Renderer"))
+                    m_SelectedEntity.AddComponent<VE::SpriteRendererComponent>();
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::SpriteAnimatorComponent>()) {
+                if (ImGui::MenuItem("Sprite Animator"))
+                    m_SelectedEntity.AddComponent<VE::SpriteAnimatorComponent>();
+                anyAdded = true;
+            }
             if (!anyAdded) {
                 ImGui::TextDisabled("All components added");
             }
@@ -2933,21 +3058,64 @@ private:
                 ImGui::ColorEdit3("Top Color", ps.SkyTopColor.data());
                 ImGui::ColorEdit3("Bottom Color", ps.SkyBottomColor.data());
 
-                ImGui::Text("Sky Texture: %s",
-                    ps.SkyTexturePath.empty() ? "(none - gradient)" : ps.SkyTexturePath.c_str());
-                if (ImGui::Button("Load Sky Texture...")) {
-                    static const char* texFilter =
-                        "Image Files (*.png;*.jpg;*.hdr)\0*.png;*.jpg;*.jpeg;*.hdr\0All Files\0*.*\0";
-                    std::string path = VE::FileDialog::OpenFile(texFilter, GetWindow().GetNativeWindow());
-                    if (!path.empty()) {
-                        ps.SkyTexturePath = path;
-                        ps.SkyTexture = VE::Texture2D::Create(path);
+                // Sky Texture — Object Field with drag-drop
+                {
+                    bool hasTex = !ps.SkyTexturePath.empty();
+                    std::string displayName = hasTex
+                        ? std::filesystem::path(ps.SkyTexturePath).filename().generic_string()
+                        : "None (Texture2D)";
+
+                    ImGui::PushID("SkyTexField");
+                    ImGui::Text("Sky Texture");
+                    ImGui::SameLine(100.0f);
+
+                    float availW = ImGui::GetContentRegionAvail().x;
+                    float clearBtnW = ImGui::GetFrameHeight();
+                    float fieldW = availW - clearBtnW - ImGui::GetStyle().ItemSpacing.x;
+
+                    ImVec2 pos = ImGui::GetCursorScreenPos();
+                    ImVec2 size(fieldW, ImGui::GetFrameHeight());
+
+                    ImU32 bgCol = IM_COL32(40, 40, 40, 255);
+                    ImU32 borderCol = IM_COL32(80, 80, 80, 255);
+                    bool hovered = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+                    if (hovered) borderCol = IM_COL32(120, 160, 255, 255);
+
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bgCol, 3.0f);
+                    dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderCol, 3.0f);
+
+                    // Icon (blue tint for textures)
+                    ImU32 iconCol = hasTex ? IM_COL32(100, 180, 255, 255) : IM_COL32(160, 160, 160, 255);
+                    float iconSize = size.y * 0.6f;
+                    float iconPad = (size.y - iconSize) * 0.5f;
+                    ImVec2 iconMin(pos.x + 4.0f + iconPad, pos.y + iconPad);
+                    ImVec2 iconMax(iconMin.x + iconSize, iconMin.y + iconSize);
+                    dl->AddRectFilled(iconMin, iconMax, iconCol, 2.0f);
+
+                    // Text
+                    float textX = iconMax.x + 6.0f;
+                    float textY = pos.y + (size.y - ImGui::GetTextLineHeight()) * 0.5f;
+                    dl->AddText(ImVec2(textX, textY), IM_COL32(200, 200, 200, 255), displayName.c_str());
+
+                    ImGui::InvisibleButton("##skytexfield", size);
+
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                            std::string path(static_cast<const char*>(payload->Data));
+                            ps.SkyTexturePath = path;
+                            ps.SkyTexture = VE::Texture2D::Create(path);
+                        }
+                        ImGui::EndDragDropTarget();
                     }
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Clear##SkyTex")) {
-                    ps.SkyTexturePath.clear();
-                    ps.SkyTexture.reset();
+
+                    ImGui::SameLine();
+                    if (ImGui::Button("x##SkyTexClear", ImVec2(clearBtnW, 0))) {
+                        ps.SkyTexturePath.clear();
+                        ps.SkyTexture.reset();
+                    }
+
+                    ImGui::PopID();
                 }
             }
         }
@@ -3144,12 +3312,17 @@ private:
                 m_GameFramebuffer->Resize(w, h);
         }
 
-        // Check if there's a main camera
+        // Check if there's a main camera (Tag == "MainCamera", or sole camera)
         bool hasCam = false;
-        auto camView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::CameraComponent>();
-        for (auto e : camView) {
-            auto& cam = camView.get<VE::CameraComponent>(e);
-            if (cam.IsMain) { hasCam = true; break; }
+        {
+            auto camCheck = m_Scene->GetAllEntitiesWith<VE::TagComponent, VE::TransformComponent, VE::CameraComponent>();
+            int cnt = 0;
+            for (auto e : camCheck) {
+                cnt++;
+                auto& tag = camCheck.get<VE::TagComponent>(e);
+                if (tag.GameObjectTag == "MainCamera") { hasCam = true; break; }
+            }
+            if (cnt == 1) hasCam = true;
         }
 
         if (hasCam && m_GameFramebuffer) {

@@ -8,6 +8,7 @@
 #include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Animation/Animator.h"
 #include "VibeEngine/Audio/AudioEngine.h"
+#include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -150,6 +151,41 @@ void Scene::OnUpdate(float deltaTime) {
             auto& ac = animView.get<AnimatorComponent>(entity);
             if (ac._Animator)
                 ac._Animator->Update(deltaTime);
+        }
+    }
+
+    // Update sprite animations
+    {
+        auto saView = m_Registry.view<SpriteAnimatorComponent, SpriteRendererComponent>();
+        for (auto entity : saView) {
+            auto& sa = saView.get<SpriteAnimatorComponent>(entity);
+            if (!sa._Playing) continue;
+
+            sa._Timer += deltaTime;
+            float frameDuration = 1.0f / sa.FrameRate;
+            while (sa._Timer >= frameDuration) {
+                sa._Timer -= frameDuration;
+                sa._CurrentFrame++;
+                if (sa._CurrentFrame > sa.EndFrame) {
+                    if (sa.Loop)
+                        sa._CurrentFrame = sa.StartFrame;
+                    else {
+                        sa._CurrentFrame = sa.EndFrame;
+                        sa._Playing = false;
+                        break;
+                    }
+                }
+            }
+
+            // Compute UV rect from current frame
+            if (sa.Columns > 0 && sa.Rows > 0) {
+                int col = sa._CurrentFrame % sa.Columns;
+                int row = sa._CurrentFrame / sa.Columns;
+                float uW = 1.0f / static_cast<float>(sa.Columns);
+                float vH = 1.0f / static_cast<float>(sa.Rows);
+                auto& sr = saView.get<SpriteRendererComponent>(entity);
+                sr.UVRect = { col * uW, row * vH, uW, vH };
+            }
         }
     }
 }
@@ -600,6 +636,65 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
 
         RenderCommand::DrawIndexed(drawVAO);
+    }
+}
+
+// ── Sprite Rendering ────────────────────────────────────────────────
+
+void Scene::OnRenderSprites(const glm::mat4& viewProjection) {
+    auto view = m_Registry.view<TransformComponent, SpriteRendererComponent>();
+
+    // Collect and sort by SortingOrder, then by Z position
+    struct SpriteEntry {
+        entt::entity Entity;
+        int SortingOrder;
+        float Z;
+    };
+    std::vector<SpriteEntry> sprites;
+    sprites.reserve(view.size_hint());
+
+    for (auto e : view) {
+        auto& sr = view.get<SpriteRendererComponent>(e);
+        auto& tc = view.get<TransformComponent>(e);
+        sprites.push_back({ e, sr.SortingOrder, tc.Position[2] });
+    }
+
+    std::sort(sprites.begin(), sprites.end(), [](const SpriteEntry& a, const SpriteEntry& b) {
+        if (a.SortingOrder != b.SortingOrder) return a.SortingOrder < b.SortingOrder;
+        return a.Z < b.Z;
+    });
+
+    SpriteBatchRenderer::BeginBatch(viewProjection);
+    for (auto& entry : sprites) {
+        auto& sr = m_Registry.get<SpriteRendererComponent>(entry.Entity);
+        glm::mat4 transform = GetWorldTransform(entry.Entity);
+        glm::vec4 color(sr.Color[0], sr.Color[1], sr.Color[2], sr.Color[3]);
+        SpriteBatchRenderer::DrawSprite(transform, color, sr.Texture, sr.UVRect);
+    }
+    SpriteBatchRenderer::EndBatch();
+}
+
+// ── Sprite Animation ────────────────────────────────────────────────
+
+void Scene::StartSpriteAnimations() {
+    auto view = m_Registry.view<SpriteAnimatorComponent>();
+    for (auto e : view) {
+        auto& sa = view.get<SpriteAnimatorComponent>(e);
+        if (sa.PlayOnStart) {
+            sa._Playing = true;
+            sa._CurrentFrame = sa.StartFrame;
+            sa._Timer = 0.0f;
+        }
+    }
+}
+
+void Scene::StopSpriteAnimations() {
+    auto view = m_Registry.view<SpriteAnimatorComponent>();
+    for (auto e : view) {
+        auto& sa = view.get<SpriteAnimatorComponent>(e);
+        sa._Playing = false;
+        sa._Timer = 0.0f;
+        sa._CurrentFrame = sa.StartFrame;
     }
 }
 

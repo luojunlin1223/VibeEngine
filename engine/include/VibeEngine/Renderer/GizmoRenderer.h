@@ -12,6 +12,8 @@
 #include "VibeEngine/Renderer/EditorCamera.h"
 #include <glm/glm.hpp>
 
+struct ImDrawList;
+
 namespace VE {
 
 enum class GizmoAxis { None, X, Y, Z };
@@ -21,7 +23,8 @@ public:
     static void BeginScene(const glm::mat4& viewProjection,
                            float viewportX, float viewportY,
                            float viewportW, float viewportH,
-                           CameraMode cameraMode = CameraMode::Perspective3D);
+                           CameraMode cameraMode = CameraMode::Perspective3D,
+                           ImDrawList* drawList = nullptr);
     static void EndScene();
 
     static void DrawGrid(float gridSize = 20.0f, float spacing = 1.0f);

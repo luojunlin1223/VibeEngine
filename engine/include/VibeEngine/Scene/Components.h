@@ -173,8 +173,7 @@ struct CameraComponent {
     float Size = 5.0f;           // half-height in world units (orthographic)
     float NearClip = 0.1f;
     float FarClip  = 1000.0f;
-    int   Priority = 0;          // highest priority = main camera
-    bool  IsMain   = true;
+    int   Priority = 0;          // highest priority when multiple MainCamera tags exist
 
     CameraComponent() = default;
 };
@@ -199,6 +198,34 @@ struct AudioListenerComponent {
     // Marker component — the entity with this + TransformComponent is the listener.
     bool Active = true;
     AudioListenerComponent() = default;
+};
+
+struct SpriteRendererComponent {
+    std::array<float, 4> Color = { 1.0f, 1.0f, 1.0f, 1.0f }; // RGBA tint
+    std::shared_ptr<Texture2D> Texture;
+    std::string TexturePath;
+    // UV rect for sprite atlas (x, y, width, height in 0..1)
+    std::array<float, 4> UVRect = { 0.0f, 0.0f, 1.0f, 1.0f };
+    int SortingOrder = 0;
+
+    SpriteRendererComponent() = default;
+};
+
+struct SpriteAnimatorComponent {
+    int Columns = 1;
+    int Rows    = 1;
+    int StartFrame = 0;
+    int EndFrame   = 0;
+    float FrameRate = 12.0f;
+    bool Loop = true;
+    bool PlayOnStart = true;
+
+    // Runtime (not serialized)
+    bool  _Playing = false;
+    float _Timer = 0.0f;
+    int   _CurrentFrame = 0;
+
+    SpriteAnimatorComponent() = default;
 };
 
 struct MeshRendererComponent {

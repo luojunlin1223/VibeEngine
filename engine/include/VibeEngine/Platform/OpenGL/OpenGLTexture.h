@@ -8,6 +8,7 @@ namespace VE {
 class OpenGLTexture2D : public Texture2D {
 public:
     explicit OpenGLTexture2D(const std::string& path);
+    OpenGLTexture2D(uint32_t width, uint32_t height, const void* data);
     ~OpenGLTexture2D() override;
 
     uint32_t GetWidth() const override { return m_Width; }
