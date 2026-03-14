@@ -679,7 +679,13 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         auto shader = mr.Mat->GetShader();
         if (!shader) return;
 
+        // Ensure correct GL state for individual draws (material's ApplyRenderState
+        // may set Cull Front or disable cull for some shaders — restore defaults)
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
         shader->SetMat4("u_MVP", mvp);
+        shader->SetMat4("u_Model", model); // always set model for both lit/unlit
 
         bool hasTexInMat = false;
         for (auto& prop : mr.Mat->GetProperties()) {
@@ -689,19 +695,15 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         if (!hasTexInMat)
             shader->SetInt("u_UseTexture", 0);
 
+        // Always set lighting uniforms for lit materials
         if (mr.Mat->IsLit()) {
-            shader->SetMat4("u_Model", model);
             setLightingUniforms(shader, true);
             setPBRDefaults(shader, mr.Mat);
         }
+        // Always set entity color (even if overrides exist)
+        shader->SetVec4("u_EntityColor", entityColor);
 
-        bool hasColorOverride = false;
-        for (const auto& ov : mr.MaterialOverrides) {
-            if (ov.Name == "u_EntityColor") { hasColorOverride = true; break; }
-        }
-        if (!hasColorOverride)
-            shader->SetVec4("u_EntityColor", entityColor);
-
+        // Apply per-entity material overrides (may override EntityColor, textures, etc.)
         for (const auto& ov : mr.MaterialOverrides) {
             switch (ov.Type) {
                 case MaterialPropertyType::Float:

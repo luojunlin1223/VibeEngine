@@ -525,7 +525,18 @@ protected:
                     m_DraggingAxis, pos, io.MousePos.x, io.MousePos.y, rot);
                 int comp = (m_DraggingAxis == VE::GizmoAxis::X) ? 0
                          : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
-                tc.Position[comp] = m_DragStartPos[comp] + (val - m_DragOriginVal);
+                float delta = val - m_DragOriginVal;
+
+                if (m_GizmoMode == 0) {
+                    // Translate
+                    tc.Position[comp] = m_DragStartPos[comp] + delta;
+                } else if (m_GizmoMode == 1) {
+                    // Rotate (map delta to degrees)
+                    tc.Rotation[comp] = m_DragStartPos[comp] + delta * 100.0f;
+                } else if (m_GizmoMode == 2) {
+                    // Scale (map delta to scale factor)
+                    tc.Scale[comp] = std::max(0.01f, m_DragStartPos[comp] + delta);
+                }
             } else {
                 if (!m_PlayMode) m_CommandHistory.EndPropertyEdit();
                 m_DraggingAxis = VE::GizmoAxis::None;
@@ -540,6 +551,13 @@ protected:
                 m_Camera.OnMouseDrag(io.MouseDelta.x, io.MouseDelta.y);
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Right))
                 m_Camera.OnMouseRotate(io.MouseDelta.x, io.MouseDelta.y);
+
+            // Gizmo mode shortcuts (only when not typing in a text field)
+            if (!io.WantTextInput) {
+                if (ImGui::IsKeyPressed(ImGuiKey_W)) m_GizmoMode = 0; // Translate
+                if (ImGui::IsKeyPressed(ImGuiKey_E)) m_GizmoMode = 1; // Rotate
+                if (ImGui::IsKeyPressed(ImGuiKey_R)) m_GizmoMode = 2; // Scale
+            }
 
             // Focus camera on selected entity (F key) — zoom in and align to object's +Z
             if (ImGui::IsKeyPressed(ImGuiKey_F) && m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
@@ -574,12 +592,19 @@ protected:
                 }
 
                 if (axis != VE::GizmoAxis::None) {
-                    if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit("Move Entity");
+                    const char* editNames[] = { "Move Entity", "Rotate Entity", "Scale Entity" };
+                    if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit(editNames[m_GizmoMode]);
                     m_DraggingAxis = axis;
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                     glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
                     glm::mat3 rot = GetEntityRotation(tc);
-                    m_DragStartPos = { tc.Position[0], tc.Position[1], tc.Position[2] };
+                    // Save start values based on gizmo mode
+                    if (m_GizmoMode == 0)
+                        m_DragStartPos = { tc.Position[0], tc.Position[1], tc.Position[2] };
+                    else if (m_GizmoMode == 1)
+                        m_DragStartPos = { tc.Rotation[0], tc.Rotation[1], tc.Rotation[2] };
+                    else
+                        m_DragStartPos = { tc.Scale[0], tc.Scale[1], tc.Scale[2] };
                     m_DragOriginVal = VE::GizmoRenderer::ProjectMouseOntoAxis(
                         axis, pos, io.MousePos.x, io.MousePos.y, rot);
                 } else {
@@ -601,6 +626,7 @@ protected:
         DrawGameViewPanel();
         DrawInputSettingsPanel();
         DrawBuildPanel();
+        DrawConsolePanel();
 
         // Restore focus over several frames (docking may reassign focus)
         if (m_RestoreFocusFrame > 0) {
@@ -964,6 +990,70 @@ private:
             ImGui::EndChild();
         }
 
+        ImGui::End();
+    }
+
+    // ── Console Panel ────────────────────────────────────────────────
+
+    void DrawConsolePanel() {
+        if (!m_ShowConsole) return;
+        ImGui::Begin("Console", &m_ShowConsole);
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+            m_LastFocusedWindow = "Console";
+
+        // Toolbar
+        if (ImGui::Button("Clear"))
+            VE::Console::Clear();
+        ImGui::SameLine();
+        ImGui::Checkbox("Info", &m_ConsoleShowInfo);
+        ImGui::SameLine();
+        ImGui::Checkbox("Warn", &m_ConsoleShowWarn);
+        ImGui::SameLine();
+        ImGui::Checkbox("Error", &m_ConsoleShowError);
+        ImGui::SameLine();
+        ImGui::Checkbox("Auto-scroll", &m_ConsoleAutoScroll);
+        ImGui::SameLine(ImGui::GetWindowWidth() - 200);
+        ImGui::SetNextItemWidth(180);
+        ImGui::InputTextWithHint("##filter", "Search...", m_ConsoleFilter, sizeof(m_ConsoleFilter));
+
+        ImGui::Separator();
+
+        // Log entries
+        ImGui::BeginChild("LogScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+
+        const auto& entries = VE::Console::GetEntries();
+        std::string filterStr(m_ConsoleFilter);
+
+        for (const auto& entry : entries) {
+            // Level filter
+            if (entry.Level == VE::LogLevel::Info && !m_ConsoleShowInfo) continue;
+            if (entry.Level == VE::LogLevel::Warn && !m_ConsoleShowWarn) continue;
+            if (entry.Level == VE::LogLevel::Error && !m_ConsoleShowError) continue;
+            if (entry.Level == VE::LogLevel::Trace && !m_ConsoleShowInfo) continue;
+
+            // Text filter
+            if (!filterStr.empty()) {
+                if (entry.Message.find(filterStr) == std::string::npos)
+                    continue;
+            }
+
+            // Color by level
+            ImVec4 color;
+            switch (entry.Level) {
+                case VE::LogLevel::Trace: color = {0.5f, 0.5f, 0.5f, 1.0f}; break;
+                case VE::LogLevel::Info:  color = {0.8f, 0.8f, 0.8f, 1.0f}; break;
+                case VE::LogLevel::Warn:  color = {1.0f, 0.9f, 0.3f, 1.0f}; break;
+                case VE::LogLevel::Error: color = {1.0f, 0.3f, 0.3f, 1.0f}; break;
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, color);
+            ImGui::TextUnformatted(entry.Message.c_str());
+            ImGui::PopStyleColor();
+        }
+
+        if (m_ConsoleAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10)
+            ImGui::SetScrollHereY(1.0f);
+
+        ImGui::EndChild();
         ImGui::End();
     }
 
@@ -1474,6 +1564,7 @@ private:
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
                 ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
+                ImGui::MenuItem("Console", nullptr, &m_ShowConsole);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -1620,11 +1711,46 @@ private:
 
                 VE::GizmoAxis displayAxis = m_DraggingAxis;
                 ImGuiIO& io = ImGui::GetIO();
-                if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered) {
-                    displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                        worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+
+                if (m_GizmoMode == 0) {
+                    // Translate mode
+                    if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered)
+                        displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
+                            worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                    VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
+                } else if (m_GizmoMode == 1) {
+                    // Rotate mode — draw rotation circles
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    auto toScreen = [&](const glm::vec3& w) -> ImVec2 {
+                        glm::vec4 clip = m_FrameVP * glm::vec4(w, 1.0f);
+                        if (clip.w <= 0.01f) return {-1,-1};
+                        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                        return { vpX + (ndc.x * 0.5f + 0.5f) * vpW,
+                                 vpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * vpH };
+                    };
+                    float radius = 0.5f * std::max({worldMat[0].length(), worldMat[1].length(), worldMat[2].length()});
+                    ImU32 colors[] = { IM_COL32(230,50,50,200), IM_COL32(50,200,50,200), IM_COL32(80,80,240,200) };
+                    glm::vec3 axes[] = { {1,0,0}, {0,1,0}, {0,0,1} };
+                    for (int a = 0; a < 3; a++) {
+                        int segs = 48;
+                        for (int s = 0; s < segs; s++) {
+                            float t0 = 6.2832f * s / segs;
+                            float t1 = 6.2832f * (s+1) / segs;
+                            glm::vec3 p0, p1;
+                            if (a == 0) { p0 = {0, cos(t0)*radius, sin(t0)*radius}; p1 = {0, cos(t1)*radius, sin(t1)*radius}; }
+                            if (a == 1) { p0 = {cos(t0)*radius, 0, sin(t0)*radius}; p1 = {cos(t1)*radius, 0, sin(t1)*radius}; }
+                            if (a == 2) { p0 = {cos(t0)*radius, sin(t0)*radius, 0}; p1 = {cos(t1)*radius, sin(t1)*radius, 0}; }
+                            ImVec2 s0 = toScreen(worldPos + p0);
+                            ImVec2 s1 = toScreen(worldPos + p1);
+                            if (s0.x > 0 && s1.x > 0)
+                                dl->AddLine(s0, s1, colors[a], 2.0f);
+                        }
+                    }
+                } else if (m_GizmoMode == 2) {
+                    // Scale mode — draw scale handles (boxes at axis ends)
+                    VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
+                    // TODO: replace arrows with scale boxes
                 }
-                VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
             }
 
             VE::GizmoRenderer::EndScene();
@@ -1691,9 +1817,22 @@ private:
 
         ImGui::Begin("Toolbar", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
+        // Gizmo mode buttons (left side)
+        {
+            const char* labels[] = { "W Move", "E Rotate", "R Scale" };
+            for (int i = 0; i < 3; i++) {
+                if (i > 0) ImGui::SameLine();
+                bool selected = (m_GizmoMode == i);
+                if (selected) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
+                if (ImGui::Button(labels[i], ImVec2(70, 0)))
+                    m_GizmoMode = i;
+                if (selected) ImGui::PopStyleColor();
+            }
+        }
+
         float windowWidth = ImGui::GetContentRegionAvail().x;
         float buttonWidth = 80.0f;
-        ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
+        ImGui::SameLine((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
 
         if (!m_PlayMode) {
             if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
@@ -4930,6 +5069,17 @@ private:
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
     bool m_ShowBuildPanel = false;
+    bool m_ShowConsole = true;
+
+    // Gizmo mode: 0=Translate, 1=Rotate, 2=Scale
+    int m_GizmoMode = 0;
+
+    // Console filter
+    bool m_ConsoleShowInfo = true;
+    bool m_ConsoleShowWarn = true;
+    bool m_ConsoleShowError = true;
+    char m_ConsoleFilter[128] = {};
+    bool m_ConsoleAutoScroll = true;
 
     // Last focused window for session restore
     std::string m_LastFocusedWindow;
