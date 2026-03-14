@@ -988,6 +988,29 @@ void Scene::OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
                              { c[0], c[1], c[2], c[3] });
     }
 
+    // Render button labels (centered text inside button rect)
+    {
+        auto btnLabelView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
+        for (auto entity : btnLabelView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
+            auto& rt = btnLabelView.get<UIRectTransformComponent>(entity);
+            auto& btn = btnLabelView.get<UIButtonComponent>(entity);
+            if (btn.Label.empty()) continue;
+
+            auto font = FontLibrary::GetDefault();
+            if (!font) continue;
+
+            float textW = font->MeasureTextWidth(btn.Label) * (btn.FontSize / font->GetPixelHeight());
+            float textH = btn.FontSize;
+            auto pos = ComputeScreenPos(rt);
+            float tx = pos.x + (rt.Size[0] - textW) * 0.5f;
+            float ty = pos.y + (rt.Size[1] - textH) * 0.5f;
+            UIRenderer::DrawText(btn.Label, tx, ty, btn.FontSize,
+                                 { btn.LabelColor[0], btn.LabelColor[1], btn.LabelColor[2], btn.LabelColor[3] },
+                                 font);
+        }
+    }
+
     // Render UITextComponents
     auto textView = m_Registry.view<UIRectTransformComponent, UITextComponent>();
     for (auto entity : textView) {

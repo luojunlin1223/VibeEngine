@@ -323,6 +323,9 @@ struct UIImageComponent {
 };
 
 struct UIButtonComponent {
+    std::string Label = "Button";
+    float FontSize = 20.0f;
+    std::array<float, 4> LabelColor   = { 1.0f, 1.0f, 1.0f, 1.0f };
     std::array<float, 4> NormalColor  = { 0.2f, 0.2f, 0.2f, 0.8f };
     std::array<float, 4> HoverColor   = { 0.3f, 0.3f, 0.3f, 0.9f };
     std::array<float, 4> PressedColor = { 0.1f, 0.1f, 0.1f, 1.0f };

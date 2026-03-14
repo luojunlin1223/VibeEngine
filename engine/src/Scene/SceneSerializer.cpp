@@ -377,6 +377,10 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
     if (entity.HasComponent<UIButtonComponent>()) {
         auto& btn = entity.GetComponent<UIButtonComponent>();
         out << YAML::Key << "UIButtonComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Label" << YAML::Value << btn.Label;
+        out << YAML::Key << "FontSize" << YAML::Value << btn.FontSize;
+        out << YAML::Key << "LabelColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << btn.LabelColor[0] << btn.LabelColor[1] << btn.LabelColor[2] << btn.LabelColor[3] << YAML::EndSeq;
         out << YAML::Key << "NormalColor" << YAML::Value << YAML::Flow
             << YAML::BeginSeq << btn.NormalColor[0] << btn.NormalColor[1] << btn.NormalColor[2] << btn.NormalColor[3] << YAML::EndSeq;
         out << YAML::Key << "HoverColor" << YAML::Value << YAML::Flow
@@ -893,6 +897,10 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
 
         if (auto btnNode = entityNode["UIButtonComponent"]) {
             auto& btn = entity.AddComponent<UIButtonComponent>();
+            if (btnNode["Label"])    btn.Label    = btnNode["Label"].as<std::string>();
+            if (btnNode["FontSize"]) btn.FontSize = btnNode["FontSize"].as<float>();
+            if (auto c = btnNode["LabelColor"])
+                btn.LabelColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
             if (auto c = btnNode["NormalColor"])
                 btn.NormalColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
             if (auto c = btnNode["HoverColor"])

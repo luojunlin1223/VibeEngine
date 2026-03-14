@@ -3032,6 +3032,13 @@ private:
             bool removeC = false;
             if (ImGui::CollapsingHeader("UI Button", ImGuiTreeNodeFlags_DefaultOpen)) {
                 auto& btn = m_SelectedEntity.GetComponent<VE::UIButtonComponent>();
+                char lblBuf[256];
+                strncpy(lblBuf, btn.Label.c_str(), sizeof(lblBuf));
+                lblBuf[sizeof(lblBuf)-1] = '\0';
+                if (ImGui::InputText("Label##UIBtn", lblBuf, sizeof(lblBuf)))
+                    btn.Label = lblBuf;
+                ImGui::DragFloat("Font Size##UIBtn", &btn.FontSize, 0.5f, 4.0f, 200.0f);
+                ImGui::ColorEdit4("Label Color##UIBtn", btn.LabelColor.data());
                 ImGui::ColorEdit4("Normal##UIBtn", btn.NormalColor.data());
                 ImGui::ColorEdit4("Hover##UIBtn", btn.HoverColor.data());
                 ImGui::ColorEdit4("Pressed##UIBtn", btn.PressedColor.data());
