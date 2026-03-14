@@ -527,15 +527,27 @@ protected:
                          : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
                 float delta = val - m_DragOriginVal;
 
+                // Snap helper: round to nearest multiple
+                auto snapTo = [](float value, float grid) -> float {
+                    return std::round(value / grid) * grid;
+                };
+                bool snapping = io.KeyCtrl; // hold Ctrl to snap
+
                 if (m_GizmoMode == 0) {
                     // Translate
-                    tc.Position[comp] = m_DragStartPos[comp] + delta;
+                    float newVal = m_DragStartPos[comp] + delta;
+                    if (snapping) newVal = snapTo(newVal, m_SnapTranslate);
+                    tc.Position[comp] = newVal;
                 } else if (m_GizmoMode == 1) {
                     // Rotate (map delta to degrees)
-                    tc.Rotation[comp] = m_DragStartPos[comp] + delta * 100.0f;
+                    float newVal = m_DragStartPos[comp] + delta * 100.0f;
+                    if (snapping) newVal = snapTo(newVal, m_SnapRotate);
+                    tc.Rotation[comp] = newVal;
                 } else if (m_GizmoMode == 2) {
                     // Scale (map delta to scale factor)
-                    tc.Scale[comp] = std::max(0.01f, m_DragStartPos[comp] + delta);
+                    float newVal = m_DragStartPos[comp] + delta;
+                    if (snapping) newVal = snapTo(newVal, m_SnapScale);
+                    tc.Scale[comp] = std::max(0.01f, newVal);
                 }
             } else {
                 if (!m_PlayMode) m_CommandHistory.EndPropertyEdit();
@@ -1834,6 +1846,18 @@ private:
                     m_GizmoMode = i;
                 if (selected) ImGui::PopStyleColor();
             }
+
+            // Snap value (editable, right of gizmo buttons)
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(50);
+            if (m_GizmoMode == 0)
+                ImGui::DragFloat("##snap", &m_SnapTranslate, 0.05f, 0.1f, 10.0f, "%.1f");
+            else if (m_GizmoMode == 1)
+                ImGui::DragFloat("##snap", &m_SnapRotate, 1.0f, 1.0f, 90.0f, "%.0f");
+            else
+                ImGui::DragFloat("##snap", &m_SnapScale, 0.05f, 0.05f, 5.0f, "%.2f");
+            ImGui::SameLine();
+            ImGui::TextDisabled("Ctrl+Drag to snap");
         }
 
         float windowWidth = ImGui::GetContentRegionAvail().x;
@@ -5210,6 +5234,10 @@ private:
 
     // Gizmo mode: 0=Translate, 1=Rotate, 2=Scale
     int m_GizmoMode = 0;
+    // Snap values (Ctrl+drag)
+    float m_SnapTranslate = 0.5f;  // meters
+    float m_SnapRotate    = 15.0f; // degrees
+    float m_SnapScale     = 0.25f;
 
     // Console filter
     bool m_ConsoleShowInfo = true;
