@@ -16,6 +16,9 @@
 #include "VibeEngine/Input/InputAction.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Animation/Animator.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace VE {
 
@@ -159,6 +162,128 @@ static void Glue_Entity_SetColor(uint64_t entityID, float r, float g, float b, f
     if (mr) mr->Color = { r, g, b, a };
 }
 
+static void Glue_Entity_GetPosition(uint64_t entityID, float* x, float* y, float* z) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) { *x = *y = *z = 0; return; }
+    auto& tc = scene->GetRegistry().get<TransformComponent>(e);
+    *x = tc.Position[0]; *y = tc.Position[1]; *z = tc.Position[2];
+}
+
+static void Glue_Entity_SetPosition(uint64_t entityID, float x, float y, float z) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto& tc = scene->GetRegistry().get<TransformComponent>(e);
+    tc.Position = { x, y, z };
+}
+
+static float Glue_Entity_GetDistanceTo(uint64_t a, uint64_t b) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto ea = FindEntityByUUID(scene, a);
+    auto eb = FindEntityByUUID(scene, b);
+    if (ea == entt::null || eb == entt::null) return 99999.0f;
+    auto& ta = scene->GetRegistry().get<TransformComponent>(ea);
+    auto& tb = scene->GetRegistry().get<TransformComponent>(eb);
+    float dx = ta.Position[0] - tb.Position[0];
+    float dy = ta.Position[1] - tb.Position[1];
+    float dz = ta.Position[2] - tb.Position[2];
+    return std::sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+// ── Animation control ───────────────────────────────────────────────
+
+static void Glue_Animator_Play(uint64_t entityID, int clipIndex, bool loop, float speed) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    if (ac && ac->_Animator) {
+        ac->ClipIndex = clipIndex;
+        ac->Loop = loop;
+        ac->Speed = speed;
+        ac->_Animator->Play(clipIndex, loop, speed);
+    }
+}
+
+static void Glue_Animator_Stop(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    if (ac && ac->_Animator)
+        ac->_Animator->Stop();
+}
+
+static int Glue_Animator_GetClipCount(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return 0;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    if (ac && ac->_Animator)
+        return ac->_Animator->GetClipCount();
+    return 0;
+}
+
+static bool Glue_Animator_IsPlaying(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return false;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    return ac && ac->_Animator && ac->_Animator->IsPlaying();
+}
+
+// ── Camera / screen-to-world ────────────────────────────────────────
+
+// Cached camera matrices (set each frame by the sandbox/runtime before scripts run)
+static glm::mat4 s_CachedViewMatrix = glm::mat4(1.0f);
+static glm::mat4 s_CachedProjMatrix = glm::mat4(1.0f);
+static float s_CachedViewportW = 1280.0f;
+static float s_CachedViewportH = 720.0f;
+
+void SetScriptCameraMatrices(const glm::mat4& view, const glm::mat4& proj,
+                              float vpW, float vpH) {
+    s_CachedViewMatrix = view;
+    s_CachedProjMatrix = proj;
+    s_CachedViewportW = vpW;
+    s_CachedViewportH = vpH;
+}
+
+static bool Glue_Camera_ScreenToWorldRay(float screenX, float screenY,
+                                          float* ox, float* oy, float* oz,
+                                          float* dx, float* dy, float* dz) {
+    // Convert screen coords to NDC (-1 to 1)
+    float ndcX = (2.0f * screenX / s_CachedViewportW) - 1.0f;
+    float ndcY = 1.0f - (2.0f * screenY / s_CachedViewportH); // flip Y
+
+    glm::mat4 invVP = glm::inverse(s_CachedProjMatrix * s_CachedViewMatrix);
+
+    glm::vec4 nearPoint = invVP * glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+    glm::vec4 farPoint  = invVP * glm::vec4(ndcX, ndcY,  1.0f, 1.0f);
+
+    if (std::abs(nearPoint.w) < 1e-6f || std::abs(farPoint.w) < 1e-6f)
+        return false;
+
+    glm::vec3 near3 = glm::vec3(nearPoint) / nearPoint.w;
+    glm::vec3 far3  = glm::vec3(farPoint)  / farPoint.w;
+    glm::vec3 dir   = glm::normalize(far3 - near3);
+
+    *ox = near3.x; *oy = near3.y; *oz = near3.z;
+    *dx = dir.x;   *dy = dir.y;   *dz = dir.z;
+    return true;
+}
+
+static bool Glue_Camera_WorldToScreen(float wx, float wy, float wz,
+                                       float* sx, float* sy) {
+    glm::vec4 clip = s_CachedProjMatrix * s_CachedViewMatrix * glm::vec4(wx, wy, wz, 1.0f);
+    if (std::abs(clip.w) < 1e-6f) return false;
+
+    glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    *sx = (ndc.x + 1.0f) * 0.5f * s_CachedViewportW;
+    *sy = (1.0f - ndc.y) * 0.5f * s_CachedViewportH;
+    return ndc.z >= -1.0f && ndc.z <= 1.0f; // behind camera check
+}
+
 // ── Physics: rigidbody control ──────────────────────────────────────
 
 static void Glue_Physics_AddForce(uint64_t entityID, float fx, float fy, float fz) {
@@ -292,6 +417,19 @@ void InitScriptGlue(ScriptAPI& api) {
     api.Entity_Destroy           = Glue_Entity_Destroy;
     api.Entity_SetActive         = Glue_Entity_SetActive;
     api.Entity_SetColor          = Glue_Entity_SetColor;
+    api.Entity_GetPosition       = Glue_Entity_GetPosition;
+    api.Entity_SetPosition       = Glue_Entity_SetPosition;
+    api.Entity_GetDistanceTo     = Glue_Entity_GetDistanceTo;
+
+    // Animation
+    api.Animator_Play            = Glue_Animator_Play;
+    api.Animator_Stop            = Glue_Animator_Stop;
+    api.Animator_GetClipCount    = Glue_Animator_GetClipCount;
+    api.Animator_IsPlaying       = Glue_Animator_IsPlaying;
+
+    // Camera
+    api.Camera_ScreenToWorldRay  = Glue_Camera_ScreenToWorldRay;
+    api.Camera_WorldToScreen     = Glue_Camera_WorldToScreen;
 
     // Physics
     api.Physics_AddForce         = Glue_Physics_AddForce;

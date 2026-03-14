@@ -234,6 +234,10 @@ protected:
 
         uint32_t fbW = m_Framebuffer ? m_Framebuffer->GetWidth()  : 1280;
         uint32_t fbH = m_Framebuffer ? m_Framebuffer->GetHeight() : 720;
+
+        // Update script camera matrices for ScreenToWorldRay
+        VE::SetScriptCameraMatrices(m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix(),
+                                     static_cast<float>(fbW), static_cast<float>(fbH));
         bool perspective3D = (m_Camera.GetMode() == VE::CameraMode::Perspective3D);
 
         VE::RenderGraph rg;

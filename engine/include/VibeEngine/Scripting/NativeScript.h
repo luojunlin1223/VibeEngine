@@ -73,8 +73,24 @@ struct ScriptAPI {
     void (*Entity_Destroy)(uint64_t entityID)    = nullptr;
     void (*Entity_SetActive)(uint64_t entityID, bool active) = nullptr;
 
-    // Entity: component queries
+    // Entity: component access
     void (*Entity_SetColor)(uint64_t entityID, float r, float g, float b, float a) = nullptr;
+    void (*Entity_GetPosition)(uint64_t entityID, float* x, float* y, float* z)    = nullptr;
+    void (*Entity_SetPosition)(uint64_t entityID, float x, float y, float z)       = nullptr;
+    float (*Entity_GetDistanceTo)(uint64_t a, uint64_t b)                          = nullptr;
+
+    // Animation control
+    void (*Animator_Play)(uint64_t entityID, int clipIndex, bool loop, float speed) = nullptr;
+    void (*Animator_Stop)(uint64_t entityID)                                        = nullptr;
+    int  (*Animator_GetClipCount)(uint64_t entityID)                                = nullptr;
+    bool (*Animator_IsPlaying)(uint64_t entityID)                                   = nullptr;
+
+    // Camera / screen-to-world
+    bool (*Camera_ScreenToWorldRay)(float screenX, float screenY,
+                                    float* ox, float* oy, float* oz,
+                                    float* dx, float* dy, float* dz) = nullptr;
+    bool (*Camera_WorldToScreen)(float wx, float wy, float wz,
+                                 float* sx, float* sy)               = nullptr;
 
     // Physics: rigidbody control
     void (*Physics_AddForce)(uint64_t entityID, float fx, float fy, float fz)      = nullptr;
