@@ -16,6 +16,7 @@
 #include "VibeEngine/Input/InputAction.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Scene/SceneSerializer.h"
 #include "VibeEngine/Animation/Animator.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -365,6 +366,17 @@ static bool Glue_Physics_Raycast(float ox, float oy, float oz,
     return false;
 }
 
+// ── Prefab ──────────────────────────────────────────────────────────
+
+static uint64_t Glue_Prefab_Instantiate(const char* prefabPath) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    if (!scene || !prefabPath) return 0;
+    auto entity = SceneSerializer::InstantiatePrefab(prefabPath, *scene);
+    if (entity.IsValid())
+        return static_cast<uint64_t>(entity.GetComponent<IDComponent>().ID);
+    return 0;
+}
+
 // ── Scene ───────────────────────────────────────────────────────────
 
 static void Glue_Scene_LoadScene(const char* path) {
@@ -438,6 +450,9 @@ void InitScriptGlue(ScriptAPI& api) {
     api.Physics_GetVelocity      = Glue_Physics_GetVelocity;
     api.Physics_SetAngularVelocity = Glue_Physics_SetAngularVelocity;
     api.Physics_Raycast          = Glue_Physics_Raycast;
+
+    // Prefab
+    api.Prefab_Instantiate       = Glue_Prefab_Instantiate;
 
     // Scene
     api.Scene_LoadScene          = Glue_Scene_LoadScene;

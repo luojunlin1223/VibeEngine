@@ -1623,6 +1623,12 @@ private:
                     });
                 }
             }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PREFAB")) {
+                std::string path(static_cast<const char*>(payload->Data));
+                auto rootEntity = VE::SceneSerializer::InstantiatePrefab(path, *m_Scene);
+                if (rootEntity.IsValid())
+                    m_SelectedEntity = rootEntity;
+            }
             ImGui::EndDragDropTarget();
         }
 
@@ -1987,6 +1993,17 @@ private:
 
         // Right-click context menu on entity node
         if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem("Duplicate")) {
+                DuplicateSelectedEntity();
+            }
+            if (ImGui::MenuItem("Save as Prefab")) {
+                std::string prefabName = tag.Tag + ".vprefab";
+                std::string savePath = "Assets/" + prefabName;
+                VE::SceneSerializer::SerializePrefab(savePath,
+                    VE::Entity(entityID, &*m_Scene), *m_Scene);
+                m_AssetDatabase.Refresh();
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Delete")) {
                 m_CommandHistory.Execute("Delete Entity", [this, entityID]() {
                     m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
@@ -4569,6 +4586,11 @@ private:
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
                 float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
                 dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SND");
+            } else if (meta->Type == VE::AssetType::Prefab) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(70, 160, 160, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "PRF");
             } else {
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
             }
@@ -4675,6 +4697,16 @@ private:
                 if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     ImGui::SetDragDropPayload("ASSET_MATERIAL", absPath.c_str(), absPath.size() + 1);
+                    ImGui::Text("%s", filename.c_str());
+                    ImGui::EndDragDropSource();
+                }
+            }
+
+            // Drag-drop source for prefab files
+            if (meta->Type == VE::AssetType::Prefab) {
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    ImGui::SetDragDropPayload("ASSET_PREFAB", absPath.c_str(), absPath.size() + 1);
                     ImGui::Text("%s", filename.c_str());
                     ImGui::EndDragDropSource();
                 }

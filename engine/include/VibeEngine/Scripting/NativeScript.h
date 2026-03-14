@@ -104,6 +104,9 @@ struct ScriptAPI {
                             float dx, float dy, float dz,
                             float maxDist, ScriptRaycastHit* hit) = nullptr;
 
+    // Prefab
+    uint64_t (*Prefab_Instantiate)(const char* prefabPath) = nullptr;
+
     // Scene
     void (*Scene_LoadScene)(const char* path)    = nullptr;
 

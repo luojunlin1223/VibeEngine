@@ -24,6 +24,12 @@ public:
     std::string SerializeToString();
     bool DeserializeFromString(const std::string& yamlData);
 
+    // ── Prefab system ───────────────────────────────────────────────
+    // Save entity (+ children) as .vprefab
+    static void SerializePrefab(const std::string& filepath, Entity rootEntity, Scene& scene);
+    // Instantiate a .vprefab into scene, returns root entity
+    static Entity InstantiatePrefab(const std::string& filepath, Scene& scene);
+
 private:
     std::shared_ptr<Scene> m_Scene;
 };

@@ -1114,4 +1114,227 @@ bool SceneSerializer::DeserializeFromString(const std::string& yamlData) {
     return DeserializeSceneFromYAML(data, m_Scene);
 }
 
+// ── Prefab System ─────────────────────────────────────────────────
+
+static void CollectEntityHierarchy(entt::entity entity, entt::registry& reg,
+                                    std::vector<entt::entity>& out) {
+    out.push_back(entity);
+    if (reg.all_of<RelationshipComponent>(entity)) {
+        auto& rel = reg.get<RelationshipComponent>(entity);
+        for (auto child : rel.Children) {
+            if (reg.valid(child))
+                CollectEntityHierarchy(child, reg, out);
+        }
+    }
+}
+
+void SceneSerializer::SerializePrefab(const std::string& filepath,
+                                       Entity rootEntity, Scene& scene) {
+    auto& reg = scene.GetRegistry();
+    if (!rootEntity.IsValid()) return;
+
+    // Collect root + all descendants
+    std::vector<entt::entity> entities;
+    CollectEntityHierarchy(rootEntity.GetHandle(), reg, entities);
+
+    // Serialize
+    YAML::Emitter out;
+    out << YAML::BeginMap;
+
+    auto& tag = rootEntity.GetComponent<TagComponent>();
+    out << YAML::Key << "Prefab" << YAML::Value << tag.Tag;
+
+    out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
+    for (auto e : entities) {
+        Entity entity(e, &scene);
+        SerializeEntity(out, entity, reg);
+    }
+    out << YAML::EndSeq;
+    out << YAML::EndMap;
+
+    std::ofstream fout(filepath);
+    if (fout) {
+        fout << out.c_str();
+        VE_ENGINE_INFO("Prefab saved: {}", filepath);
+    }
+}
+
+Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& scene) {
+    std::ifstream fin(filepath);
+    if (!fin.is_open()) {
+        VE_ENGINE_ERROR("Failed to open prefab: {}", filepath);
+        return {};
+    }
+
+    YAML::Node data;
+    try {
+        data = YAML::Load(fin);
+    } catch (...) {
+        VE_ENGINE_ERROR("Failed to parse prefab: {}", filepath);
+        return {};
+    }
+
+    if (!data["Prefab"] || !data["Entities"]) {
+        VE_ENGINE_ERROR("Invalid prefab format: {}", filepath);
+        return {};
+    }
+
+    auto& reg = scene.GetRegistry();
+
+    // First pass: create entities with new UUIDs, build remap table
+    std::unordered_map<uint64_t, uint64_t> uuidRemap; // old -> new
+    std::unordered_map<uint64_t, entt::entity> newEntityMap; // new uuid -> handle
+    std::unordered_map<uint64_t, uint64_t> parentMap; // new uuid -> old parent uuid
+
+    Entity rootEntity;
+
+    for (auto entityNode : data["Entities"]) {
+        uint64_t oldUUID = entityNode["Entity"].as<uint64_t>();
+        UUID newUUID; // generate fresh
+        uuidRemap[oldUUID] = static_cast<uint64_t>(newUUID);
+
+        std::string name = "Entity";
+        std::string goTag = "Untagged";
+        int layer = 0;
+        bool active = true;
+        if (auto tagNode = entityNode["TagComponent"]) {
+            name = tagNode["Tag"].as<std::string>("Entity");
+            if (tagNode["GameObjectTag"]) goTag = tagNode["GameObjectTag"].as<std::string>();
+            if (tagNode["Layer"]) layer = tagNode["Layer"].as<int>();
+            if (tagNode["Active"]) active = tagNode["Active"].as<bool>();
+        }
+
+        Entity entity = scene.CreateEntityWithUUID(newUUID, name);
+        auto& tc = entity.GetComponent<TagComponent>();
+        tc.GameObjectTag = goTag;
+        tc.Layer = layer;
+        tc.Active = active;
+
+        newEntityMap[static_cast<uint64_t>(newUUID)] = entity.GetHandle();
+
+        // Track parent reference
+        if (entityNode["Parent"]) {
+            parentMap[static_cast<uint64_t>(newUUID)] = entityNode["Parent"].as<uint64_t>();
+        }
+
+        // Deserialize transform
+        if (auto tcNode = entityNode["TransformComponent"]) {
+            auto& t = entity.GetComponent<TransformComponent>();
+            auto pos = tcNode["Position"];
+            t.Position = { pos[0].as<float>(), pos[1].as<float>(), pos[2].as<float>() };
+            auto rot = tcNode["Rotation"];
+            t.Rotation = { rot[0].as<float>(), rot[1].as<float>(), rot[2].as<float>() };
+            auto scl = tcNode["Scale"];
+            t.Scale = { scl[0].as<float>(), scl[1].as<float>(), scl[2].as<float>() };
+        }
+
+        // MeshRendererComponent
+        if (auto mrNode = entityNode["MeshRendererComponent"]) {
+            auto& mr = entity.AddComponent<MeshRendererComponent>();
+            int meshIndex = mrNode["MeshType"].as<int>();
+            if (meshIndex >= 0 && meshIndex < MeshLibrary::GetMeshCount()) {
+                mr.Mesh = MeshLibrary::GetMeshByIndex(meshIndex);
+                mr.Mat = MeshLibrary::IsLitMesh(meshIndex)
+                    ? MaterialLibrary::Get("Lit") : MaterialLibrary::Get("Default");
+                mr.LocalBounds = MeshLibrary::GetMeshAABB(meshIndex);
+            } else if (meshIndex == -1 && mrNode["MeshSource"]) {
+                mr.MeshSourcePath = mrNode["MeshSource"].as<std::string>();
+                auto meshAsset = MeshImporter::GetOrLoad(mr.MeshSourcePath);
+                if (meshAsset && meshAsset->VAO) {
+                    mr.Mesh = meshAsset->VAO;
+                    mr.Mat = MaterialLibrary::Get("Lit");
+                    mr.LocalBounds = meshAsset->BoundingBox;
+                }
+            }
+            if (auto colorNode = mrNode["Color"])
+                mr.Color = { colorNode[0].as<float>(), colorNode[1].as<float>(),
+                             colorNode[2].as<float>(), colorNode[3].as<float>() };
+            if (auto matNameNode = mrNode["MaterialName"]) {
+                auto mat = MaterialLibrary::Get(matNameNode.as<std::string>());
+                if (mat) mr.Mat = mat;
+            }
+            if (auto castNode = mrNode["CastShadows"])
+                mr.CastShadows = castNode.as<bool>();
+        }
+
+        // RigidbodyComponent
+        if (auto rbNode = entityNode["RigidbodyComponent"]) {
+            auto& rb = entity.AddComponent<RigidbodyComponent>();
+            std::string bt = rbNode["BodyType"].as<std::string>("Dynamic");
+            rb.Type = (bt == "Static") ? BodyType::Static :
+                      (bt == "Kinematic") ? BodyType::Kinematic : BodyType::Dynamic;
+            if (rbNode["Mass"]) rb.Mass = rbNode["Mass"].as<float>();
+            if (rbNode["LinearDamping"]) rb.LinearDamping = rbNode["LinearDamping"].as<float>();
+            if (rbNode["AngularDamping"]) rb.AngularDamping = rbNode["AngularDamping"].as<float>();
+            if (rbNode["Restitution"]) rb.Restitution = rbNode["Restitution"].as<float>();
+            if (rbNode["Friction"]) rb.Friction = rbNode["Friction"].as<float>();
+            if (rbNode["UseGravity"]) rb.UseGravity = rbNode["UseGravity"].as<bool>();
+        }
+
+        // Colliders
+        if (auto bcNode = entityNode["BoxColliderComponent"]) {
+            auto& bc = entity.AddComponent<BoxColliderComponent>();
+            if (auto s = bcNode["Size"]) bc.Size = { s[0].as<float>(), s[1].as<float>(), s[2].as<float>() };
+            if (auto o = bcNode["Offset"]) bc.Offset = { o[0].as<float>(), o[1].as<float>(), o[2].as<float>() };
+        }
+        if (auto scNode = entityNode["SphereColliderComponent"]) {
+            auto& sc = entity.AddComponent<SphereColliderComponent>();
+            if (scNode["Radius"]) sc.Radius = scNode["Radius"].as<float>();
+        }
+
+        // ScriptComponent
+        if (auto scrNode = entityNode["ScriptComponent"]) {
+            auto& sc = entity.AddComponent<ScriptComponent>();
+            sc.ClassName = scrNode["ClassName"].as<std::string>("");
+        }
+
+        // DirectionalLightComponent
+        if (auto dlNode = entityNode["DirectionalLightComponent"]) {
+            auto& dl = entity.AddComponent<DirectionalLightComponent>();
+            if (auto d = dlNode["Direction"]) dl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
+            if (auto c = dlNode["Color"]) dl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+            if (dlNode["Intensity"]) dl.Intensity = dlNode["Intensity"].as<float>();
+        }
+
+        // PointLightComponent
+        if (auto plNode = entityNode["PointLightComponent"]) {
+            auto& pl = entity.AddComponent<PointLightComponent>();
+            if (auto c = plNode["Color"]) pl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+            if (plNode["Intensity"]) pl.Intensity = plNode["Intensity"].as<float>();
+            if (plNode["Range"]) pl.Range = plNode["Range"].as<float>();
+        }
+
+        // CameraComponent
+        if (auto camNode = entityNode["CameraComponent"]) {
+            auto& cam = entity.AddComponent<CameraComponent>();
+            std::string pt = camNode["ProjectionType"].as<std::string>("Perspective");
+            cam.ProjectionType = (pt == "Orthographic") ? CameraProjection::Orthographic : CameraProjection::Perspective;
+            if (camNode["FOV"]) cam.FOV = camNode["FOV"].as<float>();
+            if (camNode["NearClip"]) cam.NearClip = camNode["NearClip"].as<float>();
+            if (camNode["FarClip"]) cam.FarClip = camNode["FarClip"].as<float>();
+        }
+
+        // Track root entity (first one without parent)
+        if (!rootEntity.IsValid() && !entityNode["Parent"])
+            rootEntity = entity;
+    }
+
+    // Second pass: resolve parent-child using remap
+    for (auto& [newUUID, oldParentUUID] : parentMap) {
+        auto remapIt = uuidRemap.find(oldParentUUID);
+        if (remapIt == uuidRemap.end()) continue;
+        uint64_t newParentUUID = remapIt->second;
+
+        auto childIt = newEntityMap.find(newUUID);
+        auto parentIt = newEntityMap.find(newParentUUID);
+        if (childIt != newEntityMap.end() && parentIt != newEntityMap.end()) {
+            scene.SetParent(childIt->second, parentIt->second);
+        }
+    }
+
+    VE_ENGINE_INFO("Prefab instantiated: {} ({} entities)", filepath,
+                    static_cast<int>(newEntityMap.size()));
+    return rootEntity;
+}
+
 } // namespace VE
