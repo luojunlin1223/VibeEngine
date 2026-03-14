@@ -110,11 +110,9 @@ protected:
         if (!m_OutlineEnabled || !m_SelectedEntity) return;
         if (!m_SelectedEntity.HasComponent<VE::TransformComponent>()) return;
 
-        // Determine the VAO to draw
         std::shared_ptr<VE::VertexArray> vao;
-        if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
+        if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>())
             vao = m_SelectedEntity.GetComponent<VE::MeshRendererComponent>().Mesh;
-        }
         if (m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
             auto& ac = m_SelectedEntity.GetComponent<VE::AnimatorComponent>();
             if (ac._Animator && ac._Animator->GetSkinnedVAO())
@@ -122,39 +120,76 @@ protected:
         }
         if (!vao) return;
 
-        // Load outline shader (Cull Front + normal extrusion)
-        static std::shared_ptr<VE::Shader> s_OutlineShader;
-        if (!s_OutlineShader) {
-            s_OutlineShader = VE::Shader::CreateFromFile("shaders/Outline.shader");
-            if (!s_OutlineShader) return;
-        }
+        auto shader = VE::MeshLibrary::GetLitShader();
+        if (!shader) shader = VE::MeshLibrary::GetDefaultShader();
+        if (!shader) return;
 
         glm::mat4 model = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
         glm::mat4 mvp = m_FrameVP * model;
 
-        uint32_t vpW = m_Framebuffer ? m_Framebuffer->GetWidth()  : 1280;
-        uint32_t vpH = m_Framebuffer ? m_Framebuffer->GetHeight() : 720;
+        // ── Pass 1: write stencil=1 for all visible pixels of the object ──
+        glEnable(GL_STENCIL_TEST);
+        glClear(GL_STENCIL_BUFFER_BIT);
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        glStencilMask(0xFF);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_FALSE);
+        glDepthFunc(GL_LEQUAL);
 
-        // Draw back-faces extruded in clip space → constant pixel-width outline
-        s_OutlineShader->Bind();
-        s_OutlineShader->ApplyRenderState(); // Cull Front, ZWrite Off
-        s_OutlineShader->SetMat4("u_MVP", mvp);
-        s_OutlineShader->SetMat4("u_Model", model);
-        s_OutlineShader->SetVec4("u_ViewportSize", glm::vec4(vpW, vpH, 0, 0));
-        s_OutlineShader->SetFloat("u_OutlinePixels", 3.0f);
-        s_OutlineShader->SetVec4("u_OutlineColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+        shader->Bind();
+        shader->SetMat4("u_MVP", mvp);
+        shader->SetMat4("u_Model", model);
+        shader->SetInt("u_UseTexture", 0);
+        shader->SetVec4("u_EntityColor", glm::vec4(1.0f));
 
         vao->Bind();
         glDrawElements(GL_TRIANGLES,
             static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
             GL_UNSIGNED_INT, nullptr);
 
-        // Restore GL state
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
+        // ── Pass 2: draw outline color where stencil=0, using a full-screen quad ──
+        // Instead of scaling the mesh, we draw the mesh multiple times with
+        // small pixel offsets in clip space, only writing where stencil != 1.
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glStencilMask(0x00);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDisable(GL_DEPTH_TEST);
+
+        shader->SetVec4("u_EntityColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+
+        uint32_t vpW = m_Framebuffer ? m_Framebuffer->GetWidth()  : 1280;
+        uint32_t vpH = m_Framebuffer ? m_Framebuffer->GetHeight() : 720;
+        float px = 2.0f / static_cast<float>(vpW); // 2 pixels in NDC
+        float py = 2.0f / static_cast<float>(vpH);
+
+        // Draw the mesh 4 times with 2-pixel offsets in each direction
+        glm::vec2 offsets[] = { {px, 0}, {-px, 0}, {0, py}, {0, -py} };
+        for (auto& off : offsets) {
+            glm::mat4 offsetMVP = mvp;
+            // Apply NDC offset: shift x,y in clip space
+            // offsetMVP[3][0] += off.x * offsetMVP[3][3] doesn't work for perspective
+            // Instead, post-multiply by a translation in NDC
+            glm::mat4 ndcShift(1.0f);
+            ndcShift[3][0] = off.x;
+            ndcShift[3][1] = off.y;
+            glm::mat4 shiftedMVP = ndcShift * mvp;
+
+            shader->SetMat4("u_MVP", shiftedMVP);
+            glDrawElements(GL_TRIANGLES,
+                static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
+                GL_UNSIGNED_INT, nullptr);
+        }
+
+        // Restore
+        glStencilMask(0xFF);
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glDisable(GL_STENCIL_TEST);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
     }
 
     VE::PostProcessSettings BuildPostProcessSettings() const {
