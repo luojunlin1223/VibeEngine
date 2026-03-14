@@ -216,6 +216,9 @@ void Scene::OnUpdate(float deltaTime) {
         }
     }
 
+    // Update nav agents
+    UpdateNavAgents(deltaTime);
+
     // Update particle systems
     OnUpdateParticles(deltaTime);
 }
@@ -452,6 +455,53 @@ static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
     model = glm::rotate(model, glm::radians(tc.Rotation[2]), glm::vec3(0, 0, 1));
     model = glm::scale(model, glm::vec3(tc.Scale[0], tc.Scale[1], tc.Scale[2]));
     return model;
+}
+
+// ── Navigation ──────────────────────────────────────────────────────
+
+void Scene::BakeNavGrid(float cellSize, float worldSize) {
+    m_NavGrid = std::make_unique<NavGrid>(
+        NavGridBuilder::BuildFromScene(*this, cellSize, worldSize));
+}
+
+void Scene::UpdateNavAgents(float deltaTime) {
+    if (!m_NavGrid) return;
+
+    auto view = m_Registry.view<TransformComponent, NavAgentComponent>();
+    for (auto entity : view) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& tc = view.get<TransformComponent>(entity);
+        auto& nav = view.get<NavAgentComponent>(entity);
+
+        if (!nav._HasTarget || nav._Path.empty()) continue;
+        if (nav._PathIndex >= static_cast<int>(nav._Path.size())) {
+            nav._HasTarget = false;
+            continue;
+        }
+
+        float targetX = nav._Path[nav._PathIndex][0];
+        float targetZ = nav._Path[nav._PathIndex][1];
+        float dx = targetX - tc.Position[0];
+        float dz = targetZ - tc.Position[2];
+        float dist = std::sqrt(dx * dx + dz * dz);
+
+        if (dist <= nav.StoppingDist) {
+            nav._PathIndex++;
+            if (nav._PathIndex >= static_cast<int>(nav._Path.size())) {
+                nav._HasTarget = false;
+            }
+            continue;
+        }
+
+        float speed = nav.Speed * deltaTime;
+        if (speed > dist) speed = dist;
+
+        tc.Position[0] += (dx / dist) * speed;
+        tc.Position[2] += (dz / dist) * speed;
+
+        // Face movement direction
+        tc.Rotation[1] = std::atan2(dx, dz) * 57.2958f;
+    }
 }
 
 void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {

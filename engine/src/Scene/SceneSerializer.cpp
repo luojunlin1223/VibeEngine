@@ -255,6 +255,16 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // NavAgentComponent
+    if (entity.HasComponent<NavAgentComponent>()) {
+        auto& nav = entity.GetComponent<NavAgentComponent>();
+        out << YAML::Key << "NavAgentComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Speed" << YAML::Value << nav.Speed;
+        out << YAML::Key << "StoppingDist" << YAML::Value << nav.StoppingDist;
+        out << YAML::Key << "AgentRadius" << YAML::Value << nav.AgentRadius;
+        out << YAML::EndMap;
+    }
+
     // LODGroupComponent
     if (entity.HasComponent<LODGroupComponent>()) {
         auto& lod = entity.GetComponent<LODGroupComponent>();
@@ -856,6 +866,13 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     lod.Levels.push_back(level);
                 }
             }
+        }
+
+        if (auto navNode = entityNode["NavAgentComponent"]) {
+            auto& nav = entity.AddComponent<NavAgentComponent>();
+            if (navNode["Speed"])        nav.Speed        = navNode["Speed"].as<float>();
+            if (navNode["StoppingDist"]) nav.StoppingDist = navNode["StoppingDist"].as<float>();
+            if (navNode["AgentRadius"])  nav.AgentRadius  = navNode["AgentRadius"].as<float>();
         }
 
         if (auto mrNode = entityNode["MeshRendererComponent"]) {

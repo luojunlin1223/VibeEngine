@@ -17,6 +17,7 @@
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Renderer/Material.h"
 #include "VibeEngine/Scene/SceneSerializer.h"
+#include "VibeEngine/Navigation/NavGrid.h"
 #include "VibeEngine/Animation/Animator.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -377,6 +378,70 @@ static uint64_t Glue_Prefab_Instantiate(const char* prefabPath) {
     return 0;
 }
 
+// ── Navigation ──────────────────────────────────────────────────────
+
+static bool Glue_Nav_BakeGrid(float cellSize, float worldSize) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    if (!scene) return false;
+    scene->BakeNavGrid(cellSize, worldSize);
+    return scene->GetNavGrid() != nullptr;
+}
+
+static int Glue_Nav_FindPath(float startX, float startZ, float endX, float endZ,
+                              float* outPathXZ, int maxPoints) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    if (!scene || !scene->GetNavGrid()) return 0;
+    auto path = NavGridBuilder::FindPath(*scene->GetNavGrid(), startX, startZ, endX, endZ);
+    int count = std::min(static_cast<int>(path.size()), maxPoints);
+    for (int i = 0; i < count; i++) {
+        outPathXZ[i * 2]     = path[i][0];
+        outPathXZ[i * 2 + 1] = path[i][1];
+    }
+    return count;
+}
+
+static void Glue_Nav_SetTarget(uint64_t entityID, float targetX, float targetZ) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    if (!scene || !scene->GetNavGrid()) return;
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+
+    auto* nav = scene->GetRegistry().try_get<NavAgentComponent>(e);
+    if (!nav) return;
+
+    auto* tc = scene->GetRegistry().try_get<TransformComponent>(e);
+    if (!tc) return;
+
+    auto path = NavGridBuilder::FindPath(*scene->GetNavGrid(),
+        tc->Position[0], tc->Position[2], targetX, targetZ);
+
+    if (path.empty()) return;
+    nav->_Path = std::move(path);
+    nav->_PathIndex = 0;
+    nav->_HasTarget = true;
+    nav->_TargetX = targetX;
+    nav->_TargetZ = targetZ;
+}
+
+static void Glue_Nav_Stop(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* nav = scene->GetRegistry().try_get<NavAgentComponent>(e);
+    if (nav) {
+        nav->_Path.clear();
+        nav->_HasTarget = false;
+    }
+}
+
+static bool Glue_Nav_HasReachedTarget(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return true;
+    auto* nav = scene->GetRegistry().try_get<NavAgentComponent>(e);
+    return !nav || !nav->_HasTarget;
+}
+
 // ── Scene ───────────────────────────────────────────────────────────
 
 static void Glue_Scene_LoadScene(const char* path) {
@@ -453,6 +518,13 @@ void InitScriptGlue(ScriptAPI& api) {
 
     // Prefab
     api.Prefab_Instantiate       = Glue_Prefab_Instantiate;
+
+    // Navigation
+    api.Nav_BakeGrid             = Glue_Nav_BakeGrid;
+    api.Nav_FindPath             = Glue_Nav_FindPath;
+    api.Nav_SetTarget            = Glue_Nav_SetTarget;
+    api.Nav_Stop                 = Glue_Nav_Stop;
+    api.Nav_HasReachedTarget     = Glue_Nav_HasReachedTarget;
 
     // Scene
     api.Scene_LoadScene          = Glue_Scene_LoadScene;

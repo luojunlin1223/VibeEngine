@@ -107,6 +107,14 @@ struct ScriptAPI {
     // Prefab
     uint64_t (*Prefab_Instantiate)(const char* prefabPath) = nullptr;
 
+    // Navigation
+    bool (*Nav_BakeGrid)(float cellSize, float worldSize)              = nullptr;
+    int  (*Nav_FindPath)(float startX, float startZ, float endX, float endZ,
+                         float* outPathXZ, int maxPoints)              = nullptr;
+    void (*Nav_SetTarget)(uint64_t entityID, float targetX, float targetZ) = nullptr;
+    void (*Nav_Stop)(uint64_t entityID)                                = nullptr;
+    bool (*Nav_HasReachedTarget)(uint64_t entityID)                    = nullptr;
+
     // Scene
     void (*Scene_LoadScene)(const char* path)    = nullptr;
 

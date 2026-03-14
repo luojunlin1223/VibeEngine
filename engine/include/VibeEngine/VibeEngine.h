@@ -28,6 +28,8 @@
 #include "Renderer/GridRenderer.h"
 #include "Renderer/LODSystem.h"
 
+#include "Navigation/NavGrid.h"
+
 #include "Input/KeyCodes.h"
 #include "Input/Input.h"
 #include "Input/InputAction.h"

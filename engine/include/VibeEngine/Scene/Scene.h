@@ -11,6 +11,7 @@
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
+#include "VibeEngine/Navigation/NavGrid.h"
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
 #include <string>
@@ -158,6 +159,12 @@ public:
     // Physics queries (delegates to PhysicsWorld)
     PhysicsWorld* GetPhysicsWorld() const { return m_PhysicsWorld.get(); }
 
+    // Navigation
+    void BakeNavGrid(float cellSize = 0.5f, float worldSize = 50.0f);
+    NavGrid* GetNavGrid() { return m_NavGrid.get(); }
+    const NavGrid* GetNavGrid() const { return m_NavGrid.get(); }
+    void UpdateNavAgents(float deltaTime);
+
     // Find entity by JoltBodyID (for collision callback dispatch)
     entt::entity FindEntityByBodyID(uint32_t bodyID) const;
 
@@ -183,6 +190,7 @@ private:
     glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
 
     std::string m_PendingScenePath; // scene to load at end of frame
+    std::unique_ptr<NavGrid> m_NavGrid;
 
     friend class Entity;
 };

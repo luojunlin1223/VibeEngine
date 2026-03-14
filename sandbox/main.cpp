@@ -3522,6 +3522,27 @@ private:
             ImGui::Separator();
         }
 
+        // ── NavAgent Component ──
+        if (m_SelectedEntity.HasComponent<VE::NavAgentComponent>()) {
+            bool removeNav = false;
+            bool openNav = ImGui::CollapsingHeader("Nav Agent", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::NavAgentComponent>("##NavAgentCtx", "NavAgent", removeNav);
+            if (openNav) {
+                auto& nav = m_SelectedEntity.GetComponent<VE::NavAgentComponent>();
+                ImGui::DragFloat("Speed", &nav.Speed, 0.1f, 0.1f, 50.0f);
+                ImGui::DragFloat("Stopping Distance", &nav.StoppingDist, 0.01f, 0.01f, 5.0f);
+                ImGui::DragFloat("Agent Radius", &nav.AgentRadius, 0.01f, 0.1f, 5.0f);
+                ImGui::Text("Has Target: %s", nav._HasTarget ? "Yes" : "No");
+                ImGui::Text("Path Points: %d (index %d)", static_cast<int>(nav._Path.size()), nav._PathIndex);
+            }
+            if (removeNav)
+                m_SelectedEntity.RemoveComponent<VE::NavAgentComponent>();
+            ImGui::Separator();
+        }
+
+        // ── Bake NavGrid button (shows in Inspector when no entity selected) ──
+        // (moved to Scene Info panel)
+
         // ── Terrain Component Inspector ───────────────────────────
         if (m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
             bool removeC = false;
@@ -3743,6 +3764,13 @@ private:
                 if (ImGui::MenuItem("LOD Group"))
                     m_CommandHistory.Execute("Add LOD Group", [this]() {
                         m_SelectedEntity.AddComponent<VE::LODGroupComponent>();
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::NavAgentComponent>()) {
+                if (ImGui::MenuItem("Nav Agent"))
+                    m_CommandHistory.Execute("Add Nav Agent", [this]() {
+                        m_SelectedEntity.AddComponent<VE::NavAgentComponent>();
                     });
                 anyAdded = true;
             }
@@ -4917,6 +4945,18 @@ private:
                     m_Camera.GetPosition().x, m_Camera.GetPosition().y);
                 ImGui::Text("Zoom: %.2f", m_Camera.GetZoom());
             }
+        }
+
+        // ── Navigation ──
+        if (ImGui::CollapsingHeader("Navigation")) {
+            auto* navGrid = m_Scene->GetNavGrid();
+            if (navGrid)
+                ImGui::Text("NavGrid: %dx%d (cell %.2fm)", navGrid->Width, navGrid->Height, navGrid->CellSize);
+            else
+                ImGui::TextDisabled("NavGrid: not baked");
+
+            if (ImGui::Button("Bake NavGrid"))
+                m_Scene->BakeNavGrid(0.5f, 50.0f);
         }
 
         ImGui::End();

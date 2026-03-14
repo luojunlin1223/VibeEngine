@@ -282,6 +282,22 @@ struct MeshRendererComponent {
     MeshRendererComponent() = default;
 };
 
+// ── NavAgent Component ───────────────────────────────────────────────
+
+struct NavAgentComponent {
+    float Speed        = 3.5f;
+    float StoppingDist = 0.2f;
+    float AgentRadius  = 0.4f;
+
+    // Runtime only (not serialized)
+    std::vector<std::array<float, 2>> _Path; // XZ waypoints
+    int   _PathIndex = 0;
+    bool  _HasTarget = false;
+    float _TargetX = 0, _TargetZ = 0;
+
+    NavAgentComponent() = default;
+};
+
 // ── Terrain Component ─────────────────────────────────────────────────
 
 struct TerrainComponent {
