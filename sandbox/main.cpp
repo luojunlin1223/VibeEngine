@@ -1690,22 +1690,22 @@ private:
         ImGui::SetCursorPosY((toolbarHeight - btnH) * 0.5f);
 
         // ── Play / Stop button ──
-        if (m_PlayMode) {
+        bool wasPlaying = m_PlayMode;
+        if (wasPlaying) {
             ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.3f, 0.6f, 0.9f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,   ImVec4(0.15f, 0.4f, 0.7f, 1.0f));
         }
-        // Play triangle or Stop square icon (using text symbols)
-        const char* playLabel = m_PlayMode ? "||" : ">";
+        const char* playLabel = wasPlaying ? "||" : ">";
         if (ImGui::Button(playLabel, ImVec2(btnW, btnH))) {
-            if (m_PlayMode)
+            if (wasPlaying)
                 ExitPlayMode();
             else
                 EnterPlayMode();
         }
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(m_PlayMode ? "Stop (exit play mode)" : "Play");
-        if (m_PlayMode)
+            ImGui::SetTooltip(wasPlaying ? "Stop (exit play mode)" : "Play");
+        if (wasPlaying)
             ImGui::PopStyleColor(3);
 
         // ── Pause button ──
