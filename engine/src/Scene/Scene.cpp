@@ -152,6 +152,9 @@ void Scene::OnUpdate(float deltaTime) {
             m_PhysicsAccumulator -= PHYSICS_DT;
         }
         m_PhysicsWorld->SyncTransformsToScene(m_Registry);
+
+        // Dispatch collision callbacks to scripts
+        DispatchCollisionEvents();
     }
 
     // Run scripts after physics
@@ -275,6 +278,57 @@ void Scene::StopScripts() {
         }
     }
     VE_ENGINE_INFO("Scripts stopped");
+}
+
+entt::entity Scene::FindEntityByBodyID(uint32_t bodyID) const {
+    auto view = m_Registry.view<RigidbodyComponent>();
+    for (auto entity : view) {
+        auto& rb = view.get<RigidbodyComponent>(entity);
+        if (rb._JoltBodyID == bodyID)
+            return entity;
+    }
+    return entt::null;
+}
+
+void Scene::DispatchCollisionEvents() {
+    if (!m_PhysicsWorld) return;
+
+    const auto& events = m_PhysicsWorld->GetCollisionEvents();
+    if (events.empty()) return;
+
+    for (const auto& ev : events) {
+        entt::entity entityA = FindEntityByBodyID(ev.BodyA);
+        entt::entity entityB = FindEntityByBodyID(ev.BodyB);
+
+        uint64_t idA = 0, idB = 0;
+        if (entityA != entt::null && m_Registry.all_of<IDComponent>(entityA))
+            idA = static_cast<uint64_t>(m_Registry.get<IDComponent>(entityA).ID);
+        if (entityB != entt::null && m_Registry.all_of<IDComponent>(entityB))
+            idB = static_cast<uint64_t>(m_Registry.get<IDComponent>(entityB).ID);
+
+        // Dispatch to scripts on both entities
+        auto dispatch = [&](entt::entity entity, uint64_t otherID, bool isEnter,
+                            const glm::vec3& cp, const glm::vec3& cn) {
+            if (entity == entt::null) return;
+            auto* sc = m_Registry.try_get<ScriptComponent>(entity);
+            if (!sc || !sc->_Instance) return;
+
+            if (isEnter) {
+                ScriptCollisionInfo info;
+                info.OtherEntityID = otherID;
+                info.ContactPoint[0] = cp.x; info.ContactPoint[1] = cp.y; info.ContactPoint[2] = cp.z;
+                info.ContactNormal[0] = cn.x; info.ContactNormal[1] = cn.y; info.ContactNormal[2] = cn.z;
+                sc->_Instance->OnCollisionEnter(info);
+            } else {
+                sc->_Instance->OnCollisionExit(otherID);
+            }
+        };
+
+        dispatch(entityA, idB, ev.IsEnter, ev.ContactPoint, ev.ContactNormal);
+        dispatch(entityB, idA, ev.IsEnter, ev.ContactPoint, -ev.ContactNormal);
+    }
+
+    m_PhysicsWorld->ClearCollisionEvents();
 }
 
 void Scene::StartAnimations() {

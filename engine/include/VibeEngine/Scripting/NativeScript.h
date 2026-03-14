@@ -18,6 +18,19 @@ struct ScriptTransform {
     float Scale[3]    = { 1.0f, 1.0f, 1.0f };
 };
 
+struct ScriptRaycastHit {
+    float Point[3]  = { 0.0f, 0.0f, 0.0f };
+    float Normal[3] = { 0.0f, 1.0f, 0.0f };
+    float Distance  = 0.0f;
+    uint64_t EntityID = 0;
+};
+
+struct ScriptCollisionInfo {
+    uint64_t OtherEntityID = 0;
+    float ContactPoint[3]  = { 0.0f, 0.0f, 0.0f };
+    float ContactNormal[3] = { 0.0f, 1.0f, 0.0f };
+};
+
 // Function pointer table passed from engine to script DLL
 struct ScriptAPI {
     // Logging
@@ -50,10 +63,33 @@ struct ScriptAPI {
     // Time
     float (*Time_GetDeltaTime)()                 = nullptr;
 
-    // Entity
+    // Entity: transform
     void (*Entity_GetTransform)(uint64_t entityID, ScriptTransform* out) = nullptr;
     void (*Entity_SetTransform)(uint64_t entityID, const ScriptTransform* in) = nullptr;
     uint64_t (*Entity_FindByName)(const char* name) = nullptr;
+
+    // Entity: lifecycle
+    uint64_t (*Entity_Create)(const char* name)  = nullptr;
+    void (*Entity_Destroy)(uint64_t entityID)    = nullptr;
+    void (*Entity_SetActive)(uint64_t entityID, bool active) = nullptr;
+
+    // Entity: component queries
+    void (*Entity_SetColor)(uint64_t entityID, float r, float g, float b, float a) = nullptr;
+
+    // Physics: rigidbody control
+    void (*Physics_AddForce)(uint64_t entityID, float fx, float fy, float fz)      = nullptr;
+    void (*Physics_AddImpulse)(uint64_t entityID, float fx, float fy, float fz)    = nullptr;
+    void (*Physics_SetVelocity)(uint64_t entityID, float vx, float vy, float vz)   = nullptr;
+    void (*Physics_GetVelocity)(uint64_t entityID, float* vx, float* vy, float* vz)= nullptr;
+    void (*Physics_SetAngularVelocity)(uint64_t entityID, float vx, float vy, float vz) = nullptr;
+
+    // Physics: queries
+    bool (*Physics_Raycast)(float ox, float oy, float oz,
+                            float dx, float dy, float dz,
+                            float maxDist, ScriptRaycastHit* hit) = nullptr;
+
+    // Scene
+    void (*Scene_LoadScene)(const char* path)    = nullptr;
 
     // Audio
     uint32_t (*Audio_Play)(const char* clipPath, float volume, float pitch, bool loop) = nullptr;
@@ -79,6 +115,12 @@ public:
     virtual void OnCreate() {}
     virtual void OnUpdate(float deltaTime) {}
     virtual void OnDestroy() {}
+
+    // Collision callbacks — override in scripts to handle physics events
+    virtual void OnCollisionEnter(const ScriptCollisionInfo& info) {}
+    virtual void OnCollisionExit(uint64_t otherEntityID) {}
+    virtual void OnTriggerEnter(uint64_t otherEntityID) {}
+    virtual void OnTriggerExit(uint64_t otherEntityID) {}
 
     // Property reflection — override via VE_PROPERTIES macro
     virtual const ScriptPropertyInfo* GetProperties(int& count) const { count = 0; return nullptr; }

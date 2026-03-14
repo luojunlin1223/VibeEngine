@@ -7,9 +7,27 @@
 #pragma once
 
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
 #include <memory>
+#include <vector>
+#include <cstdint>
 
 namespace VE {
+
+struct RaycastHit {
+    glm::vec3 Point  = glm::vec3(0.0f);
+    glm::vec3 Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    float     Distance = 0.0f;
+    uint32_t  BodyID = 0xFFFFFFFF;
+};
+
+struct CollisionEvent {
+    uint32_t BodyA = 0xFFFFFFFF;
+    uint32_t BodyB = 0xFFFFFFFF;
+    glm::vec3 ContactPoint  = glm::vec3(0.0f);
+    glm::vec3 ContactNormal = glm::vec3(0.0f, 1.0f, 0.0f);
+    bool IsEnter = true; // true = enter, false = exit
+};
 
 class PhysicsWorld {
 public:
@@ -29,6 +47,21 @@ public:
     void RemoveBody(uint32_t joltBodyID);
 
     void SetGravity(float x, float y, float z);
+
+    // ── Physics queries ─────────────────────────────────────────────
+    bool Raycast(const glm::vec3& origin, const glm::vec3& direction,
+                 float maxDistance, RaycastHit& outHit) const;
+
+    // ── Body manipulation ───────────────────────────────────────────
+    void AddForce(uint32_t bodyID, const glm::vec3& force);
+    void AddImpulse(uint32_t bodyID, const glm::vec3& impulse);
+    void SetLinearVelocity(uint32_t bodyID, const glm::vec3& velocity);
+    glm::vec3 GetLinearVelocity(uint32_t bodyID) const;
+    void SetAngularVelocity(uint32_t bodyID, const glm::vec3& velocity);
+
+    // ── Collision events ────────────────────────────────────────────
+    const std::vector<CollisionEvent>& GetCollisionEvents() const;
+    void ClearCollisionEvents();
 
 private:
     struct Impl;

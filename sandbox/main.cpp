@@ -3321,6 +3321,9 @@ private:
             }
             if (removeLOD)
                 m_SelectedEntity.RemoveComponent<VE::LODGroupComponent>();
+            ImGui::Separator();
+        }
+
         // ── Terrain Component Inspector ───────────────────────────
         if (m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
             bool removeC = false;

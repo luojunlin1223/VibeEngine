@@ -155,6 +155,20 @@ public:
     RenderPipelineSettings& GetPipelineSettings() { return m_PipelineSettings; }
     const RenderPipelineSettings& GetPipelineSettings() const { return m_PipelineSettings; }
 
+    // Physics queries (delegates to PhysicsWorld)
+    PhysicsWorld* GetPhysicsWorld() const { return m_PhysicsWorld.get(); }
+
+    // Find entity by JoltBodyID (for collision callback dispatch)
+    entt::entity FindEntityByBodyID(uint32_t bodyID) const;
+
+    // Dispatch collision events to scripts
+    void DispatchCollisionEvents();
+
+    // Scene loading request (processed at end of frame)
+    void RequestLoadScene(const std::string& path) { m_PendingScenePath = path; }
+    const std::string& GetPendingScene() const { return m_PendingScenePath; }
+    void ClearPendingScene() { m_PendingScenePath.clear(); }
+
 private:
     entt::registry m_Registry;
     uint32_t m_EntityCounter = 0;
@@ -167,6 +181,8 @@ private:
     std::unique_ptr<ShadowMap> m_ShadowMap;
     bool m_ShadowsComputed = false; // true if ComputeShadows ran this frame
     glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
+
+    std::string m_PendingScenePath; // scene to load at end of frame
 
     friend class Entity;
 };
