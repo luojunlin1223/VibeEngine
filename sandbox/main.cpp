@@ -85,9 +85,6 @@ protected:
         if (m_PlayMode) {
             VE::ScriptEngine::CheckForReload();
 
-            // ── Built-in input test: move "Player"-tagged entities ──
-            UpdatePlayerController(m_DeltaTime);
-
             // Update 3D audio listener from camera
             glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
                 ? m_Camera.GetPosition3D()
@@ -1034,42 +1031,6 @@ private:
     // ── Editor settings persistence ──────────────────────────────────
 
     // ── Built-in player controller for input testing ──────────────────
-    void UpdatePlayerController(float dt) {
-        auto* playerMap = VE::InputActions::GetMap("Player");
-        if (!playerMap || !playerMap->IsEnabled()) return;
-
-        auto* moveH = playerMap->GetAction("MoveHorizontal");
-        auto* moveV = playerMap->GetAction("MoveVertical");
-        auto* jump  = playerMap->GetAction("Jump");
-        auto* sprint = playerMap->GetAction("Sprint");
-
-        float hInput = moveH ? moveH->GetValue() : 0.0f;
-        float vInput = moveV ? moveV->GetValue() : 0.0f;
-
-        if (std::abs(hInput) < 0.01f && std::abs(vInput) < 0.01f
-            && !(jump && jump->IsPressed()))
-            return;
-
-        float speed = 5.0f;
-        if (sprint && sprint->IsDown()) speed *= 2.0f;
-
-        // Move all entities tagged "Player"
-        auto view = m_Scene->GetAllEntitiesWith<VE::TagComponent, VE::TransformComponent>();
-        for (auto e : view) {
-            auto& tag = view.get<VE::TagComponent>(e);
-            if (tag.GameObjectTag != "Player") continue;
-
-            auto& tc = view.get<VE::TransformComponent>(e);
-            tc.Position[0] += hInput * speed * dt;
-            tc.Position[2] -= vInput * speed * dt; // Z is forward in 3D
-
-            // Jump: quick upward impulse
-            if (jump && jump->IsPressed() && tc.Position[1] <= 0.55f) {
-                tc.Position[1] = 2.5f; // simple teleport jump for testing
-            }
-        }
-    }
-
     void SetupDefaultInputActions() {
         // Try loading saved input map first
         auto& playerMap = VE::InputActions::CreateMap("Player");
