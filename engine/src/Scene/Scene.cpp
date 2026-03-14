@@ -126,6 +126,20 @@ glm::mat4 Scene::GetWorldTransform(entt::entity entity) const {
     return local;
 }
 
+bool Scene::IsEntityActiveInHierarchy(entt::entity entity) const {
+    if (!m_Registry.valid(entity)) return false;
+    if (m_Registry.all_of<TagComponent>(entity)) {
+        if (!m_Registry.get<TagComponent>(entity).Active)
+            return false;
+    }
+    if (m_Registry.all_of<RelationshipComponent>(entity)) {
+        auto& rel = m_Registry.get<RelationshipComponent>(entity);
+        if (rel.Parent != entt::null && m_Registry.valid(rel.Parent))
+            return IsEntityActiveInHierarchy(rel.Parent);
+    }
+    return true;
+}
+
 void Scene::OnUpdate(float deltaTime) {
     if (m_PhysicsRunning && m_PhysicsWorld) {
         static constexpr float PHYSICS_DT = 1.0f / 60.0f;
@@ -141,6 +155,7 @@ void Scene::OnUpdate(float deltaTime) {
     {
         auto scriptView = m_Registry.view<ScriptComponent>();
         for (auto entity : scriptView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
             auto& sc = scriptView.get<ScriptComponent>(entity);
             if (sc._Instance)
                 sc._Instance->OnUpdate(deltaTime);
@@ -151,6 +166,7 @@ void Scene::OnUpdate(float deltaTime) {
     {
         auto animView = m_Registry.view<AnimatorComponent>();
         for (auto entity : animView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
             auto& ac = animView.get<AnimatorComponent>(entity);
             if (ac._Animator)
                 ac._Animator->Update(deltaTime);
@@ -161,6 +177,7 @@ void Scene::OnUpdate(float deltaTime) {
     {
         auto saView = m_Registry.view<SpriteAnimatorComponent, SpriteRendererComponent>();
         for (auto entity : saView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
             auto& sa = saView.get<SpriteAnimatorComponent>(entity);
             if (!sa._Playing) continue;
 
@@ -453,6 +470,7 @@ void Scene::ComputeShadows(const glm::mat4& viewMatrix,
         depthShader->SetMat4("u_LightSpaceMatrix", m_ShadowMap->GetLightSpaceMatrix(c));
 
         for (auto entityID : meshView) {
+            if (!IsEntityActiveInHierarchy(entityID)) continue;
             auto [tc, mr] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
             if (!mr.Mesh || !mr.CastShadows) continue;
 
@@ -482,6 +500,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     {
         auto lightView = m_Registry.view<DirectionalLightComponent>();
         for (auto lightEntity : lightView) {
+            if (!IsEntityActiveInHierarchy(lightEntity)) continue;
             auto& dl = lightView.get<DirectionalLightComponent>(lightEntity);
             glm::vec3 dir(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
             float len = glm::length(dir);
@@ -504,6 +523,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto plEntity : plView) {
             if (numPointLights >= MAX_POINT_LIGHTS) break;
+            if (!IsEntityActiveInHierarchy(plEntity)) continue;
             auto [tc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
             glm::mat4 worldMat = GetWorldTransform(plEntity);
             pointPositions[numPointLights]  = glm::vec3(worldMat[3]); // extract translation
@@ -578,6 +598,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entityID : view) {
+        if (!IsEntityActiveInHierarchy(entityID)) continue;
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
 
         if (!mr.Mesh || !mr.Mat)
@@ -691,6 +712,7 @@ void Scene::OnRenderSprites(const glm::mat4& viewProjection) {
     sprites.reserve(view.size_hint());
 
     for (auto e : view) {
+        if (!IsEntityActiveInHierarchy(e)) continue;
         auto& sr = view.get<SpriteRendererComponent>(e);
         auto& tc = view.get<TransformComponent>(e);
         sprites.push_back({ e, sr.SortingOrder, tc.Position[2] });
@@ -771,6 +793,7 @@ void Scene::StopParticles() {
 void Scene::OnUpdateParticles(float dt) {
     auto view = m_Registry.view<TransformComponent, ParticleSystemComponent>();
     for (auto entity : view) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
         auto& tc = view.get<TransformComponent>(entity);
         auto& ps = view.get<ParticleSystemComponent>(entity);
         if (!ps._Playing) continue;
@@ -832,6 +855,7 @@ void Scene::OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& 
 
     bool anyActive = false;
     for (auto e : view) {
+        if (!IsEntityActiveInHierarchy(e)) continue;
         auto& ps = view.get<ParticleSystemComponent>(e);
         if (!ps._Playing) continue;
         for (auto& p : ps._Particles) {
@@ -916,6 +940,7 @@ void Scene::OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
     // First pass: update button states
     auto buttonView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
     for (auto entity : buttonView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
         auto& rt = buttonView.get<UIRectTransformComponent>(entity);
         auto& btn = buttonView.get<UIButtonComponent>(entity);
         auto pos = ComputeScreenPos(rt);
@@ -928,6 +953,7 @@ void Scene::OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
     // Render UIImageComponents
     auto imageView = m_Registry.view<UIRectTransformComponent, UIImageComponent>();
     for (auto entity : imageView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
         auto& rt = imageView.get<UIRectTransformComponent>(entity);
         auto& img = imageView.get<UIImageComponent>(entity);
         auto pos = ComputeScreenPos(rt);
@@ -951,6 +977,7 @@ void Scene::OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
     // Render buttons without images (colored rect)
     auto btnOnlyView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
     for (auto entity : btnOnlyView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
         if (m_Registry.all_of<UIImageComponent>(entity)) continue; // already drawn
         auto& rt = btnOnlyView.get<UIRectTransformComponent>(entity);
         auto& btn = btnOnlyView.get<UIButtonComponent>(entity);
@@ -964,6 +991,7 @@ void Scene::OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
     // Render UITextComponents
     auto textView = m_Registry.view<UIRectTransformComponent, UITextComponent>();
     for (auto entity : textView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
         auto& rt = textView.get<UIRectTransformComponent>(entity);
         auto& txt = textView.get<UITextComponent>(entity);
         auto pos = ComputeScreenPos(rt);

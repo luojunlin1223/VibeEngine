@@ -39,6 +39,8 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "Tag" << YAML::Value << tc.Tag;
         out << YAML::Key << "GameObjectTag" << YAML::Value << tc.GameObjectTag;
         out << YAML::Key << "Layer" << YAML::Value << tc.Layer;
+        if (!tc.Active)
+            out << YAML::Key << "Active" << YAML::Value << false;
         out << YAML::EndMap;
     }
 
@@ -541,10 +543,16 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             if (tagNode["Layer"]) layer = tagNode["Layer"].as<int>();
         }
 
+        bool active = true;
+        if (auto tagNode = entityNode["TagComponent"]) {
+            if (tagNode["Active"]) active = tagNode["Active"].as<bool>();
+        }
+
         Entity entity = scene->CreateEntityWithUUID(UUID(uuid), name);
         auto& tc = entity.GetComponent<TagComponent>();
         tc.GameObjectTag = goTag;
         tc.Layer = layer;
+        tc.Active = active;
 
         if (auto tcNode = entityNode["TransformComponent"]) {
             auto& tc = entity.GetComponent<TransformComponent>();

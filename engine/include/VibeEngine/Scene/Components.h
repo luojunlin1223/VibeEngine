@@ -60,6 +60,7 @@ struct TagComponent {
     std::string Tag;                         // entity name (like Unity's gameObject.name)
     std::string GameObjectTag = "Untagged";  // categorical tag (like Unity's gameObject.tag)
     int Layer = 0;                           // layer index 0-31 (like Unity's gameObject.layer)
+    bool Active = true;                      // like Unity's gameObject.activeSelf
 
     TagComponent() = default;
     TagComponent(const std::string& tag) : Tag(tag) {}

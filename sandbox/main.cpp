@@ -268,18 +268,7 @@ protected:
             m_Scene->OnRenderParticles(m_FrameVP, camPos);
         });
 
-        // Pass 5: Runtime UI
-        rg.AddPass("UI", [&](VE::RGBuilder& b) {
-            b.Write(sceneColor);
-            b.SideEffect();
-        }, [&](const VE::RGResources&) {
-            double mx, my;
-            glfwGetCursorPos(GetWindow().GetNativeWindow(), &mx, &my);
-            bool mouseDown = glfwGetMouseButton(GetWindow().GetNativeWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-            m_Scene->OnRenderUI(fbW, fbH, (float)mx, (float)my, mouseDown);
-        });
-
-        // Pass 6: Outline (conditional on selection)
+        // Pass 5: Outline (conditional on selection)
         if (m_OutlineEnabled && m_SelectedEntity) {
             rg.AddPass("Outline", [&](VE::RGBuilder& b) {
                 b.Write(sceneColor);
@@ -289,7 +278,7 @@ protected:
             });
         }
 
-        // Pass 7: PostProcess
+        // Pass 6: PostProcess
         rg.AddPass("PostProcess", [&](VE::RGBuilder& b) {
             b.Read(sceneColor);
             b.SideEffect();
@@ -313,6 +302,7 @@ protected:
             entt::entity singleCam = entt::null;
             int highestPriority = std::numeric_limits<int>::min();
             for (auto e : camView) {
+                if (!m_Scene->IsEntityActiveInHierarchy(e)) continue;
                 camCount++;
                 singleCam = e;
                 auto& tag = camView.get<VE::TagComponent>(e);
@@ -1486,14 +1476,21 @@ private:
 
         bool isSelected = (m_SelectedEntity.GetHandle() == entityID);
         bool hasChildren = !rel.Children.empty();
+        bool isActive = m_Scene->IsEntityActiveInHierarchy(entityID);
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (isSelected) flags |= ImGuiTreeNodeFlags_Selected;
         if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf;
 
+        if (!isActive)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 0.6f));
+
         bool opened = ImGui::TreeNodeEx(
             reinterpret_cast<void*>(static_cast<uintptr_t>(static_cast<uint32_t>(entityID))),
             flags, "%s", tag.Tag.c_str());
+
+        if (!isActive)
+            ImGui::PopStyleColor();
 
         if (ImGui::IsItemClicked()) {
             m_SelectedEntity = VE::Entity(entityID, &*m_Scene);
@@ -2214,7 +2211,9 @@ private:
         if (m_SelectedEntity.HasComponent<VE::TagComponent>()) {
             auto& tag = m_SelectedEntity.GetComponent<VE::TagComponent>();
 
-            // Name
+            // Active toggle + Name on same line
+            ImGui::Checkbox("##Active", &tag.Active);
+            ImGui::SameLine();
             char buffer[256];
             strncpy(buffer, tag.Tag.c_str(), sizeof(buffer) - 1);
             buffer[sizeof(buffer) - 1] = '\0';

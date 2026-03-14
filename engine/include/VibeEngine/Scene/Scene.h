@@ -92,6 +92,9 @@ public:
     // Compute world model matrix (walks parent chain)
     glm::mat4 GetWorldTransform(entt::entity entity) const;
 
+    // Check if entity is active in hierarchy (self + all parents must be active)
+    bool IsEntityActiveInHierarchy(entt::entity entity) const;
+
     void OnUpdate(float deltaTime = 0.0f);
     void OnRenderSky(const glm::mat4& skyViewProjection);
 
