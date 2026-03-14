@@ -579,6 +579,17 @@ void MeshLibrary::Init() {
         skyMat->SetLit(false);
         skyMat->PopulateFromShader();
         MaterialLibrary::Register(skyMat);
+
+        // Water material
+        auto waterShader = Shader::CreateFromFile("shaders/Water.shader");
+        if (waterShader) {
+            waterShader->SetName("Water");
+            ShaderLibrary::Register("Water", waterShader);
+            auto waterMat = Material::Create("Water", waterShader);
+            waterMat->SetLit(true);
+            waterMat->PopulateFromShader();
+            MaterialLibrary::Register(waterMat);
+        }
     }
 
     VE_ENGINE_INFO("MeshLibrary initialized (Triangle, Quad, Cube, Sphere)");

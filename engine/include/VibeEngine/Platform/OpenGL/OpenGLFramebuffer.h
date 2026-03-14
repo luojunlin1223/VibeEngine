@@ -21,6 +21,9 @@ public:
 
     uint64_t Resolve() override;
     bool IsMultisampled() const override { return m_Multisampled; }
+    uint64_t GetDepthAttachmentID() const override {
+        return static_cast<uint64_t>(m_Multisampled ? m_ResolveDepthAttachment : m_DepthAttachment);
+    }
 
 private:
     void Invalidate();
@@ -37,6 +40,7 @@ private:
     bool m_Multisampled = false;
     uint32_t m_ResolveFBO = 0;
     uint32_t m_ResolveColorAttachment = 0;
+    uint32_t m_ResolveDepthAttachment = 0;
 };
 
 } // namespace VE

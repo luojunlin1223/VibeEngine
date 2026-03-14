@@ -77,6 +77,23 @@ layout(location = 0) out vec4 FragColor;
 uniform sampler2D u_Scene;
 uniform sampler2D u_Bloom;
 uniform sampler2D u_CurvesLUT;  // 256x1 RGBA
+uniform sampler2D u_SSAOTex;
+
+// SSAO
+uniform bool u_SSAOEnabled;
+
+// Fog
+uniform bool  u_FogEnabled;
+uniform int   u_FogMode;       // 0=Linear, 1=Exp, 2=Exp2
+uniform vec3  u_FogColor;
+uniform float u_FogDensity;
+uniform float u_FogStart;
+uniform float u_FogEnd;
+uniform float u_FogHeightFalloff;
+uniform float u_FogMaxOpacity;
+uniform sampler2D u_DepthTex;
+uniform float u_NearClip;
+uniform float u_FarClip;
 
 // Bloom
 uniform bool  u_BloomEnabled;
@@ -147,6 +164,42 @@ void main() {
     if (u_BloomEnabled) {
         vec3 bloom = texture(u_Bloom, v_UV).rgb;
         color += bloom * u_BloomIntensity;
+    }
+
+    // 1b. SSAO
+    if (u_SSAOEnabled) {
+        float ao = texture(u_SSAOTex, v_UV).r;
+        color *= ao;
+    }
+
+    // 1c. Fog
+    if (u_FogEnabled) {
+        float depth = texture(u_DepthTex, v_UV).r;
+        if (depth < 1.0) { // skip sky
+            // Linearize depth
+            float z = depth * 2.0 - 1.0;
+            float linearDepth = 2.0 * u_NearClip * u_FarClip / (u_FarClip + u_NearClip - z * (u_FarClip - u_NearClip));
+
+            float fogFactor = 0.0;
+            if (u_FogMode == 0) { // Linear
+                fogFactor = clamp((linearDepth - u_FogStart) / max(u_FogEnd - u_FogStart, 0.001), 0.0, 1.0);
+            } else if (u_FogMode == 1) { // Exponential
+                fogFactor = 1.0 - exp(-u_FogDensity * linearDepth);
+            } else { // Exponential Squared
+                float d = u_FogDensity * linearDepth;
+                fogFactor = 1.0 - exp(-d * d);
+            }
+
+            // Height-based falloff (reconstruct approximate world Y from screen position)
+            if (u_FogHeightFalloff > 0.0) {
+                // Use v_UV.y as a proxy for height: bottom of screen = lower = more fog
+                float heightAtten = exp(-u_FogHeightFalloff * (1.0 - v_UV.y) * linearDepth * 0.01);
+                fogFactor *= heightAtten;
+            }
+
+            fogFactor = clamp(fogFactor, 0.0, u_FogMaxOpacity);
+            color = mix(color, u_FogColor, fogFactor);
+        }
     }
 
     // 2. Exposure (before color grading, in linear HDR)
@@ -388,6 +441,93 @@ void main() {
 }
 )";
 
+// ── Volumetric fog shader (ray marching with Henyey-Greenstein phase) ─
+
+static const char* s_VolFogFragSrc = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+
+uniform sampler2D u_Scene;
+uniform sampler2D u_DepthTex;
+
+uniform mat4  u_InvProjection;
+uniform mat4  u_InvView;
+uniform vec3  u_LightDir;
+uniform vec3  u_FogColor;
+uniform float u_Density;
+uniform float u_Scattering;
+uniform float u_LightIntensity;
+uniform int   u_Steps;
+uniform float u_MaxDistance;
+uniform float u_HeightFalloff;
+uniform float u_BaseHeight;
+uniform float u_NearClip;
+uniform float u_FarClip;
+
+// Henyey-Greenstein phase function
+float HG(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * 3.14159265 * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+}
+
+vec3 WorldPosFromDepth(vec2 uv, float depth) {
+    vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 viewPos = u_InvProjection * ndc;
+    viewPos /= viewPos.w;
+    vec4 worldPos = u_InvView * viewPos;
+    return worldPos.xyz;
+}
+
+void main() {
+    vec3 sceneColor = texture(u_Scene, v_UV).rgb;
+    float depth = texture(u_DepthTex, v_UV).r;
+
+    // Reconstruct world positions
+    vec3 worldNear = WorldPosFromDepth(v_UV, 0.0);
+    vec3 worldFar  = (depth < 1.0) ? WorldPosFromDepth(v_UV, depth) : WorldPosFromDepth(v_UV, 0.9999);
+
+    vec3 rayDir = normalize(worldFar - worldNear);
+    float maxDist = (depth < 1.0) ? length(worldFar - worldNear) : u_MaxDistance;
+    maxDist = min(maxDist, u_MaxDistance);
+
+    float stepSize = maxDist / float(u_Steps);
+    vec3 L = normalize(u_LightDir);
+    float cosTheta = dot(rayDir, L);
+    float phase = HG(cosTheta, u_Scattering);
+
+    float transmittance = 1.0;
+    vec3  inScatter = vec3(0.0);
+
+    for (int i = 0; i < u_Steps; i++) {
+        float t = (float(i) + 0.5) * stepSize;
+        vec3 samplePos = worldNear + rayDir * t;
+
+        // Height-dependent density
+        float heightDensity = u_Density;
+        if (u_HeightFalloff > 0.0) {
+            float h = samplePos.y - u_BaseHeight;
+            heightDensity *= exp(-max(h, 0.0) * u_HeightFalloff);
+        }
+
+        float extinction = heightDensity * stepSize;
+        float sampleTransmittance = exp(-extinction);
+
+        // In-scattering from directional light
+        vec3 luminance = u_FogColor * phase * u_LightIntensity * heightDensity;
+
+        // Integrate (energy-conserving)
+        inScatter += luminance * transmittance * (1.0 - sampleTransmittance) / max(heightDensity, 0.0001);
+        transmittance *= sampleTransmittance;
+
+        if (transmittance < 0.01) break; // early out
+    }
+
+    vec3 result = sceneColor * transmittance + inScatter;
+    FragColor = vec4(result, 1.0);
+}
+)";
+
 // ── Shader compilation helpers ───────────────────────────────────────
 
 static uint32_t CompileShader(GLenum type, const char* src) {
@@ -511,6 +651,7 @@ void PostProcessing::Shutdown() {
     if (m_CompositeShader) { glDeleteProgram(m_CompositeShader); m_CompositeShader = 0; }
     if (m_FXAAShader) { glDeleteProgram(m_FXAAShader); m_FXAAShader = 0; }
     if (m_TAAShader) { glDeleteProgram(m_TAAShader); m_TAAShader = 0; }
+    if (m_VolFogShader) { glDeleteProgram(m_VolFogShader); m_VolFogShader = 0; }
 
     m_Initialized = false;
 }
@@ -532,6 +673,7 @@ void PostProcessing::CompileShaders() {
     m_CompositeShader = LinkProgram(s_QuadVertexSrc, s_CompositeFragSrc);
     m_FXAAShader = LinkProgram(s_QuadVertexSrc, s_FXAAFragSrc);
     m_TAAShader = LinkProgram(s_QuadVertexSrc, s_TAAFragSrc);
+    m_VolFogShader = LinkProgram(s_QuadVertexSrc, s_VolFogFragSrc);
 }
 
 static uint32_t CreateColorFBO(uint32_t& texture, uint32_t w, uint32_t h) {
@@ -564,6 +706,9 @@ void PostProcessing::CreateResources() {
         m_BlurFBO[i] = CreateColorFBO(m_BlurTexture[i], halfW, halfH);
     m_CompositeFBO = CreateColorFBO(m_CompositeTexture, m_Width, m_Height);
 
+    // Volumetric fog output
+    m_VolFogFBO = CreateColorFBO(m_VolFogTexture, m_Width, m_Height);
+
     // FXAA output
     m_FXAAFBO = CreateColorFBO(m_FXAATexture, m_Width, m_Height);
 
@@ -583,6 +728,7 @@ void PostProcessing::DestroyResources() {
     deleteFBO(m_BlurFBO[0], m_BlurTexture[0]);
     deleteFBO(m_BlurFBO[1], m_BlurTexture[1]);
     deleteFBO(m_CompositeFBO, m_CompositeTexture);
+    deleteFBO(m_VolFogFBO, m_VolFogTexture);
     deleteFBO(m_FXAAFBO, m_FXAATexture);
     deleteFBO(m_TAAHistoryFBO[0], m_TAAHistoryTex[0]);
     deleteFBO(m_TAAHistoryFBO[1], m_TAAHistoryTex[1]);
@@ -621,7 +767,9 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
     bool anyEffect = settings.Bloom.Enabled || settings.Vignette.Enabled
                   || settings.Color.Enabled || settings.SMH.Enabled
                   || settings.Curves.Enabled || settings.Tonemap.Enabled
-                  || settings.FXAA.Enabled || settings.TAA.Enabled;
+                  || settings.FXAA.Enabled || settings.TAA.Enabled
+                  || settings.SSAOTexture || settings.Fog.Enabled
+                  || settings.VolumetricFog.Enabled;
     if (!anyEffect)
         return sceneColorTexture;
 
@@ -672,6 +820,41 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         BakeCurvesLUT(settings.Curves);
     }
 
+    // ── Volumetric fog pass (ray march before composite) ──────────────
+    uint32_t volFogInput = sceneColorTexture;
+    if (settings.VolumetricFog.Enabled && settings.DepthTexture) {
+        glBindFramebuffer(GL_FRAMEBUFFER, m_VolFogFBO);
+        glViewport(0, 0, m_Width, m_Height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(m_VolFogShader);
+
+        glUniform1i(glGetUniformLocation(m_VolFogShader, "u_Scene"), 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
+
+        glUniform1i(glGetUniformLocation(m_VolFogShader, "u_DepthTex"), 1);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, settings.DepthTexture);
+
+        glUniformMatrix4fv(glGetUniformLocation(m_VolFogShader, "u_InvProjection"), 1, GL_FALSE, &settings.InvProjection[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(m_VolFogShader, "u_InvView"), 1, GL_FALSE, &settings.InvView[0][0]);
+        glUniform3fv(glGetUniformLocation(m_VolFogShader, "u_LightDir"), 1, &settings.LightDir[0]);
+        glUniform3f(glGetUniformLocation(m_VolFogShader, "u_FogColor"),
+                    settings.VolumetricFog.Color[0], settings.VolumetricFog.Color[1], settings.VolumetricFog.Color[2]);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_Density"), settings.VolumetricFog.Density);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_Scattering"), settings.VolumetricFog.Scattering);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_LightIntensity"), settings.VolumetricFog.LightIntensity);
+        glUniform1i(glGetUniformLocation(m_VolFogShader, "u_Steps"), settings.VolumetricFog.Steps);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_MaxDistance"), settings.VolumetricFog.MaxDistance);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_HeightFalloff"), settings.VolumetricFog.HeightFalloff);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_BaseHeight"), settings.VolumetricFog.BaseHeight);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_NearClip"), settings.NearClip);
+        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_FarClip"), settings.FarClip);
+
+        RenderFullscreenQuad();
+        sceneColorTexture = m_VolFogTexture; // feed into composite
+    }
+
     // ── Composite pass ───────────────────────────────────────────────
     glBindFramebuffer(GL_FRAMEBUFFER, m_CompositeFBO);
     glViewport(0, 0, m_Width, m_Height);
@@ -690,6 +873,32 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glUniform1f(glGetUniformLocation(m_CompositeShader, "u_BloomIntensity"), settings.Bloom.Intensity);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, bloomTex);
+    }
+
+    // Fog
+    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_FogEnabled"), settings.Fog.Enabled ? 1 : 0);
+    if (settings.Fog.Enabled && settings.DepthTexture) {
+        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_FogMode"), static_cast<int>(settings.Fog.Mode));
+        glUniform3f(glGetUniformLocation(m_CompositeShader, "u_FogColor"),
+                    settings.Fog.Color[0], settings.Fog.Color[1], settings.Fog.Color[2]);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogDensity"), settings.Fog.Density);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogStart"), settings.Fog.Start);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogEnd"), settings.Fog.End);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogHeightFalloff"), settings.Fog.HeightFalloff);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogMaxOpacity"), settings.Fog.MaxOpacity);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_NearClip"), settings.NearClip);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FarClip"), settings.FarClip);
+        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_DepthTex"), 4);
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, settings.DepthTexture);
+    }
+
+    // Texture unit 3: SSAO
+    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSAOEnabled"), settings.SSAOTexture ? 1 : 0);
+    if (settings.SSAOTexture) {
+        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSAOTex"), 3);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, settings.SSAOTexture);
     }
 
     // Texture unit 2: curves LUT

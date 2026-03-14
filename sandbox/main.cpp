@@ -32,7 +32,6 @@ public:
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
         VE::InstancedRenderer::Init();
-        VE::GridRenderer::Init();
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
@@ -73,7 +72,6 @@ public:
     ~Sandbox() override {
         SaveEditorSettings();
         VE::UIRenderer::Shutdown();
-        VE::GridRenderer::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
@@ -83,7 +81,19 @@ public:
 
 protected:
     void OnUpdate() override {
-        m_Scene->OnUpdate(m_DeltaTime);
+        // Pause support: skip scene update when paused (unless stepping)
+        bool shouldUpdate = true;
+        if (m_PlayMode && m_Paused && !m_StepOneFrame)
+            shouldUpdate = false;
+
+        if (shouldUpdate)
+            m_Scene->OnUpdate(m_DeltaTime);
+
+        if (m_StepOneFrame) {
+            m_StepOneFrame = false;
+            m_Paused = true;
+        }
+
         m_AssetDatabase.Update(m_DeltaTime);
         if (m_PlayMode) {
             VE::ScriptEngine::CheckForReload();
@@ -146,23 +156,18 @@ protected:
             static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
             GL_UNSIGNED_INT, nullptr);
 
-        // Pass 2: draw scaled-up mesh with Cull Front (back-faces only),
-        // only where stencil != 1. Depth test stays enabled so the
-        // enlarged back-faces only appear at the silhouette edge.
+        // Pass 2: draw scaled-up mesh in outline color, only where stencil != 1
         glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
         glStencilMask(0x00);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_FRONT); // only draw back-faces of the enlarged mesh
+        glDisable(GL_DEPTH_TEST);
 
         VE::AABB localBox = VE::AABB{ glm::vec3(-0.5f), glm::vec3(0.5f) };
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>())
             localBox = GetEntityLocalAABB(m_SelectedEntity.GetComponent<VE::MeshRendererComponent>());
         glm::vec3 center = localBox.Center();
 
-        float outlineScale = 1.04f;
+        float outlineScale = 1.05f;
         glm::mat4 scaledModel = model
             * glm::translate(glm::mat4(1.0f), center)
             * glm::scale(glm::mat4(1.0f), glm::vec3(outlineScale))
@@ -182,7 +187,6 @@ protected:
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
-        glCullFace(GL_BACK);
     }
 
     VE::PostProcessSettings BuildPostProcessSettings() const {
@@ -200,6 +204,26 @@ protected:
         s.Curves.Green.Points  = ps.CurvesGreen;
         s.Curves.Blue.Points   = ps.CurvesBlue;
         s.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+        // Fog
+        s.Fog = { ps.FogEnabled, static_cast<VE::FogMode>(ps.FogMode), ps.FogColor,
+                  ps.FogDensity, ps.FogStart, ps.FogEnd, ps.FogHeightFalloff, ps.FogMaxOpacity };
+        // Volumetric fog
+        s.VolumetricFog = { ps.VolFogEnabled, ps.VolFogDensity, ps.VolFogScattering,
+                            ps.VolFogLightIntensity, ps.VolFogColor, ps.VolFogSteps,
+                            ps.VolFogMaxDistance, ps.VolFogHeightFalloff, ps.VolFogBaseHeight };
+        s.NearClip = m_Camera.GetNearClip();
+        s.FarClip  = m_Camera.GetFarClip();
+        s.InvProjection = glm::inverse(m_Camera.GetProjectionMatrix());
+        s.InvView       = glm::inverse(m_Camera.GetViewMatrix());
+        // Find directional light for volumetric fog god rays
+        {
+            auto lv = m_Scene->GetAllEntitiesWith<VE::DirectionalLightComponent>();
+            for (auto e : lv) {
+                auto& dl = lv.get<VE::DirectionalLightComponent>(e);
+                s.LightDir = glm::normalize(glm::vec3(dl.Direction[0], dl.Direction[1], dl.Direction[2]));
+                break;
+            }
+        }
         // Anti-aliasing
         if (ps.AAMode == 4) // FXAA
             s.FXAA = { true, ps.FXAAEdgeThreshold, ps.FXAAEdgeThresholdMin, ps.FXAASubpixelQuality };
@@ -304,18 +328,7 @@ protected:
             m_Scene->OnRenderParticles(m_FrameVP, camPos);
         });
 
-        // Pass 5: Grid (depth-tested, occluded by 3D objects)
-        if (m_GizmosEnabled) {
-            rg.AddPass("Grid", [&](VE::RGBuilder& b) {
-                b.Write(sceneColor);
-                b.SideEffect();
-            }, [&](const VE::RGResources&) {
-                bool is2D = (m_Camera.GetMode() == VE::CameraMode::Orthographic2D);
-                VE::GridRenderer::DrawGrid(m_FrameVP, camPos, 1.0f, is2D);
-            });
-        }
-
-        // Pass 6: Outline (conditional on selection)
+        // Pass 5: Outline (conditional on selection)
         if (m_OutlineEnabled && m_SelectedEntity) {
             rg.AddPass("Outline", [&](VE::RGBuilder& b) {
                 b.Write(sceneColor);
@@ -332,10 +345,25 @@ protected:
         }, [&](const VE::RGResources&) {
             if (m_Framebuffer) {
                 m_Framebuffer->Unbind();
-                // Resolve MSAA if active
                 if (m_Framebuffer->IsMultisampled())
                     m_Framebuffer->Resolve();
+
                 auto ppSettings = BuildPostProcessSettings();
+                uint32_t depthTex = static_cast<uint32_t>(m_Framebuffer->GetDepthAttachmentID());
+
+                // Pass depth for fog
+                ppSettings.DepthTexture = depthTex;
+
+                // Compute SSAO if enabled
+                auto& ps = m_Scene->GetPipelineSettings();
+                if (ps.SSAOEnabled) {
+                    VE::SSAOSettings ssaoSettings{ true, ps.SSAORadius, ps.SSAOBias,
+                                                    ps.SSAOIntensity, ps.SSAOKernelSize };
+                    ppSettings.SSAOTexture = m_SSAO.Compute(
+                        depthTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(),
+                        m_Camera.GetProjectionMatrix(), m_Camera.GetViewMatrix(), ssaoSettings);
+                }
+
                 uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
                 m_PostProcessedTexture = m_PostProcessing.Apply(
                     sceneTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(), ppSettings);
@@ -445,6 +473,18 @@ protected:
                     if (m_GameFramebuffer->IsMultisampled())
                         m_GameFramebuffer->Resolve();
                     auto ppSettings = BuildPostProcessSettings();
+                    uint32_t gDepthTex = static_cast<uint32_t>(m_GameFramebuffer->GetDepthAttachmentID());
+                    ppSettings.DepthTexture = gDepthTex;
+
+                    auto& gps = m_Scene->GetPipelineSettings();
+                    if (gps.SSAOEnabled) {
+                        VE::SSAOSettings ssaoS{ true, gps.SSAORadius, gps.SSAOBias,
+                                                 gps.SSAOIntensity, gps.SSAOKernelSize };
+                        ppSettings.SSAOTexture = m_GameSSAO.Compute(
+                            gDepthTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(),
+                            gameProj, gameView, ssaoS);
+                    }
+
                     uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
                     m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
                         gameTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(), ppSettings);
@@ -482,8 +522,9 @@ protected:
                 | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize
                 | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
             ImGuiViewport* vp = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(vp->WorkPos);
-            ImGui::SetNextWindowSize(vp->WorkSize);
+            float toolbarH = 32.0f;
+            ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x, vp->WorkPos.y + toolbarH));
+            ImGui::SetNextWindowSize(ImVec2(vp->WorkSize.x, vp->WorkSize.y - toolbarH));
             ImGui::SetNextWindowViewport(vp->ID);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -525,30 +566,7 @@ protected:
                     m_DraggingAxis, pos, io.MousePos.x, io.MousePos.y, rot);
                 int comp = (m_DraggingAxis == VE::GizmoAxis::X) ? 0
                          : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
-                float delta = val - m_DragOriginVal;
-
-                // Snap helper: round to nearest multiple
-                auto snapTo = [](float value, float grid) -> float {
-                    return std::round(value / grid) * grid;
-                };
-                bool snapping = io.KeyCtrl; // hold Ctrl to snap
-
-                if (m_GizmoMode == 0) {
-                    // Translate
-                    float newVal = m_DragStartPos[comp] + delta;
-                    if (snapping) newVal = snapTo(newVal, m_SnapTranslate);
-                    tc.Position[comp] = newVal;
-                } else if (m_GizmoMode == 1) {
-                    // Rotate (map delta to degrees)
-                    float newVal = m_DragStartPos[comp] + delta * 100.0f;
-                    if (snapping) newVal = snapTo(newVal, m_SnapRotate);
-                    tc.Rotation[comp] = newVal;
-                } else if (m_GizmoMode == 2) {
-                    // Scale (map delta to scale factor)
-                    float newVal = m_DragStartPos[comp] + delta;
-                    if (snapping) newVal = snapTo(newVal, m_SnapScale);
-                    tc.Scale[comp] = std::max(0.01f, newVal);
-                }
+                tc.Position[comp] = m_DragStartPos[comp] + (val - m_DragOriginVal);
             } else {
                 if (!m_PlayMode) m_CommandHistory.EndPropertyEdit();
                 m_DraggingAxis = VE::GizmoAxis::None;
@@ -563,13 +581,6 @@ protected:
                 m_Camera.OnMouseDrag(io.MouseDelta.x, io.MouseDelta.y);
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Right))
                 m_Camera.OnMouseRotate(io.MouseDelta.x, io.MouseDelta.y);
-
-            // Gizmo mode shortcuts (only when not typing in a text field)
-            if (!io.WantTextInput) {
-                if (ImGui::IsKeyPressed(ImGuiKey_W)) m_GizmoMode = 0; // Translate
-                if (ImGui::IsKeyPressed(ImGuiKey_E)) m_GizmoMode = 1; // Rotate
-                if (ImGui::IsKeyPressed(ImGuiKey_R)) m_GizmoMode = 2; // Scale
-            }
 
             // Focus camera on selected entity (F key) — zoom in and align to object's +Z
             if (ImGui::IsKeyPressed(ImGuiKey_F) && m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
@@ -604,19 +615,12 @@ protected:
                 }
 
                 if (axis != VE::GizmoAxis::None) {
-                    const char* editNames[] = { "Move Entity", "Rotate Entity", "Scale Entity" };
-                    if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit(editNames[m_GizmoMode]);
+                    if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit("Move Entity");
                     m_DraggingAxis = axis;
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                     glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
                     glm::mat3 rot = GetEntityRotation(tc);
-                    // Save start values based on gizmo mode
-                    if (m_GizmoMode == 0)
-                        m_DragStartPos = { tc.Position[0], tc.Position[1], tc.Position[2] };
-                    else if (m_GizmoMode == 1)
-                        m_DragStartPos = { tc.Rotation[0], tc.Rotation[1], tc.Rotation[2] };
-                    else
-                        m_DragStartPos = { tc.Scale[0], tc.Scale[1], tc.Scale[2] };
+                    m_DragStartPos = { tc.Position[0], tc.Position[1], tc.Position[2] };
                     m_DragOriginVal = VE::GizmoRenderer::ProjectMouseOntoAxis(
                         axis, pos, io.MousePos.x, io.MousePos.y, rot);
                 } else {
@@ -638,14 +642,6 @@ protected:
         DrawGameViewPanel();
         DrawInputSettingsPanel();
         DrawBuildPanel();
-        DrawConsolePanel();
-
-        // Restore focus over several frames (docking may reassign focus)
-        if (m_RestoreFocusFrame > 0) {
-            m_RestoreFocusFrame--;
-            if (!m_LastFocusedWindow.empty())
-                ImGui::SetWindowFocus(m_LastFocusedWindow.c_str());
-        }
 
     }
 
@@ -1005,70 +1001,6 @@ private:
         ImGui::End();
     }
 
-    // ── Console Panel ────────────────────────────────────────────────
-
-    void DrawConsolePanel() {
-        if (!m_ShowConsole) return;
-        ImGui::Begin("Console", &m_ShowConsole);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
-            m_LastFocusedWindow = "Console";
-
-        // Toolbar
-        if (ImGui::Button("Clear"))
-            VE::Console::Clear();
-        ImGui::SameLine();
-        ImGui::Checkbox("Info", &m_ConsoleShowInfo);
-        ImGui::SameLine();
-        ImGui::Checkbox("Warn", &m_ConsoleShowWarn);
-        ImGui::SameLine();
-        ImGui::Checkbox("Error", &m_ConsoleShowError);
-        ImGui::SameLine();
-        ImGui::Checkbox("Auto-scroll", &m_ConsoleAutoScroll);
-        ImGui::SameLine(ImGui::GetWindowWidth() - 200);
-        ImGui::SetNextItemWidth(180);
-        ImGui::InputTextWithHint("##filter", "Search...", m_ConsoleFilter, sizeof(m_ConsoleFilter));
-
-        ImGui::Separator();
-
-        // Log entries
-        ImGui::BeginChild("LogScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-
-        const auto& entries = VE::Console::GetEntries();
-        std::string filterStr(m_ConsoleFilter);
-
-        for (const auto& entry : entries) {
-            // Level filter
-            if (entry.Level == VE::LogLevel::Info && !m_ConsoleShowInfo) continue;
-            if (entry.Level == VE::LogLevel::Warn && !m_ConsoleShowWarn) continue;
-            if (entry.Level == VE::LogLevel::Error && !m_ConsoleShowError) continue;
-            if (entry.Level == VE::LogLevel::Trace && !m_ConsoleShowInfo) continue;
-
-            // Text filter
-            if (!filterStr.empty()) {
-                if (entry.Message.find(filterStr) == std::string::npos)
-                    continue;
-            }
-
-            // Color by level
-            ImVec4 color;
-            switch (entry.Level) {
-                case VE::LogLevel::Trace: color = {0.5f, 0.5f, 0.5f, 1.0f}; break;
-                case VE::LogLevel::Info:  color = {0.8f, 0.8f, 0.8f, 1.0f}; break;
-                case VE::LogLevel::Warn:  color = {1.0f, 0.9f, 0.3f, 1.0f}; break;
-                case VE::LogLevel::Error: color = {1.0f, 0.3f, 0.3f, 1.0f}; break;
-            }
-            ImGui::PushStyleColor(ImGuiCol_Text, color);
-            ImGui::TextUnformatted(entry.Message.c_str());
-            ImGui::PopStyleColor();
-        }
-
-        if (m_ConsoleAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10)
-            ImGui::SetScrollHereY(1.0f);
-
-        ImGui::EndChild();
-        ImGui::End();
-    }
-
     // ── LOD Test Scene ────────────────────────────────────────────────
 
     void CreateLODTestScene() {
@@ -1246,12 +1178,6 @@ private:
         out << YAML::Key << "ShowScripting" << YAML::Value << m_ShowScripting;
         out << YAML::Key << "ShowContentBrowser" << YAML::Value << m_ShowContentBrowser;
         out << YAML::Key << "ShowHierarchy" << YAML::Value << m_ShowHierarchy;
-        out << YAML::Key << "ShowInspector" << YAML::Value << m_ShowInspector;
-        out << YAML::Key << "ShowSceneInfo" << YAML::Value << m_ShowSceneInfo;
-        out << YAML::Key << "ShowInputSettings" << YAML::Value << m_ShowInputSettings;
-
-        // Last focused window
-        out << YAML::Key << "FocusedWindow" << YAML::Value << m_LastFocusedWindow;
 
         out << YAML::EndMap;
 
@@ -1323,16 +1249,6 @@ private:
                 m_ShowContentBrowser = root["ShowContentBrowser"].as<bool>(true);
             if (root["ShowHierarchy"])
                 m_ShowHierarchy = root["ShowHierarchy"].as<bool>(true);
-            if (root["ShowInspector"])
-                m_ShowInspector = root["ShowInspector"].as<bool>(true);
-            if (root["ShowSceneInfo"])
-                m_ShowSceneInfo = root["ShowSceneInfo"].as<bool>(true);
-            if (root["ShowInputSettings"])
-                m_ShowInputSettings = root["ShowInputSettings"].as<bool>(false);
-
-            // Restore focused window (apply on next frame)
-            if (root["FocusedWindow"])
-                m_LastFocusedWindow = root["FocusedWindow"].as<std::string>("");
 
             VE_INFO("Editor settings restored");
         } catch (const std::exception& e) {
@@ -1576,7 +1492,6 @@ private:
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
                 ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
-                ImGui::MenuItem("Console", nullptr, &m_ShowConsole);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -1598,7 +1513,6 @@ private:
 
         m_ViewportHovered = ImGui::IsWindowHovered();
         m_ViewportFocused = ImGui::IsWindowFocused();
-        if (m_ViewportFocused) m_LastFocusedWindow = "Scene Viewport";
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0) {
@@ -1634,12 +1548,6 @@ private:
                         mr.MeshSourcePath = path;
                     });
                 }
-            }
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PREFAB")) {
-                std::string path(static_cast<const char*>(payload->Data));
-                auto rootEntity = VE::SceneSerializer::InstantiatePrefab(path, *m_Scene);
-                if (rootEntity.IsValid())
-                    m_SelectedEntity = rootEntity;
             }
             ImGui::EndDragDropTarget();
         }
@@ -1689,7 +1597,7 @@ private:
 
         if (m_GizmosEnabled) {
             VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
-            // Grid is now rendered in a 3D pass with depth testing (see RenderGraph Pass 5)
+            VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
 
             // Draw point light gizmos for all point lights
             {
@@ -1729,46 +1637,11 @@ private:
 
                 VE::GizmoAxis displayAxis = m_DraggingAxis;
                 ImGuiIO& io = ImGui::GetIO();
-
-                if (m_GizmoMode == 0) {
-                    // Translate mode
-                    if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered)
-                        displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                            worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
-                    VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
-                } else if (m_GizmoMode == 1) {
-                    // Rotate mode — draw rotation circles
-                    ImDrawList* dl = ImGui::GetWindowDrawList();
-                    auto toScreen = [&](const glm::vec3& w) -> ImVec2 {
-                        glm::vec4 clip = m_FrameVP * glm::vec4(w, 1.0f);
-                        if (clip.w <= 0.01f) return {-1,-1};
-                        glm::vec3 ndc = glm::vec3(clip) / clip.w;
-                        return { vpX + (ndc.x * 0.5f + 0.5f) * vpW,
-                                 vpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * vpH };
-                    };
-                    float radius = 0.5f * std::max({worldMat[0].length(), worldMat[1].length(), worldMat[2].length()});
-                    ImU32 colors[] = { IM_COL32(230,50,50,200), IM_COL32(50,200,50,200), IM_COL32(80,80,240,200) };
-                    glm::vec3 axes[] = { {1,0,0}, {0,1,0}, {0,0,1} };
-                    for (int a = 0; a < 3; a++) {
-                        int segs = 48;
-                        for (int s = 0; s < segs; s++) {
-                            float t0 = 6.2832f * s / segs;
-                            float t1 = 6.2832f * (s+1) / segs;
-                            glm::vec3 p0, p1;
-                            if (a == 0) { p0 = {0, cos(t0)*radius, sin(t0)*radius}; p1 = {0, cos(t1)*radius, sin(t1)*radius}; }
-                            if (a == 1) { p0 = {cos(t0)*radius, 0, sin(t0)*radius}; p1 = {cos(t1)*radius, 0, sin(t1)*radius}; }
-                            if (a == 2) { p0 = {cos(t0)*radius, sin(t0)*radius, 0}; p1 = {cos(t1)*radius, sin(t1)*radius, 0}; }
-                            ImVec2 s0 = toScreen(worldPos + p0);
-                            ImVec2 s1 = toScreen(worldPos + p1);
-                            if (s0.x > 0 && s1.x > 0)
-                                dl->AddLine(s0, s1, colors[a], 2.0f);
-                        }
-                    }
-                } else if (m_GizmoMode == 2) {
-                    // Scale mode — draw scale handles (boxes at axis ends)
-                    VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
-                    // TODO: replace arrows with scale boxes
+                if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered) {
+                    displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
+                        worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
                 }
+                VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
             }
 
             VE::GizmoRenderer::EndScene();
@@ -1807,6 +1680,8 @@ private:
 
     void ExitPlayMode() {
         if (!m_PlayMode) return;
+        m_Paused = false;
+        m_StepOneFrame = false;
 
         m_Scene->StopParticles();
         m_Scene->StopAudio();
@@ -1828,56 +1703,85 @@ private:
     }
 
     void DrawToolbar() {
-        bool wasPlayMode = m_PlayMode;
+        // Unity-style centered toolbar strip below menu bar
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        float menuBarHeight = ImGui::GetFrameHeight(); // main menu bar height
+        float toolbarHeight = 32.0f;
 
-        if (wasPlayMode)
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.35f, 0.15f, 0.15f, 1.0f));
+        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y + menuBarHeight));
+        ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, toolbarHeight));
 
-        ImGui::Begin("Toolbar", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+            | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+            | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings;
 
-        // Gizmo mode buttons (left side)
-        {
-            const char* labels[] = { "W Move", "E Rotate", "R Scale" };
-            for (int i = 0; i < 3; i++) {
-                if (i > 0) ImGui::SameLine();
-                bool selected = (m_GizmoMode == i);
-                if (selected) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
-                if (ImGui::Button(labels[i], ImVec2(70, 0)))
-                    m_GizmoMode = i;
-                if (selected) ImGui::PopStyleColor();
-            }
+        // Toolbar background — tinted red during play mode
+        if (m_PlayMode)
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.32f, 0.12f, 0.12f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.18f, 0.18f, 0.18f, 1.0f));
 
-            // Snap value (editable, right of gizmo buttons)
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(50);
-            if (m_GizmoMode == 0)
-                ImGui::DragFloat("##snap", &m_SnapTranslate, 0.05f, 0.1f, 10.0f, "%.1f");
-            else if (m_GizmoMode == 1)
-                ImGui::DragFloat("##snap", &m_SnapRotate, 1.0f, 1.0f, 90.0f, "%.0f");
-            else
-                ImGui::DragFloat("##snap", &m_SnapScale, 0.05f, 0.05f, 5.0f, "%.2f");
-            ImGui::SameLine();
-            ImGui::TextDisabled("Ctrl+Drag to snap");
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
+        ImGui::Begin("##Toolbar", nullptr, flags);
+
+        float btnH = toolbarHeight - 8.0f; // button height
+        float btnW = btnH;                 // square buttons
+        float spacing = 2.0f;
+
+        // Center the button group
+        float totalW = btnW * 3 + spacing * 2; // Play + Pause + Step
+        float startX = (viewport->Size.x - totalW) * 0.5f;
+        ImGui::SetCursorPosX(startX);
+        ImGui::SetCursorPosY((toolbarHeight - btnH) * 0.5f);
+
+        // ── Play / Stop button ──
+        bool wasPlaying = m_PlayMode;
+        if (wasPlaying) {
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.3f, 0.6f, 0.9f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,   ImVec4(0.15f, 0.4f, 0.7f, 1.0f));
         }
-
-        float windowWidth = ImGui::GetContentRegionAvail().x;
-        float buttonWidth = 80.0f;
-        ImGui::SameLine((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
-
-        if (!m_PlayMode) {
-            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
-                EnterPlayMode();
-        } else {
-            if (ImGui::Button("Stop", ImVec2(buttonWidth, 0)))
+        const char* playLabel = wasPlaying ? "||" : ">";
+        if (ImGui::Button(playLabel, ImVec2(btnW, btnH))) {
+            if (wasPlaying)
                 ExitPlayMode();
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "PLAY MODE");
+            else
+                EnterPlayMode();
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(wasPlaying ? "Stop (exit play mode)" : "Play");
+        if (wasPlaying)
+            ImGui::PopStyleColor(3);
+
+        // ── Pause button ──
+        ImGui::SameLine(0, spacing);
+        bool paused = m_PlayMode && m_Paused;
+        if (paused) {
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.6f, 0.5f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.7f, 0.6f, 0.3f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,   ImVec4(0.5f, 0.4f, 0.15f, 1.0f));
+        }
+        if (ImGui::Button("||##Pause", ImVec2(btnW, btnH)) && m_PlayMode)
+            m_Paused = !m_Paused;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Pause");
+        if (paused)
+            ImGui::PopStyleColor(3);
+
+        // ── Step button ──
+        ImGui::SameLine(0, spacing);
+        if (ImGui::Button(">|", ImVec2(btnW, btnH)) && m_PlayMode) {
+            m_Paused = false;
+            m_StepOneFrame = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Step (advance one frame)");
 
         ImGui::End();
-
-        if (wasPlayMode)
-            ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
     }
 
     // ── Hierarchy Panel ────────────────────────────────────────────────
@@ -1885,7 +1789,6 @@ private:
     void DrawHierarchyPanel() {
         if (!m_ShowHierarchy) return;
         ImGui::Begin("Hierarchy", &m_ShowHierarchy);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Hierarchy";
 
         // Draw only root entities (no parent), children are drawn recursively
         // Collect roots in creation order (entt iterates newest-first, so reverse)
@@ -2017,17 +1920,6 @@ private:
 
         // Right-click context menu on entity node
         if (ImGui::BeginPopupContextItem()) {
-            if (ImGui::MenuItem("Duplicate")) {
-                DuplicateSelectedEntity();
-            }
-            if (ImGui::MenuItem("Save as Prefab")) {
-                std::string prefabName = tag.Tag + ".vprefab";
-                std::string savePath = "Assets/" + prefabName;
-                VE::SceneSerializer::SerializePrefab(savePath,
-                    VE::Entity(entityID, &*m_Scene), *m_Scene);
-                m_AssetDatabase.Refresh();
-            }
-            ImGui::Separator();
             if (ImGui::MenuItem("Delete")) {
                 m_CommandHistory.Execute("Delete Entity", [this, entityID]() {
                     m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
@@ -2720,63 +2612,9 @@ private:
 
     // ── Inspector Panel ────────────────────────────────────────────────
 
-    // ── Undo-aware widget helpers ────────────────────────────────────
-    // Wrap ImGui widgets with automatic undo tracking.
-
-    bool UndoDragFloat(const char* label, float* v, float speed = 0.01f,
-                       float min = 0.0f, float max = 0.0f) {
-        bool changed = ImGui::DragFloat(label, v, speed, min, max);
-        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
-        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-        return changed;
-    }
-
-    bool UndoDragFloat3(const char* label, float* v, float speed = 0.01f) {
-        bool changed = ImGui::DragFloat3(label, v, speed);
-        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
-        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-        return changed;
-    }
-
-    bool UndoDragInt(const char* label, int* v, float speed = 1.0f, int min = 0, int max = 0) {
-        bool changed = ImGui::DragInt(label, v, speed, min, max);
-        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
-        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-        return changed;
-    }
-
-    bool UndoSliderFloat(const char* label, float* v, float min, float max, const char* fmt = "%.3f") {
-        bool changed = ImGui::SliderFloat(label, v, min, max, fmt);
-        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
-        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-        return changed;
-    }
-
-    bool UndoColorEdit3(const char* label, float* col) {
-        bool changed = ImGui::ColorEdit3(label, col);
-        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
-        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-        return changed;
-    }
-
-    bool UndoColorEdit4(const char* label, float* col) {
-        bool changed = ImGui::ColorEdit4(label, col);
-        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
-        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-        return changed;
-    }
-
-    bool UndoCheckbox(const char* label, bool* v) {
-        auto snap = m_CommandHistory.CaptureSnapshot();
-        bool changed = ImGui::Checkbox(label, v);
-        if (changed) m_CommandHistory.RecordPropertyEdit(label, std::move(snap));
-        return changed;
-    }
-
     void DrawInspectorPanel() {
         if (!m_ShowInspector) return;
         ImGui::Begin("Inspector", &m_ShowInspector);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Inspector";
 
         // Asset inspector (takes priority when an asset is selected)
         if (!m_SelectedAssetPath.empty()) {
@@ -3120,7 +2958,9 @@ private:
         if (m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
             auto& ac = m_SelectedEntity.GetComponent<VE::AnimatorComponent>();
             bool removeAnimator = false;
-            if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openAnimator = ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::AnimatorComponent>("##AnimatorCtx", "Animator", removeAnimator);
+            if (openAnimator) {
                 // Show clip info from the associated MeshAsset
                 int clipCount = 0;
                 int boneCount = 0;
@@ -3140,22 +2980,199 @@ private:
                 // Animation source — Object Field with drag-drop
                 DrawAnimationObjectField("Animation", ac);
 
-                UndoDragInt("Clip Index", &ac.ClipIndex, 1, 0, 100);
+                ImGui::DragInt("Clip Index", &ac.ClipIndex, 1, 0, 100);
 
-                UndoCheckbox("Play On Start", &ac.PlayOnStart);
-                UndoCheckbox("Loop", &ac.Loop);
-                UndoDragFloat("Speed", &ac.Speed, 0.05f, 0.0f, 10.0f);
+                ImGui::Checkbox("Play On Start", &ac.PlayOnStart);
+                ImGui::Checkbox("Loop", &ac.Loop);
+                ImGui::DragFloat("Speed", &ac.Speed, 0.05f, 0.0f, 10.0f);
 
                 if (ac._Animator)
                     ImGui::Text("Status: %s", ac._Animator->IsPlaying() ? "Playing" : "Stopped");
 
-                if (ImGui::Button("Remove Component##Animator"))
-                    removeAnimator = true;
+                // ── State Machine Editor ─────────────────────────────
+                ImGui::Separator();
+                ImGui::Checkbox("Use State Machine", &ac.UseStateMachine);
+                if (ac.UseStateMachine) {
+                    // Parameters
+                    if (ImGui::TreeNode("Parameters")) {
+                        for (int i = 0; i < (int)ac.Parameters.size(); i++) {
+                            ImGui::PushID(i);
+                            auto& p = ac.Parameters[i];
+                            char nameBuf[128];
+                            strncpy(nameBuf, p.Name.c_str(), sizeof(nameBuf)); nameBuf[127] = '\0';
+                            ImGui::SetNextItemWidth(100);
+                            if (ImGui::InputText("##PName", nameBuf, sizeof(nameBuf))) p.Name = nameBuf;
+                            ImGui::SameLine();
+                            const char* typeNames[] = { "Float", "Int", "Bool", "Trigger" };
+                            ImGui::SetNextItemWidth(70);
+                            int typeIdx = static_cast<int>(p.Type);
+                            if (ImGui::Combo("##PType", &typeIdx, typeNames, 4))
+                                p.Type = static_cast<VE::AnimParamType>(typeIdx);
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X##DelParam")) {
+                                ac.Parameters.erase(ac.Parameters.begin() + i); --i;
+                            }
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("+ Parameter")) {
+                            VE::AnimParameter p; p.Name = "Param" + std::to_string(ac.Parameters.size());
+                            ac.Parameters.push_back(p);
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    // States
+                    if (ImGui::TreeNode("States")) {
+                        for (int i = 0; i < (int)ac.States.size(); i++) {
+                            ImGui::PushID(i + 1000);
+                            auto& s = ac.States[i];
+                            char sBuf[128];
+                            strncpy(sBuf, s.Name.c_str(), sizeof(sBuf)); sBuf[127] = '\0';
+                            ImGui::SetNextItemWidth(100);
+                            if (ImGui::InputText("##SName", sBuf, sizeof(sBuf))) s.Name = sBuf;
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(50);
+                            ImGui::DragInt("##SClip", &s.ClipIndex, 1, 0, 100);
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(50);
+                            ImGui::DragFloat("##SSpd", &s.Speed, 0.05f, 0.0f, 10.0f);
+                            ImGui::SameLine();
+                            ImGui::Checkbox("##SLoop", &s.Loop);
+                            ImGui::SameLine();
+                            bool isDef = (ac.DefaultState == i);
+                            if (isDef) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.3f, 1.0f, 0.3f, 1.0f));
+                            if (ImGui::SmallButton(isDef ? "Default" : "Set Default"))
+                                ac.DefaultState = i;
+                            if (isDef) ImGui::PopStyleColor();
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X##DelState")) {
+                                ac.States.erase(ac.States.begin() + i); --i;
+                                if (ac.DefaultState >= (int)ac.States.size())
+                                    ac.DefaultState = std::max(0, (int)ac.States.size() - 1);
+                            }
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("+ State")) {
+                            VE::AnimState s;
+                            s.Name = "State" + std::to_string(ac.States.size());
+                            s.ClipIndex = (int)ac.States.size();
+                            ac.States.push_back(s);
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    // Transitions
+                    if (ImGui::TreeNode("Transitions")) {
+                        for (int i = 0; i < (int)ac.Transitions.size(); i++) {
+                            ImGui::PushID(i + 2000);
+                            auto& t = ac.Transitions[i];
+
+                            // From -> To
+                            std::string fromName = (t.FromState < 0) ? "Any" :
+                                (t.FromState < (int)ac.States.size() ? ac.States[t.FromState].Name : "?");
+                            std::string toName = (t.ToState >= 0 && t.ToState < (int)ac.States.size())
+                                ? ac.States[t.ToState].Name : "?";
+                            ImGui::Text("%s -> %s", fromName.c_str(), toName.c_str());
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(40);
+                            ImGui::DragInt("##TFrom", &t.FromState, 1, -1, (int)ac.States.size() - 1);
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(40);
+                            ImGui::DragInt("##TTo", &t.ToState, 1, 0, (int)ac.States.size() - 1);
+
+                            ImGui::SetNextItemWidth(60);
+                            ImGui::DragFloat("Blend##T", &t.Duration, 0.01f, 0.0f, 2.0f);
+                            ImGui::SameLine();
+                            ImGui::Checkbox("ExitTime##T", &t.HasExitTime);
+                            if (t.HasExitTime) {
+                                ImGui::SameLine();
+                                ImGui::SetNextItemWidth(50);
+                                ImGui::DragFloat("##TExitT", &t.ExitTime, 0.01f, 0.0f, 1.0f);
+                            }
+
+                            // Conditions
+                            for (int c = 0; c < (int)t.Conditions.size(); c++) {
+                                ImGui::PushID(c + 3000);
+                                auto& cond = t.Conditions[c];
+                                ImGui::Indent(20);
+                                char cBuf[64];
+                                strncpy(cBuf, cond.ParamName.c_str(), sizeof(cBuf)); cBuf[63] = '\0';
+                                ImGui::SetNextItemWidth(80);
+                                ImGui::InputText("##CParam", cBuf, sizeof(cBuf));
+                                cond.ParamName = cBuf;
+                                ImGui::SameLine();
+                                const char* opNames[] = { ">", "<", "==", "!=", "true", "false" };
+                                int opIdx = static_cast<int>(cond.Op);
+                                ImGui::SetNextItemWidth(50);
+                                if (ImGui::Combo("##COp", &opIdx, opNames, 6))
+                                    cond.Op = static_cast<VE::AnimConditionOp>(opIdx);
+                                ImGui::SameLine();
+                                ImGui::SetNextItemWidth(50);
+                                ImGui::DragFloat("##CVal", &cond.Threshold, 0.1f);
+                                ImGui::SameLine();
+                                if (ImGui::SmallButton("X##DelCond")) {
+                                    t.Conditions.erase(t.Conditions.begin() + c); --c;
+                                }
+                                ImGui::Unindent(20);
+                                ImGui::PopID();
+                            }
+                            if (ImGui::SmallButton("+ Condition"))
+                                t.Conditions.push_back({});
+
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X##DelTrans")) {
+                                ac.Transitions.erase(ac.Transitions.begin() + i); --i;
+                            }
+                            ImGui::Separator();
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("+ Transition"))
+                            ac.Transitions.push_back({});
+                        ImGui::TreePop();
+                    }
+
+                    // Runtime state info
+                    if (m_PlayMode && ac._Animator && ac._Animator->IsUsingStateMachine()) {
+                        auto& sm = ac._Animator->GetStateMachine();
+                        ImGui::Text("Current: %s", sm.GetCurrentStateName().c_str());
+                        if (sm.IsTransitioning())
+                            ImGui::TextColored(ImVec4(1,1,0,1), "Transitioning...");
+
+                        // Live parameter editing
+                        for (auto& p : sm.GetParameters()) {
+                            ImGui::PushID(p.Name.c_str());
+                            switch (p.Type) {
+                                case VE::AnimParamType::Float: {
+                                    float v = sm.GetFloat(p.Name);
+                                    if (ImGui::DragFloat(p.Name.c_str(), &v, 0.1f))
+                                        ac._Animator->GetStateMachine().SetFloat(p.Name, v);
+                                    break;
+                                }
+                                case VE::AnimParamType::Int: {
+                                    int v = sm.GetInt(p.Name);
+                                    if (ImGui::DragInt(p.Name.c_str(), &v))
+                                        ac._Animator->GetStateMachine().SetInt(p.Name, v);
+                                    break;
+                                }
+                                case VE::AnimParamType::Bool: {
+                                    bool v = sm.GetBool(p.Name);
+                                    if (ImGui::Checkbox(p.Name.c_str(), &v))
+                                        ac._Animator->GetStateMachine().SetBool(p.Name, v);
+                                    break;
+                                }
+                                case VE::AnimParamType::Trigger:
+                                    if (ImGui::Button(p.Name.c_str()))
+                                        ac._Animator->GetStateMachine().SetTrigger(p.Name);
+                                    break;
+                            }
+                            ImGui::PopID();
+                        }
+                    }
+                }
+
             }
             if (removeAnimator)
-                m_CommandHistory.Execute("Remove Animator", [this]() {
-                    m_SelectedEntity.RemoveComponent<VE::AnimatorComponent>();
-                });
+                m_SelectedEntity.RemoveComponent<VE::AnimatorComponent>();
             ImGui::Separator();
         }
 
@@ -3163,18 +3180,20 @@ private:
         if (m_SelectedEntity.HasComponent<VE::AudioSourceComponent>()) {
             auto& as = m_SelectedEntity.GetComponent<VE::AudioSourceComponent>();
             bool removeAudio = false;
-            if (ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openAudio = ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::AudioSourceComponent>("##AudioSrcCtx", "AudioSource", removeAudio);
+            if (openAudio) {
                 // ── Audio Clip Object Field (Unity-style) ──
                 DrawAudioClipObjectField("Audio Clip", as);
 
-                UndoSliderFloat("Volume", &as.Volume, 0.0f, 1.0f);
-                UndoSliderFloat("Pitch", &as.Pitch, 0.1f, 3.0f);
-                UndoCheckbox("Loop##Audio", &as.Loop);
-                UndoCheckbox("Play On Awake", &as.PlayOnAwake);
-                UndoCheckbox("Spatial (3D)", &as.Spatial);
+                ImGui::SliderFloat("Volume", &as.Volume, 0.0f, 1.0f);
+                ImGui::SliderFloat("Pitch", &as.Pitch, 0.1f, 3.0f);
+                ImGui::Checkbox("Loop", &as.Loop);
+                ImGui::Checkbox("Play On Awake", &as.PlayOnAwake);
+                ImGui::Checkbox("Spatial (3D)", &as.Spatial);
                 if (as.Spatial) {
-                    UndoDragFloat("Min Distance", &as.MinDistance, 0.1f, 0.0f, 1000.0f);
-                    UndoDragFloat("Max Distance", &as.MaxDistance, 1.0f, 0.0f, 10000.0f);
+                    ImGui::DragFloat("Min Distance", &as.MinDistance, 0.1f, 0.0f, 1000.0f);
+                    ImGui::DragFloat("Max Distance", &as.MaxDistance, 1.0f, 0.0f, 10000.0f);
                 }
 
                 // Preview controls (works outside play mode)
@@ -3198,16 +3217,12 @@ private:
                     }
                 }
 
-                if (ImGui::Button("Remove Component##AudioSource"))
-                    removeAudio = true;
             }
             if (removeAudio) {
                 if (as._SoundHandle != 0) {
                     VE::AudioEngine::Stop(as._SoundHandle);
                 }
-                m_CommandHistory.Execute("Remove Audio Source", [this]() {
-                    m_SelectedEntity.RemoveComponent<VE::AudioSourceComponent>();
-                });
+                m_SelectedEntity.RemoveComponent<VE::AudioSourceComponent>();
             }
             ImGui::Separator();
         }
@@ -3215,26 +3230,26 @@ private:
         // AudioListenerComponent inspector
         if (m_SelectedEntity.HasComponent<VE::AudioListenerComponent>()) {
             bool removeListener = false;
-            if (ImGui::CollapsingHeader("Audio Listener", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openListener = ImGui::CollapsingHeader("Audio Listener", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::AudioListenerComponent>("##AudioListenerCtx", "AudioListener", removeListener);
+            if (openListener) {
                 ImGui::TextWrapped("This entity acts as the 3D audio listener.");
-                if (ImGui::Button("Remove Component##AudioListener"))
-                    removeListener = true;
             }
             if (removeListener)
-                m_CommandHistory.Execute("Remove Audio Listener", [this]() {
-                    m_SelectedEntity.RemoveComponent<VE::AudioListenerComponent>();
-                });
+                m_SelectedEntity.RemoveComponent<VE::AudioListenerComponent>();
             ImGui::Separator();
         }
 
         // SpriteRendererComponent inspector
         if (m_SelectedEntity.HasComponent<VE::SpriteRendererComponent>()) {
             bool removeSprite = false;
-            if (ImGui::CollapsingHeader("Sprite Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openSprite = ImGui::CollapsingHeader("Sprite Renderer", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::SpriteRendererComponent>("##SpriteRendCtx", "SpriteRenderer", removeSprite);
+            if (openSprite) {
                 auto& sr = m_SelectedEntity.GetComponent<VE::SpriteRendererComponent>();
 
-                UndoColorEdit4("Color##Sprite", sr.Color.data());
-                UndoDragInt("Sorting Order", &sr.SortingOrder);
+                ImGui::ColorEdit4("Color##Sprite", sr.Color.data());
+                ImGui::DragInt("Sorting Order", &sr.SortingOrder, 1);
 
                 // Texture field
                 ImGui::Text("Sprite");
@@ -3271,20 +3286,18 @@ private:
 
                 ImGui::DragFloat4("UV Rect", sr.UVRect.data(), 0.01f, 0.0f, 1.0f);
 
-                if (ImGui::Button("Remove Component##SpriteRenderer"))
-                    removeSprite = true;
             }
             if (removeSprite)
-                m_CommandHistory.Execute("Remove Sprite Renderer", [this]() {
-                    m_SelectedEntity.RemoveComponent<VE::SpriteRendererComponent>();
-                });
+                m_SelectedEntity.RemoveComponent<VE::SpriteRendererComponent>();
             ImGui::Separator();
         }
 
         // SpriteAnimatorComponent inspector
         if (m_SelectedEntity.HasComponent<VE::SpriteAnimatorComponent>()) {
             bool removeSA = false;
-            if (ImGui::CollapsingHeader("Sprite Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openSA = ImGui::CollapsingHeader("Sprite Animator", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::SpriteAnimatorComponent>("##SpriteAnimCtx", "SpriteAnimator", removeSA);
+            if (openSA) {
                 auto& sa = m_SelectedEntity.GetComponent<VE::SpriteAnimatorComponent>();
 
                 int totalFrames = sa.Columns * sa.Rows;
@@ -3299,8 +3312,6 @@ private:
                 if (m_PlayMode)
                     ImGui::Text("Frame: %d / %d", sa._CurrentFrame, sa.EndFrame);
 
-                if (ImGui::Button("Remove Component##SpriteAnimator"))
-                    removeSA = true;
             }
             if (removeSA)
                 m_SelectedEntity.RemoveComponent<VE::SpriteAnimatorComponent>();
@@ -3310,7 +3321,9 @@ private:
         // ParticleSystemComponent inspector
         if (m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
             bool removePS = false;
-            if (ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openPS = ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::ParticleSystemComponent>("##ParticleCtx", "ParticleSystem", removePS);
+            if (openPS) {
                 auto& ps = m_SelectedEntity.GetComponent<VE::ParticleSystemComponent>();
 
                 ImGui::DragFloat("Emission Rate", &ps.EmissionRate, 0.5f, 0.0f, 1000.0f);
@@ -3356,8 +3369,6 @@ private:
                     ImGui::Text("Active Particles: %d / %d", active, ps.MaxParticles);
                 }
 
-                if (ImGui::Button("Remove Component##ParticleSystem"))
-                    removePS = true;
             }
             if (removePS)
                 m_SelectedEntity.RemoveComponent<VE::ParticleSystemComponent>();
@@ -3367,7 +3378,9 @@ private:
         // CameraComponent inspector
         if (m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
             bool removeCam = false;
-            if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openCam = ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::CameraComponent>("##CameraCtx", "Camera", removeCam);
+            if (openCam) {
                 auto& cam = m_SelectedEntity.GetComponent<VE::CameraComponent>();
 
                 const char* projTypes[] = { "Perspective", "Orthographic" };
@@ -3384,8 +3397,6 @@ private:
                 ImGui::DragFloat("Far Clip",  &cam.FarClip,  1.0f, cam.NearClip + 0.001f, 10000.0f);
                 ImGui::DragInt("Priority", &cam.Priority, 1);
 
-                if (ImGui::Button("Remove Component##Camera"))
-                    removeCam = true;
             }
             if (removeCam)
                 m_SelectedEntity.RemoveComponent<VE::CameraComponent>();
@@ -3405,7 +3416,7 @@ private:
                 // ── Material Object Field (Unity-style) ──
                 DrawMaterialObjectField("Material", mr);
 
-                UndoCheckbox("Cast Shadows", &mr.CastShadows);
+                ImGui::Checkbox("Cast Shadows", &mr.CastShadows);
 
                 // Per-entity material property overrides
                 if (mr.Mat) {
@@ -3428,18 +3439,18 @@ private:
                             switch (ov.Type) {
                                 case VE::MaterialPropertyType::Float:
                                     if (ov.IsRange)
-                                        UndoSliderFloat(label, &ov.FloatValue, ov.RangeMin, ov.RangeMax);
+                                        ImGui::SliderFloat(label, &ov.FloatValue, ov.RangeMin, ov.RangeMax, "%.3f");
                                     else
-                                        UndoDragFloat(label, &ov.FloatValue, 0.01f);
+                                        ImGui::DragFloat(label, &ov.FloatValue, 0.01f);
                                     break;
                                 case VE::MaterialPropertyType::Int:
-                                    UndoDragInt(label, &ov.IntValue);
+                                    ImGui::DragInt(label, &ov.IntValue, 1);
                                     break;
                                 case VE::MaterialPropertyType::Vec3:
-                                    UndoColorEdit3(label, &ov.Vec3Value.x);
+                                    ImGui::ColorEdit3(label, &ov.Vec3Value.x);
                                     break;
                                 case VE::MaterialPropertyType::Vec4:
-                                    UndoColorEdit4(label, &ov.Vec4Value.x);
+                                    ImGui::ColorEdit4(label, &ov.Vec4Value.x);
                                     break;
                                 case VE::MaterialPropertyType::Texture2D: {
                                     // Texture Object Field (Unity-style drag-drop)
@@ -3603,39 +3614,16 @@ private:
                 }
             }
             if (removeLOD)
-                m_CommandHistory.Execute("Remove LOD Group", [this]() {
-                    m_SelectedEntity.RemoveComponent<VE::LODGroupComponent>();
-                });
+                m_SelectedEntity.RemoveComponent<VE::LODGroupComponent>();
             ImGui::Separator();
         }
-
-        // ── NavAgent Component ──
-        if (m_SelectedEntity.HasComponent<VE::NavAgentComponent>()) {
-            bool removeNav = false;
-            bool openNav = ImGui::CollapsingHeader("Nav Agent", ImGuiTreeNodeFlags_DefaultOpen);
-            DrawComponentContextMenu<VE::NavAgentComponent>("##NavAgentCtx", "NavAgent", removeNav);
-            if (openNav) {
-                auto& nav = m_SelectedEntity.GetComponent<VE::NavAgentComponent>();
-                ImGui::DragFloat("Speed", &nav.Speed, 0.1f, 0.1f, 50.0f);
-                ImGui::DragFloat("Stopping Distance", &nav.StoppingDist, 0.01f, 0.01f, 5.0f);
-                ImGui::DragFloat("Agent Radius", &nav.AgentRadius, 0.01f, 0.1f, 5.0f);
-                ImGui::Text("Has Target: %s", nav._HasTarget ? "Yes" : "No");
-                ImGui::Text("Path Points: %d (index %d)", static_cast<int>(nav._Path.size()), nav._PathIndex);
-            }
-            if (removeNav)
-                m_CommandHistory.Execute("Remove Nav Agent", [this]() {
-                    m_SelectedEntity.RemoveComponent<VE::NavAgentComponent>();
-                });
-            ImGui::Separator();
-        }
-
-        // ── Bake NavGrid button (shows in Inspector when no entity selected) ──
-        // (moved to Scene Info panel)
 
         // ── Terrain Component Inspector ───────────────────────────
         if (m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openTerrain = ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::TerrainComponent>("##TerrainCtx", "Terrain", removeC);
+            if (openTerrain) {
                 auto& t = m_SelectedEntity.GetComponent<VE::TerrainComponent>();
                 bool changed = false;
 
@@ -3701,7 +3689,6 @@ private:
                 if (ImGui::Button("Regenerate"))
                     t._NeedsRebuild = true;
 
-                if (ImGui::Button("Remove##Terrain")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::TerrainComponent>();
             ImGui::Separator();
@@ -3710,11 +3697,12 @@ private:
         // ── UI Components Inspector ──────────────────────────────
         if (m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Canvas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Canvas", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UICanvasComponent>("##UICanvasCtx", "UICanvas", removeC);
+            if (openC) {
                 auto& uc = m_SelectedEntity.GetComponent<VE::UICanvasComponent>();
                 ImGui::Checkbox("Screen Space", &uc.ScreenSpace);
                 ImGui::DragInt("Sort Order", &uc.SortOrder, 1, 0, 100);
-                if (ImGui::Button("Remove##UICanvas")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UICanvasComponent>();
             ImGui::Separator();
@@ -3722,7 +3710,9 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UIRectTransformComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Rect Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Rect Transform", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UIRectTransformComponent>("##UIRectCtx", "UIRectTransform", removeC);
+            if (openC) {
                 auto& rt = m_SelectedEntity.GetComponent<VE::UIRectTransformComponent>();
                 const char* anchorNames[] = {
                     "TopLeft", "TopCenter", "TopRight",
@@ -3735,7 +3725,6 @@ private:
                 ImGui::DragFloat2("Position", rt.AnchoredPosition.data(), 1.0f);
                 ImGui::DragFloat2("Size", rt.Size.data(), 1.0f, 1.0f, 10000.0f);
                 ImGui::DragFloat2("Pivot", rt.Pivot.data(), 0.01f, 0.0f, 1.0f);
-                if (ImGui::Button("Remove##UIRectTransform")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UIRectTransformComponent>();
             ImGui::Separator();
@@ -3743,7 +3732,9 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UITextComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Text", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Text", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UITextComponent>("##UITextCtx", "UIText", removeC);
+            if (openC) {
                 auto& txt = m_SelectedEntity.GetComponent<VE::UITextComponent>();
                 char buf[256];
                 strncpy(buf, txt.Text.c_str(), sizeof(buf));
@@ -3752,7 +3743,6 @@ private:
                     txt.Text = buf;
                 ImGui::DragFloat("Font Size", &txt.FontSize, 0.5f, 4.0f, 200.0f);
                 ImGui::ColorEdit4("Color##UIText", txt.Color.data());
-                if (ImGui::Button("Remove##UIText")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UITextComponent>();
             ImGui::Separator();
@@ -3760,10 +3750,11 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UIImageComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Image", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Image", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UIImageComponent>("##UIImageCtx", "UIImage", removeC);
+            if (openC) {
                 auto& img = m_SelectedEntity.GetComponent<VE::UIImageComponent>();
                 ImGui::ColorEdit4("Color##UIImage", img.Color.data());
-                // Texture path
                 std::string texLabel = img.TexturePath.empty() ? "None" : img.TexturePath;
                 ImGui::Text("Texture: %s", texLabel.c_str());
                 if (ImGui::BeginDragDropTarget()) {
@@ -3773,7 +3764,6 @@ private:
                     }
                     ImGui::EndDragDropTarget();
                 }
-                if (ImGui::Button("Remove##UIImage")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UIImageComponent>();
             ImGui::Separator();
@@ -3781,7 +3771,9 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UIButtonComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Button", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Button", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UIButtonComponent>("##UIButtonCtx", "UIButton", removeC);
+            if (openC) {
                 auto& btn = m_SelectedEntity.GetComponent<VE::UIButtonComponent>();
                 char lblBuf[256];
                 strncpy(lblBuf, btn.Label.c_str(), sizeof(lblBuf));
@@ -3797,7 +3789,6 @@ private:
                     ImGui::Text("Hovered: %s", btn._Hovered ? "Yes" : "No");
                     ImGui::Text("Clicked: %s", btn._Clicked ? "Yes" : "No");
                 }
-                if (ImGui::Button("Remove##UIButton")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UIButtonComponent>();
             ImGui::Separator();
@@ -3853,13 +3844,6 @@ private:
                 if (ImGui::MenuItem("LOD Group"))
                     m_CommandHistory.Execute("Add LOD Group", [this]() {
                         m_SelectedEntity.AddComponent<VE::LODGroupComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::NavAgentComponent>()) {
-                if (ImGui::MenuItem("Nav Agent"))
-                    m_CommandHistory.Execute("Add Nav Agent", [this]() {
-                        m_SelectedEntity.AddComponent<VE::NavAgentComponent>();
                     });
                 anyAdded = true;
             }
@@ -4400,6 +4384,48 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("Fog", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Fog", &ps.FogEnabled);
+            if (ps.FogEnabled) {
+                const char* fogModes[] = { "Linear", "Exponential", "Exponential Squared" };
+                ImGui::Combo("Fog Mode", &ps.FogMode, fogModes, 3);
+                ImGui::ColorEdit3("Fog Color", ps.FogColor.data());
+                if (ps.FogMode == 0) { // Linear
+                    ImGui::DragFloat("Start Distance", &ps.FogStart, 1.0f, 0.0f, 10000.0f);
+                    ImGui::DragFloat("End Distance", &ps.FogEnd, 1.0f, 0.0f, 10000.0f);
+                } else {
+                    ImGui::SliderFloat("Density", &ps.FogDensity, 0.001f, 0.5f, "%.4f");
+                }
+                ImGui::SliderFloat("Height Falloff", &ps.FogHeightFalloff, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Max Opacity", &ps.FogMaxOpacity, 0.0f, 1.0f, "%.2f");
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Volumetric Fog")) {
+            ImGui::Checkbox("Enable Volumetric Fog", &ps.VolFogEnabled);
+            if (ps.VolFogEnabled) {
+                ImGui::ColorEdit3("Fog Color##Vol", ps.VolFogColor.data());
+                ImGui::SliderFloat("Density##Vol", &ps.VolFogDensity, 0.001f, 0.2f, "%.4f");
+                ImGui::SliderFloat("Scattering (g)", &ps.VolFogScattering, 0.0f, 0.99f, "%.2f");
+                ImGui::TextDisabled("0 = isotropic, 1 = forward (god rays)");
+                ImGui::SliderFloat("Light Intensity##Vol", &ps.VolFogLightIntensity, 0.0f, 5.0f, "%.2f");
+                ImGui::SliderInt("March Steps", &ps.VolFogSteps, 8, 128);
+                ImGui::DragFloat("Max Distance##Vol", &ps.VolFogMaxDistance, 1.0f, 1.0f, 1000.0f);
+                ImGui::SliderFloat("Height Falloff##Vol", &ps.VolFogHeightFalloff, 0.0f, 0.5f, "%.3f");
+                ImGui::DragFloat("Base Height", &ps.VolFogBaseHeight, 0.5f, -100.0f, 100.0f);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable SSAO", &ps.SSAOEnabled);
+            if (ps.SSAOEnabled) {
+                ImGui::SliderFloat("Radius##SSAO", &ps.SSAORadius, 0.01f, 3.0f, "%.2f");
+                ImGui::SliderFloat("Bias##SSAO", &ps.SSAOBias, 0.001f, 0.1f, "%.3f");
+                ImGui::SliderFloat("Intensity##SSAO", &ps.SSAOIntensity, 0.0f, 3.0f, "%.2f");
+                ImGui::SliderInt("Kernel Size##SSAO", &ps.SSAOKernelSize, 4, 64);
+            }
+        }
+
         if (ImGui::CollapsingHeader("Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
             const char* aaModes[] = { "None", "MSAA 2x", "MSAA 4x", "MSAA 8x", "FXAA", "TAA" };
             ImGui::Combo("AA Mode", &ps.AAMode, aaModes, 6);
@@ -4529,7 +4555,6 @@ private:
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin("Game", &m_ShowGameView);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Game";
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0 && m_GameFramebuffer) {
@@ -4575,7 +4600,6 @@ private:
     void DrawContentBrowserPanel() {
         if (!m_ShowContentBrowser) return;
         ImGui::Begin("Content Browser", &m_ShowContentBrowser);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Content Browser";
 
         // Breadcrumb navigation
         {
@@ -4703,11 +4727,6 @@ private:
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
                 float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
                 dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SND");
-            } else if (meta->Type == VE::AssetType::Prefab) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(70, 160, 160, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "PRF");
             } else {
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
             }
@@ -4814,16 +4833,6 @@ private:
                 if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     ImGui::SetDragDropPayload("ASSET_MATERIAL", absPath.c_str(), absPath.size() + 1);
-                    ImGui::Text("%s", filename.c_str());
-                    ImGui::EndDragDropSource();
-                }
-            }
-
-            // Drag-drop source for prefab files
-            if (meta->Type == VE::AssetType::Prefab) {
-                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
-                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
-                    ImGui::SetDragDropPayload("ASSET_PREFAB", absPath.c_str(), absPath.size() + 1);
                     ImGui::Text("%s", filename.c_str());
                     ImGui::EndDragDropSource();
                 }
@@ -4968,7 +4977,6 @@ private:
     void DrawSceneInfoPanel() {
         if (!m_ShowSceneInfo) return;
         ImGui::Begin("Scene Info", &m_ShowSceneInfo);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Scene Info";
 
         // ── Settings ──
         const char* apiNames[] = { "OpenGL", "Vulkan" };
@@ -5034,18 +5042,6 @@ private:
                     m_Camera.GetPosition().x, m_Camera.GetPosition().y);
                 ImGui::Text("Zoom: %.2f", m_Camera.GetZoom());
             }
-        }
-
-        // ── Navigation ──
-        if (ImGui::CollapsingHeader("Navigation")) {
-            auto* navGrid = m_Scene->GetNavGrid();
-            if (navGrid)
-                ImGui::Text("NavGrid: %dx%d (cell %.2fm)", navGrid->Width, navGrid->Height, navGrid->CellSize);
-            else
-                ImGui::TextDisabled("NavGrid: not baked");
-
-            if (ImGui::Button("Bake NavGrid"))
-                m_Scene->BakeNavGrid(0.5f, 50.0f);
         }
 
         ImGui::End();
@@ -5230,25 +5226,6 @@ private:
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
     bool m_ShowBuildPanel = false;
-    bool m_ShowConsole = true;
-
-    // Gizmo mode: 0=Translate, 1=Rotate, 2=Scale
-    int m_GizmoMode = 0;
-    // Snap values (Ctrl+drag)
-    float m_SnapTranslate = 0.5f;  // meters
-    float m_SnapRotate    = 15.0f; // degrees
-    float m_SnapScale     = 0.25f;
-
-    // Console filter
-    bool m_ConsoleShowInfo = true;
-    bool m_ConsoleShowWarn = true;
-    bool m_ConsoleShowError = true;
-    char m_ConsoleFilter[128] = {};
-    bool m_ConsoleAutoScroll = true;
-
-    // Last focused window for session restore
-    std::string m_LastFocusedWindow;
-    int m_RestoreFocusFrame = 10; // apply focus for several frames until docking settles
 
     // Build settings
     VE::BuildSettings m_BuildSettings;
@@ -5273,6 +5250,8 @@ private:
 
     // Play mode
     bool m_PlayMode = false;
+    bool m_Paused = false;
+    bool m_StepOneFrame = false;
     std::string m_SceneSnapshot;
 
     // Scripting
@@ -5301,6 +5280,8 @@ private:
     // Post-processing
     VE::PostProcessing m_PostProcessing;
     uint32_t m_PostProcessedTexture = 0;
+    VE::SSAO m_SSAO;
+    VE::SSAO m_GameSSAO;
 
     // Game viewport
     bool m_ShowGameView = false;

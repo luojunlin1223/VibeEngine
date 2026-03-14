@@ -32,21 +32,22 @@ void OpenGLFramebuffer::Invalidate() {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                GL_TEXTURE_2D_MULTISAMPLE, m_ColorAttachment, 0);
 
-        // ── Multisample depth+stencil renderbuffer ──
-        glGenRenderbuffers(1, &m_DepthAttachment);
-        glBindRenderbuffer(GL_RENDERBUFFER, m_DepthAttachment);
-        glRenderbufferStorageMultisample(GL_RENDERBUFFER, m_Samples,
-                                         GL_DEPTH24_STENCIL8, m_Width, m_Height);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-                                  GL_RENDERBUFFER, m_DepthAttachment);
+        // ── Multisample depth texture ──
+        glGenTextures(1, &m_DepthAttachment);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, m_DepthAttachment);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, m_Samples,
+                                GL_DEPTH24_STENCIL8, m_Width, m_Height, GL_TRUE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                               GL_TEXTURE_2D_MULTISAMPLE, m_DepthAttachment, 0);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             VE_ENGINE_ERROR("MSAA Framebuffer is not complete!");
 
-        // ── Resolve FBO (non-multisample, for post-processing / display) ──
+        // ── Resolve FBO (non-multisample) ──
         glGenFramebuffers(1, &m_ResolveFBO);
         glBindFramebuffer(GL_FRAMEBUFFER, m_ResolveFBO);
 
+        // Resolve color
         glGenTextures(1, &m_ResolveColorAttachment);
         glBindTexture(GL_TEXTURE_2D, m_ResolveColorAttachment);
         if (m_HDR)
@@ -58,10 +59,22 @@ void OpenGLFramebuffer::Invalidate() {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                GL_TEXTURE_2D, m_ResolveColorAttachment, 0);
 
+        // Resolve depth (for SSAO sampling)
+        glGenTextures(1, &m_ResolveDepthAttachment);
+        glBindTexture(GL_TEXTURE_2D, m_ResolveDepthAttachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, m_Width, m_Height, 0,
+                     GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                               GL_TEXTURE_2D, m_ResolveDepthAttachment, 0);
+
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             VE_ENGINE_ERROR("MSAA Resolve Framebuffer is not complete!");
     } else {
-        // ── Standard non-multisample framebuffer ──
+        // ── Standard color texture ──
         glGenTextures(1, &m_ColorAttachment);
         glBindTexture(GL_TEXTURE_2D, m_ColorAttachment);
         if (m_HDR)
@@ -73,12 +86,17 @@ void OpenGLFramebuffer::Invalidate() {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                GL_TEXTURE_2D, m_ColorAttachment, 0);
 
-        // Depth+stencil renderbuffer
-        glGenRenderbuffers(1, &m_DepthAttachment);
-        glBindRenderbuffer(GL_RENDERBUFFER, m_DepthAttachment);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, m_Width, m_Height);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-                                  GL_RENDERBUFFER, m_DepthAttachment);
+        // ── Depth texture (sampleable for SSAO) ──
+        glGenTextures(1, &m_DepthAttachment);
+        glBindTexture(GL_TEXTURE_2D, m_DepthAttachment);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, m_Width, m_Height, 0,
+                     GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                               GL_TEXTURE_2D, m_DepthAttachment, 0);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             VE_ENGINE_ERROR("Framebuffer is not complete!");
@@ -91,7 +109,7 @@ void OpenGLFramebuffer::Cleanup() {
     if (m_FBO) {
         glDeleteFramebuffers(1, &m_FBO);
         glDeleteTextures(1, &m_ColorAttachment);
-        glDeleteRenderbuffers(1, &m_DepthAttachment);
+        glDeleteTextures(1, &m_DepthAttachment);
         m_FBO = 0;
         m_ColorAttachment = 0;
         m_DepthAttachment = 0;
@@ -99,8 +117,10 @@ void OpenGLFramebuffer::Cleanup() {
     if (m_ResolveFBO) {
         glDeleteFramebuffers(1, &m_ResolveFBO);
         glDeleteTextures(1, &m_ResolveColorAttachment);
+        glDeleteTextures(1, &m_ResolveDepthAttachment);
         m_ResolveFBO = 0;
         m_ResolveColorAttachment = 0;
+        m_ResolveDepthAttachment = 0;
     }
 }
 
@@ -121,7 +141,7 @@ uint64_t OpenGLFramebuffer::Resolve() {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_ResolveFBO);
     glBlitFramebuffer(0, 0, m_Width, m_Height,
                       0, 0, m_Width, m_Height,
-                      GL_COLOR_BUFFER_BIT, GL_LINEAR);
+                      GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     return static_cast<uint64_t>(m_ResolveColorAttachment);

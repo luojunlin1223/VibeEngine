@@ -9,6 +9,7 @@
 #pragma once
 
 #include "VibeEngine/Renderer/VertexArray.h"
+#include "VibeEngine/Animation/AnimStateMachine.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -33,16 +34,26 @@ public:
     bool IsPlaying() const { return m_Playing; }
     int GetClipCount() const;
 
+    // State machine
+    AnimStateMachine& GetStateMachine() { return m_StateMachine; }
+    const AnimStateMachine& GetStateMachine() const { return m_StateMachine; }
+    void SetUseStateMachine(bool use) { m_UseStateMachine = use; }
+    bool IsUsingStateMachine() const { return m_UseStateMachine; }
+
+    float GetCurrentTime() const { return m_CurrentTime; }
+    float GetCurrentClipDuration() const;
+
 private:
     void SamplePose(float time);
+    void SamplePoseBlended(float timeA, int clipA, float timeB, int clipB, float blend);
 
     std::shared_ptr<MeshAsset> m_Mesh;
-    std::vector<AnimationClip> m_OverrideClips; // external clips (if set, used instead of mesh clips)
-    std::vector<float> m_SkinnedVertices; // working copy
+    std::vector<AnimationClip> m_OverrideClips;
+    std::vector<float> m_SkinnedVertices;
     std::shared_ptr<VertexArray> m_SkinnedVAO;
 
-    // Bone matrices (final = inverse_bind * global_transform)
     std::vector<glm::mat4> m_BoneMatrices;
+    std::vector<glm::mat4> m_BoneMatricesB; // for blending
 
     // Playback state
     int m_ClipIndex = 0;
@@ -50,7 +61,11 @@ private:
     float m_Speed = 1.0f;
     bool m_Loop = true;
     bool m_Playing = false;
-    float m_DebugTimer = 0.0f;
+
+    // State machine
+    AnimStateMachine m_StateMachine;
+    bool m_UseStateMachine = false;
+    float m_BlendTimeB = 0.0f; // time in blend target clip
 };
 
 } // namespace VE

@@ -235,6 +235,44 @@ static bool Glue_Animator_IsPlaying(uint64_t entityID) {
     return ac && ac->_Animator && ac->_Animator->IsPlaying();
 }
 
+// ── Animation state machine ─────────────────────────────────────────
+
+static void Glue_Animator_SetFloat(uint64_t entityID, const char* name, float value) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    if (ac && ac->_Animator && ac->_Animator->IsUsingStateMachine())
+        ac->_Animator->GetStateMachine().SetFloat(name, value);
+}
+
+static void Glue_Animator_SetInt(uint64_t entityID, const char* name, int value) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    if (ac && ac->_Animator && ac->_Animator->IsUsingStateMachine())
+        ac->_Animator->GetStateMachine().SetInt(name, value);
+}
+
+static void Glue_Animator_SetBool(uint64_t entityID, const char* name, bool value) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    if (ac && ac->_Animator && ac->_Animator->IsUsingStateMachine())
+        ac->_Animator->GetStateMachine().SetBool(name, value);
+}
+
+static void Glue_Animator_SetTrigger(uint64_t entityID, const char* name) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ac = scene->GetRegistry().try_get<AnimatorComponent>(e);
+    if (ac && ac->_Animator && ac->_Animator->IsUsingStateMachine())
+        ac->_Animator->GetStateMachine().SetTrigger(name);
+}
+
 // ── Camera / screen-to-world ────────────────────────────────────────
 
 // Cached camera matrices (set each frame by the sandbox/runtime before scripts run)
@@ -503,6 +541,10 @@ void InitScriptGlue(ScriptAPI& api) {
     api.Animator_Stop            = Glue_Animator_Stop;
     api.Animator_GetClipCount    = Glue_Animator_GetClipCount;
     api.Animator_IsPlaying       = Glue_Animator_IsPlaying;
+    api.Animator_SetFloat        = Glue_Animator_SetFloat;
+    api.Animator_SetInt          = Glue_Animator_SetInt;
+    api.Animator_SetBool         = Glue_Animator_SetBool;
+    api.Animator_SetTrigger      = Glue_Animator_SetTrigger;
 
     // Camera
     api.Camera_ScreenToWorldRay  = Glue_Camera_ScreenToWorldRay;

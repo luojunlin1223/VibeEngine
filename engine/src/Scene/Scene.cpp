@@ -21,6 +21,7 @@
 #include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <chrono>
 #include <sstream>
 #include <random>
 
@@ -356,9 +357,23 @@ void Scene::StartAnimations() {
                 ac._Animator->SetClips(std::move(externalClips));
         }
 
-        int clipCount = ac._Animator->GetClipCount();
-        if (ac.PlayOnStart && ac.ClipIndex < clipCount)
-            ac._Animator->Play(ac.ClipIndex, ac.Loop, ac.Speed);
+        // Configure state machine if enabled
+        if (ac.UseStateMachine && !ac.States.empty()) {
+            auto& sm = ac._Animator->GetStateMachine();
+            for (auto& s : ac.States) sm.AddState(s);
+            for (auto& t : ac.Transitions) sm.AddTransition(t);
+            for (auto& p : ac.Parameters) sm.AddParameter(p);
+            sm.SetDefaultState(ac.DefaultState);
+            sm.Reset();
+            ac._Animator->SetUseStateMachine(true);
+            ac._Animator->Play(ac.States[ac.DefaultState].ClipIndex,
+                               ac.States[ac.DefaultState].Loop,
+                               ac.States[ac.DefaultState].Speed);
+        } else {
+            int clipCount = ac._Animator->GetClipCount();
+            if (ac.PlayOnStart && ac.ClipIndex < clipCount)
+                ac._Animator->Play(ac.ClipIndex, ac.Loop, ac.Speed);
+        }
     }
     VE_ENGINE_INFO("Animations started");
 }
@@ -736,6 +751,12 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
         shader->SetMat4("u_MVP", mvp);
         shader->SetMat4("u_Model", model); // always set model for both lit/unlit
+
+        // Global time for animated shaders (water, etc.)
+        static auto startTime = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::high_resolution_clock::now();
+        float globalTime = std::chrono::duration<float>(now - startTime).count();
+        shader->SetFloat("u_Time", globalTime);
 
         bool hasTexInMat = false;
         for (auto& prop : mr.Mat->GetProperties()) {

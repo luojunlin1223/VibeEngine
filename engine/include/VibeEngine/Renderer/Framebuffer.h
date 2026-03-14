@@ -28,6 +28,9 @@ public:
     virtual uint64_t Resolve() { return GetColorAttachmentID(); }
     virtual bool IsMultisampled() const { return false; }
 
+    // Depth texture access (for SSAO etc.)
+    virtual uint64_t GetDepthAttachmentID() const { return 0; }
+
     static std::shared_ptr<Framebuffer> Create(const FramebufferSpec& spec);
 };
 
