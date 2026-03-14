@@ -12,6 +12,7 @@
 #include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Renderer/Frustum.h"
 #include "VibeEngine/Renderer/LODSystem.h"
+#include "VibeEngine/UI/UIRenderer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -128,6 +129,20 @@ glm::mat4 Scene::GetWorldTransform(entt::entity entity) const {
     return local;
 }
 
+bool Scene::IsEntityActiveInHierarchy(entt::entity entity) const {
+    if (!m_Registry.valid(entity)) return false;
+    if (m_Registry.all_of<TagComponent>(entity)) {
+        if (!m_Registry.get<TagComponent>(entity).Active)
+            return false;
+    }
+    if (m_Registry.all_of<RelationshipComponent>(entity)) {
+        auto& rel = m_Registry.get<RelationshipComponent>(entity);
+        if (rel.Parent != entt::null && m_Registry.valid(rel.Parent))
+            return IsEntityActiveInHierarchy(rel.Parent);
+    }
+    return true;
+}
+
 void Scene::OnUpdate(float deltaTime) {
     if (m_PhysicsRunning && m_PhysicsWorld) {
         static constexpr float PHYSICS_DT = 1.0f / 60.0f;
@@ -143,6 +158,7 @@ void Scene::OnUpdate(float deltaTime) {
     {
         auto scriptView = m_Registry.view<ScriptComponent>();
         for (auto entity : scriptView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
             auto& sc = scriptView.get<ScriptComponent>(entity);
             if (sc._Instance)
                 sc._Instance->OnUpdate(deltaTime);
@@ -153,6 +169,7 @@ void Scene::OnUpdate(float deltaTime) {
     {
         auto animView = m_Registry.view<AnimatorComponent>();
         for (auto entity : animView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
             auto& ac = animView.get<AnimatorComponent>(entity);
             if (ac._Animator)
                 ac._Animator->Update(deltaTime);
@@ -163,6 +180,7 @@ void Scene::OnUpdate(float deltaTime) {
     {
         auto saView = m_Registry.view<SpriteAnimatorComponent, SpriteRendererComponent>();
         for (auto entity : saView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
             auto& sa = saView.get<SpriteAnimatorComponent>(entity);
             if (!sa._Playing) continue;
 
@@ -455,6 +473,7 @@ void Scene::ComputeShadows(const glm::mat4& viewMatrix,
         depthShader->SetMat4("u_LightSpaceMatrix", m_ShadowMap->GetLightSpaceMatrix(c));
 
         for (auto entityID : meshView) {
+            if (!IsEntityActiveInHierarchy(entityID)) continue;
             auto [tc, mr] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
             if (!mr.Mesh || !mr.CastShadows) continue;
 
@@ -484,6 +503,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     {
         auto lightView = m_Registry.view<DirectionalLightComponent>();
         for (auto lightEntity : lightView) {
+            if (!IsEntityActiveInHierarchy(lightEntity)) continue;
             auto& dl = lightView.get<DirectionalLightComponent>(lightEntity);
             glm::vec3 dir(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
             float len = glm::length(dir);
@@ -506,6 +526,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto plEntity : plView) {
             if (numPointLights >= MAX_POINT_LIGHTS) break;
+            if (!IsEntityActiveInHierarchy(plEntity)) continue;
             auto [tc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
             glm::mat4 worldMat = GetWorldTransform(plEntity);
             pointPositions[numPointLights]  = glm::vec3(worldMat[3]); // extract translation
@@ -658,6 +679,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entityID : view) {
+        if (!IsEntityActiveInHierarchy(entityID)) continue;
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
 
         if (!mr.Mesh || !mr.Mat)
@@ -783,6 +805,123 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     }
 }
 
+// ── Terrain Rendering ───────────────────────────────────────────────
+
+void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos) {
+    auto terrainView = m_Registry.view<TransformComponent, TerrainComponent>();
+    for (auto entity : terrainView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& tc = terrainView.get<TransformComponent>(entity);
+        auto& terrain = terrainView.get<TerrainComponent>(entity);
+
+        // Lazy generation
+        if (terrain._NeedsRebuild || !terrain._Terrain) {
+            terrain._Terrain = std::make_shared<Terrain>();
+            if (!terrain.HeightmapPath.empty()) {
+                terrain._Terrain->GenerateFromImage(terrain.HeightmapPath,
+                    terrain.WorldSizeX, terrain.WorldSizeZ, terrain.HeightScale);
+            } else {
+                terrain._Terrain->GenerateProcedural(terrain.Resolution,
+                    terrain.WorldSizeX, terrain.WorldSizeZ, terrain.HeightScale,
+                    terrain.Octaves, terrain.Persistence, terrain.Lacunarity,
+                    terrain.NoiseScale, terrain.Seed);
+            }
+            terrain._Mesh = terrain._Terrain->GetMesh();
+            terrain._NeedsRebuild = false;
+
+            // Load textures
+            for (int i = 0; i < 4; i++) {
+                if (!terrain.LayerTexturePaths[i].empty())
+                    terrain._LayerTextures[i] = Texture2D::Create(terrain.LayerTexturePaths[i]);
+            }
+        }
+
+        if (!terrain._Mesh) continue;
+
+        // Load terrain shader
+        static std::shared_ptr<Shader> s_TerrainShader;
+        if (!s_TerrainShader) {
+            s_TerrainShader = Shader::CreateFromFile("shaders/Terrain.shader");
+            if (!s_TerrainShader) {
+                VE_ENGINE_ERROR("Failed to load Terrain.shader");
+                continue;
+            }
+        }
+
+        glm::mat4 model = GetWorldTransform(entity);
+        glm::mat4 mvp = viewProjection * model;
+
+        s_TerrainShader->Bind();
+        s_TerrainShader->SetMat4("u_MVP", mvp);
+        s_TerrainShader->SetMat4("u_Model", model);
+        s_TerrainShader->SetVec4("u_EntityColor", glm::vec4(1.0f));
+
+        // Lighting — find directional light
+        glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+        glm::vec3 lightColor(1.0f);
+        float lightIntensity = 1.0f;
+        {
+            auto lightView = m_Registry.view<DirectionalLightComponent>();
+            for (auto le : lightView) {
+                if (!IsEntityActiveInHierarchy(le)) continue;
+                auto& dl = lightView.get<DirectionalLightComponent>(le);
+                glm::vec3 d(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
+                float len = glm::length(d);
+                if (len > 0.0001f) lightDir = d / len;
+                lightColor = glm::vec3(dl.Color[0], dl.Color[1], dl.Color[2]);
+                lightIntensity = dl.Intensity;
+                break;
+            }
+        }
+        s_TerrainShader->SetVec3("u_LightDir", lightDir);
+        s_TerrainShader->SetVec3("u_LightColor", lightColor);
+        s_TerrainShader->SetFloat("u_LightIntensity", lightIntensity);
+        s_TerrainShader->SetVec3("u_ViewPos", cameraPos);
+        s_TerrainShader->SetFloat("u_Roughness", terrain.Roughness);
+
+        // Point lights
+        static constexpr int MAX_PL = 8;
+        int numPL = 0;
+        auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
+        for (auto plE : plView) {
+            if (numPL >= MAX_PL) break;
+            if (!IsEntityActiveInHierarchy(plE)) continue;
+            auto [ptc, pl] = plView.get<TransformComponent, PointLightComponent>(plE);
+            glm::vec3 plPos = glm::vec3(GetWorldTransform(plE)[3]);
+            s_TerrainShader->SetVec3("u_PointLightPositions[" + std::to_string(numPL) + "]", plPos);
+            s_TerrainShader->SetVec3("u_PointLightColors[" + std::to_string(numPL) + "]",
+                glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]));
+            s_TerrainShader->SetFloat("u_PointLightIntensities[" + std::to_string(numPL) + "]", pl.Intensity);
+            s_TerrainShader->SetFloat("u_PointLightRanges[" + std::to_string(numPL) + "]", pl.Range);
+            numPL++;
+        }
+        s_TerrainShader->SetInt("u_NumPointLights", numPL);
+
+        // Blend heights and tiling
+        s_TerrainShader->SetFloat("u_BlendHeight0", terrain.BlendHeights[0]);
+        s_TerrainShader->SetFloat("u_BlendHeight1", terrain.BlendHeights[1]);
+        s_TerrainShader->SetFloat("u_BlendHeight2", terrain.BlendHeights[2]);
+        s_TerrainShader->SetFloat("u_HeightScale", terrain.HeightScale);
+        s_TerrainShader->SetFloat("u_Tiling0", terrain.LayerTiling[0]);
+        s_TerrainShader->SetFloat("u_Tiling1", terrain.LayerTiling[1]);
+        s_TerrainShader->SetFloat("u_Tiling2", terrain.LayerTiling[2]);
+        s_TerrainShader->SetFloat("u_Tiling3", terrain.LayerTiling[3]);
+
+        // Bind layer textures
+        for (int i = 0; i < 4; i++) {
+            std::string uniformName = "u_Layer" + std::to_string(i);
+            s_TerrainShader->SetInt(uniformName, i);
+            if (terrain._LayerTextures[i])
+                terrain._LayerTextures[i]->Bind(i);
+        }
+
+        // Shadow uniforms (if available)
+        s_TerrainShader->SetInt("u_ShadowEnabled", 0);
+
+        RenderCommand::DrawIndexed(terrain._Mesh);
+    }
+}
+
 // ── Sprite Rendering ────────────────────────────────────────────────
 
 void Scene::OnRenderSprites(const glm::mat4& viewProjection) {
@@ -798,6 +937,7 @@ void Scene::OnRenderSprites(const glm::mat4& viewProjection) {
     sprites.reserve(view.size_hint());
 
     for (auto e : view) {
+        if (!IsEntityActiveInHierarchy(e)) continue;
         auto& sr = view.get<SpriteRendererComponent>(e);
         auto& tc = view.get<TransformComponent>(e);
         sprites.push_back({ e, sr.SortingOrder, tc.Position[2] });
@@ -878,6 +1018,7 @@ void Scene::StopParticles() {
 void Scene::OnUpdateParticles(float dt) {
     auto view = m_Registry.view<TransformComponent, ParticleSystemComponent>();
     for (auto entity : view) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
         auto& tc = view.get<TransformComponent>(entity);
         auto& ps = view.get<ParticleSystemComponent>(entity);
         if (!ps._Playing) continue;
@@ -939,6 +1080,7 @@ void Scene::OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& 
 
     bool anyActive = false;
     for (auto e : view) {
+        if (!IsEntityActiveInHierarchy(e)) continue;
         auto& ps = view.get<ParticleSystemComponent>(e);
         if (!ps._Playing) continue;
         for (auto& p : ps._Particles) {
@@ -986,6 +1128,136 @@ void Scene::OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& 
     }
 
     SpriteBatchRenderer::EndBatch();
+}
+
+// ── Runtime UI Rendering ──────────────────────────────────────────────
+
+void Scene::OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
+                       float mouseX, float mouseY, bool mouseDown) {
+    // Check if any UICanvasComponent exists
+    auto canvasView = m_Registry.view<UICanvasComponent>();
+    bool hasCanvas = false;
+    for (auto e : canvasView) { (void)e; hasCanvas = true; break; }
+    if (!hasCanvas) return;
+
+    UIRenderer::SetMouseState(mouseX, mouseY, mouseDown);
+    UIRenderer::BeginFrame(screenWidth, screenHeight);
+
+    // Helper to compute screen position from anchor + offset
+    auto ComputeScreenPos = [&](const UIRectTransformComponent& rt) -> glm::vec2 {
+        float anchorX = 0.0f, anchorY = 0.0f;
+        switch (rt.Anchor) {
+            case UIAnchorType::TopLeft:      anchorX = 0;                      anchorY = 0; break;
+            case UIAnchorType::TopCenter:    anchorX = screenWidth * 0.5f;     anchorY = 0; break;
+            case UIAnchorType::TopRight:     anchorX = (float)screenWidth;     anchorY = 0; break;
+            case UIAnchorType::MiddleLeft:   anchorX = 0;                      anchorY = screenHeight * 0.5f; break;
+            case UIAnchorType::Center:       anchorX = screenWidth * 0.5f;     anchorY = screenHeight * 0.5f; break;
+            case UIAnchorType::MiddleRight:  anchorX = (float)screenWidth;     anchorY = screenHeight * 0.5f; break;
+            case UIAnchorType::BottomLeft:   anchorX = 0;                      anchorY = (float)screenHeight; break;
+            case UIAnchorType::BottomCenter: anchorX = screenWidth * 0.5f;     anchorY = (float)screenHeight; break;
+            case UIAnchorType::BottomRight:  anchorX = (float)screenWidth;     anchorY = (float)screenHeight; break;
+        }
+        float x = anchorX + rt.AnchoredPosition[0] - rt.Pivot[0] * rt.Size[0];
+        float y = anchorY + rt.AnchoredPosition[1] - rt.Pivot[1] * rt.Size[1];
+        return { x, y };
+    };
+
+    // First pass: update button states
+    auto buttonView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
+    for (auto entity : buttonView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& rt = buttonView.get<UIRectTransformComponent>(entity);
+        auto& btn = buttonView.get<UIButtonComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+        btn._Hovered = UIRenderer::IsMouseOver(pos.x, pos.y, rt.Size[0], rt.Size[1]);
+        btn._Clicked = UIRenderer::IsMouseClicked(pos.x, pos.y, rt.Size[0], rt.Size[1]);
+        btn._Pressed = btn._Hovered && mouseDown;
+    }
+
+    // Second pass: render UI elements (images, then text on top)
+    // Render UIImageComponents
+    auto imageView = m_Registry.view<UIRectTransformComponent, UIImageComponent>();
+    for (auto entity : imageView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& rt = imageView.get<UIRectTransformComponent>(entity);
+        auto& img = imageView.get<UIImageComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+
+        glm::vec4 color = { img.Color[0], img.Color[1], img.Color[2], img.Color[3] };
+
+        // If this entity also has a button, use button color
+        if (m_Registry.all_of<UIButtonComponent>(entity)) {
+            auto& btn = m_Registry.get<UIButtonComponent>(entity);
+            const auto& c = btn._Pressed ? btn.PressedColor :
+                            btn._Hovered ? btn.HoverColor : btn.NormalColor;
+            color = { c[0], c[1], c[2], c[3] };
+        }
+
+        if (img._Texture)
+            UIRenderer::DrawImage(pos.x, pos.y, rt.Size[0], rt.Size[1], img._Texture, color);
+        else
+            UIRenderer::DrawRect(pos.x, pos.y, rt.Size[0], rt.Size[1], color);
+    }
+
+    // Render buttons without images (colored rect)
+    auto btnOnlyView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
+    for (auto entity : btnOnlyView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        if (m_Registry.all_of<UIImageComponent>(entity)) continue; // already drawn
+        auto& rt = btnOnlyView.get<UIRectTransformComponent>(entity);
+        auto& btn = btnOnlyView.get<UIButtonComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+        const auto& c = btn._Pressed ? btn.PressedColor :
+                        btn._Hovered ? btn.HoverColor : btn.NormalColor;
+        UIRenderer::DrawRect(pos.x, pos.y, rt.Size[0], rt.Size[1],
+                             { c[0], c[1], c[2], c[3] });
+    }
+
+    // Render button labels (centered text inside button rect)
+    {
+        auto btnLabelView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
+        for (auto entity : btnLabelView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
+            auto& rt = btnLabelView.get<UIRectTransformComponent>(entity);
+            auto& btn = btnLabelView.get<UIButtonComponent>(entity);
+            if (btn.Label.empty()) continue;
+
+            auto font = FontLibrary::GetDefault();
+            if (!font) continue;
+
+            float textW = font->MeasureTextWidth(btn.Label) * (btn.FontSize / font->GetPixelHeight());
+            float textH = btn.FontSize;
+            auto pos = ComputeScreenPos(rt);
+            float tx = pos.x + (rt.Size[0] - textW) * 0.5f;
+            float ty = pos.y + (rt.Size[1] - textH) * 0.5f;
+            UIRenderer::DrawText(btn.Label, tx, ty, btn.FontSize,
+                                 { btn.LabelColor[0], btn.LabelColor[1], btn.LabelColor[2], btn.LabelColor[3] },
+                                 font);
+        }
+    }
+
+    // Render UITextComponents
+    auto textView = m_Registry.view<UIRectTransformComponent, UITextComponent>();
+    for (auto entity : textView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& rt = textView.get<UIRectTransformComponent>(entity);
+        auto& txt = textView.get<UITextComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+
+        // Lazy-load font
+        if (!txt._Font) {
+            if (!txt.FontPath.empty())
+                txt._Font = FontAtlas::Create(txt.FontPath, txt.FontSize);
+            if (!txt._Font)
+                txt._Font = FontLibrary::GetDefault();
+        }
+
+        UIRenderer::DrawText(txt.Text, pos.x, pos.y, txt.FontSize,
+                             { txt.Color[0], txt.Color[1], txt.Color[2], txt.Color[3] },
+                             txt._Font);
+    }
+
+    UIRenderer::EndFrame();
 }
 
 } // namespace VE

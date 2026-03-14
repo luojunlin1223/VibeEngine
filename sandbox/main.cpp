@@ -31,6 +31,7 @@ public:
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
         VE::InstancedRenderer::Init();
+        VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
@@ -69,6 +70,7 @@ public:
 
     ~Sandbox() override {
         SaveEditorSettings();
+        VE::UIRenderer::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
@@ -197,10 +199,34 @@ protected:
         s.Curves.Green.Points  = ps.CurvesGreen;
         s.Curves.Blue.Points   = ps.CurvesBlue;
         s.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+        // Anti-aliasing
+        if (ps.AAMode == 4) // FXAA
+            s.FXAA = { true, ps.FXAAEdgeThreshold, ps.FXAAEdgeThresholdMin, ps.FXAASubpixelQuality };
+        if (ps.AAMode == 5) // TAA
+            s.TAA = { true, ps.TAABlendFactor };
         return s;
     }
 
     void OnRender() override {
+        // Check if MSAA sample count changed and recreate framebuffers
+        auto& pipeSettings = m_Scene->GetPipelineSettings();
+        uint32_t wantedSamples = 1;
+        if (pipeSettings.AAMode == 1) wantedSamples = 2;
+        else if (pipeSettings.AAMode == 2) wantedSamples = 4;
+        else if (pipeSettings.AAMode == 3) wantedSamples = 8;
+        if (wantedSamples != m_CurrentMSAASamples && m_Framebuffer) {
+            m_CurrentMSAASamples = wantedSamples;
+            VE::FramebufferSpec fbSpec;
+            fbSpec.Width = m_Framebuffer->GetWidth();
+            fbSpec.Height = m_Framebuffer->GetHeight();
+            fbSpec.HDR = true;
+            fbSpec.Samples = wantedSamples;
+            m_Framebuffer = VE::Framebuffer::Create(fbSpec);
+            m_GameFramebuffer = VE::Framebuffer::Create(fbSpec);
+            m_PostProcessing.Shutdown();
+            m_GamePostProcessing.Shutdown();
+        }
+
         m_FrameVP = m_Camera.GetViewProjection();
         glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
             ? m_Camera.GetPosition3D()
@@ -254,6 +280,7 @@ protected:
             b.SideEffect();
         }, [&](const VE::RGResources&) {
             m_Scene->OnRender(m_FrameVP, camPos);
+            m_Scene->OnRenderTerrain(m_FrameVP, camPos);
         });
 
         // Pass 3: Sprites
@@ -289,6 +316,9 @@ protected:
         }, [&](const VE::RGResources&) {
             if (m_Framebuffer) {
                 m_Framebuffer->Unbind();
+                // Resolve MSAA if active
+                if (m_Framebuffer->IsMultisampled())
+                    m_Framebuffer->Resolve();
                 auto ppSettings = BuildPostProcessSettings();
                 uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
                 m_PostProcessedTexture = m_PostProcessing.Apply(
@@ -306,6 +336,7 @@ protected:
             entt::entity singleCam = entt::null;
             int highestPriority = std::numeric_limits<int>::min();
             for (auto e : camView) {
+                if (!m_Scene->IsEntityActiveInHierarchy(e)) continue;
                 camCount++;
                 singleCam = e;
                 auto& tag = camView.get<VE::TagComponent>(e);
@@ -357,6 +388,7 @@ protected:
                     b.SideEffect();
                 }, [&](const VE::RGResources&) {
                     m_Scene->OnRender(gameVP, gameCamPos);
+                    m_Scene->OnRenderTerrain(gameVP, gameCamPos);
                 });
 
                 // Game Pass 2: Sprites
@@ -375,12 +407,27 @@ protected:
                     m_Scene->OnRenderParticles(gameVP, gameCamPos);
                 });
 
-                // Game Pass 4: PostProcess
+                // Game Pass 4: Runtime UI
+                rg.AddPass("GameUI", [&](VE::RGBuilder& b) {
+                    b.Write(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    uint32_t gw = m_GameFramebuffer->GetWidth();
+                    uint32_t gh = m_GameFramebuffer->GetHeight();
+                    double mx, my;
+                    glfwGetCursorPos(GetWindow().GetNativeWindow(), &mx, &my);
+                    bool mouseDown = glfwGetMouseButton(GetWindow().GetNativeWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+                    m_Scene->OnRenderUI(gw, gh, (float)mx, (float)my, mouseDown);
+                });
+
+                // Game Pass 5: PostProcess
                 rg.AddPass("GamePostProcess", [&](VE::RGBuilder& b) {
                     b.Read(gameSceneColor);
                     b.SideEffect();
                 }, [&](const VE::RGResources&) {
                     m_GameFramebuffer->Unbind();
+                    if (m_GameFramebuffer->IsMultisampled())
+                        m_GameFramebuffer->Resolve();
                     auto ppSettings = BuildPostProcessSettings();
                     uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
                     m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
@@ -546,6 +593,7 @@ protected:
             ClearEntityGPUResources();
             VE::MeshLibrary::Shutdown();
             VE::MeshImporter::ClearCache();
+            VE::UIRenderer::Shutdown();
             m_Framebuffer.reset();
             m_GameFramebuffer.reset();
             m_PostProcessing.Shutdown();
@@ -555,6 +603,7 @@ protected:
         } else {
             VE::MeshLibrary::Init();
             VE::MeshImporter::ReuploadCache();
+            VE::UIRenderer::Init();
             RestoreEntityGPUResources();
             VE::FramebufferSpec fbSpec;
             fbSpec.Width = 1280;
@@ -1735,14 +1784,21 @@ private:
 
         bool isSelected = (m_SelectedEntity.GetHandle() == entityID);
         bool hasChildren = !rel.Children.empty();
+        bool isActive = m_Scene->IsEntityActiveInHierarchy(entityID);
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (isSelected) flags |= ImGuiTreeNodeFlags_Selected;
         if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf;
 
+        if (!isActive)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 0.6f));
+
         bool opened = ImGui::TreeNodeEx(
             reinterpret_cast<void*>(static_cast<uintptr_t>(static_cast<uint32_t>(entityID))),
             flags, "%s", tag.Tag.c_str());
+
+        if (!isActive)
+            ImGui::PopStyleColor();
 
         if (ImGui::IsItemClicked()) {
             m_SelectedEntity = VE::Entity(entityID, &*m_Scene);
@@ -2463,7 +2519,9 @@ private:
         if (m_SelectedEntity.HasComponent<VE::TagComponent>()) {
             auto& tag = m_SelectedEntity.GetComponent<VE::TagComponent>();
 
-            // Name
+            // Active toggle + Name on same line
+            ImGui::Checkbox("##Active", &tag.Active);
+            ImGui::SameLine();
             char buffer[256];
             strncpy(buffer, tag.Tag.c_str(), sizeof(buffer) - 1);
             buffer[sizeof(buffer) - 1] = '\0';
@@ -3263,6 +3321,174 @@ private:
             }
             if (removeLOD)
                 m_SelectedEntity.RemoveComponent<VE::LODGroupComponent>();
+        // ── Terrain Component Inspector ───────────────────────────
+        if (m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& t = m_SelectedEntity.GetComponent<VE::TerrainComponent>();
+                bool changed = false;
+
+                // Heightmap source
+                char hmBuf[256];
+                strncpy(hmBuf, t.HeightmapPath.c_str(), sizeof(hmBuf));
+                hmBuf[sizeof(hmBuf)-1] = '\0';
+                if (ImGui::InputText("Heightmap Path", hmBuf, sizeof(hmBuf))) {
+                    t.HeightmapPath = hmBuf;
+                    changed = true;
+                }
+
+                changed |= ImGui::DragInt("Resolution", &t.Resolution, 1, 2, 1024);
+                changed |= ImGui::DragFloat("World Size X", &t.WorldSizeX, 1.0f, 1.0f, 10000.0f);
+                changed |= ImGui::DragFloat("World Size Z", &t.WorldSizeZ, 1.0f, 1.0f, 10000.0f);
+                changed |= ImGui::DragFloat("Height Scale", &t.HeightScale, 0.1f, 0.0f, 500.0f);
+
+                if (t.HeightmapPath.empty()) {
+                    ImGui::Separator();
+                    ImGui::Text("Procedural Noise");
+                    changed |= ImGui::DragInt("Octaves", &t.Octaves, 1, 1, 8);
+                    changed |= ImGui::DragFloat("Persistence", &t.Persistence, 0.01f, 0.0f, 1.0f);
+                    changed |= ImGui::DragFloat("Lacunarity", &t.Lacunarity, 0.1f, 1.0f, 4.0f);
+                    changed |= ImGui::DragFloat("Noise Scale", &t.NoiseScale, 1.0f, 1.0f, 500.0f);
+                    changed |= ImGui::DragInt("Seed", &t.Seed, 1);
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Texture Layers");
+                const char* layerNames[] = { "Low", "Mid-Low", "Mid-High", "High" };
+                for (int i = 0; i < 4; i++) {
+                    ImGui::PushID(i);
+                    ImGui::Text("Layer %d (%s):", i, layerNames[i]);
+                    char texBuf[256];
+                    strncpy(texBuf, t.LayerTexturePaths[i].c_str(), sizeof(texBuf));
+                    texBuf[sizeof(texBuf)-1] = '\0';
+                    if (ImGui::InputText("Texture##Lyr", texBuf, sizeof(texBuf))) {
+                        t.LayerTexturePaths[i] = texBuf;
+                        if (!t.LayerTexturePaths[i].empty())
+                            t._LayerTextures[i] = VE::Texture2D::Create(t.LayerTexturePaths[i]);
+                        else
+                            t._LayerTextures[i].reset();
+                    }
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                            t.LayerTexturePaths[i] = std::string(static_cast<const char*>(payload->Data));
+                            t._LayerTextures[i] = VE::Texture2D::Create(t.LayerTexturePaths[i]);
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                    ImGui::DragFloat("Tiling##Lyr", &t.LayerTiling[i], 0.01f, 0.001f, 1.0f);
+                    ImGui::PopID();
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Blend Heights (0-1)");
+                ImGui::DragFloat("Low->MidLow", &t.BlendHeights[0], 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("MidLow->MidHigh", &t.BlendHeights[1], 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("MidHigh->High", &t.BlendHeights[2], 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("Roughness##Terrain", &t.Roughness, 0.01f, 0.0f, 1.0f);
+
+                if (changed) t._NeedsRebuild = true;
+                if (ImGui::Button("Regenerate"))
+                    t._NeedsRebuild = true;
+
+                if (ImGui::Button("Remove##Terrain")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::TerrainComponent>();
+            ImGui::Separator();
+        }
+
+        // ── UI Components Inspector ──────────────────────────────
+        if (m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Canvas", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& uc = m_SelectedEntity.GetComponent<VE::UICanvasComponent>();
+                ImGui::Checkbox("Screen Space", &uc.ScreenSpace);
+                ImGui::DragInt("Sort Order", &uc.SortOrder, 1, 0, 100);
+                if (ImGui::Button("Remove##UICanvas")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UICanvasComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UIRectTransformComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Rect Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& rt = m_SelectedEntity.GetComponent<VE::UIRectTransformComponent>();
+                const char* anchorNames[] = {
+                    "TopLeft", "TopCenter", "TopRight",
+                    "MiddleLeft", "Center", "MiddleRight",
+                    "BottomLeft", "BottomCenter", "BottomRight"
+                };
+                int anchorIdx = static_cast<int>(rt.Anchor);
+                if (ImGui::Combo("Anchor", &anchorIdx, anchorNames, 9))
+                    rt.Anchor = static_cast<VE::UIAnchorType>(anchorIdx);
+                ImGui::DragFloat2("Position", rt.AnchoredPosition.data(), 1.0f);
+                ImGui::DragFloat2("Size", rt.Size.data(), 1.0f, 1.0f, 10000.0f);
+                ImGui::DragFloat2("Pivot", rt.Pivot.data(), 0.01f, 0.0f, 1.0f);
+                if (ImGui::Button("Remove##UIRectTransform")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UIRectTransformComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UITextComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Text", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& txt = m_SelectedEntity.GetComponent<VE::UITextComponent>();
+                char buf[256];
+                strncpy(buf, txt.Text.c_str(), sizeof(buf));
+                buf[sizeof(buf)-1] = '\0';
+                if (ImGui::InputText("Text", buf, sizeof(buf)))
+                    txt.Text = buf;
+                ImGui::DragFloat("Font Size", &txt.FontSize, 0.5f, 4.0f, 200.0f);
+                ImGui::ColorEdit4("Color##UIText", txt.Color.data());
+                if (ImGui::Button("Remove##UIText")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UITextComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UIImageComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Image", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& img = m_SelectedEntity.GetComponent<VE::UIImageComponent>();
+                ImGui::ColorEdit4("Color##UIImage", img.Color.data());
+                // Texture path
+                std::string texLabel = img.TexturePath.empty() ? "None" : img.TexturePath;
+                ImGui::Text("Texture: %s", texLabel.c_str());
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                        img.TexturePath = std::string(static_cast<const char*>(payload->Data));
+                        img._Texture = VE::Texture2D::Create(img.TexturePath);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                if (ImGui::Button("Remove##UIImage")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UIImageComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UIButtonComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Button", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& btn = m_SelectedEntity.GetComponent<VE::UIButtonComponent>();
+                char lblBuf[256];
+                strncpy(lblBuf, btn.Label.c_str(), sizeof(lblBuf));
+                lblBuf[sizeof(lblBuf)-1] = '\0';
+                if (ImGui::InputText("Label##UIBtn", lblBuf, sizeof(lblBuf)))
+                    btn.Label = lblBuf;
+                ImGui::DragFloat("Font Size##UIBtn", &btn.FontSize, 0.5f, 4.0f, 200.0f);
+                ImGui::ColorEdit4("Label Color##UIBtn", btn.LabelColor.data());
+                ImGui::ColorEdit4("Normal##UIBtn", btn.NormalColor.data());
+                ImGui::ColorEdit4("Hover##UIBtn", btn.HoverColor.data());
+                ImGui::ColorEdit4("Pressed##UIBtn", btn.PressedColor.data());
+                if (m_PlayMode) {
+                    ImGui::Text("Hovered: %s", btn._Hovered ? "Yes" : "No");
+                    ImGui::Text("Clicked: %s", btn._Clicked ? "Yes" : "No");
+                }
+                if (ImGui::Button("Remove##UIButton")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UIButtonComponent>();
             ImGui::Separator();
         }
 
@@ -3408,6 +3634,36 @@ private:
             if (!m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
                 if (ImGui::MenuItem("Particle System"))
                     m_SelectedEntity.AddComponent<VE::ParticleSystemComponent>();
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
+                if (ImGui::MenuItem("Terrain"))
+                    m_SelectedEntity.AddComponent<VE::TerrainComponent>();
+                anyAdded = true;
+            }
+            // UI components
+            if (ImGui::BeginMenu("UI")) {
+                if (!m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
+                    if (ImGui::MenuItem("UI Canvas"))
+                        m_SelectedEntity.AddComponent<VE::UICanvasComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UIRectTransformComponent>()) {
+                    if (ImGui::MenuItem("UI Rect Transform"))
+                        m_SelectedEntity.AddComponent<VE::UIRectTransformComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UITextComponent>()) {
+                    if (ImGui::MenuItem("UI Text"))
+                        m_SelectedEntity.AddComponent<VE::UITextComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UIImageComponent>()) {
+                    if (ImGui::MenuItem("UI Image"))
+                        m_SelectedEntity.AddComponent<VE::UIImageComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UIButtonComponent>()) {
+                    if (ImGui::MenuItem("UI Button"))
+                        m_SelectedEntity.AddComponent<VE::UIButtonComponent>();
+                }
+                ImGui::EndMenu();
                 anyAdded = true;
             }
             if (!anyAdded) {
@@ -3823,6 +4079,24 @@ private:
             if (ps.TonemapEnabled) {
                 const char* modes[] = { "None", "Reinhard", "ACES Filmic", "Uncharted 2" };
                 ImGui::Combo("Operator", &ps.TonemapMode, modes, 4);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const char* aaModes[] = { "None", "MSAA 2x", "MSAA 4x", "MSAA 8x", "FXAA", "TAA" };
+            ImGui::Combo("AA Mode", &ps.AAMode, aaModes, 6);
+
+            if (ps.AAMode >= 1 && ps.AAMode <= 3) {
+                ImGui::TextDisabled("Hardware multisample anti-aliasing");
+            }
+            if (ps.AAMode == 4) { // FXAA
+                ImGui::SliderFloat("Edge Threshold", &ps.FXAAEdgeThreshold, 0.01f, 0.5f, "%.4f");
+                ImGui::SliderFloat("Edge Threshold Min", &ps.FXAAEdgeThresholdMin, 0.001f, 0.1f, "%.4f");
+                ImGui::SliderFloat("Subpixel Quality", &ps.FXAASubpixelQuality, 0.0f, 1.0f, "%.2f");
+            }
+            if (ps.AAMode == 5) { // TAA
+                ImGui::SliderFloat("Blend Factor", &ps.TAABlendFactor, 0.01f, 0.5f, "%.2f");
+                ImGui::TextDisabled("Lower = more temporal smoothing");
             }
         }
 
@@ -4481,6 +4755,7 @@ private:
     glm::mat4 m_FrameVP = glm::mat4(1.0f);
     std::string m_CurrentScenePath;
     std::shared_ptr<VE::Framebuffer> m_Framebuffer;
+    uint32_t m_CurrentMSAASamples = 1; // track to detect changes
     bool m_ViewportHovered = false;
     bool m_ViewportFocused = false;
     bool m_GizmosEnabled   = true;

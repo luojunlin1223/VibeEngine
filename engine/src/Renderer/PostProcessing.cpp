@@ -216,6 +216,178 @@ void main() {
 }
 )";
 
+// ── FXAA shader (Timothy Lottes' FXAA 3.11 quality preset) ───────────
+
+static const char* s_FXAAFragSrc = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+
+uniform sampler2D u_Scene;
+uniform vec2      u_InvScreenSize;
+uniform float     u_EdgeThreshold;
+uniform float     u_EdgeThresholdMin;
+uniform float     u_SubpixelQuality;
+
+float Luma(vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+void main() {
+    vec3 rgbM  = texture(u_Scene, v_UV).rgb;
+    float lumaM  = Luma(rgbM);
+    float lumaN  = Luma(texture(u_Scene, v_UV + vec2( 0, -1) * u_InvScreenSize).rgb);
+    float lumaS  = Luma(texture(u_Scene, v_UV + vec2( 0,  1) * u_InvScreenSize).rgb);
+    float lumaW  = Luma(texture(u_Scene, v_UV + vec2(-1,  0) * u_InvScreenSize).rgb);
+    float lumaE  = Luma(texture(u_Scene, v_UV + vec2( 1,  0) * u_InvScreenSize).rgb);
+
+    float lumaMin = min(lumaM, min(min(lumaN, lumaS), min(lumaW, lumaE)));
+    float lumaMax = max(lumaM, max(max(lumaN, lumaS), max(lumaW, lumaE)));
+    float lumaRange = lumaMax - lumaMin;
+
+    if (lumaRange < max(u_EdgeThresholdMin, lumaMax * u_EdgeThreshold)) {
+        FragColor = vec4(rgbM, 1.0);
+        return;
+    }
+
+    float lumaNW = Luma(texture(u_Scene, v_UV + vec2(-1, -1) * u_InvScreenSize).rgb);
+    float lumaNE = Luma(texture(u_Scene, v_UV + vec2( 1, -1) * u_InvScreenSize).rgb);
+    float lumaSW = Luma(texture(u_Scene, v_UV + vec2(-1,  1) * u_InvScreenSize).rgb);
+    float lumaSE = Luma(texture(u_Scene, v_UV + vec2( 1,  1) * u_InvScreenSize).rgb);
+
+    float lumaDownUp   = lumaN + lumaS;
+    float lumaLeftRight = lumaW + lumaE;
+    float lumaLeftCorners  = lumaNW + lumaSW;
+    float lumaRightCorners = lumaNE + lumaSE;
+    float lumaUpCorners    = lumaNW + lumaNE;
+    float lumaDownCorners  = lumaSW + lumaSE;
+
+    float edgeH = abs(-2.0 * lumaW + lumaLeftCorners) +
+                  abs(-2.0 * lumaM + lumaDownUp) * 2.0 +
+                  abs(-2.0 * lumaE + lumaRightCorners);
+    float edgeV = abs(-2.0 * lumaN + lumaUpCorners) +
+                  abs(-2.0 * lumaM + lumaLeftRight) * 2.0 +
+                  abs(-2.0 * lumaS + lumaDownCorners);
+    bool isHorizontal = (edgeH >= edgeV);
+
+    float luma1 = isHorizontal ? lumaN : lumaW;
+    float luma2 = isHorizontal ? lumaS : lumaE;
+    float gradient1 = abs(luma1 - lumaM);
+    float gradient2 = abs(luma2 - lumaM);
+    bool is1Steeper = gradient1 >= gradient2;
+
+    float gradientScaled = 0.25 * max(gradient1, gradient2);
+    float stepLength = isHorizontal ? u_InvScreenSize.y : u_InvScreenSize.x;
+    float lumaLocalAvg;
+
+    if (is1Steeper) {
+        stepLength = -stepLength;
+        lumaLocalAvg = 0.5 * (luma1 + lumaM);
+    } else {
+        lumaLocalAvg = 0.5 * (luma2 + lumaM);
+    }
+
+    vec2 currentUV = v_UV;
+    if (isHorizontal) currentUV.y += stepLength * 0.5;
+    else              currentUV.x += stepLength * 0.5;
+
+    vec2 offset = isHorizontal ? vec2(u_InvScreenSize.x, 0.0) : vec2(0.0, u_InvScreenSize.y);
+
+    vec2 uv1 = currentUV - offset;
+    vec2 uv2 = currentUV + offset;
+
+    float lumaEnd1 = Luma(texture(u_Scene, uv1).rgb) - lumaLocalAvg;
+    float lumaEnd2 = Luma(texture(u_Scene, uv2).rgb) - lumaLocalAvg;
+    bool reached1 = abs(lumaEnd1) >= gradientScaled;
+    bool reached2 = abs(lumaEnd2) >= gradientScaled;
+
+    const int ITERATIONS = 12;
+    const float QUALITY[12] = float[](1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0);
+
+    for (int i = 2; i < ITERATIONS; i++) {
+        if (!reached1) {
+            uv1 -= offset * QUALITY[i];
+            lumaEnd1 = Luma(texture(u_Scene, uv1).rgb) - lumaLocalAvg;
+            reached1 = abs(lumaEnd1) >= gradientScaled;
+        }
+        if (!reached2) {
+            uv2 += offset * QUALITY[i];
+            lumaEnd2 = Luma(texture(u_Scene, uv2).rgb) - lumaLocalAvg;
+            reached2 = abs(lumaEnd2) >= gradientScaled;
+        }
+        if (reached1 && reached2) break;
+    }
+
+    float dist1 = isHorizontal ? (v_UV.x - uv1.x) : (v_UV.y - uv1.y);
+    float dist2 = isHorizontal ? (uv2.x - v_UV.x) : (uv2.y - v_UV.y);
+
+    bool isDir1 = dist1 < dist2;
+    float distFinal = min(dist1, dist2);
+    float edgeThickness = dist1 + dist2;
+
+    float pixelOffset = -distFinal / edgeThickness + 0.5;
+    bool isLumaCenterSmaller = lumaM < lumaLocalAvg;
+    bool correctVariation = ((isDir1 ? lumaEnd1 : lumaEnd2) < 0.0) != isLumaCenterSmaller;
+    float finalOffset = correctVariation ? pixelOffset : 0.0;
+
+    // Subpixel anti-aliasing
+    float lumaAvg = (1.0 / 12.0) * (2.0 * (lumaDownUp + lumaLeftRight) +
+                     lumaLeftCorners + lumaRightCorners);
+    float subPixOff1 = clamp(abs(lumaAvg - lumaM) / lumaRange, 0.0, 1.0);
+    float subPixOff2 = (-2.0 * subPixOff1 + 3.0) * subPixOff1 * subPixOff1;
+    float subPixOffFinal = subPixOff2 * subPixOff2 * u_SubpixelQuality;
+    finalOffset = max(finalOffset, subPixOffFinal);
+
+    vec2 finalUV = v_UV;
+    if (isHorizontal) finalUV.y += finalOffset * stepLength;
+    else              finalUV.x += finalOffset * stepLength;
+
+    FragColor = vec4(texture(u_Scene, finalUV).rgb, 1.0);
+}
+)";
+
+// ── TAA shader (temporal blend with simple reprojection) ─────────────
+
+static const char* s_TAAFragSrc = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+
+uniform sampler2D u_Current;
+uniform sampler2D u_History;
+uniform float     u_BlendFactor;
+uniform vec2      u_JitterOffset;
+
+void main() {
+    // Simple reprojection: unjitter current UV to sample history
+    vec2 historyUV = v_UV - u_JitterOffset;
+
+    vec3 current = texture(u_Current, v_UV).rgb;
+    vec3 history = texture(u_History, historyUV).rgb;
+
+    // Neighborhood clamping to reduce ghosting
+    vec2 texelSize = 1.0 / vec2(textureSize(u_Current, 0));
+    vec3 nTL = texture(u_Current, v_UV + vec2(-1, -1) * texelSize).rgb;
+    vec3 nTR = texture(u_Current, v_UV + vec2( 1, -1) * texelSize).rgb;
+    vec3 nBL = texture(u_Current, v_UV + vec2(-1,  1) * texelSize).rgb;
+    vec3 nBR = texture(u_Current, v_UV + vec2( 1,  1) * texelSize).rgb;
+    vec3 nT  = texture(u_Current, v_UV + vec2( 0, -1) * texelSize).rgb;
+    vec3 nB  = texture(u_Current, v_UV + vec2( 0,  1) * texelSize).rgb;
+    vec3 nL  = texture(u_Current, v_UV + vec2(-1,  0) * texelSize).rgb;
+    vec3 nR  = texture(u_Current, v_UV + vec2( 1,  0) * texelSize).rgb;
+
+    vec3 neighborMin = min(current, min(min(nTL, nTR), min(nBL, nBR)));
+    neighborMin = min(neighborMin, min(min(nT, nB), min(nL, nR)));
+    vec3 neighborMax = max(current, max(max(nTL, nTR), max(nBL, nBR)));
+    neighborMax = max(neighborMax, max(max(nT, nB), max(nL, nR)));
+
+    history = clamp(history, neighborMin, neighborMax);
+
+    vec3 result = mix(history, current, u_BlendFactor);
+    FragColor = vec4(result, 1.0);
+}
+)";
+
 // ── Shader compilation helpers ───────────────────────────────────────
 
 static uint32_t CompileShader(GLenum type, const char* src) {
@@ -337,6 +509,8 @@ void PostProcessing::Shutdown() {
     if (m_BrightExtractShader) { glDeleteProgram(m_BrightExtractShader); m_BrightExtractShader = 0; }
     if (m_BlurShader) { glDeleteProgram(m_BlurShader); m_BlurShader = 0; }
     if (m_CompositeShader) { glDeleteProgram(m_CompositeShader); m_CompositeShader = 0; }
+    if (m_FXAAShader) { glDeleteProgram(m_FXAAShader); m_FXAAShader = 0; }
+    if (m_TAAShader) { glDeleteProgram(m_TAAShader); m_TAAShader = 0; }
 
     m_Initialized = false;
 }
@@ -356,6 +530,8 @@ void PostProcessing::CompileShaders() {
     m_BrightExtractShader = LinkProgram(s_QuadVertexSrc, s_BrightExtractFragSrc);
     m_BlurShader = LinkProgram(s_QuadVertexSrc, s_BlurFragSrc);
     m_CompositeShader = LinkProgram(s_QuadVertexSrc, s_CompositeFragSrc);
+    m_FXAAShader = LinkProgram(s_QuadVertexSrc, s_FXAAFragSrc);
+    m_TAAShader = LinkProgram(s_QuadVertexSrc, s_TAAFragSrc);
 }
 
 static uint32_t CreateColorFBO(uint32_t& texture, uint32_t w, uint32_t h) {
@@ -387,6 +563,15 @@ void PostProcessing::CreateResources() {
     for (int i = 0; i < 2; i++)
         m_BlurFBO[i] = CreateColorFBO(m_BlurTexture[i], halfW, halfH);
     m_CompositeFBO = CreateColorFBO(m_CompositeTexture, m_Width, m_Height);
+
+    // FXAA output
+    m_FXAAFBO = CreateColorFBO(m_FXAATexture, m_Width, m_Height);
+
+    // TAA history buffers
+    for (int i = 0; i < 2; i++)
+        m_TAAHistoryFBO[i] = CreateColorFBO(m_TAAHistoryTex[i], m_Width, m_Height);
+    m_TAAFBO = CreateColorFBO(m_TAATexture, m_Width, m_Height);
+    m_TAAFirstFrame = true;
 }
 
 void PostProcessing::DestroyResources() {
@@ -398,6 +583,10 @@ void PostProcessing::DestroyResources() {
     deleteFBO(m_BlurFBO[0], m_BlurTexture[0]);
     deleteFBO(m_BlurFBO[1], m_BlurTexture[1]);
     deleteFBO(m_CompositeFBO, m_CompositeTexture);
+    deleteFBO(m_FXAAFBO, m_FXAATexture);
+    deleteFBO(m_TAAHistoryFBO[0], m_TAAHistoryTex[0]);
+    deleteFBO(m_TAAHistoryFBO[1], m_TAAHistoryTex[1]);
+    deleteFBO(m_TAAFBO, m_TAATexture);
 }
 
 void PostProcessing::RenderFullscreenQuad() {
@@ -431,7 +620,8 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
 
     bool anyEffect = settings.Bloom.Enabled || settings.Vignette.Enabled
                   || settings.Color.Enabled || settings.SMH.Enabled
-                  || settings.Curves.Enabled || settings.Tonemap.Enabled;
+                  || settings.Curves.Enabled || settings.Tonemap.Enabled
+                  || settings.FXAA.Enabled || settings.TAA.Enabled;
     if (!anyEffect)
         return sceneColorTexture;
 
@@ -551,12 +741,74 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
 
     RenderFullscreenQuad();
 
+    // Track the output of the composite pass
+    bool compositeRan = settings.Bloom.Enabled || settings.Vignette.Enabled
+                     || settings.Color.Enabled || settings.SMH.Enabled
+                     || settings.Curves.Enabled || settings.Tonemap.Enabled;
+    uint32_t currentOutput = compositeRan ? m_CompositeTexture : sceneColorTexture;
+
+    // ── FXAA pass ────────────────────────────────────────────────────
+    if (settings.FXAA.Enabled) {
+        glBindFramebuffer(GL_FRAMEBUFFER, m_FXAAFBO);
+        glViewport(0, 0, m_Width, m_Height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(m_FXAAShader);
+        glUniform1i(glGetUniformLocation(m_FXAAShader, "u_Scene"), 0);
+        glUniform2f(glGetUniformLocation(m_FXAAShader, "u_InvScreenSize"),
+                    1.0f / m_Width, 1.0f / m_Height);
+        glUniform1f(glGetUniformLocation(m_FXAAShader, "u_EdgeThreshold"), settings.FXAA.EdgeThreshold);
+        glUniform1f(glGetUniformLocation(m_FXAAShader, "u_EdgeThresholdMin"), settings.FXAA.EdgeThresholdMin);
+        glUniform1f(glGetUniformLocation(m_FXAAShader, "u_SubpixelQuality"), settings.FXAA.SubpixelQuality);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, currentOutput);
+        RenderFullscreenQuad();
+        currentOutput = m_FXAATexture;
+    }
+
+    // ── TAA pass ─────────────────────────────────────────────────────
+    if (settings.TAA.Enabled) {
+        int histIdx = m_TAACurrentIdx;
+        int prevIdx = 1 - histIdx;
+
+        if (m_TAAFirstFrame) {
+            // Copy current to history on first frame
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+            // Blit current output to history
+            // Create a temp FBO pointing to currentOutput for reading
+            uint32_t readFBO;
+            glGenFramebuffers(1, &readFBO);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, readFBO);
+            glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, currentOutput, 0);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_TAAHistoryFBO[prevIdx]);
+            glBlitFramebuffer(0, 0, m_Width, m_Height, 0, 0, m_Width, m_Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            glDeleteFramebuffers(1, &readFBO);
+            m_TAAFirstFrame = false;
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, m_TAAHistoryFBO[histIdx]);
+        glViewport(0, 0, m_Width, m_Height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(m_TAAShader);
+        glUniform1i(glGetUniformLocation(m_TAAShader, "u_Current"), 0);
+        glUniform1i(glGetUniformLocation(m_TAAShader, "u_History"), 1);
+        glUniform1f(glGetUniformLocation(m_TAAShader, "u_BlendFactor"), settings.TAA.BlendFactor);
+        glUniform2f(glGetUniformLocation(m_TAAShader, "u_JitterOffset"), 0.0f, 0.0f); // jitter handled externally
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, currentOutput);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, m_TAAHistoryTex[prevIdx]);
+        RenderFullscreenQuad();
+
+        currentOutput = m_TAAHistoryTex[histIdx];
+        m_TAACurrentIdx = 1 - m_TAACurrentIdx;
+    }
+
     // Restore GL state
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glActiveTexture(GL_TEXTURE0);
     if (depthTest) glEnable(GL_DEPTH_TEST);
 
-    return m_CompositeTexture;
+    return currentOutput;
 }
 
 } // namespace VE

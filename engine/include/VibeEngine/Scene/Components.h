@@ -13,6 +13,8 @@
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/Material.h"
 #include "VibeEngine/Asset/MeshAsset.h"
+#include "VibeEngine/UI/FontAtlas.h"
+#include "VibeEngine/Terrain/Terrain.h"
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -60,6 +62,7 @@ struct TagComponent {
     std::string Tag;                         // entity name (like Unity's gameObject.name)
     std::string GameObjectTag = "Untagged";  // categorical tag (like Unity's gameObject.tag)
     int Layer = 0;                           // layer index 0-31 (like Unity's gameObject.layer)
+    bool Active = true;                      // like Unity's gameObject.activeSelf
 
     TagComponent() = default;
     TagComponent(const std::string& tag) : Tag(tag) {}
@@ -277,6 +280,100 @@ struct MeshRendererComponent {
     std::vector<VE::MaterialProperty> MaterialOverrides;
 
     MeshRendererComponent() = default;
+};
+
+// ── Terrain Component ─────────────────────────────────────────────────
+
+struct TerrainComponent {
+    // Generation params
+    int   Resolution = 128;
+    float WorldSizeX = 100.0f;
+    float WorldSizeZ = 100.0f;
+    float HeightScale = 10.0f;
+    std::string HeightmapPath; // empty = procedural
+
+    // Procedural noise params
+    int   Octaves = 4;
+    float Persistence = 0.5f;
+    float Lacunarity = 2.0f;
+    float NoiseScale = 50.0f;
+    int   Seed = 42;
+
+    // Texture layers (4 layers, height-based blending)
+    std::array<std::string, 4> LayerTexturePaths;
+    std::array<float, 4> LayerTiling = { 0.1f, 0.1f, 0.1f, 0.1f };
+    std::array<float, 3> BlendHeights = { 0.25f, 0.5f, 0.75f }; // transitions between layers
+    float Roughness = 0.85f;
+
+    // Runtime only (not serialized)
+    std::shared_ptr<Terrain> _Terrain;
+    std::shared_ptr<VertexArray> _Mesh;
+    std::array<std::shared_ptr<Texture2D>, 4> _LayerTextures;
+    bool _NeedsRebuild = true;
+
+    TerrainComponent() = default;
+};
+
+// ── Runtime UI Components ─────────────────────────────────────────────
+
+enum class UIAnchorType {
+    TopLeft, TopCenter, TopRight,
+    MiddleLeft, Center, MiddleRight,
+    BottomLeft, BottomCenter, BottomRight
+};
+
+struct UICanvasComponent {
+    bool ScreenSpace = true; // true = screen overlay, false = world-space (future)
+    int  SortOrder = 0;      // higher draws on top
+
+    UICanvasComponent() = default;
+};
+
+struct UIRectTransformComponent {
+    UIAnchorType Anchor = UIAnchorType::TopLeft;
+    std::array<float, 2> AnchoredPosition = { 0.0f, 0.0f }; // offset from anchor in pixels
+    std::array<float, 2> Size = { 100.0f, 30.0f };           // width, height in pixels
+    std::array<float, 2> Pivot = { 0.0f, 0.0f };             // 0,0 = top-left; 0.5,0.5 = center
+
+    UIRectTransformComponent() = default;
+};
+
+struct UITextComponent {
+    std::string Text = "Text";
+    float FontSize = 24.0f;
+    std::array<float, 4> Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    std::string FontPath; // empty = default built-in font
+
+    // Runtime only
+    std::shared_ptr<FontAtlas> _Font;
+
+    UITextComponent() = default;
+};
+
+struct UIImageComponent {
+    std::array<float, 4> Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    std::string TexturePath;
+
+    // Runtime only
+    std::shared_ptr<Texture2D> _Texture;
+
+    UIImageComponent() = default;
+};
+
+struct UIButtonComponent {
+    std::string Label = "Button";
+    float FontSize = 20.0f;
+    std::array<float, 4> LabelColor   = { 1.0f, 1.0f, 1.0f, 1.0f };
+    std::array<float, 4> NormalColor  = { 0.2f, 0.2f, 0.2f, 0.8f };
+    std::array<float, 4> HoverColor   = { 0.3f, 0.3f, 0.3f, 0.9f };
+    std::array<float, 4> PressedColor = { 0.1f, 0.1f, 0.1f, 1.0f };
+
+    // Runtime state (not serialized)
+    bool _Hovered = false;
+    bool _Pressed = false;
+    bool _Clicked = false; // true for one frame on click
+
+    UIButtonComponent() = default;
 };
 
 } // namespace VE

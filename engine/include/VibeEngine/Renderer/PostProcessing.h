@@ -74,6 +74,20 @@ struct TonemappingSettings {
     TonemapMode Mode = TonemapMode::ACES;
 };
 
+enum class AAMethod { None = 0, FXAA, TAA };
+
+struct FXAASettings {
+    bool Enabled = false;
+    float EdgeThreshold    = 0.0833f;
+    float EdgeThresholdMin = 0.0625f;
+    float SubpixelQuality  = 0.75f;
+};
+
+struct TAASettings {
+    bool Enabled = false;
+    float BlendFactor = 0.1f;  // weight of current frame
+};
+
 struct PostProcessSettings {
     BloomSettings       Bloom;
     VignetteSettings    Vignette;
@@ -81,6 +95,8 @@ struct PostProcessSettings {
     SMHSettings         SMH;
     ColorCurvesSettings Curves;
     TonemappingSettings Tonemap;
+    FXAASettings        FXAA;
+    TAASettings         TAA;
 };
 
 class PostProcessing {
@@ -111,11 +127,23 @@ private:
     uint32_t m_BrightExtractShader = 0;
     uint32_t m_BlurShader = 0;
     uint32_t m_CompositeShader = 0;
+    uint32_t m_FXAAShader = 0;
+    uint32_t m_TAAShader = 0;
 
     uint32_t m_BrightFBO = 0, m_BrightTexture = 0;
     uint32_t m_BlurFBO[2] = { 0, 0 };
     uint32_t m_BlurTexture[2] = { 0, 0 };
     uint32_t m_CompositeFBO = 0, m_CompositeTexture = 0;
+
+    // FXAA output
+    uint32_t m_FXAAFBO = 0, m_FXAATexture = 0;
+
+    // TAA history (ping-pong)
+    uint32_t m_TAAHistoryFBO[2] = { 0, 0 };
+    uint32_t m_TAAHistoryTex[2] = { 0, 0 };
+    int      m_TAACurrentIdx = 0;
+    bool     m_TAAFirstFrame = true;
+    uint32_t m_TAAFBO = 0, m_TAATexture = 0;
 
     // Color curves 1D LUT (256x1 RGBA)
     uint32_t m_CurvesLUT = 0;

@@ -40,6 +40,8 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "Tag" << YAML::Value << tc.Tag;
         out << YAML::Key << "GameObjectTag" << YAML::Value << tc.GameObjectTag;
         out << YAML::Key << "Layer" << YAML::Value << tc.Layer;
+        if (!tc.Active)
+            out << YAML::Key << "Active" << YAML::Value << false;
         out << YAML::EndMap;
     }
 
@@ -343,6 +345,97 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // TerrainComponent
+    if (entity.HasComponent<TerrainComponent>()) {
+        auto& t = entity.GetComponent<TerrainComponent>();
+        out << YAML::Key << "TerrainComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Resolution" << YAML::Value << t.Resolution;
+        out << YAML::Key << "WorldSizeX" << YAML::Value << t.WorldSizeX;
+        out << YAML::Key << "WorldSizeZ" << YAML::Value << t.WorldSizeZ;
+        out << YAML::Key << "HeightScale" << YAML::Value << t.HeightScale;
+        if (!t.HeightmapPath.empty())
+            out << YAML::Key << "HeightmapPath" << YAML::Value << t.HeightmapPath;
+        out << YAML::Key << "Octaves" << YAML::Value << t.Octaves;
+        out << YAML::Key << "Persistence" << YAML::Value << t.Persistence;
+        out << YAML::Key << "Lacunarity" << YAML::Value << t.Lacunarity;
+        out << YAML::Key << "NoiseScale" << YAML::Value << t.NoiseScale;
+        out << YAML::Key << "Seed" << YAML::Value << t.Seed;
+        out << YAML::Key << "LayerTextures" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << t.LayerTexturePaths[0] << t.LayerTexturePaths[1]
+            << t.LayerTexturePaths[2] << t.LayerTexturePaths[3] << YAML::EndSeq;
+        out << YAML::Key << "LayerTiling" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << t.LayerTiling[0] << t.LayerTiling[1]
+            << t.LayerTiling[2] << t.LayerTiling[3] << YAML::EndSeq;
+        out << YAML::Key << "BlendHeights" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << t.BlendHeights[0] << t.BlendHeights[1] << t.BlendHeights[2] << YAML::EndSeq;
+        out << YAML::Key << "Roughness" << YAML::Value << t.Roughness;
+        out << YAML::EndMap;
+    }
+
+    // UICanvasComponent
+    if (entity.HasComponent<UICanvasComponent>()) {
+        auto& uc = entity.GetComponent<UICanvasComponent>();
+        out << YAML::Key << "UICanvasComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "ScreenSpace" << YAML::Value << uc.ScreenSpace;
+        out << YAML::Key << "SortOrder" << YAML::Value << uc.SortOrder;
+        out << YAML::EndMap;
+    }
+
+    // UIRectTransformComponent
+    if (entity.HasComponent<UIRectTransformComponent>()) {
+        auto& rt = entity.GetComponent<UIRectTransformComponent>();
+        out << YAML::Key << "UIRectTransformComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Anchor" << YAML::Value << static_cast<int>(rt.Anchor);
+        out << YAML::Key << "AnchoredPosition" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << rt.AnchoredPosition[0] << rt.AnchoredPosition[1] << YAML::EndSeq;
+        out << YAML::Key << "Size" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << rt.Size[0] << rt.Size[1] << YAML::EndSeq;
+        out << YAML::Key << "Pivot" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << rt.Pivot[0] << rt.Pivot[1] << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+
+    // UITextComponent
+    if (entity.HasComponent<UITextComponent>()) {
+        auto& txt = entity.GetComponent<UITextComponent>();
+        out << YAML::Key << "UITextComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Text" << YAML::Value << txt.Text;
+        out << YAML::Key << "FontSize" << YAML::Value << txt.FontSize;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << txt.Color[0] << txt.Color[1] << txt.Color[2] << txt.Color[3] << YAML::EndSeq;
+        if (!txt.FontPath.empty())
+            out << YAML::Key << "FontPath" << YAML::Value << txt.FontPath;
+        out << YAML::EndMap;
+    }
+
+    // UIImageComponent
+    if (entity.HasComponent<UIImageComponent>()) {
+        auto& img = entity.GetComponent<UIImageComponent>();
+        out << YAML::Key << "UIImageComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << img.Color[0] << img.Color[1] << img.Color[2] << img.Color[3] << YAML::EndSeq;
+        if (!img.TexturePath.empty())
+            out << YAML::Key << "TexturePath" << YAML::Value << img.TexturePath;
+        out << YAML::EndMap;
+    }
+
+    // UIButtonComponent
+    if (entity.HasComponent<UIButtonComponent>()) {
+        auto& btn = entity.GetComponent<UIButtonComponent>();
+        out << YAML::Key << "UIButtonComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Label" << YAML::Value << btn.Label;
+        out << YAML::Key << "FontSize" << YAML::Value << btn.FontSize;
+        out << YAML::Key << "LabelColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << btn.LabelColor[0] << btn.LabelColor[1] << btn.LabelColor[2] << btn.LabelColor[3] << YAML::EndSeq;
+        out << YAML::Key << "NormalColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << btn.NormalColor[0] << btn.NormalColor[1] << btn.NormalColor[2] << btn.NormalColor[3] << YAML::EndSeq;
+        out << YAML::Key << "HoverColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << btn.HoverColor[0] << btn.HoverColor[1] << btn.HoverColor[2] << btn.HoverColor[3] << YAML::EndSeq;
+        out << YAML::Key << "PressedColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << btn.PressedColor[0] << btn.PressedColor[1] << btn.PressedColor[2] << btn.PressedColor[3] << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+
     out << YAML::EndMap;
 }
 
@@ -401,6 +494,11 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     serializeCurve("CurvesBlue", ps.CurvesBlue);
     out << YAML::Key << "TonemapEnabled" << YAML::Value << ps.TonemapEnabled;
     out << YAML::Key << "TonemapMode" << YAML::Value << ps.TonemapMode;
+    out << YAML::Key << "AAMode" << YAML::Value << ps.AAMode;
+    out << YAML::Key << "FXAAEdgeThreshold" << YAML::Value << ps.FXAAEdgeThreshold;
+    out << YAML::Key << "FXAAEdgeThresholdMin" << YAML::Value << ps.FXAAEdgeThresholdMin;
+    out << YAML::Key << "FXAASubpixelQuality" << YAML::Value << ps.FXAASubpixelQuality;
+    out << YAML::Key << "TAABlendFactor" << YAML::Value << ps.TAABlendFactor;
     out << YAML::Key << "ShadowEnabled" << YAML::Value << ps.ShadowEnabled;
     out << YAML::Key << "ShadowBias" << YAML::Value << ps.ShadowBias;
     out << YAML::Key << "ShadowNormalBias" << YAML::Value << ps.ShadowNormalBias;
@@ -478,6 +576,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         deserializeCurve("CurvesBlue", ps.CurvesBlue);
         if (psNode["TonemapEnabled"]) ps.TonemapEnabled = psNode["TonemapEnabled"].as<bool>();
         if (psNode["TonemapMode"]) ps.TonemapMode = psNode["TonemapMode"].as<int>();
+        if (psNode["AAMode"]) ps.AAMode = psNode["AAMode"].as<int>();
+        if (psNode["FXAAEdgeThreshold"]) ps.FXAAEdgeThreshold = psNode["FXAAEdgeThreshold"].as<float>();
+        if (psNode["FXAAEdgeThresholdMin"]) ps.FXAAEdgeThresholdMin = psNode["FXAAEdgeThresholdMin"].as<float>();
+        if (psNode["FXAASubpixelQuality"]) ps.FXAASubpixelQuality = psNode["FXAASubpixelQuality"].as<float>();
+        if (psNode["TAABlendFactor"]) ps.TAABlendFactor = psNode["TAABlendFactor"].as<float>();
         if (psNode["ShadowEnabled"]) ps.ShadowEnabled = psNode["ShadowEnabled"].as<bool>();
         if (psNode["ShadowBias"]) ps.ShadowBias = psNode["ShadowBias"].as<float>();
         if (psNode["ShadowNormalBias"]) ps.ShadowNormalBias = psNode["ShadowNormalBias"].as<float>();
@@ -500,10 +603,16 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             if (tagNode["Layer"]) layer = tagNode["Layer"].as<int>();
         }
 
+        bool active = true;
+        if (auto tagNode = entityNode["TagComponent"]) {
+            if (tagNode["Active"]) active = tagNode["Active"].as<bool>();
+        }
+
         Entity entity = scene->CreateEntityWithUUID(UUID(uuid), name);
         auto& tc = entity.GetComponent<TagComponent>();
         tc.GameObjectTag = goTag;
         tc.Layer = layer;
+        tc.Active = active;
 
         if (auto tcNode = entityNode["TransformComponent"]) {
             auto& tc = entity.GetComponent<TransformComponent>();
@@ -826,6 +935,87 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (!texPath.empty() && mr.Mat)
                     mr.Mat->SetTexture("u_Texture", texPath);
             }
+        }
+
+        // TerrainComponent
+        if (auto tNode = entityNode["TerrainComponent"]) {
+            auto& t = entity.AddComponent<TerrainComponent>();
+            if (tNode["Resolution"])   t.Resolution   = tNode["Resolution"].as<int>();
+            if (tNode["WorldSizeX"])   t.WorldSizeX   = tNode["WorldSizeX"].as<float>();
+            if (tNode["WorldSizeZ"])   t.WorldSizeZ   = tNode["WorldSizeZ"].as<float>();
+            if (tNode["HeightScale"])  t.HeightScale  = tNode["HeightScale"].as<float>();
+            if (tNode["HeightmapPath"]) t.HeightmapPath = tNode["HeightmapPath"].as<std::string>();
+            if (tNode["Octaves"])      t.Octaves      = tNode["Octaves"].as<int>();
+            if (tNode["Persistence"])  t.Persistence  = tNode["Persistence"].as<float>();
+            if (tNode["Lacunarity"])   t.Lacunarity   = tNode["Lacunarity"].as<float>();
+            if (tNode["NoiseScale"])   t.NoiseScale   = tNode["NoiseScale"].as<float>();
+            if (tNode["Seed"])         t.Seed         = tNode["Seed"].as<int>();
+            if (auto lt = tNode["LayerTextures"]) {
+                for (int i = 0; i < 4 && i < (int)lt.size(); i++)
+                    t.LayerTexturePaths[i] = lt[i].as<std::string>();
+            }
+            if (auto tl = tNode["LayerTiling"]) {
+                for (int i = 0; i < 4 && i < (int)tl.size(); i++)
+                    t.LayerTiling[i] = tl[i].as<float>();
+            }
+            if (auto bh = tNode["BlendHeights"]) {
+                for (int i = 0; i < 3 && i < (int)bh.size(); i++)
+                    t.BlendHeights[i] = bh[i].as<float>();
+            }
+            if (tNode["Roughness"]) t.Roughness = tNode["Roughness"].as<float>();
+            t._NeedsRebuild = true;
+        }
+
+        // UI Components
+        if (auto ucNode = entityNode["UICanvasComponent"]) {
+            auto& uc = entity.AddComponent<UICanvasComponent>();
+            if (ucNode["ScreenSpace"]) uc.ScreenSpace = ucNode["ScreenSpace"].as<bool>();
+            if (ucNode["SortOrder"])   uc.SortOrder   = ucNode["SortOrder"].as<int>();
+        }
+
+        if (auto rtNode = entityNode["UIRectTransformComponent"]) {
+            auto& rt = entity.AddComponent<UIRectTransformComponent>();
+            if (rtNode["Anchor"]) rt.Anchor = static_cast<UIAnchorType>(rtNode["Anchor"].as<int>());
+            if (auto ap = rtNode["AnchoredPosition"])
+                rt.AnchoredPosition = { ap[0].as<float>(), ap[1].as<float>() };
+            if (auto sz = rtNode["Size"])
+                rt.Size = { sz[0].as<float>(), sz[1].as<float>() };
+            if (auto pv = rtNode["Pivot"])
+                rt.Pivot = { pv[0].as<float>(), pv[1].as<float>() };
+        }
+
+        if (auto txtNode = entityNode["UITextComponent"]) {
+            auto& txt = entity.AddComponent<UITextComponent>();
+            if (txtNode["Text"])     txt.Text     = txtNode["Text"].as<std::string>();
+            if (txtNode["FontSize"]) txt.FontSize = txtNode["FontSize"].as<float>();
+            if (auto c = txtNode["Color"])
+                txt.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (txtNode["FontPath"]) txt.FontPath = txtNode["FontPath"].as<std::string>();
+        }
+
+        if (auto imgNode = entityNode["UIImageComponent"]) {
+            auto& img = entity.AddComponent<UIImageComponent>();
+            if (auto c = imgNode["Color"])
+                img.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (imgNode["TexturePath"]) {
+                img.TexturePath = imgNode["TexturePath"].as<std::string>();
+                if (!img.TexturePath.empty())
+                    img._Texture = Texture2D::Create(img.TexturePath);
+            }
+        }
+
+        if (auto btnNode = entityNode["UIButtonComponent"]) {
+            auto& btn = entity.AddComponent<UIButtonComponent>();
+            if (btnNode["Label"])    btn.Label    = btnNode["Label"].as<std::string>();
+            if (btnNode["FontSize"]) btn.FontSize = btnNode["FontSize"].as<float>();
+            if (auto c = btnNode["LabelColor"])
+                btn.LabelColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (auto c = btnNode["NormalColor"])
+                btn.NormalColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (auto c = btnNode["HoverColor"])
+                btn.HoverColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (auto c = btnNode["PressedColor"])
+                btn.PressedColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
         }
     }
 
