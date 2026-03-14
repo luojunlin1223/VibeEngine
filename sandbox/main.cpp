@@ -32,6 +32,7 @@ public:
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
         VE::InstancedRenderer::Init();
+        VE::GridRenderer::Init();
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
@@ -72,6 +73,7 @@ public:
     ~Sandbox() override {
         SaveEditorSettings();
         VE::UIRenderer::Shutdown();
+        VE::GridRenderer::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
@@ -296,7 +298,18 @@ protected:
             m_Scene->OnRenderParticles(m_FrameVP, camPos);
         });
 
-        // Pass 5: Outline (conditional on selection)
+        // Pass 5: Grid (depth-tested, occluded by 3D objects)
+        if (m_GizmosEnabled) {
+            rg.AddPass("Grid", [&](VE::RGBuilder& b) {
+                b.Write(sceneColor);
+                b.SideEffect();
+            }, [&](const VE::RGResources&) {
+                bool is2D = (m_Camera.GetMode() == VE::CameraMode::Orthographic2D);
+                VE::GridRenderer::DrawGrid(m_FrameVP, camPos, 1.0f, is2D);
+            });
+        }
+
+        // Pass 6: Outline (conditional on selection)
         if (m_OutlineEnabled && m_SelectedEntity) {
             rg.AddPass("Outline", [&](VE::RGBuilder& b) {
                 b.Write(sceneColor);
@@ -1537,7 +1550,7 @@ private:
 
         if (m_GizmosEnabled) {
             VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
-            VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
+            // Grid is now rendered in a 3D pass with depth testing (see RenderGraph Pass 5)
 
             // Draw point light gizmos for all point lights
             {
