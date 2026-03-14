@@ -3093,7 +3093,7 @@ private:
                 if (mr.Mat) {
                     // Ensure overrides are synced with material properties (add missing ones)
                     for (const auto& prop : mr.Mat->GetProperties()) {
-                        if (prop.Name == "u_MainTex" || prop.Name == "u_EntityColor") continue;
+                        if (prop.Name == "u_EntityColor") continue;
                         bool found = false;
                         for (auto& ov : mr.MaterialOverrides)
                             if (ov.Name == prop.Name) { found = true; break; }
