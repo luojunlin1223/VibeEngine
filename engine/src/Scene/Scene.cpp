@@ -820,9 +820,19 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         bool hasAnimator = m_Registry.all_of<AnimatorComponent>(entityID) &&
                            m_Registry.get<AnimatorComponent>(entityID)._Animator &&
                            m_Registry.get<AnimatorComponent>(entityID)._Animator->GetSkinnedVAO();
-        bool hasOverrides = !mr.MaterialOverrides.empty();
 
-        if (!hasAnimator && !hasOverrides) {
+        // Only count overrides that have actual loaded textures (not empty defaults
+        // auto-populated by the inspector). Without this, saved scenes with auto-
+        // populated but unused overrides would bypass the instanced path.
+        bool hasEffectiveOverrides = false;
+        for (const auto& ov : mr.MaterialOverrides) {
+            if (ov.Type == MaterialPropertyType::Texture2D && ov.TextureRef) {
+                hasEffectiveOverrides = true;
+                break;
+            }
+        }
+
+        if (!hasAnimator && !hasEffectiveOverrides) {
             InstancedRenderer::Submit(mr.Mesh, mr.Mat, model, entityColor);
             continue;
         }
