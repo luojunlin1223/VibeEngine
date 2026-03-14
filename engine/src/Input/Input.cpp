@@ -1,9 +1,8 @@
 /*
  * Input — Polls GLFW for keyboard, mouse, and gamepad state each frame.
  *
- * Stores current and previous frame state for edge detection
- * (pressed/released). Gamepad uses GLFW's gamepad API with SDL
- * controller database mappings.
+ * Uses GLFW key/button callbacks for reliable edge detection instead of
+ * polling all 349 key codes every frame.
  */
 #include "VibeEngine/Input/Input.h"
 #include <GLFW/glfw3.h>
@@ -32,6 +31,22 @@ static void ScrollCallback(GLFWwindow*, double, double yOffset) {
     s_ScrollAccum += static_cast<float>(yOffset);
 }
 
+// Key callback — updates key state array
+static void KeyCallback(GLFWwindow*, int key, int /*scancode*/, int action, int /*mods*/) {
+    if (key < 0 || key >= static_cast<int>(KeyCode::MaxKey)) return;
+    if (action == GLFW_PRESS)
+        Input::s_KeysCurrent[key] = true;
+    else if (action == GLFW_RELEASE)
+        Input::s_KeysCurrent[key] = false;
+    // GLFW_REPEAT: keep current state (true)
+}
+
+// Mouse button callback
+static void MouseButtonCallback(GLFWwindow*, int button, int action, int /*mods*/) {
+    if (button < 0 || button >= static_cast<int>(MouseButton::MaxButton)) return;
+    Input::s_MouseCurrent[button] = (action == GLFW_PRESS);
+}
+
 // ── Init / Update ───────────────────────────────────────────────────
 
 void Input::Init(GLFWwindow* window) {
@@ -47,24 +62,21 @@ void Input::Init(GLFWwindow* window) {
     s_MousePos = { static_cast<float>(mx), static_cast<float>(my) };
     s_MousePosPrev = s_MousePos;
 
-    // Install scroll callback
+    // Install callbacks — must be set BEFORE ImGui so ImGui chains to them
     glfwSetScrollCallback(window, ScrollCallback);
+    glfwSetKeyCallback(window, KeyCallback);
+    glfwSetMouseButtonCallback(window, MouseButtonCallback);
 }
 
 void Input::Update() {
     if (!s_Window) return;
 
-    // ── Keyboard ────────────────────────────────────────────────────
+    // ── Keyboard: copy current to previous for edge detection ────────
+    // Key state is updated via KeyCallback, not by polling
     s_KeysPrevious = s_KeysCurrent;
-    for (int i = 0; i < static_cast<int>(KeyCode::MaxKey); ++i) {
-        s_KeysCurrent[i] = (glfwGetKey(s_Window, i) == GLFW_PRESS);
-    }
 
-    // ── Mouse buttons ───────────────────────────────────────────────
+    // ── Mouse buttons: copy current to previous ─────────────────────
     s_MousePrevious = s_MouseCurrent;
-    for (int i = 0; i < static_cast<int>(MouseButton::MaxButton); ++i) {
-        s_MouseCurrent[i] = (glfwGetMouseButton(s_Window, i) == GLFW_PRESS);
-    }
 
     // ── Mouse position ──────────────────────────────────────────────
     s_MousePosPrev = s_MousePos;
