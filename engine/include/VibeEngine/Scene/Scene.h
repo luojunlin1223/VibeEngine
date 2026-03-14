@@ -81,6 +81,17 @@ struct RenderPipelineSettings {
     float FogHeightFalloff = 0.0f;
     float FogMaxOpacity    = 1.0f;
 
+    // Volumetric Fog
+    bool  VolFogEnabled      = false;
+    float VolFogDensity      = 0.015f;
+    float VolFogScattering   = 0.7f;
+    float VolFogLightIntensity = 1.0f;
+    std::array<float, 3> VolFogColor = { 0.9f, 0.9f, 1.0f };
+    int   VolFogSteps        = 32;
+    float VolFogMaxDistance   = 100.0f;
+    float VolFogHeightFalloff = 0.05f;
+    float VolFogBaseHeight    = 0.0f;
+
     // SSAO
     bool SSAOEnabled = false;
     float SSAORadius    = 0.5f;

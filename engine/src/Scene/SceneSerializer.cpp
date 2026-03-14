@@ -569,6 +569,16 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "FogEnd" << YAML::Value << ps.FogEnd;
     out << YAML::Key << "FogHeightFalloff" << YAML::Value << ps.FogHeightFalloff;
     out << YAML::Key << "FogMaxOpacity" << YAML::Value << ps.FogMaxOpacity;
+    out << YAML::Key << "VolFogEnabled" << YAML::Value << ps.VolFogEnabled;
+    out << YAML::Key << "VolFogDensity" << YAML::Value << ps.VolFogDensity;
+    out << YAML::Key << "VolFogScattering" << YAML::Value << ps.VolFogScattering;
+    out << YAML::Key << "VolFogLightIntensity" << YAML::Value << ps.VolFogLightIntensity;
+    out << YAML::Key << "VolFogColor" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.VolFogColor[0] << ps.VolFogColor[1] << ps.VolFogColor[2] << YAML::EndSeq;
+    out << YAML::Key << "VolFogSteps" << YAML::Value << ps.VolFogSteps;
+    out << YAML::Key << "VolFogMaxDistance" << YAML::Value << ps.VolFogMaxDistance;
+    out << YAML::Key << "VolFogHeightFalloff" << YAML::Value << ps.VolFogHeightFalloff;
+    out << YAML::Key << "VolFogBaseHeight" << YAML::Value << ps.VolFogBaseHeight;
     out << YAML::Key << "SSAOEnabled" << YAML::Value << ps.SSAOEnabled;
     out << YAML::Key << "SSAORadius" << YAML::Value << ps.SSAORadius;
     out << YAML::Key << "SSAOBias" << YAML::Value << ps.SSAOBias;
@@ -665,6 +675,16 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["FogEnd"]) ps.FogEnd = psNode["FogEnd"].as<float>();
         if (psNode["FogHeightFalloff"]) ps.FogHeightFalloff = psNode["FogHeightFalloff"].as<float>();
         if (psNode["FogMaxOpacity"]) ps.FogMaxOpacity = psNode["FogMaxOpacity"].as<float>();
+        if (psNode["VolFogEnabled"]) ps.VolFogEnabled = psNode["VolFogEnabled"].as<bool>();
+        if (psNode["VolFogDensity"]) ps.VolFogDensity = psNode["VolFogDensity"].as<float>();
+        if (psNode["VolFogScattering"]) ps.VolFogScattering = psNode["VolFogScattering"].as<float>();
+        if (psNode["VolFogLightIntensity"]) ps.VolFogLightIntensity = psNode["VolFogLightIntensity"].as<float>();
+        if (auto vc = psNode["VolFogColor"])
+            ps.VolFogColor = { vc[0].as<float>(), vc[1].as<float>(), vc[2].as<float>() };
+        if (psNode["VolFogSteps"]) ps.VolFogSteps = psNode["VolFogSteps"].as<int>();
+        if (psNode["VolFogMaxDistance"]) ps.VolFogMaxDistance = psNode["VolFogMaxDistance"].as<float>();
+        if (psNode["VolFogHeightFalloff"]) ps.VolFogHeightFalloff = psNode["VolFogHeightFalloff"].as<float>();
+        if (psNode["VolFogBaseHeight"]) ps.VolFogBaseHeight = psNode["VolFogBaseHeight"].as<float>();
         if (psNode["SSAOEnabled"]) ps.SSAOEnabled = psNode["SSAOEnabled"].as<bool>();
         if (psNode["SSAORadius"]) ps.SSAORadius = psNode["SSAORadius"].as<float>();
         if (psNode["SSAOBias"]) ps.SSAOBias = psNode["SSAOBias"].as<float>();

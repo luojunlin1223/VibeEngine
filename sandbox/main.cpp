@@ -207,8 +207,23 @@ protected:
         // Fog
         s.Fog = { ps.FogEnabled, static_cast<VE::FogMode>(ps.FogMode), ps.FogColor,
                   ps.FogDensity, ps.FogStart, ps.FogEnd, ps.FogHeightFalloff, ps.FogMaxOpacity };
+        // Volumetric fog
+        s.VolumetricFog = { ps.VolFogEnabled, ps.VolFogDensity, ps.VolFogScattering,
+                            ps.VolFogLightIntensity, ps.VolFogColor, ps.VolFogSteps,
+                            ps.VolFogMaxDistance, ps.VolFogHeightFalloff, ps.VolFogBaseHeight };
         s.NearClip = m_Camera.GetNearClip();
         s.FarClip  = m_Camera.GetFarClip();
+        s.InvProjection = glm::inverse(m_Camera.GetProjectionMatrix());
+        s.InvView       = glm::inverse(m_Camera.GetViewMatrix());
+        // Find directional light for volumetric fog god rays
+        {
+            auto lv = m_Scene->GetAllEntitiesWith<VE::DirectionalLightComponent>();
+            for (auto e : lv) {
+                auto& dl = lv.get<VE::DirectionalLightComponent>(e);
+                s.LightDir = glm::normalize(glm::vec3(dl.Direction[0], dl.Direction[1], dl.Direction[2]));
+                break;
+            }
+        }
         // Anti-aliasing
         if (ps.AAMode == 4) // FXAA
             s.FXAA = { true, ps.FXAAEdgeThreshold, ps.FXAAEdgeThresholdMin, ps.FXAASubpixelQuality };
@@ -4383,6 +4398,21 @@ private:
                 }
                 ImGui::SliderFloat("Height Falloff", &ps.FogHeightFalloff, 0.0f, 1.0f, "%.3f");
                 ImGui::SliderFloat("Max Opacity", &ps.FogMaxOpacity, 0.0f, 1.0f, "%.2f");
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Volumetric Fog")) {
+            ImGui::Checkbox("Enable Volumetric Fog", &ps.VolFogEnabled);
+            if (ps.VolFogEnabled) {
+                ImGui::ColorEdit3("Fog Color##Vol", ps.VolFogColor.data());
+                ImGui::SliderFloat("Density##Vol", &ps.VolFogDensity, 0.001f, 0.2f, "%.4f");
+                ImGui::SliderFloat("Scattering (g)", &ps.VolFogScattering, 0.0f, 0.99f, "%.2f");
+                ImGui::TextDisabled("0 = isotropic, 1 = forward (god rays)");
+                ImGui::SliderFloat("Light Intensity##Vol", &ps.VolFogLightIntensity, 0.0f, 5.0f, "%.2f");
+                ImGui::SliderInt("March Steps", &ps.VolFogSteps, 8, 128);
+                ImGui::DragFloat("Max Distance##Vol", &ps.VolFogMaxDistance, 1.0f, 1.0f, 1000.0f);
+                ImGui::SliderFloat("Height Falloff##Vol", &ps.VolFogHeightFalloff, 0.0f, 0.5f, "%.3f");
+                ImGui::DragFloat("Base Height", &ps.VolFogBaseHeight, 0.5f, -100.0f, 100.0f);
             }
         }
 

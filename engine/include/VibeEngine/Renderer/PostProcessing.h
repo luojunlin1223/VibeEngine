@@ -18,6 +18,7 @@
 #include <array>
 #include <vector>
 #include <utility>
+#include <glm/glm.hpp>
 
 namespace VE {
 
@@ -101,6 +102,18 @@ struct FogSettings {
     float MaxOpacity = 1.0f;    // clamp max fog factor
 };
 
+struct VolumetricFogSettings {
+    bool  Enabled      = false;
+    float Density      = 0.015f;
+    float Scattering   = 0.7f;   // Henyey-Greenstein asymmetry (0=isotropic, 1=forward)
+    float LightIntensity = 1.0f; // god-ray strength
+    std::array<float, 3> Color = { 0.9f, 0.9f, 1.0f };
+    int   Steps        = 32;     // ray march steps (quality)
+    float MaxDistance   = 100.0f;
+    float HeightFalloff = 0.05f; // density decreases with height
+    float BaseHeight    = 0.0f;  // world Y where fog is densest
+};
+
 struct PostProcessSettings {
     BloomSettings       Bloom;
     VignetteSettings    Vignette;
@@ -111,10 +124,15 @@ struct PostProcessSettings {
     FXAASettings        FXAA;
     TAASettings         TAA;
     FogSettings         Fog;
+    VolumetricFogSettings VolumetricFog;
     uint32_t            SSAOTexture = 0;
-    uint32_t            DepthTexture = 0; // needed for fog
+    uint32_t            DepthTexture = 0;
     float               NearClip = 0.1f;
     float               FarClip  = 1000.0f;
+    // For volumetric fog ray marching (view-space reconstruction)
+    glm::mat4           InvProjection = glm::mat4(1.0f);
+    glm::mat4           InvView       = glm::mat4(1.0f);
+    glm::vec3           LightDir      = glm::vec3(0.3f, 1.0f, 0.5f);
 };
 
 class PostProcessing {
@@ -147,11 +165,15 @@ private:
     uint32_t m_CompositeShader = 0;
     uint32_t m_FXAAShader = 0;
     uint32_t m_TAAShader = 0;
+    uint32_t m_VolFogShader = 0;
 
     uint32_t m_BrightFBO = 0, m_BrightTexture = 0;
     uint32_t m_BlurFBO[2] = { 0, 0 };
     uint32_t m_BlurTexture[2] = { 0, 0 };
     uint32_t m_CompositeFBO = 0, m_CompositeTexture = 0;
+
+    // Volumetric fog output
+    uint32_t m_VolFogFBO = 0, m_VolFogTexture = 0;
 
     // FXAA output
     uint32_t m_FXAAFBO = 0, m_FXAATexture = 0;
