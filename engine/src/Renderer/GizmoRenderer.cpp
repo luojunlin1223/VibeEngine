@@ -182,80 +182,70 @@ void GizmoRenderer::DrawGrid(float /*gridSize*/, float spacing) {
     glm::vec4 camPosH = s_InvVP * glm::vec4(0, 0, 0, 1);
     glm::vec3 camPos = glm::vec3(camPosH) / camPosH.w;
 
-    // Determine grid extent based on camera distance from grid plane
-    float camDist;
-    if (s_CameraMode == CameraMode::Orthographic2D)
-        camDist = 10.0f; // 2D: use a reasonable default
-    else
-        camDist = std::max(5.0f, std::abs(camPos.y)); // distance from XZ plane
-
-    // Adaptive spacing: use larger spacing when far away
-    float baseSpacing = spacing;
-    if (camDist > 50.0f)       baseSpacing = 10.0f;
-    else if (camDist > 20.0f)  baseSpacing = 5.0f;
-    else if (camDist > 8.0f)   baseSpacing = 2.0f;
-    else                       baseSpacing = spacing;
-
-    // Grid centered on camera, snapped to spacing
-    float extent = camDist * 3.0f; // extends 3x camera distance
-    int lineCount = static_cast<int>(extent / baseSpacing);
-    lineCount = std::min(lineCount, 200); // cap for performance
-
     ImU32 axisXColor = IM_COL32(130, 40, 40, 180);
     ImU32 axisYColor = IM_COL32(40, 130, 40, 180);
     ImU32 axisZColor = IM_COL32(40, 40, 130, 180);
 
-    if (s_CameraMode == CameraMode::Orthographic2D) {
-        float cx = std::floor(camPos.x / baseSpacing) * baseSpacing;
-        float cy = std::floor(camPos.y / baseSpacing) * baseSpacing;
-        float half = lineCount * baseSpacing;
+    // Multi-layer grid: draw 3 layers with increasing spacing (1m, 10m, 100m).
+    // Each layer covers a huge range but has fewer lines at wider spacing.
+    // Lines use a very large extent (50000 units) so they appear infinite.
+    const float kHugeExtent = 50000.0f;
+    const float spacings[] = { spacing, spacing * 10.0f, spacing * 100.0f };
+    const int   maxLines[] = { 80, 40, 20 };
+    const int   baseAlpha[] = { 50, 70, 90 };
 
-        for (int i = -lineCount; i <= lineCount; i++) {
-            float gx = cx + i * baseSpacing;
-            float gy = cy + i * baseSpacing;
+    bool is2D = (s_CameraMode == CameraMode::Orthographic2D);
 
-            // Fade based on distance from camera
-            float distX = std::abs(gx - camPos.x) / half;
-            float distY = std::abs(gy - camPos.y) / half;
-            int alphaX = static_cast<int>((1.0f - distX * distX) * 80);
-            int alphaY = static_cast<int>((1.0f - distY * distY) * 80);
-            alphaX = std::max(0, std::min(255, alphaX));
-            alphaY = std::max(0, std::min(255, alphaY));
+    for (int layer = 0; layer < 3; layer++) {
+        float sp = spacings[layer];
+        int count = maxLines[layer];
+        int alpha = baseAlpha[layer];
 
-            bool isOriginX = std::abs(gx) < baseSpacing * 0.01f;
-            bool isOriginY = std::abs(gy) < baseSpacing * 0.01f;
+        if (is2D) {
+            float cx = std::floor(camPos.x / sp) * sp;
+            float cy = std::floor(camPos.y / sp) * sp;
 
-            ImU32 colV = isOriginX ? axisYColor : IM_COL32(80, 80, 80, alphaX);
-            ImU32 colH = isOriginY ? axisXColor : IM_COL32(80, 80, 80, alphaY);
+            for (int i = -count; i <= count; i++) {
+                float gx = cx + i * sp;
+                float gy = cy + i * sp;
 
-            DrawLineWorld(dl, { gx, cy - half, 0 }, { gx, cy + half, 0 }, colV);
-            DrawLineWorld(dl, { cx - half, gy, 0 }, { cx + half, gy, 0 }, colH);
-        }
-    } else {
-        float cx = std::floor(camPos.x / baseSpacing) * baseSpacing;
-        float cz = std::floor(camPos.z / baseSpacing) * baseSpacing;
-        float half = lineCount * baseSpacing;
+                // Fade at edges of this layer
+                float fx = 1.0f - std::abs((float)i) / (float)count;
+                fx = fx * fx; // smoother falloff
+                int a = static_cast<int>(fx * alpha);
+                if (a <= 0) continue;
 
-        for (int i = -lineCount; i <= lineCount; i++) {
-            float gx = cx + i * baseSpacing;
-            float gz = cz + i * baseSpacing;
+                bool originX = std::abs(gx) < sp * 0.01f;
+                bool originY = std::abs(gy) < sp * 0.01f;
 
-            // Fade based on distance from camera
-            float distX = std::abs(gx - camPos.x) / half;
-            float distZ = std::abs(gz - camPos.z) / half;
-            int alphaX = static_cast<int>((1.0f - distX * distX) * 80);
-            int alphaZ = static_cast<int>((1.0f - distZ * distZ) * 80);
-            alphaX = std::max(0, std::min(255, alphaX));
-            alphaZ = std::max(0, std::min(255, alphaZ));
+                ImU32 colV = originX ? axisYColor : IM_COL32(80, 80, 80, a);
+                ImU32 colH = originY ? axisXColor : IM_COL32(80, 80, 80, a);
 
-            bool isOriginX = std::abs(gx) < baseSpacing * 0.01f;
-            bool isOriginZ = std::abs(gz) < baseSpacing * 0.01f;
+                DrawLineWorld(dl, { gx, -kHugeExtent, 0 }, { gx, kHugeExtent, 0 }, colV);
+                DrawLineWorld(dl, { -kHugeExtent, gy, 0 }, { kHugeExtent, gy, 0 }, colH);
+            }
+        } else {
+            float cx = std::floor(camPos.x / sp) * sp;
+            float cz = std::floor(camPos.z / sp) * sp;
 
-            ImU32 colParZ = isOriginX ? axisZColor : IM_COL32(80, 80, 80, alphaX);
-            ImU32 colParX = isOriginZ ? axisXColor : IM_COL32(80, 80, 80, alphaZ);
+            for (int i = -count; i <= count; i++) {
+                float gx = cx + i * sp;
+                float gz = cz + i * sp;
 
-            DrawLineWorld(dl, { gx, 0, cz - half }, { gx, 0, cz + half }, colParZ);
-            DrawLineWorld(dl, { cx - half, 0, gz }, { cx + half, 0, gz }, colParX);
+                float fx = 1.0f - std::abs((float)i) / (float)count;
+                fx = fx * fx;
+                int a = static_cast<int>(fx * alpha);
+                if (a <= 0) continue;
+
+                bool originX = std::abs(gx) < sp * 0.01f;
+                bool originZ = std::abs(gz) < sp * 0.01f;
+
+                ImU32 colZ = originX ? axisZColor : IM_COL32(80, 80, 80, a);
+                ImU32 colX = originZ ? axisXColor : IM_COL32(80, 80, 80, a);
+
+                DrawLineWorld(dl, { gx, 0, -kHugeExtent }, { gx, 0, kHugeExtent }, colZ);
+                DrawLineWorld(dl, { -kHugeExtent, 0, gz }, { kHugeExtent, 0, gz }, colX);
+            }
         }
     }
 }
