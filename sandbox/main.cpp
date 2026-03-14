@@ -81,7 +81,19 @@ public:
 
 protected:
     void OnUpdate() override {
-        m_Scene->OnUpdate(m_DeltaTime);
+        // Pause support: skip scene update when paused (unless stepping)
+        bool shouldUpdate = true;
+        if (m_PlayMode && m_Paused && !m_StepOneFrame)
+            shouldUpdate = false;
+
+        if (shouldUpdate)
+            m_Scene->OnUpdate(m_DeltaTime);
+
+        if (m_StepOneFrame) {
+            m_StepOneFrame = false;
+            m_Paused = true;
+        }
+
         m_AssetDatabase.Update(m_DeltaTime);
         if (m_PlayMode) {
             VE::ScriptEngine::CheckForReload();
@@ -463,8 +475,9 @@ protected:
                 | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize
                 | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
             ImGuiViewport* vp = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(vp->WorkPos);
-            ImGui::SetNextWindowSize(vp->WorkSize);
+            float toolbarH = 32.0f;
+            ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x, vp->WorkPos.y + toolbarH));
+            ImGui::SetNextWindowSize(ImVec2(vp->WorkSize.x, vp->WorkSize.y - toolbarH));
             ImGui::SetNextWindowViewport(vp->ID);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -1620,6 +1633,8 @@ private:
 
     void ExitPlayMode() {
         if (!m_PlayMode) return;
+        m_Paused = false;
+        m_StepOneFrame = false;
 
         m_Scene->StopParticles();
         m_Scene->StopAudio();
@@ -1641,31 +1656,85 @@ private:
     }
 
     void DrawToolbar() {
-        bool wasPlayMode = m_PlayMode;
+        // Unity-style centered toolbar strip below menu bar
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        float menuBarHeight = ImGui::GetFrameHeight(); // main menu bar height
+        float toolbarHeight = 32.0f;
 
-        if (wasPlayMode)
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.35f, 0.15f, 0.15f, 1.0f));
+        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y + menuBarHeight));
+        ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, toolbarHeight));
 
-        ImGui::Begin("Toolbar", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+            | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+            | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings;
 
-        float windowWidth = ImGui::GetContentRegionAvail().x;
-        float buttonWidth = 80.0f;
-        ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
+        // Toolbar background — tinted red during play mode
+        if (m_PlayMode)
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.32f, 0.12f, 0.12f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.18f, 0.18f, 0.18f, 1.0f));
 
-        if (!m_PlayMode) {
-            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
-                EnterPlayMode();
-        } else {
-            if (ImGui::Button("Stop", ImVec2(buttonWidth, 0)))
-                ExitPlayMode();
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "PLAY MODE");
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
+        ImGui::Begin("##Toolbar", nullptr, flags);
+
+        float btnH = toolbarHeight - 8.0f; // button height
+        float btnW = btnH;                 // square buttons
+        float spacing = 2.0f;
+
+        // Center the button group
+        float totalW = btnW * 3 + spacing * 2; // Play + Pause + Step
+        float startX = (viewport->Size.x - totalW) * 0.5f;
+        ImGui::SetCursorPosX(startX);
+        ImGui::SetCursorPosY((toolbarHeight - btnH) * 0.5f);
+
+        // ── Play / Stop button ──
+        if (m_PlayMode) {
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.3f, 0.6f, 0.9f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,   ImVec4(0.15f, 0.4f, 0.7f, 1.0f));
         }
+        // Play triangle or Stop square icon (using text symbols)
+        const char* playLabel = m_PlayMode ? "||" : ">";
+        if (ImGui::Button(playLabel, ImVec2(btnW, btnH))) {
+            if (m_PlayMode)
+                ExitPlayMode();
+            else
+                EnterPlayMode();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(m_PlayMode ? "Stop (exit play mode)" : "Play");
+        if (m_PlayMode)
+            ImGui::PopStyleColor(3);
+
+        // ── Pause button ──
+        ImGui::SameLine(0, spacing);
+        bool paused = m_PlayMode && m_Paused;
+        if (paused) {
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.6f, 0.5f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.7f, 0.6f, 0.3f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,   ImVec4(0.5f, 0.4f, 0.15f, 1.0f));
+        }
+        if (ImGui::Button("||##Pause", ImVec2(btnW, btnH)) && m_PlayMode)
+            m_Paused = !m_Paused;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Pause");
+        if (paused)
+            ImGui::PopStyleColor(3);
+
+        // ── Step button ──
+        ImGui::SameLine(0, spacing);
+        if (ImGui::Button(">|", ImVec2(btnW, btnH)) && m_PlayMode) {
+            m_Paused = false;
+            m_StepOneFrame = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Step (advance one frame)");
 
         ImGui::End();
-
-        if (wasPlayMode)
-            ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
     }
 
     // ── Hierarchy Panel ────────────────────────────────────────────────
@@ -4911,6 +4980,8 @@ private:
 
     // Play mode
     bool m_PlayMode = false;
+    bool m_Paused = false;
+    bool m_StepOneFrame = false;
     std::string m_SceneSnapshot;
 
     // Scripting
