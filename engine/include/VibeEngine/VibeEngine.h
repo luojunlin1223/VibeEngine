@@ -43,6 +43,9 @@
 
 #include "Audio/AudioEngine.h"
 
+#include "UI/FontAtlas.h"
+#include "UI/UIRenderer.h"
+
 #include "Editor/EditorCommand.h"
 
 #include "ImGui/ImGuiLayer.h"

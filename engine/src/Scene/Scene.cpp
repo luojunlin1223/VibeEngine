@@ -10,6 +10,7 @@
 #include "VibeEngine/Audio/AudioEngine.h"
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Renderer/InstancedRenderer.h"
+#include "VibeEngine/UI/UIRenderer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -878,6 +879,109 @@ void Scene::OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& 
     }
 
     SpriteBatchRenderer::EndBatch();
+}
+
+// ── Runtime UI Rendering ──────────────────────────────────────────────
+
+void Scene::OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
+                       float mouseX, float mouseY, bool mouseDown) {
+    // Check if any UICanvasComponent exists
+    auto canvasView = m_Registry.view<UICanvasComponent>();
+    bool hasCanvas = false;
+    for (auto e : canvasView) { (void)e; hasCanvas = true; break; }
+    if (!hasCanvas) return;
+
+    UIRenderer::SetMouseState(mouseX, mouseY, mouseDown);
+    UIRenderer::BeginFrame(screenWidth, screenHeight);
+
+    // Helper to compute screen position from anchor + offset
+    auto ComputeScreenPos = [&](const UIRectTransformComponent& rt) -> glm::vec2 {
+        float anchorX = 0.0f, anchorY = 0.0f;
+        switch (rt.Anchor) {
+            case UIAnchorType::TopLeft:      anchorX = 0;                      anchorY = 0; break;
+            case UIAnchorType::TopCenter:    anchorX = screenWidth * 0.5f;     anchorY = 0; break;
+            case UIAnchorType::TopRight:     anchorX = (float)screenWidth;     anchorY = 0; break;
+            case UIAnchorType::MiddleLeft:   anchorX = 0;                      anchorY = screenHeight * 0.5f; break;
+            case UIAnchorType::Center:       anchorX = screenWidth * 0.5f;     anchorY = screenHeight * 0.5f; break;
+            case UIAnchorType::MiddleRight:  anchorX = (float)screenWidth;     anchorY = screenHeight * 0.5f; break;
+            case UIAnchorType::BottomLeft:   anchorX = 0;                      anchorY = (float)screenHeight; break;
+            case UIAnchorType::BottomCenter: anchorX = screenWidth * 0.5f;     anchorY = (float)screenHeight; break;
+            case UIAnchorType::BottomRight:  anchorX = (float)screenWidth;     anchorY = (float)screenHeight; break;
+        }
+        float x = anchorX + rt.AnchoredPosition[0] - rt.Pivot[0] * rt.Size[0];
+        float y = anchorY + rt.AnchoredPosition[1] - rt.Pivot[1] * rt.Size[1];
+        return { x, y };
+    };
+
+    // First pass: update button states
+    auto buttonView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
+    for (auto entity : buttonView) {
+        auto& rt = buttonView.get<UIRectTransformComponent>(entity);
+        auto& btn = buttonView.get<UIButtonComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+        btn._Hovered = UIRenderer::IsMouseOver(pos.x, pos.y, rt.Size[0], rt.Size[1]);
+        btn._Clicked = UIRenderer::IsMouseClicked(pos.x, pos.y, rt.Size[0], rt.Size[1]);
+        btn._Pressed = btn._Hovered && mouseDown;
+    }
+
+    // Second pass: render UI elements (images, then text on top)
+    // Render UIImageComponents
+    auto imageView = m_Registry.view<UIRectTransformComponent, UIImageComponent>();
+    for (auto entity : imageView) {
+        auto& rt = imageView.get<UIRectTransformComponent>(entity);
+        auto& img = imageView.get<UIImageComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+
+        glm::vec4 color = { img.Color[0], img.Color[1], img.Color[2], img.Color[3] };
+
+        // If this entity also has a button, use button color
+        if (m_Registry.all_of<UIButtonComponent>(entity)) {
+            auto& btn = m_Registry.get<UIButtonComponent>(entity);
+            const auto& c = btn._Pressed ? btn.PressedColor :
+                            btn._Hovered ? btn.HoverColor : btn.NormalColor;
+            color = { c[0], c[1], c[2], c[3] };
+        }
+
+        if (img._Texture)
+            UIRenderer::DrawImage(pos.x, pos.y, rt.Size[0], rt.Size[1], img._Texture, color);
+        else
+            UIRenderer::DrawRect(pos.x, pos.y, rt.Size[0], rt.Size[1], color);
+    }
+
+    // Render buttons without images (colored rect)
+    auto btnOnlyView = m_Registry.view<UIRectTransformComponent, UIButtonComponent>();
+    for (auto entity : btnOnlyView) {
+        if (m_Registry.all_of<UIImageComponent>(entity)) continue; // already drawn
+        auto& rt = btnOnlyView.get<UIRectTransformComponent>(entity);
+        auto& btn = btnOnlyView.get<UIButtonComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+        const auto& c = btn._Pressed ? btn.PressedColor :
+                        btn._Hovered ? btn.HoverColor : btn.NormalColor;
+        UIRenderer::DrawRect(pos.x, pos.y, rt.Size[0], rt.Size[1],
+                             { c[0], c[1], c[2], c[3] });
+    }
+
+    // Render UITextComponents
+    auto textView = m_Registry.view<UIRectTransformComponent, UITextComponent>();
+    for (auto entity : textView) {
+        auto& rt = textView.get<UIRectTransformComponent>(entity);
+        auto& txt = textView.get<UITextComponent>(entity);
+        auto pos = ComputeScreenPos(rt);
+
+        // Lazy-load font
+        if (!txt._Font) {
+            if (!txt.FontPath.empty())
+                txt._Font = FontAtlas::Create(txt.FontPath, txt.FontSize);
+            if (!txt._Font)
+                txt._Font = FontLibrary::GetDefault();
+        }
+
+        UIRenderer::DrawText(txt.Text, pos.x, pos.y, txt.FontSize,
+                             { txt.Color[0], txt.Color[1], txt.Color[2], txt.Color[3] },
+                             txt._Font);
+    }
+
+    UIRenderer::EndFrame();
 }
 
 } // namespace VE

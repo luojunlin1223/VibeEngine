@@ -31,6 +31,7 @@ public:
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
         VE::InstancedRenderer::Init();
+        VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
@@ -66,6 +67,7 @@ public:
 
     ~Sandbox() override {
         SaveEditorSettings();
+        VE::UIRenderer::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
@@ -266,7 +268,18 @@ protected:
             m_Scene->OnRenderParticles(m_FrameVP, camPos);
         });
 
-        // Pass 5: Outline (conditional on selection)
+        // Pass 5: Runtime UI
+        rg.AddPass("UI", [&](VE::RGBuilder& b) {
+            b.Write(sceneColor);
+            b.SideEffect();
+        }, [&](const VE::RGResources&) {
+            double mx, my;
+            glfwGetCursorPos(GetWindow().GetNativeWindow(), &mx, &my);
+            bool mouseDown = glfwGetMouseButton(GetWindow().GetNativeWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+            m_Scene->OnRenderUI(fbW, fbH, (float)mx, (float)my, mouseDown);
+        });
+
+        // Pass 6: Outline (conditional on selection)
         if (m_OutlineEnabled && m_SelectedEntity) {
             rg.AddPass("Outline", [&](VE::RGBuilder& b) {
                 b.Write(sceneColor);
@@ -276,7 +289,7 @@ protected:
             });
         }
 
-        // Pass 6: PostProcess
+        // Pass 7: PostProcess
         rg.AddPass("PostProcess", [&](VE::RGBuilder& b) {
             b.Read(sceneColor);
             b.SideEffect();
@@ -369,7 +382,20 @@ protected:
                     m_Scene->OnRenderParticles(gameVP, gameCamPos);
                 });
 
-                // Game Pass 4: PostProcess
+                // Game Pass 4: Runtime UI
+                rg.AddPass("GameUI", [&](VE::RGBuilder& b) {
+                    b.Write(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    uint32_t gw = m_GameFramebuffer->GetWidth();
+                    uint32_t gh = m_GameFramebuffer->GetHeight();
+                    double mx, my;
+                    glfwGetCursorPos(GetWindow().GetNativeWindow(), &mx, &my);
+                    bool mouseDown = glfwGetMouseButton(GetWindow().GetNativeWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+                    m_Scene->OnRenderUI(gw, gh, (float)mx, (float)my, mouseDown);
+                });
+
+                // Game Pass 5: PostProcess
                 rg.AddPass("GamePostProcess", [&](VE::RGBuilder& b) {
                     b.Read(gameSceneColor);
                     b.SideEffect();
@@ -540,6 +566,7 @@ protected:
             ClearEntityGPUResources();
             VE::MeshLibrary::Shutdown();
             VE::MeshImporter::ClearCache();
+            VE::UIRenderer::Shutdown();
             m_Framebuffer.reset();
             m_GameFramebuffer.reset();
             m_PostProcessing.Shutdown();
@@ -549,6 +576,7 @@ protected:
         } else {
             VE::MeshLibrary::Init();
             VE::MeshImporter::ReuploadCache();
+            VE::UIRenderer::Init();
             RestoreEntityGPUResources();
             VE::FramebufferSpec fbSpec;
             fbSpec.Width = 1280;
@@ -2929,6 +2957,95 @@ private:
             ImGui::Separator();
         }
 
+        // ── UI Components Inspector ──────────────────────────────
+        if (m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Canvas", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& uc = m_SelectedEntity.GetComponent<VE::UICanvasComponent>();
+                ImGui::Checkbox("Screen Space", &uc.ScreenSpace);
+                ImGui::DragInt("Sort Order", &uc.SortOrder, 1, 0, 100);
+                if (ImGui::Button("Remove##UICanvas")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UICanvasComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UIRectTransformComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Rect Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& rt = m_SelectedEntity.GetComponent<VE::UIRectTransformComponent>();
+                const char* anchorNames[] = {
+                    "TopLeft", "TopCenter", "TopRight",
+                    "MiddleLeft", "Center", "MiddleRight",
+                    "BottomLeft", "BottomCenter", "BottomRight"
+                };
+                int anchorIdx = static_cast<int>(rt.Anchor);
+                if (ImGui::Combo("Anchor", &anchorIdx, anchorNames, 9))
+                    rt.Anchor = static_cast<VE::UIAnchorType>(anchorIdx);
+                ImGui::DragFloat2("Position", rt.AnchoredPosition.data(), 1.0f);
+                ImGui::DragFloat2("Size", rt.Size.data(), 1.0f, 1.0f, 10000.0f);
+                ImGui::DragFloat2("Pivot", rt.Pivot.data(), 0.01f, 0.0f, 1.0f);
+                if (ImGui::Button("Remove##UIRectTransform")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UIRectTransformComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UITextComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Text", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& txt = m_SelectedEntity.GetComponent<VE::UITextComponent>();
+                char buf[256];
+                strncpy(buf, txt.Text.c_str(), sizeof(buf));
+                buf[sizeof(buf)-1] = '\0';
+                if (ImGui::InputText("Text", buf, sizeof(buf)))
+                    txt.Text = buf;
+                ImGui::DragFloat("Font Size", &txt.FontSize, 0.5f, 4.0f, 200.0f);
+                ImGui::ColorEdit4("Color##UIText", txt.Color.data());
+                if (ImGui::Button("Remove##UIText")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UITextComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UIImageComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Image", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& img = m_SelectedEntity.GetComponent<VE::UIImageComponent>();
+                ImGui::ColorEdit4("Color##UIImage", img.Color.data());
+                // Texture path
+                std::string texLabel = img.TexturePath.empty() ? "None" : img.TexturePath;
+                ImGui::Text("Texture: %s", texLabel.c_str());
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                        img.TexturePath = std::string(static_cast<const char*>(payload->Data));
+                        img._Texture = VE::Texture2D::Create(img.TexturePath);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                if (ImGui::Button("Remove##UIImage")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UIImageComponent>();
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::UIButtonComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("UI Button", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& btn = m_SelectedEntity.GetComponent<VE::UIButtonComponent>();
+                ImGui::ColorEdit4("Normal##UIBtn", btn.NormalColor.data());
+                ImGui::ColorEdit4("Hover##UIBtn", btn.HoverColor.data());
+                ImGui::ColorEdit4("Pressed##UIBtn", btn.PressedColor.data());
+                if (m_PlayMode) {
+                    ImGui::Text("Hovered: %s", btn._Hovered ? "Yes" : "No");
+                    ImGui::Text("Clicked: %s", btn._Clicked ? "Yes" : "No");
+                }
+                if (ImGui::Button("Remove##UIButton")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::UIButtonComponent>();
+            ImGui::Separator();
+        }
+
         if (ImGui::Button("Add Component", ImVec2(-1, 0)))
             ImGui::OpenPopup("AddComponentPopup");
         if (ImGui::BeginPopup("AddComponentPopup")) {
@@ -3064,6 +3181,31 @@ private:
             if (!m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
                 if (ImGui::MenuItem("Particle System"))
                     m_SelectedEntity.AddComponent<VE::ParticleSystemComponent>();
+                anyAdded = true;
+            }
+            // UI components
+            if (ImGui::BeginMenu("UI")) {
+                if (!m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
+                    if (ImGui::MenuItem("UI Canvas"))
+                        m_SelectedEntity.AddComponent<VE::UICanvasComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UIRectTransformComponent>()) {
+                    if (ImGui::MenuItem("UI Rect Transform"))
+                        m_SelectedEntity.AddComponent<VE::UIRectTransformComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UITextComponent>()) {
+                    if (ImGui::MenuItem("UI Text"))
+                        m_SelectedEntity.AddComponent<VE::UITextComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UIImageComponent>()) {
+                    if (ImGui::MenuItem("UI Image"))
+                        m_SelectedEntity.AddComponent<VE::UIImageComponent>();
+                }
+                if (!m_SelectedEntity.HasComponent<VE::UIButtonComponent>()) {
+                    if (ImGui::MenuItem("UI Button"))
+                        m_SelectedEntity.AddComponent<VE::UIButtonComponent>();
+                }
+                ImGui::EndMenu();
                 anyAdded = true;
             }
             if (!anyAdded) {
