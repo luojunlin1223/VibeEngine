@@ -9,6 +9,7 @@
 #include <fstream>
 #include <algorithm>
 #include <any>
+#include <set>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
 
@@ -4268,6 +4269,7 @@ private:
 
         // Right pane: contents grid
         ImGui::BeginChild("Contents", ImVec2(0, 0), true);
+        m_ContentItemPositions.clear();
 
         // Right-click context menu (on empty space)
         if (ImGui::BeginPopupContextWindow("BrowserPopup", ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
@@ -4354,16 +4356,46 @@ private:
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
             }
 
-            // Selection highlight
-            bool isAssetSelected = (m_SelectedAssetPath == relPath);
+            // Track item center for box selection
+            ImVec2 itemCenter = { (itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f };
+            m_ContentItemPositions.push_back({ relPath, itemCenter });
+
+            // Selection highlight (multi-select aware)
+            bool isAssetSelected = m_SelectedAssets.count(relPath) > 0;
             if (isAssetSelected)
                 dl->AddRect(itemMin, itemMax, IM_COL32(100, 180, 255, 255), 0.0f, 0, 2.5f);
             else if (hovered)
                 dl->AddRect(itemMin, itemMax, IM_COL32(255, 200, 100, 200), 0.0f, 0, 2.0f);
 
-            // Single-click: select asset in inspector (on release, skip if drag in progress)
+            // Click selection with Ctrl/Shift modifiers
             if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::GetDragDropPayload()) {
-                m_SelectedAssetPath = relPath;
+                ImGuiIO& io = ImGui::GetIO();
+                if (io.KeyCtrl) {
+                    // Ctrl+Click: toggle selection
+                    if (m_SelectedAssets.count(relPath))
+                        m_SelectedAssets.erase(relPath);
+                    else
+                        m_SelectedAssets.insert(relPath);
+                    m_SelectedAssetPath = relPath;
+                } else if (io.KeyShift && !m_SelectedAssetPath.empty()) {
+                    // Shift+Click: range select from last selected to this
+                    bool inRange = false;
+                    for (auto& rp : contents) {
+                        if (rp == m_SelectedAssetPath || rp == relPath) {
+                            m_SelectedAssets.insert(rp);
+                            if (inRange) break;
+                            inRange = true;
+                        } else if (inRange) {
+                            m_SelectedAssets.insert(rp);
+                        }
+                    }
+                    m_SelectedAssetPath = relPath;
+                } else {
+                    // Normal click: single select
+                    m_SelectedAssets.clear();
+                    m_SelectedAssets.insert(relPath);
+                    m_SelectedAssetPath = relPath;
+                }
                 m_SelectedEntity = {}; // deselect entity
             }
 
@@ -4453,6 +4485,50 @@ private:
         }
 
         ImGui::Columns(1);
+
+        // ── Box Selection (drag rectangle in empty space) ───────────
+        {
+            ImVec2 contentMin = ImGui::GetWindowPos();
+            ImVec2 contentMax = { contentMin.x + ImGui::GetWindowWidth(),
+                                   contentMin.y + ImGui::GetWindowHeight() };
+
+            // Start box select on left-mouse-down in empty area
+            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+                && !ImGui::IsAnyItemHovered() && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift) {
+                m_BoxSelecting = true;
+                m_BoxSelectStart = ImGui::GetMousePos();
+                m_BoxSelectEnd = m_BoxSelectStart;
+                if (!ImGui::GetIO().KeyCtrl)
+                    m_SelectedAssets.clear();
+            }
+
+            if (m_BoxSelecting) {
+                m_BoxSelectEnd = ImGui::GetMousePos();
+
+                // Draw selection rectangle
+                ImDrawList* fgDL = ImGui::GetWindowDrawList();
+                ImVec2 rMin = { std::min(m_BoxSelectStart.x, m_BoxSelectEnd.x),
+                                std::min(m_BoxSelectStart.y, m_BoxSelectEnd.y) };
+                ImVec2 rMax = { std::max(m_BoxSelectStart.x, m_BoxSelectEnd.x),
+                                std::max(m_BoxSelectStart.y, m_BoxSelectEnd.y) };
+                fgDL->AddRectFilled(rMin, rMax, IM_COL32(100, 170, 255, 40));
+                fgDL->AddRect(rMin, rMax, IM_COL32(100, 170, 255, 200));
+
+                // Select items whose centers are inside the rectangle
+                m_SelectedAssets.clear();
+                for (auto& [path, center] : m_ContentItemPositions) {
+                    if (center.x >= rMin.x && center.x <= rMax.x &&
+                        center.y >= rMin.y && center.y <= rMax.y) {
+                        m_SelectedAssets.insert(path);
+                        m_SelectedAssetPath = path;
+                    }
+                }
+
+                if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+                    m_BoxSelecting = false;
+            }
+        }
+
         ImGui::EndChild();
 
         ImGui::End();
@@ -4780,7 +4856,13 @@ private:
     VE::AssetDatabase m_AssetDatabase;
     VE::ThumbnailCache m_ThumbnailCache;
     std::string m_BrowserCurrentDir; // relative to Assets/
-    std::string m_SelectedAssetPath; // selected asset in Content Browser
+    std::string m_SelectedAssetPath; // primary selected asset in Content Browser
+    std::set<std::string> m_SelectedAssets; // multi-select set
+    // Box selection state
+    bool m_BoxSelecting = false;
+    ImVec2 m_BoxSelectStart = { 0, 0 };
+    ImVec2 m_BoxSelectEnd = { 0, 0 };
+    std::vector<std::pair<std::string, ImVec2>> m_ContentItemPositions; // for box select hit test
     std::shared_ptr<VE::Material> m_InspectedMaterial;
     std::string m_InspectedMaterialPath;
 
