@@ -21,6 +21,7 @@
 #include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <chrono>
 #include <sstream>
 #include <random>
 
@@ -694,6 +695,12 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         if (!shader) return;
 
         shader->SetMat4("u_MVP", mvp);
+
+        // Global time for animated shaders (water, etc.)
+        static auto startTime = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::high_resolution_clock::now();
+        float globalTime = std::chrono::duration<float>(now - startTime).count();
+        shader->SetFloat("u_Time", globalTime);
 
         bool hasTexInMat = false;
         for (auto& prop : mr.Mat->GetProperties()) {
