@@ -110,7 +110,7 @@ protected:
         if (!m_OutlineEnabled || !m_SelectedEntity) return;
         if (!m_SelectedEntity.HasComponent<VE::TransformComponent>()) return;
 
-        // Determine the VAO to draw (use skinned VAO if animation is active)
+        // Determine the VAO to draw
         std::shared_ptr<VE::VertexArray> vao;
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
             vao = m_SelectedEntity.GetComponent<VE::MeshRendererComponent>().Mesh;
@@ -122,61 +122,38 @@ protected:
         }
         if (!vao) return;
 
-        auto shader = VE::MeshLibrary::GetDefaultShader(); // unlit shader (known to work)
-        if (!shader) return;
+        // Load outline shader (Cull Front + normal extrusion)
+        static std::shared_ptr<VE::Shader> s_OutlineShader;
+        if (!s_OutlineShader) {
+            s_OutlineShader = VE::Shader::CreateFromFile("shaders/Outline.shader");
+            if (!s_OutlineShader) return;
+        }
 
         glm::mat4 model = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
         glm::mat4 mvp = m_FrameVP * model;
 
-        // Pass 1: draw the mesh into stencil buffer only (no color/depth writes)
-        // Must use GL_LEQUAL because the mesh was already rendered to the depth buffer
-        // at this exact depth — GL_LESS would fail and stencil would never be written.
-        glEnable(GL_STENCIL_TEST);
-        glDepthFunc(GL_LEQUAL);
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-        glStencilMask(0xFF);
-        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-        glDepthMask(GL_FALSE);
+        // Compute outline width based on object scale
+        glm::vec3 scale(glm::length(glm::vec3(model[0])),
+                        glm::length(glm::vec3(model[1])),
+                        glm::length(glm::vec3(model[2])));
+        float avgScale = (scale.x + scale.y + scale.z) / 3.0f;
+        float outlineWidth = 0.03f * avgScale;
 
-        shader->Bind();
-        shader->SetMat4("u_MVP", mvp);
-        shader->SetInt("u_UseTexture", 0);
-        shader->SetVec4("u_EntityColor", glm::vec4(1.0f));
+        // Draw back-faces extruded along normals → only silhouette visible
+        s_OutlineShader->Bind();
+        s_OutlineShader->ApplyRenderState(); // Cull Front, ZWrite Off
+        s_OutlineShader->SetMat4("u_MVP", mvp);
+        s_OutlineShader->SetFloat("u_OutlineWidth", outlineWidth);
+        s_OutlineShader->SetVec4("u_OutlineColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+
         vao->Bind();
         glDrawElements(GL_TRIANGLES,
             static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
             GL_UNSIGNED_INT, nullptr);
 
-        // Pass 2: draw scaled-up mesh in outline color, only where stencil != 1
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-        glStencilMask(0x00);
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glDisable(GL_DEPTH_TEST);
-
-        // Scale from mesh AABB center (not origin) so the outline is uniform
-        VE::AABB localBox = VE::AABB{ glm::vec3(-0.5f), glm::vec3(0.5f) };
-        if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>())
-            localBox = GetEntityLocalAABB(m_SelectedEntity.GetComponent<VE::MeshRendererComponent>());
-        glm::vec3 center = localBox.Center();
-
-        float outlineScale = 1.05f;
-        glm::mat4 scaledModel = model
-            * glm::translate(glm::mat4(1.0f), center)
-            * glm::scale(glm::mat4(1.0f), glm::vec3(outlineScale))
-            * glm::translate(glm::mat4(1.0f), -center);
-        glm::mat4 scaledMVP = m_FrameVP * scaledModel;
-
-        shader->SetMat4("u_MVP", scaledMVP);
-        shader->SetVec4("u_EntityColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f)); // orange
-        glDrawElements(GL_TRIANGLES,
-            static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
-            GL_UNSIGNED_INT, nullptr);
-
         // Restore GL state
-        glStencilMask(0xFF);
-        glStencilFunc(GL_ALWAYS, 0, 0xFF);
-        glDisable(GL_STENCIL_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
