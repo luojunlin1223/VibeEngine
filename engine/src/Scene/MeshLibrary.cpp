@@ -18,6 +18,7 @@ std::shared_ptr<VertexArray> MeshLibrary::s_Triangle;
 std::shared_ptr<VertexArray> MeshLibrary::s_Quad;
 std::shared_ptr<VertexArray> MeshLibrary::s_Cube;
 std::shared_ptr<VertexArray> MeshLibrary::s_Sphere;
+std::shared_ptr<VertexArray> MeshLibrary::s_SkySphere;
 std::shared_ptr<Shader>      MeshLibrary::s_DefaultShader;
 std::shared_ptr<Shader>      MeshLibrary::s_LitShader;
 std::shared_ptr<Shader>      MeshLibrary::s_SkyShader;
@@ -428,7 +429,7 @@ void MeshLibrary::Init() {
         s_Cube->SetIndexBuffer(IndexBuffer::Create(indices, 36));
     }
 
-    // ── Sphere (sky, position-only) ────────────────────────────────
+    // ── Sphere (full vertex layout: pos + normal + color + uv) ─────
     {
         const int rings = 32;
         const int segments = 64;
@@ -439,15 +440,29 @@ void MeshLibrary::Init() {
             float phi = static_cast<float>(M_PI) * static_cast<float>(r) / static_cast<float>(rings);
             float y   = std::cos(phi);
             float sinPhi = std::sin(phi);
+            float v = static_cast<float>(r) / static_cast<float>(rings);
 
             for (int s = 0; s <= segments; s++) {
                 float theta = 2.0f * static_cast<float>(M_PI) * static_cast<float>(s) / static_cast<float>(segments);
                 float x = sinPhi * std::cos(theta);
                 float z = sinPhi * std::sin(theta);
+                float u = static_cast<float>(s) / static_cast<float>(segments);
 
+                // Position
                 vertices.push_back(x);
                 vertices.push_back(y);
                 vertices.push_back(z);
+                // Normal (same as position for unit sphere)
+                vertices.push_back(x);
+                vertices.push_back(y);
+                vertices.push_back(z);
+                // Color (white)
+                vertices.push_back(1.0f);
+                vertices.push_back(1.0f);
+                vertices.push_back(1.0f);
+                // UV
+                vertices.push_back(u);
+                vertices.push_back(v);
             }
         }
 
@@ -455,13 +470,13 @@ void MeshLibrary::Init() {
             for (int s = 0; s < segments; s++) {
                 uint32_t a = static_cast<uint32_t>(r * (segments + 1) + s);
                 uint32_t b = a + static_cast<uint32_t>(segments + 1);
-                // Reversed winding so inside faces are front-facing
+                // Outward-facing winding (CCW when viewed from outside)
                 indices.push_back(a);
                 indices.push_back(a + 1);
                 indices.push_back(b);
-                indices.push_back(b);
                 indices.push_back(a + 1);
                 indices.push_back(b + 1);
+                indices.push_back(b);
             }
         }
 
@@ -470,10 +485,53 @@ void MeshLibrary::Init() {
             static_cast<uint32_t>(vertices.size() * sizeof(float)));
         vb->SetLayout({
             { ShaderDataType::Float3, "a_Position" },
+            { ShaderDataType::Float3, "a_Normal"   },
+            { ShaderDataType::Float3, "a_Color"    },
+            { ShaderDataType::Float2, "a_TexCoord" },
         });
         s_Sphere->AddVertexBuffer(vb);
         s_Sphere->SetIndexBuffer(IndexBuffer::Create(indices.data(),
             static_cast<uint32_t>(indices.size())));
+    }
+
+    // ── Sky Sphere (position-only, inside-facing for sky rendering) ─
+    {
+        const int rings = 32;
+        const int segments = 64;
+        std::vector<float> skyVerts;
+        std::vector<uint32_t> skyIndices;
+
+        for (int r = 0; r <= rings; r++) {
+            float phi = static_cast<float>(M_PI) * static_cast<float>(r) / static_cast<float>(rings);
+            float y = std::cos(phi);
+            float sinPhi = std::sin(phi);
+            for (int s = 0; s <= segments; s++) {
+                float theta = 2.0f * static_cast<float>(M_PI) * static_cast<float>(s) / static_cast<float>(segments);
+                skyVerts.push_back(sinPhi * std::cos(theta));
+                skyVerts.push_back(y);
+                skyVerts.push_back(sinPhi * std::sin(theta));
+            }
+        }
+        for (int r = 0; r < rings; r++) {
+            for (int s = 0; s < segments; s++) {
+                uint32_t a = static_cast<uint32_t>(r * (segments + 1) + s);
+                uint32_t b = a + static_cast<uint32_t>(segments + 1);
+                // Reversed winding: inside faces front-facing
+                skyIndices.push_back(a);
+                skyIndices.push_back(a + 1);
+                skyIndices.push_back(b);
+                skyIndices.push_back(b);
+                skyIndices.push_back(a + 1);
+                skyIndices.push_back(b + 1);
+            }
+        }
+        s_SkySphere = VertexArray::Create();
+        auto skyVB = VertexBuffer::Create(skyVerts.data(),
+            static_cast<uint32_t>(skyVerts.size() * sizeof(float)));
+        skyVB->SetLayout({ { ShaderDataType::Float3, "a_Position" } });
+        s_SkySphere->AddVertexBuffer(skyVB);
+        s_SkySphere->SetIndexBuffer(IndexBuffer::Create(skyIndices.data(),
+            static_cast<uint32_t>(skyIndices.size())));
     }
 
     // ── Shaders (try ShaderLab files first, fallback to hardcoded) ──
@@ -533,6 +591,7 @@ void MeshLibrary::Shutdown() {
     s_Quad.reset();
     s_Cube.reset();
     s_Sphere.reset();
+    s_SkySphere.reset();
     s_DefaultShader.reset();
     s_LitShader.reset();
     s_SkyShader.reset();
@@ -542,7 +601,8 @@ void MeshLibrary::Shutdown() {
 std::shared_ptr<VertexArray> MeshLibrary::GetTriangle() { return s_Triangle; }
 std::shared_ptr<VertexArray> MeshLibrary::GetQuad()     { return s_Quad; }
 std::shared_ptr<VertexArray> MeshLibrary::GetCube()     { return s_Cube; }
-std::shared_ptr<VertexArray> MeshLibrary::GetSphere()   { return s_Sphere; }
+std::shared_ptr<VertexArray> MeshLibrary::GetSphere()    { return s_Sphere; }
+std::shared_ptr<VertexArray> MeshLibrary::GetSkySphere() { return s_SkySphere; }
 std::shared_ptr<Shader>      MeshLibrary::GetDefaultShader() { return s_DefaultShader; }
 std::shared_ptr<Shader>      MeshLibrary::GetLitShader()     { return s_LitShader; }
 std::shared_ptr<Shader>      MeshLibrary::GetSkyShader()     { return s_SkyShader; }
@@ -564,7 +624,7 @@ std::shared_ptr<VertexArray> MeshLibrary::GetMeshByIndex(int index) {
 }
 
 bool MeshLibrary::IsLitMesh(int index) {
-    return index >= 2 && index <= 2; // Only Cube uses lit shader
+    return index >= 2; // Cube (2) and Sphere (3) use lit shader
 }
 
 int MeshLibrary::GetMeshCount() { return 4; }

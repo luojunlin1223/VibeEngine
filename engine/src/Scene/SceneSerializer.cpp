@@ -304,42 +304,57 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "CastShadows" << YAML::Value << mr.CastShadows;
 
         // Per-entity material property overrides
-        if (!mr.MaterialOverrides.empty()) {
-            out << YAML::Key << "MaterialOverrides" << YAML::Value << YAML::BeginSeq;
+        // Only serialize overrides that have actual user-set values
+        // (skip Texture2D without a real file, skip defaults from auto-populate)
+        {
+            std::vector<const MaterialProperty*> effectiveOverrides;
             for (const auto& ov : mr.MaterialOverrides) {
-                out << YAML::BeginMap;
-                out << YAML::Key << "Name" << YAML::Value << ov.Name;
-                switch (ov.Type) {
-                    case MaterialPropertyType::Float:
-                        out << YAML::Key << "Type" << YAML::Value << "Float";
-                        out << YAML::Key << "Value" << YAML::Value << ov.FloatValue;
-                        if (ov.IsRange) {
-                            out << YAML::Key << "RangeMin" << YAML::Value << ov.RangeMin;
-                            out << YAML::Key << "RangeMax" << YAML::Value << ov.RangeMax;
-                        }
-                        break;
-                    case MaterialPropertyType::Int:
-                        out << YAML::Key << "Type" << YAML::Value << "Int";
-                        out << YAML::Key << "Value" << YAML::Value << ov.IntValue;
-                        break;
-                    case MaterialPropertyType::Vec3:
-                        out << YAML::Key << "Type" << YAML::Value << "Vec3";
-                        out << YAML::Key << "Value" << YAML::Value << YAML::Flow
-                            << YAML::BeginSeq << ov.Vec3Value.x << ov.Vec3Value.y << ov.Vec3Value.z << YAML::EndSeq;
-                        break;
-                    case MaterialPropertyType::Vec4:
-                        out << YAML::Key << "Type" << YAML::Value << "Vec4";
-                        out << YAML::Key << "Value" << YAML::Value << YAML::Flow
-                            << YAML::BeginSeq << ov.Vec4Value.x << ov.Vec4Value.y << ov.Vec4Value.z << ov.Vec4Value.w << YAML::EndSeq;
-                        break;
-                    case MaterialPropertyType::Texture2D:
-                        out << YAML::Key << "Type" << YAML::Value << "Texture2D";
-                        out << YAML::Key << "Value" << YAML::Value << ov.TexturePath;
-                        break;
+                if (ov.Type == MaterialPropertyType::Texture2D) {
+                    // Only save textures with actual file paths (not ShaderLab defaults)
+                    if (ov.TextureRef && !ov.TexturePath.empty())
+                        effectiveOverrides.push_back(&ov);
+                } else {
+                    effectiveOverrides.push_back(&ov);
                 }
-                out << YAML::EndMap;
             }
-            out << YAML::EndSeq;
+
+            if (!effectiveOverrides.empty()) {
+                out << YAML::Key << "MaterialOverrides" << YAML::Value << YAML::BeginSeq;
+                for (const auto* ov : effectiveOverrides) {
+                    out << YAML::BeginMap;
+                    out << YAML::Key << "Name" << YAML::Value << ov->Name;
+                    switch (ov->Type) {
+                        case MaterialPropertyType::Float:
+                            out << YAML::Key << "Type" << YAML::Value << "Float";
+                            out << YAML::Key << "Value" << YAML::Value << ov->FloatValue;
+                            if (ov->IsRange) {
+                                out << YAML::Key << "RangeMin" << YAML::Value << ov->RangeMin;
+                                out << YAML::Key << "RangeMax" << YAML::Value << ov->RangeMax;
+                            }
+                            break;
+                        case MaterialPropertyType::Int:
+                            out << YAML::Key << "Type" << YAML::Value << "Int";
+                            out << YAML::Key << "Value" << YAML::Value << ov->IntValue;
+                            break;
+                        case MaterialPropertyType::Vec3:
+                            out << YAML::Key << "Type" << YAML::Value << "Vec3";
+                            out << YAML::Key << "Value" << YAML::Value << YAML::Flow
+                                << YAML::BeginSeq << ov->Vec3Value.x << ov->Vec3Value.y << ov->Vec3Value.z << YAML::EndSeq;
+                            break;
+                        case MaterialPropertyType::Vec4:
+                            out << YAML::Key << "Type" << YAML::Value << "Vec4";
+                            out << YAML::Key << "Value" << YAML::Value << YAML::Flow
+                                << YAML::BeginSeq << ov->Vec4Value.x << ov->Vec4Value.y << ov->Vec4Value.z << ov->Vec4Value.w << YAML::EndSeq;
+                            break;
+                        case MaterialPropertyType::Texture2D:
+                            out << YAML::Key << "Type" << YAML::Value << "Texture2D";
+                            out << YAML::Key << "Value" << YAML::Value << ov->TexturePath;
+                            break;
+                    }
+                    out << YAML::EndMap;
+                }
+                out << YAML::EndSeq;
+            }
         }
 
         out << YAML::EndMap;
@@ -879,6 +894,13 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 auto mat = MaterialLibrary::Get(matNameNode.as<std::string>());
                 if (mat) mr.Mat = mat;
             }
+            // Ensure lit meshes use lit material (fix for old scenes that saved
+            // Sphere with "Default" unlit material before the vertex layout fix)
+            if (meshIndex >= 0 && MeshLibrary::IsLitMesh(meshIndex) && mr.Mat) {
+                if (mr.Mat->GetName() == "Default")
+                    mr.Mat = MaterialLibrary::Get("Lit");
+            }
+
             if (auto castNode = mrNode["CastShadows"])
                 mr.CastShadows = castNode.as<bool>();
             // Per-entity material property overrides
@@ -909,8 +931,13 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     } else if (type == "Texture2D") {
                         ov.Type = MaterialPropertyType::Texture2D;
                         ov.TexturePath = propNode["Value"].as<std::string>();
-                        if (!ov.TexturePath.empty())
+                        // Skip ShaderLab default texture names — they are not real file paths
+                        if (!ov.TexturePath.empty() &&
+                            ov.TexturePath != "white" && ov.TexturePath != "black" &&
+                            ov.TexturePath != "bump" && ov.TexturePath != "gray")
                             ov.TextureRef = Texture2D::Create(ov.TexturePath);
+                        else
+                            ov.TexturePath.clear(); // clear the non-file default name
                     }
                     // Restore display name from material if available
                     if (mr.Mat) {

@@ -23,6 +23,9 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
 
 #include "VibeEngine/Renderer/VertexArray.h"
 
@@ -110,6 +113,41 @@ static std::array<float, 3> JoltQuatToEulerDegrees(JPH::Quat q) {
 
 namespace VE {
 
+// ── Contact listener for collision events ───────────────────────────
+
+class VEContactListener : public JPH::ContactListener {
+public:
+    std::vector<CollisionEvent>* Events = nullptr;
+
+    JPH::ValidateResult OnContactValidate(const JPH::Body&, const JPH::Body&,
+        JPH::RVec3Arg, const JPH::CollideShapeResult&) override {
+        return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
+    }
+
+    void OnContactAdded(const JPH::Body& b1, const JPH::Body& b2,
+        const JPH::ContactManifold& manifold, JPH::ContactSettings&) override {
+        if (!Events) return;
+        CollisionEvent ev;
+        ev.BodyA = b1.GetID().GetIndexAndSequenceNumber();
+        ev.BodyB = b2.GetID().GetIndexAndSequenceNumber();
+        auto cp = manifold.GetWorldSpaceContactPointOn1(0);
+        ev.ContactPoint = glm::vec3(cp.GetX(), cp.GetY(), cp.GetZ());
+        auto cn = manifold.mWorldSpaceNormal;
+        ev.ContactNormal = glm::vec3(cn.GetX(), cn.GetY(), cn.GetZ());
+        ev.IsEnter = true;
+        Events->push_back(ev);
+    }
+
+    void OnContactRemoved(const JPH::SubShapeIDPair& pair) override {
+        if (!Events) return;
+        CollisionEvent ev;
+        ev.BodyA = pair.GetBody1ID().GetIndexAndSequenceNumber();
+        ev.BodyB = pair.GetBody2ID().GetIndexAndSequenceNumber();
+        ev.IsEnter = false;
+        Events->push_back(ev);
+    }
+};
+
 struct PhysicsWorld::Impl {
     std::unique_ptr<JPH::TempAllocatorImpl>     TempAllocator;
     std::unique_ptr<JPH::JobSystemThreadPool>    JobSystem;
@@ -118,6 +156,9 @@ struct PhysicsWorld::Impl {
     BPLayerInterfaceImpl                  BPLayerInterface;
     ObjectVsBroadPhaseLayerFilterImpl     ObjVsBPFilter;
     ObjectLayerPairFilterImpl             ObjPairFilter;
+
+    VEContactListener ContactListener;
+    std::vector<CollisionEvent> CollisionEvents;
 };
 
 // ── Static Jolt init (called once) ──────────────────────────────────
@@ -165,6 +206,10 @@ PhysicsWorld::PhysicsWorld() : m_Impl(std::make_unique<Impl>()) {
         m_Impl->BPLayerInterface, m_Impl->ObjVsBPFilter, m_Impl->ObjPairFilter);
 
     m_Impl->PhysicsSystem->SetGravity(JPH::Vec3(0.0f, -9.81f, 0.0f));
+
+    // Register contact listener for collision events
+    m_Impl->ContactListener.Events = &m_Impl->CollisionEvents;
+    m_Impl->PhysicsSystem->SetContactListener(&m_Impl->ContactListener);
 
     VE_ENGINE_INFO("PhysicsWorld initialized (Jolt Physics)");
 }
@@ -342,6 +387,71 @@ void PhysicsWorld::RemoveBody(uint32_t joltBodyID) {
     JPH::BodyID id(joltBodyID);
     bodyInterface.RemoveBody(id);
     bodyInterface.DestroyBody(id);
+}
+
+// ── Raycast ─────────────────────────────────────────────────────────
+
+bool PhysicsWorld::Raycast(const glm::vec3& origin, const glm::vec3& direction,
+                           float maxDistance, RaycastHit& outHit) const {
+    JPH::RRayCast ray;
+    ray.mOrigin = JPH::RVec3(origin.x, origin.y, origin.z);
+    glm::vec3 dir = glm::normalize(direction);
+    ray.mDirection = JPH::Vec3(dir.x * maxDistance, dir.y * maxDistance, dir.z * maxDistance);
+
+    JPH::RayCastResult result;
+    auto& nq = m_Impl->PhysicsSystem->GetNarrowPhaseQuery();
+    if (nq.CastRay(ray, result)) {
+        JPH::Vec3 hitPoint = ray.GetPointOnRay(result.mFraction);
+        outHit.Point = glm::vec3(hitPoint.GetX(), hitPoint.GetY(), hitPoint.GetZ());
+        outHit.Distance = result.mFraction * maxDistance;
+        outHit.BodyID = result.mBodyID.GetIndexAndSequenceNumber();
+
+        // Get surface normal
+        auto& bodyInterface = m_Impl->PhysicsSystem->GetBodyInterface();
+        JPH::Vec3 normal = bodyInterface.GetShape(result.mBodyID)->
+            GetSurfaceNormal(result.mSubShapeID2, hitPoint);
+        outHit.Normal = glm::vec3(normal.GetX(), normal.GetY(), normal.GetZ());
+
+        return true;
+    }
+    return false;
+}
+
+// ── Body manipulation ───────────────────────────────────────────────
+
+void PhysicsWorld::AddForce(uint32_t bodyID, const glm::vec3& force) {
+    auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
+    bi.AddForce(JPH::BodyID(bodyID), ToJolt(force));
+}
+
+void PhysicsWorld::AddImpulse(uint32_t bodyID, const glm::vec3& impulse) {
+    auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
+    bi.AddImpulse(JPH::BodyID(bodyID), ToJolt(impulse));
+}
+
+void PhysicsWorld::SetLinearVelocity(uint32_t bodyID, const glm::vec3& velocity) {
+    auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
+    bi.SetLinearVelocity(JPH::BodyID(bodyID), ToJolt(velocity));
+}
+
+glm::vec3 PhysicsWorld::GetLinearVelocity(uint32_t bodyID) const {
+    auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
+    return FromJolt(bi.GetLinearVelocity(JPH::BodyID(bodyID)));
+}
+
+void PhysicsWorld::SetAngularVelocity(uint32_t bodyID, const glm::vec3& velocity) {
+    auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
+    bi.SetAngularVelocity(JPH::BodyID(bodyID), ToJolt(velocity));
+}
+
+// ── Collision events ────────────────────────────────────────────────
+
+const std::vector<CollisionEvent>& PhysicsWorld::GetCollisionEvents() const {
+    return m_Impl->CollisionEvents;
+}
+
+void PhysicsWorld::ClearCollisionEvents() {
+    m_Impl->CollisionEvents.clear();
 }
 
 } // namespace VE

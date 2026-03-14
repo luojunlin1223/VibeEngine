@@ -103,6 +103,10 @@ protected:
 
         VE::RenderCommand::SetViewport(0, 0, fbW, fbH);
 
+        // Update script camera matrices for ScreenToWorldRay
+        VE::SetScriptCameraMatrices(gameView, gameProj,
+                                     static_cast<float>(fbW), static_cast<float>(fbH));
+
         // Shadow pass
         if (m_Scene->GetPipelineSettings().ShadowEnabled) {
             m_Scene->ComputeShadows(gameView, gameProj, cam.NearClip, cam.FarClip);

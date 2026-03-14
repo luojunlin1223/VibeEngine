@@ -18,6 +18,7 @@
 #include "VibeEngine/Asset/FBXImporter.h"
 #include "VibeEngine/Core/Log.h"
 
+#include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <sstream>
@@ -152,6 +153,9 @@ void Scene::OnUpdate(float deltaTime) {
             m_PhysicsAccumulator -= PHYSICS_DT;
         }
         m_PhysicsWorld->SyncTransformsToScene(m_Registry);
+
+        // Dispatch collision callbacks to scripts
+        DispatchCollisionEvents();
     }
 
     // Run scripts after physics
@@ -275,6 +279,57 @@ void Scene::StopScripts() {
         }
     }
     VE_ENGINE_INFO("Scripts stopped");
+}
+
+entt::entity Scene::FindEntityByBodyID(uint32_t bodyID) const {
+    auto view = m_Registry.view<RigidbodyComponent>();
+    for (auto entity : view) {
+        auto& rb = view.get<RigidbodyComponent>(entity);
+        if (rb._JoltBodyID == bodyID)
+            return entity;
+    }
+    return entt::null;
+}
+
+void Scene::DispatchCollisionEvents() {
+    if (!m_PhysicsWorld) return;
+
+    const auto& events = m_PhysicsWorld->GetCollisionEvents();
+    if (events.empty()) return;
+
+    for (const auto& ev : events) {
+        entt::entity entityA = FindEntityByBodyID(ev.BodyA);
+        entt::entity entityB = FindEntityByBodyID(ev.BodyB);
+
+        uint64_t idA = 0, idB = 0;
+        if (entityA != entt::null && m_Registry.all_of<IDComponent>(entityA))
+            idA = static_cast<uint64_t>(m_Registry.get<IDComponent>(entityA).ID);
+        if (entityB != entt::null && m_Registry.all_of<IDComponent>(entityB))
+            idB = static_cast<uint64_t>(m_Registry.get<IDComponent>(entityB).ID);
+
+        // Dispatch to scripts on both entities
+        auto dispatch = [&](entt::entity entity, uint64_t otherID, bool isEnter,
+                            const glm::vec3& cp, const glm::vec3& cn) {
+            if (entity == entt::null) return;
+            auto* sc = m_Registry.try_get<ScriptComponent>(entity);
+            if (!sc || !sc->_Instance) return;
+
+            if (isEnter) {
+                ScriptCollisionInfo info;
+                info.OtherEntityID = otherID;
+                info.ContactPoint[0] = cp.x; info.ContactPoint[1] = cp.y; info.ContactPoint[2] = cp.z;
+                info.ContactNormal[0] = cn.x; info.ContactNormal[1] = cn.y; info.ContactNormal[2] = cn.z;
+                sc->_Instance->OnCollisionEnter(info);
+            } else {
+                sc->_Instance->OnCollisionExit(otherID);
+            }
+        };
+
+        dispatch(entityA, idB, ev.IsEnter, ev.ContactPoint, ev.ContactNormal);
+        dispatch(entityB, idA, ev.IsEnter, ev.ContactPoint, -ev.ContactNormal);
+    }
+
+    m_PhysicsWorld->ClearCollisionEvents();
 }
 
 void Scene::StartAnimations() {
@@ -403,7 +458,7 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
     if (!m_PipelineSettings.SkyEnabled) return;
 
     auto skyShader = MeshLibrary::GetSkyShader();
-    auto skyMesh   = MeshLibrary::GetSphere();
+    auto skyMesh   = MeshLibrary::GetSkySphere();
     if (!skyShader || !skyMesh) return;
 
     auto& sky = m_PipelineSettings;
@@ -412,6 +467,7 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
     RenderCommand::SetDepthFunc(RendererAPI::DepthFunc::LessEqual);
 
     skyShader->Bind();
+    skyShader->ApplyRenderState(); // Cull Front, ZWrite Off, ZTest LEqual
     skyShader->SetMat4("u_MVP", skyViewProjection);
     skyShader->SetVec3("u_TopColor",
         glm::vec3(sky.SkyTopColor[0], sky.SkyTopColor[1], sky.SkyTopColor[2]));
@@ -428,8 +484,11 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
 
     RenderCommand::DrawIndexed(skyMesh);
 
+    // Restore default state for subsequent passes
     RenderCommand::SetDepthWrite(true);
     RenderCommand::SetDepthFunc(RendererAPI::DepthFunc::Less);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 }
 
 void Scene::ComputeShadows(const glm::mat4& viewMatrix,
@@ -761,9 +820,19 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         bool hasAnimator = m_Registry.all_of<AnimatorComponent>(entityID) &&
                            m_Registry.get<AnimatorComponent>(entityID)._Animator &&
                            m_Registry.get<AnimatorComponent>(entityID)._Animator->GetSkinnedVAO();
-        bool hasOverrides = !mr.MaterialOverrides.empty();
 
-        if (!hasAnimator && !hasOverrides) {
+        // Only count overrides that have actual loaded textures (not empty defaults
+        // auto-populated by the inspector). Without this, saved scenes with auto-
+        // populated but unused overrides would bypass the instanced path.
+        bool hasEffectiveOverrides = false;
+        for (const auto& ov : mr.MaterialOverrides) {
+            if (ov.Type == MaterialPropertyType::Texture2D && ov.TextureRef) {
+                hasEffectiveOverrides = true;
+                break;
+            }
+        }
+
+        if (!hasAnimator && !hasEffectiveOverrides) {
             InstancedRenderer::Submit(mr.Mesh, mr.Mat, model, entityColor);
             continue;
         }

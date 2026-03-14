@@ -10,8 +10,14 @@
 #include <memory>
 #include <unordered_map>
 #include <variant>
+#include <glm/glm.hpp>
 
 namespace VE {
+
+// Set camera matrices for script ScreenToWorldRay / WorldToScreen.
+// Call each frame before scripts run.
+void SetScriptCameraMatrices(const glm::mat4& view, const glm::mat4& proj,
+                              float viewportW, float viewportH);
 
 class Scene;
 class NativeScript;

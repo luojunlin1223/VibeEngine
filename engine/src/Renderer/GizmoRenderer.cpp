@@ -32,8 +32,42 @@ static ImVec2 WorldToScreen(const glm::vec3& world) {
 
 static void DrawLineWorld(ImDrawList* dl, const glm::vec3& a, const glm::vec3& b,
                           ImU32 color, float thickness = 1.0f) {
-    ImVec2 sa = WorldToScreen(a);
-    ImVec2 sb = WorldToScreen(b);
+    // Clip line against near plane (w > 0) to avoid projection artifacts
+    glm::vec4 clipA = s_VP * glm::vec4(a, 1.0f);
+    glm::vec4 clipB = s_VP * glm::vec4(b, 1.0f);
+
+    const float nearW = 0.01f;
+    bool behindA = clipA.w < nearW;
+    bool behindB = clipB.w < nearW;
+
+    if (behindA && behindB) return; // both behind camera
+
+    if (behindA || behindB) {
+        // Clip the behind-camera point to the near plane
+        float t = (nearW - clipA.w) / (clipB.w - clipA.w);
+        glm::vec4 clipMid = clipA + t * (clipB - clipA);
+        if (behindA) clipA = clipMid;
+        else         clipB = clipMid;
+    }
+
+    // Project to screen
+    auto toScreen = [](const glm::vec4& clip) -> ImVec2 {
+        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        float sx = s_VpX + (ndc.x * 0.5f + 0.5f) * s_VpW;
+        float sy = s_VpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * s_VpH;
+        return { sx, sy };
+    };
+
+    ImVec2 sa = toScreen(clipA);
+    ImVec2 sb = toScreen(clipB);
+
+    // Cull lines entirely outside viewport (with margin)
+    float margin = 2000.0f;
+    if (sa.x < s_VpX - margin && sb.x < s_VpX - margin) return;
+    if (sa.y < s_VpY - margin && sb.y < s_VpY - margin) return;
+    if (sa.x > s_VpX + s_VpW + margin && sb.x > s_VpX + s_VpW + margin) return;
+    if (sa.y > s_VpY + s_VpH + margin && sb.y > s_VpY + s_VpH + margin) return;
+
     dl->AddLine(sa, sb, color, thickness);
 }
 
@@ -141,32 +175,77 @@ float GizmoRenderer::ProjectMouseOntoAxis(GizmoAxis axis,
     return entityPos[component] + worldOffset[component];
 }
 
-void GizmoRenderer::DrawGrid(float gridSize, float spacing) {
+void GizmoRenderer::DrawGrid(float /*gridSize*/, float spacing) {
     ImDrawList* dl = s_DrawList;
-    float half = gridSize * 0.5f;
 
-    ImU32 gridColor  = IM_COL32(80, 80, 80, 100);
+    // Extract camera position from inverse VP
+    glm::vec4 camPosH = s_InvVP * glm::vec4(0, 0, 0, 1);
+    glm::vec3 camPos = glm::vec3(camPosH) / camPosH.w;
+
     ImU32 axisXColor = IM_COL32(130, 40, 40, 180);
     ImU32 axisYColor = IM_COL32(40, 130, 40, 180);
     ImU32 axisZColor = IM_COL32(40, 40, 130, 180);
 
-    if (s_CameraMode == CameraMode::Orthographic2D) {
-        // XY plane grid (2D mode)
-        for (float i = -half; i <= half; i += spacing) {
-            float eps = spacing * 0.01f;
-            ImU32 col = (i > -eps && i < eps) ? axisYColor : gridColor;
-            DrawLineWorld(dl, { i, -half, 0 }, { i, half, 0 }, col);
-            col = (i > -eps && i < eps) ? axisXColor : gridColor;
-            DrawLineWorld(dl, { -half, i, 0 }, { half, i, 0 }, col);
-        }
-    } else {
-        // XZ plane grid (3D mode)
-        for (float i = -half; i <= half; i += spacing) {
-            float eps = spacing * 0.01f;
-            ImU32 col = (i > -eps && i < eps) ? axisZColor : gridColor;
-            DrawLineWorld(dl, { i, 0, -half }, { i, 0, half }, col);
-            col = (i > -eps && i < eps) ? axisXColor : gridColor;
-            DrawLineWorld(dl, { -half, 0, i }, { half, 0, i }, col);
+    // Multi-layer grid: draw 3 layers with increasing spacing (1m, 10m, 100m).
+    // Each layer covers a huge range but has fewer lines at wider spacing.
+    // Lines use a very large extent (50000 units) so they appear infinite.
+    const float kHugeExtent = 50000.0f;
+    const float spacings[] = { spacing, spacing * 10.0f, spacing * 100.0f };
+    const int   maxLines[] = { 80, 40, 20 };
+    const int   baseAlpha[] = { 50, 70, 90 };
+
+    bool is2D = (s_CameraMode == CameraMode::Orthographic2D);
+
+    for (int layer = 0; layer < 3; layer++) {
+        float sp = spacings[layer];
+        int count = maxLines[layer];
+        int alpha = baseAlpha[layer];
+
+        if (is2D) {
+            float cx = std::floor(camPos.x / sp) * sp;
+            float cy = std::floor(camPos.y / sp) * sp;
+
+            for (int i = -count; i <= count; i++) {
+                float gx = cx + i * sp;
+                float gy = cy + i * sp;
+
+                // Fade at edges of this layer
+                float fx = 1.0f - std::abs((float)i) / (float)count;
+                fx = fx * fx; // smoother falloff
+                int a = static_cast<int>(fx * alpha);
+                if (a <= 0) continue;
+
+                bool originX = std::abs(gx) < sp * 0.01f;
+                bool originY = std::abs(gy) < sp * 0.01f;
+
+                ImU32 colV = originX ? axisYColor : IM_COL32(80, 80, 80, a);
+                ImU32 colH = originY ? axisXColor : IM_COL32(80, 80, 80, a);
+
+                DrawLineWorld(dl, { gx, -kHugeExtent, 0 }, { gx, kHugeExtent, 0 }, colV);
+                DrawLineWorld(dl, { -kHugeExtent, gy, 0 }, { kHugeExtent, gy, 0 }, colH);
+            }
+        } else {
+            float cx = std::floor(camPos.x / sp) * sp;
+            float cz = std::floor(camPos.z / sp) * sp;
+
+            for (int i = -count; i <= count; i++) {
+                float gx = cx + i * sp;
+                float gz = cz + i * sp;
+
+                float fx = 1.0f - std::abs((float)i) / (float)count;
+                fx = fx * fx;
+                int a = static_cast<int>(fx * alpha);
+                if (a <= 0) continue;
+
+                bool originX = std::abs(gx) < sp * 0.01f;
+                bool originZ = std::abs(gz) < sp * 0.01f;
+
+                ImU32 colZ = originX ? axisZColor : IM_COL32(80, 80, 80, a);
+                ImU32 colX = originZ ? axisXColor : IM_COL32(80, 80, 80, a);
+
+                DrawLineWorld(dl, { gx, 0, -kHugeExtent }, { gx, 0, kHugeExtent }, colZ);
+                DrawLineWorld(dl, { -kHugeExtent, 0, gz }, { kHugeExtent, 0, gz }, colX);
+            }
         }
     }
 }
