@@ -32,8 +32,42 @@ static ImVec2 WorldToScreen(const glm::vec3& world) {
 
 static void DrawLineWorld(ImDrawList* dl, const glm::vec3& a, const glm::vec3& b,
                           ImU32 color, float thickness = 1.0f) {
-    ImVec2 sa = WorldToScreen(a);
-    ImVec2 sb = WorldToScreen(b);
+    // Clip line against near plane (w > 0) to avoid projection artifacts
+    glm::vec4 clipA = s_VP * glm::vec4(a, 1.0f);
+    glm::vec4 clipB = s_VP * glm::vec4(b, 1.0f);
+
+    const float nearW = 0.01f;
+    bool behindA = clipA.w < nearW;
+    bool behindB = clipB.w < nearW;
+
+    if (behindA && behindB) return; // both behind camera
+
+    if (behindA || behindB) {
+        // Clip the behind-camera point to the near plane
+        float t = (nearW - clipA.w) / (clipB.w - clipA.w);
+        glm::vec4 clipMid = clipA + t * (clipB - clipA);
+        if (behindA) clipA = clipMid;
+        else         clipB = clipMid;
+    }
+
+    // Project to screen
+    auto toScreen = [](const glm::vec4& clip) -> ImVec2 {
+        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        float sx = s_VpX + (ndc.x * 0.5f + 0.5f) * s_VpW;
+        float sy = s_VpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * s_VpH;
+        return { sx, sy };
+    };
+
+    ImVec2 sa = toScreen(clipA);
+    ImVec2 sb = toScreen(clipB);
+
+    // Cull lines entirely outside viewport (with margin)
+    float margin = 2000.0f;
+    if (sa.x < s_VpX - margin && sb.x < s_VpX - margin) return;
+    if (sa.y < s_VpY - margin && sb.y < s_VpY - margin) return;
+    if (sa.x > s_VpX + s_VpW + margin && sb.x > s_VpX + s_VpW + margin) return;
+    if (sa.y > s_VpY + s_VpH + margin && sb.y > s_VpY + s_VpH + margin) return;
+
     dl->AddLine(sa, sb, color, thickness);
 }
 
