@@ -82,6 +82,19 @@ uniform sampler2D u_SSAOTex;
 // SSAO
 uniform bool u_SSAOEnabled;
 
+// Fog
+uniform bool  u_FogEnabled;
+uniform int   u_FogMode;       // 0=Linear, 1=Exp, 2=Exp2
+uniform vec3  u_FogColor;
+uniform float u_FogDensity;
+uniform float u_FogStart;
+uniform float u_FogEnd;
+uniform float u_FogHeightFalloff;
+uniform float u_FogMaxOpacity;
+uniform sampler2D u_DepthTex;
+uniform float u_NearClip;
+uniform float u_FarClip;
+
 // Bloom
 uniform bool  u_BloomEnabled;
 uniform float u_BloomIntensity;
@@ -157,6 +170,36 @@ void main() {
     if (u_SSAOEnabled) {
         float ao = texture(u_SSAOTex, v_UV).r;
         color *= ao;
+    }
+
+    // 1c. Fog
+    if (u_FogEnabled) {
+        float depth = texture(u_DepthTex, v_UV).r;
+        if (depth < 1.0) { // skip sky
+            // Linearize depth
+            float z = depth * 2.0 - 1.0;
+            float linearDepth = 2.0 * u_NearClip * u_FarClip / (u_FarClip + u_NearClip - z * (u_FarClip - u_NearClip));
+
+            float fogFactor = 0.0;
+            if (u_FogMode == 0) { // Linear
+                fogFactor = clamp((linearDepth - u_FogStart) / max(u_FogEnd - u_FogStart, 0.001), 0.0, 1.0);
+            } else if (u_FogMode == 1) { // Exponential
+                fogFactor = 1.0 - exp(-u_FogDensity * linearDepth);
+            } else { // Exponential Squared
+                float d = u_FogDensity * linearDepth;
+                fogFactor = 1.0 - exp(-d * d);
+            }
+
+            // Height-based falloff (reconstruct approximate world Y from screen position)
+            if (u_FogHeightFalloff > 0.0) {
+                // Use v_UV.y as a proxy for height: bottom of screen = lower = more fog
+                float heightAtten = exp(-u_FogHeightFalloff * (1.0 - v_UV.y) * linearDepth * 0.01);
+                fogFactor *= heightAtten;
+            }
+
+            fogFactor = clamp(fogFactor, 0.0, u_FogMaxOpacity);
+            color = mix(color, u_FogColor, fogFactor);
+        }
     }
 
     // 2. Exposure (before color grading, in linear HDR)
@@ -632,7 +675,7 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
                   || settings.Color.Enabled || settings.SMH.Enabled
                   || settings.Curves.Enabled || settings.Tonemap.Enabled
                   || settings.FXAA.Enabled || settings.TAA.Enabled
-                  || settings.SSAOTexture;
+                  || settings.SSAOTexture || settings.Fog.Enabled;
     if (!anyEffect)
         return sceneColorTexture;
 
@@ -701,6 +744,24 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glUniform1f(glGetUniformLocation(m_CompositeShader, "u_BloomIntensity"), settings.Bloom.Intensity);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, bloomTex);
+    }
+
+    // Fog
+    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_FogEnabled"), settings.Fog.Enabled ? 1 : 0);
+    if (settings.Fog.Enabled && settings.DepthTexture) {
+        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_FogMode"), static_cast<int>(settings.Fog.Mode));
+        glUniform3f(glGetUniformLocation(m_CompositeShader, "u_FogColor"),
+                    settings.Fog.Color[0], settings.Fog.Color[1], settings.Fog.Color[2]);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogDensity"), settings.Fog.Density);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogStart"), settings.Fog.Start);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogEnd"), settings.Fog.End);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogHeightFalloff"), settings.Fog.HeightFalloff);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogMaxOpacity"), settings.Fog.MaxOpacity);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_NearClip"), settings.NearClip);
+        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FarClip"), settings.FarClip);
+        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_DepthTex"), 4);
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, settings.DepthTexture);
     }
 
     // Texture unit 3: SSAO

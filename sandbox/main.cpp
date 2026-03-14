@@ -204,6 +204,11 @@ protected:
         s.Curves.Green.Points  = ps.CurvesGreen;
         s.Curves.Blue.Points   = ps.CurvesBlue;
         s.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+        // Fog
+        s.Fog = { ps.FogEnabled, static_cast<VE::FogMode>(ps.FogMode), ps.FogColor,
+                  ps.FogDensity, ps.FogStart, ps.FogEnd, ps.FogHeightFalloff, ps.FogMaxOpacity };
+        s.NearClip = m_Camera.GetNearClip();
+        s.FarClip  = m_Camera.GetFarClip();
         // Anti-aliasing
         if (ps.AAMode == 4) // FXAA
             s.FXAA = { true, ps.FXAAEdgeThreshold, ps.FXAAEdgeThresholdMin, ps.FXAASubpixelQuality };
@@ -329,11 +334,14 @@ protected:
                     m_Framebuffer->Resolve();
 
                 auto ppSettings = BuildPostProcessSettings();
+                uint32_t depthTex = static_cast<uint32_t>(m_Framebuffer->GetDepthAttachmentID());
+
+                // Pass depth for fog
+                ppSettings.DepthTexture = depthTex;
 
                 // Compute SSAO if enabled
                 auto& ps = m_Scene->GetPipelineSettings();
                 if (ps.SSAOEnabled) {
-                    uint32_t depthTex = static_cast<uint32_t>(m_Framebuffer->GetDepthAttachmentID());
                     VE::SSAOSettings ssaoSettings{ true, ps.SSAORadius, ps.SSAOBias,
                                                     ps.SSAOIntensity, ps.SSAOKernelSize };
                     ppSettings.SSAOTexture = m_SSAO.Compute(
@@ -450,14 +458,15 @@ protected:
                     if (m_GameFramebuffer->IsMultisampled())
                         m_GameFramebuffer->Resolve();
                     auto ppSettings = BuildPostProcessSettings();
+                    uint32_t gDepthTex = static_cast<uint32_t>(m_GameFramebuffer->GetDepthAttachmentID());
+                    ppSettings.DepthTexture = gDepthTex;
 
                     auto& gps = m_Scene->GetPipelineSettings();
                     if (gps.SSAOEnabled) {
-                        uint32_t depthTex = static_cast<uint32_t>(m_GameFramebuffer->GetDepthAttachmentID());
                         VE::SSAOSettings ssaoS{ true, gps.SSAORadius, gps.SSAOBias,
                                                  gps.SSAOIntensity, gps.SSAOKernelSize };
                         ppSettings.SSAOTexture = m_GameSSAO.Compute(
-                            depthTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(),
+                            gDepthTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(),
                             gameProj, gameView, ssaoS);
                     }
 
@@ -4357,6 +4366,23 @@ private:
             if (ps.TonemapEnabled) {
                 const char* modes[] = { "None", "Reinhard", "ACES Filmic", "Uncharted 2" };
                 ImGui::Combo("Operator", &ps.TonemapMode, modes, 4);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Fog", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Fog", &ps.FogEnabled);
+            if (ps.FogEnabled) {
+                const char* fogModes[] = { "Linear", "Exponential", "Exponential Squared" };
+                ImGui::Combo("Fog Mode", &ps.FogMode, fogModes, 3);
+                ImGui::ColorEdit3("Fog Color", ps.FogColor.data());
+                if (ps.FogMode == 0) { // Linear
+                    ImGui::DragFloat("Start Distance", &ps.FogStart, 1.0f, 0.0f, 10000.0f);
+                    ImGui::DragFloat("End Distance", &ps.FogEnd, 1.0f, 0.0f, 10000.0f);
+                } else {
+                    ImGui::SliderFloat("Density", &ps.FogDensity, 0.001f, 0.5f, "%.4f");
+                }
+                ImGui::SliderFloat("Height Falloff", &ps.FogHeightFalloff, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Max Opacity", &ps.FogMaxOpacity, 0.0f, 1.0f, "%.2f");
             }
         }
 

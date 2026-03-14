@@ -560,6 +560,15 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     serializeCurve("CurvesBlue", ps.CurvesBlue);
     out << YAML::Key << "TonemapEnabled" << YAML::Value << ps.TonemapEnabled;
     out << YAML::Key << "TonemapMode" << YAML::Value << ps.TonemapMode;
+    out << YAML::Key << "FogEnabled" << YAML::Value << ps.FogEnabled;
+    out << YAML::Key << "FogMode" << YAML::Value << ps.FogMode;
+    out << YAML::Key << "FogColor" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.FogColor[0] << ps.FogColor[1] << ps.FogColor[2] << YAML::EndSeq;
+    out << YAML::Key << "FogDensity" << YAML::Value << ps.FogDensity;
+    out << YAML::Key << "FogStart" << YAML::Value << ps.FogStart;
+    out << YAML::Key << "FogEnd" << YAML::Value << ps.FogEnd;
+    out << YAML::Key << "FogHeightFalloff" << YAML::Value << ps.FogHeightFalloff;
+    out << YAML::Key << "FogMaxOpacity" << YAML::Value << ps.FogMaxOpacity;
     out << YAML::Key << "SSAOEnabled" << YAML::Value << ps.SSAOEnabled;
     out << YAML::Key << "SSAORadius" << YAML::Value << ps.SSAORadius;
     out << YAML::Key << "SSAOBias" << YAML::Value << ps.SSAOBias;
@@ -647,6 +656,15 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         deserializeCurve("CurvesBlue", ps.CurvesBlue);
         if (psNode["TonemapEnabled"]) ps.TonemapEnabled = psNode["TonemapEnabled"].as<bool>();
         if (psNode["TonemapMode"]) ps.TonemapMode = psNode["TonemapMode"].as<int>();
+        if (psNode["FogEnabled"]) ps.FogEnabled = psNode["FogEnabled"].as<bool>();
+        if (psNode["FogMode"]) ps.FogMode = psNode["FogMode"].as<int>();
+        if (auto fc = psNode["FogColor"])
+            ps.FogColor = { fc[0].as<float>(), fc[1].as<float>(), fc[2].as<float>() };
+        if (psNode["FogDensity"]) ps.FogDensity = psNode["FogDensity"].as<float>();
+        if (psNode["FogStart"]) ps.FogStart = psNode["FogStart"].as<float>();
+        if (psNode["FogEnd"]) ps.FogEnd = psNode["FogEnd"].as<float>();
+        if (psNode["FogHeightFalloff"]) ps.FogHeightFalloff = psNode["FogHeightFalloff"].as<float>();
+        if (psNode["FogMaxOpacity"]) ps.FogMaxOpacity = psNode["FogMaxOpacity"].as<float>();
         if (psNode["SSAOEnabled"]) ps.SSAOEnabled = psNode["SSAOEnabled"].as<bool>();
         if (psNode["SSAORadius"]) ps.SSAORadius = psNode["SSAORadius"].as<float>();
         if (psNode["SSAOBias"]) ps.SSAOBias = psNode["SSAOBias"].as<float>();

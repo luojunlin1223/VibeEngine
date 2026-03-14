@@ -71,6 +71,16 @@ struct RenderPipelineSettings {
     bool TonemapEnabled = false;
     int  TonemapMode = 2; // 0=None, 1=Reinhard, 2=ACES, 3=Uncharted2
 
+    // Fog
+    bool FogEnabled = false;
+    int  FogMode    = 2;  // 0=Linear, 1=Exp, 2=Exp2
+    std::array<float, 3> FogColor = { 0.7f, 0.75f, 0.8f };
+    float FogDensity       = 0.02f;
+    float FogStart         = 10.0f;
+    float FogEnd           = 100.0f;
+    float FogHeightFalloff = 0.0f;
+    float FogMaxOpacity    = 1.0f;
+
     // SSAO
     bool SSAOEnabled = false;
     float SSAORadius    = 0.5f;

@@ -88,6 +88,19 @@ struct TAASettings {
     float BlendFactor = 0.1f;  // weight of current frame
 };
 
+enum class FogMode { Linear = 0, Exponential, ExponentialSquared };
+
+struct FogSettings {
+    bool  Enabled    = false;
+    FogMode Mode     = FogMode::ExponentialSquared;
+    std::array<float, 3> Color = { 0.7f, 0.75f, 0.8f };
+    float Density    = 0.02f;   // for Exp/Exp2
+    float Start      = 10.0f;   // for Linear
+    float End        = 100.0f;  // for Linear
+    float HeightFalloff = 0.0f; // 0 = no height fog, >0 = fog thins with altitude
+    float MaxOpacity = 1.0f;    // clamp max fog factor
+};
+
 struct PostProcessSettings {
     BloomSettings       Bloom;
     VignetteSettings    Vignette;
@@ -97,7 +110,11 @@ struct PostProcessSettings {
     TonemappingSettings Tonemap;
     FXAASettings        FXAA;
     TAASettings         TAA;
-    uint32_t            SSAOTexture = 0; // 0 = no SSAO, else AO texture to multiply
+    FogSettings         Fog;
+    uint32_t            SSAOTexture = 0;
+    uint32_t            DepthTexture = 0; // needed for fog
+    float               NearClip = 0.1f;
+    float               FarClip  = 1000.0f;
 };
 
 class PostProcessing {
