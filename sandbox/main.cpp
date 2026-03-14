@@ -1495,7 +1495,7 @@ private:
 
         m_ViewportHovered = ImGui::IsWindowHovered();
         m_ViewportFocused = ImGui::IsWindowFocused();
-        if (m_ViewportFocused) m_LastFocusedWindow = "Viewport";
+        if (m_ViewportFocused) m_LastFocusedWindow = "Scene Viewport";
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0) {
