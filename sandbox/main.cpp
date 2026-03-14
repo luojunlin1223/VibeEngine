@@ -602,10 +602,10 @@ protected:
         DrawInputSettingsPanel();
         DrawBuildPanel();
 
-        // Restore focus on first frame
+        // Restore focus over several frames (docking may reassign focus)
         if (m_RestoreFocusFrame > 0) {
             m_RestoreFocusFrame--;
-            if (m_RestoreFocusFrame == 0 && !m_LastFocusedWindow.empty())
+            if (!m_LastFocusedWindow.empty())
                 ImGui::SetWindowFocus(m_LastFocusedWindow.c_str());
         }
 
@@ -4933,7 +4933,7 @@ private:
 
     // Last focused window for session restore
     std::string m_LastFocusedWindow;
-    int m_RestoreFocusFrame = 3; // delay a few frames for ImGui layout to settle
+    int m_RestoreFocusFrame = 10; // apply focus for several frames until docking settles
 
     // Build settings
     VE::BuildSettings m_BuildSettings;
