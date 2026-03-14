@@ -4463,10 +4463,26 @@ private:
                 }
             }
 
-            // Right-click context menu on item (works because InvisibleButton has an ID)
+            // Right-click context menu on item
             if (ImGui::BeginPopupContextItem()) {
-                if (ImGui::MenuItem("Delete")) {
-                    m_AssetDatabase.DeleteAsset(relPath);
+                // If right-clicked item is not in selection, select it alone
+                if (m_SelectedAssets.find(relPath) == m_SelectedAssets.end()) {
+                    m_SelectedAssets.clear();
+                    m_SelectedAssets.insert(relPath);
+                    m_SelectedAssetPath = relPath;
+                }
+
+                int selCount = static_cast<int>(m_SelectedAssets.size());
+                char label[64];
+                snprintf(label, sizeof(label), selCount > 1 ? "Delete %d items" : "Delete", selCount);
+
+                if (ImGui::MenuItem(label)) {
+                    // Copy set since deletion invalidates iterators
+                    auto toDelete = m_SelectedAssets;
+                    m_SelectedAssets.clear();
+                    m_SelectedAssetPath.clear();
+                    for (auto& p : toDelete)
+                        m_AssetDatabase.DeleteAsset(p);
                     ImGui::EndPopup();
                     ImGui::PopID();
                     ImGui::Columns(1);
@@ -4485,6 +4501,19 @@ private:
         }
 
         ImGui::Columns(1);
+
+        // ── Delete key: batch delete selected assets ────────────────
+        if (!m_SelectedAssets.empty() && ImGui::IsWindowFocused() &&
+            ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+            auto toDelete = m_SelectedAssets;
+            m_SelectedAssets.clear();
+            m_SelectedAssetPath.clear();
+            for (auto& p : toDelete)
+                m_AssetDatabase.DeleteAsset(p);
+            ImGui::EndChild();
+            ImGui::End();
+            return;
+        }
 
         // ── Box Selection (drag rectangle in empty space) ───────────
         {
