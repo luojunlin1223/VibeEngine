@@ -132,18 +132,16 @@ protected:
         glm::mat4 model = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
         glm::mat4 mvp = m_FrameVP * model;
 
-        // Compute outline width based on object scale
-        glm::vec3 scale(glm::length(glm::vec3(model[0])),
-                        glm::length(glm::vec3(model[1])),
-                        glm::length(glm::vec3(model[2])));
-        float avgScale = (scale.x + scale.y + scale.z) / 3.0f;
-        float outlineWidth = 0.03f * avgScale;
+        uint32_t vpW = m_Framebuffer ? m_Framebuffer->GetWidth()  : 1280;
+        uint32_t vpH = m_Framebuffer ? m_Framebuffer->GetHeight() : 720;
 
-        // Draw back-faces extruded along normals → only silhouette visible
+        // Draw back-faces extruded in clip space → constant pixel-width outline
         s_OutlineShader->Bind();
         s_OutlineShader->ApplyRenderState(); // Cull Front, ZWrite Off
         s_OutlineShader->SetMat4("u_MVP", mvp);
-        s_OutlineShader->SetFloat("u_OutlineWidth", outlineWidth);
+        s_OutlineShader->SetMat4("u_Model", model);
+        s_OutlineShader->SetVec4("u_ViewportSize", glm::vec4(vpW, vpH, 0, 0));
+        s_OutlineShader->SetFloat("u_OutlinePixels", 3.0f);
         s_OutlineShader->SetVec4("u_OutlineColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
 
         vao->Bind();

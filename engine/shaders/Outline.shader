@@ -1,7 +1,6 @@
 // VibeEngine ShaderLab — Outline Shader
-// Renders only the silhouette by extruding back-faces along normals.
-// Cull Front means only back-facing triangles are drawn; after normal
-// extrusion they form a visible shell only at the silhouette edge.
+// Renders silhouette outline by extruding back-face vertices along
+// clip-space normals for constant screen-pixel width.
 
 Shader "VibeEngine/Outline"
 {
@@ -29,12 +28,28 @@ layout(location = 2) in vec3 a_Color;
 layout(location = 3) in vec2 a_TexCoord;
 
 uniform mat4 u_MVP;
-uniform float u_OutlineWidth;
+uniform mat4 u_Model;
+uniform vec4 u_ViewportSize; // xy = width, height
+uniform float u_OutlinePixels; // outline width in pixels
 
 void main() {
-    // Extrude along object-space normal
-    vec3 pos = a_Position + normalize(a_Normal) * u_OutlineWidth;
-    gl_Position = u_MVP * vec4(pos, 1.0);
+    // Transform position to clip space
+    gl_Position = u_MVP * vec4(a_Position, 1.0);
+
+    // Transform a nearby point along the normal to clip space
+    vec3 worldNormal = normalize(mat3(transpose(inverse(u_Model))) * a_Normal);
+    vec4 clipNormal = u_MVP * vec4(a_Position + worldNormal * 0.001, 1.0);
+
+    // Compute screen-space normal direction
+    vec2 screenPos = gl_Position.xy / gl_Position.w;
+    vec2 screenNorm = clipNormal.xy / clipNormal.w;
+    vec2 diff = screenNorm - screenPos;
+    float len = length(diff);
+    vec2 dir = (len > 0.00001) ? diff / len : vec2(0.0, 1.0);
+
+    // Offset in NDC by fixed pixel amount
+    vec2 pixelOffset = dir * (u_OutlinePixels / u_ViewportSize.xy) * 2.0;
+    gl_Position.xy += pixelOffset * gl_Position.w;
 }
 #endif
 
