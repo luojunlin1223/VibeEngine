@@ -24,6 +24,10 @@
 #include "Renderer/InstancedRenderer.h"
 #include "Renderer/Frustum.h"
 
+#include "Input/KeyCodes.h"
+#include "Input/Input.h"
+#include "Input/InputAction.h"
+
 #include "Scene/Components.h"
 #include "Scene/Entity.h"
 #include "Scene/Scene.h"

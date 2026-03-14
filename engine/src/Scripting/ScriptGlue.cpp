@@ -14,12 +14,12 @@
 #include "VibeEngine/Core/Application.h"
 #include "VibeEngine/Core/Window.h"
 #include "VibeEngine/Audio/AudioEngine.h"
-
-#include <GLFW/glfw3.h>
+#include "VibeEngine/Input/Input.h"
+#include "VibeEngine/Input/InputAction.h"
 
 namespace VE {
 
-// ── API implementations ─────────────────────────────────────────────
+// ── Logging ─────────────────────────────────────────────────────────
 
 static void Glue_Log_Info(const char* msg) {
     VE_INFO("[Script] {0}", msg);
@@ -33,33 +33,80 @@ static void Glue_Log_Error(const char* msg) {
     VE_ERROR("[Script] {0}", msg);
 }
 
+// ── Input (keyboard / mouse) ────────────────────────────────────────
+
 static bool Glue_Input_IsKeyDown(int keyCode) {
-    auto* app = Application::GetInstance();
-    if (!app) return false;
-    GLFWwindow* window = app->GetWindow().GetNativeWindow();
-    return glfwGetKey(window, keyCode) == GLFW_PRESS;
+    return Input::IsKeyDown(keyCode);
+}
+
+static bool Glue_Input_IsKeyPressed(int keyCode) {
+    return Input::IsKeyPressed(keyCode);
+}
+
+static bool Glue_Input_IsKeyReleased(int keyCode) {
+    return Input::IsKeyReleased(keyCode);
 }
 
 static bool Glue_Input_IsMouseButtonDown(int button) {
-    auto* app = Application::GetInstance();
-    if (!app) return false;
-    GLFWwindow* window = app->GetWindow().GetNativeWindow();
-    return glfwGetMouseButton(window, button) == GLFW_PRESS;
+    return Input::IsMouseButtonDown(button);
 }
 
 static void Glue_Input_GetMousePosition(float* x, float* y) {
-    auto* app = Application::GetInstance();
-    if (!app) { *x = 0; *y = 0; return; }
-    double dx, dy;
-    glfwGetCursorPos(app->GetWindow().GetNativeWindow(), &dx, &dy);
-    *x = static_cast<float>(dx);
-    *y = static_cast<float>(dy);
+    auto pos = Input::GetMousePosition();
+    *x = pos.x;
+    *y = pos.y;
 }
+
+static void Glue_Input_GetMouseDelta(float* x, float* y) {
+    auto delta = Input::GetMouseDelta();
+    *x = delta.x;
+    *y = delta.y;
+}
+
+static float Glue_Input_GetScrollDelta() {
+    return Input::GetScrollDelta();
+}
+
+// ── Input (gamepad) ─────────────────────────────────────────────────
+
+static bool Glue_Input_IsGamepadConnected(int gamepadID) {
+    return Input::IsGamepadConnected(gamepadID);
+}
+
+static bool Glue_Input_IsGamepadButtonDown(int button, int gamepadID) {
+    return Input::IsGamepadButtonDown(static_cast<GamepadButton>(button), gamepadID);
+}
+
+static bool Glue_Input_IsGamepadButtonPressed(int button, int gamepadID) {
+    return Input::IsGamepadButtonPressed(static_cast<GamepadButton>(button), gamepadID);
+}
+
+static float Glue_Input_GetGamepadAxis(int axis, int gamepadID) {
+    return Input::GetGamepadAxis(static_cast<GamepadAxis>(axis), gamepadID);
+}
+
+// ── Input (action system) ───────────────────────────────────────────
+
+static float Glue_Input_GetActionValue(const char* path) {
+    return InputActions::GetValue(path ? path : "");
+}
+
+static bool Glue_Input_IsActionPressed(const char* path) {
+    return InputActions::IsPressed(path ? path : "");
+}
+
+static bool Glue_Input_IsActionDown(const char* path) {
+    return InputActions::IsDown(path ? path : "");
+}
+
+// ── Time ────────────────────────────────────────────────────────────
 
 static float Glue_Time_GetDeltaTime() {
     auto* app = Application::GetInstance();
     return app ? app->GetDeltaTime() : 0.0f;
 }
+
+// ── Entity ──────────────────────────────────────────────────────────
 
 static void Glue_Entity_GetTransform(uint64_t entityID, ScriptTransform* out) {
     Scene* scene = ScriptEngine::GetActiveScene();
@@ -125,7 +172,7 @@ static uint64_t Glue_Entity_FindByName(const char* name) {
     return 0;
 }
 
-// ── Audio glue ──────────────────────────────────────────────────────
+// ── Audio ───────────────────────────────────────────────────────────
 
 static uint32_t Glue_Audio_Play(const char* clipPath, float volume, float pitch, bool loop) {
     return AudioEngine::Play(clipPath ? clipPath : "", volume, pitch, loop);
@@ -146,20 +193,31 @@ static void Glue_Audio_SetMasterVolume(float volume) {
 // ── Init ────────────────────────────────────────────────────────────
 
 void InitScriptGlue(ScriptAPI& api) {
-    api.Log_Info             = Glue_Log_Info;
-    api.Log_Warn             = Glue_Log_Warn;
-    api.Log_Error            = Glue_Log_Error;
-    api.Input_IsKeyDown      = Glue_Input_IsKeyDown;
-    api.Input_IsMouseButtonDown = Glue_Input_IsMouseButtonDown;
-    api.Input_GetMousePosition  = Glue_Input_GetMousePosition;
-    api.Time_GetDeltaTime    = Glue_Time_GetDeltaTime;
-    api.Entity_GetTransform  = Glue_Entity_GetTransform;
-    api.Entity_SetTransform  = Glue_Entity_SetTransform;
-    api.Entity_FindByName    = Glue_Entity_FindByName;
-    api.Audio_Play           = Glue_Audio_Play;
-    api.Audio_Stop           = Glue_Audio_Stop;
-    api.Audio_SetVolume      = Glue_Audio_SetVolume;
-    api.Audio_SetMasterVolume = Glue_Audio_SetMasterVolume;
+    api.Log_Info                 = Glue_Log_Info;
+    api.Log_Warn                 = Glue_Log_Warn;
+    api.Log_Error                = Glue_Log_Error;
+    api.Input_IsKeyDown          = Glue_Input_IsKeyDown;
+    api.Input_IsKeyPressed       = Glue_Input_IsKeyPressed;
+    api.Input_IsKeyReleased      = Glue_Input_IsKeyReleased;
+    api.Input_IsMouseButtonDown  = Glue_Input_IsMouseButtonDown;
+    api.Input_GetMousePosition   = Glue_Input_GetMousePosition;
+    api.Input_GetMouseDelta      = Glue_Input_GetMouseDelta;
+    api.Input_GetScrollDelta     = Glue_Input_GetScrollDelta;
+    api.Input_IsGamepadConnected     = Glue_Input_IsGamepadConnected;
+    api.Input_IsGamepadButtonDown    = Glue_Input_IsGamepadButtonDown;
+    api.Input_IsGamepadButtonPressed = Glue_Input_IsGamepadButtonPressed;
+    api.Input_GetGamepadAxis         = Glue_Input_GetGamepadAxis;
+    api.Input_GetActionValue     = Glue_Input_GetActionValue;
+    api.Input_IsActionPressed    = Glue_Input_IsActionPressed;
+    api.Input_IsActionDown       = Glue_Input_IsActionDown;
+    api.Time_GetDeltaTime        = Glue_Time_GetDeltaTime;
+    api.Entity_GetTransform      = Glue_Entity_GetTransform;
+    api.Entity_SetTransform      = Glue_Entity_SetTransform;
+    api.Entity_FindByName        = Glue_Entity_FindByName;
+    api.Audio_Play               = Glue_Audio_Play;
+    api.Audio_Stop               = Glue_Audio_Stop;
+    api.Audio_SetVolume          = Glue_Audio_SetVolume;
+    api.Audio_SetMasterVolume    = Glue_Audio_SetMasterVolume;
 }
 
 } // namespace VE

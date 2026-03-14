@@ -4,6 +4,8 @@
 #include "VibeEngine/Renderer/Renderer.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
 #include "VibeEngine/ImGui/ImGuiLayer.h"
+#include "VibeEngine/Input/Input.h"
+#include "VibeEngine/Input/InputAction.h"
 
 #include <GLFW/glfw3.h>
 
@@ -25,6 +27,9 @@ Application::Application(RendererAPI::API api)
     RenderCommand::Init();
     VE_ENGINE_INFO("Renderer initialized with {0}",
         api == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan");
+
+    // Input must init before ImGui so ImGui chains to our scroll callback
+    Input::Init(m_Window->GetNativeWindow());
 
     m_ImGuiLayer = std::make_unique<ImGuiLayer>();
     m_ImGuiLayer->Init(m_Window->GetNativeWindow(), api);
@@ -75,14 +80,17 @@ void Application::SwitchAPI(RendererAPI::API newAPI) {
     VE_ENGINE_INFO("Renderer re-initialized with {0}",
         newAPI == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan");
 
-    // 6. Reinitialize ImGui
+    // 6. Reinitialize input before ImGui (callback chaining order)
+    Input::Init(m_Window->GetNativeWindow());
+
+    // 7. Reinitialize ImGui
     m_ImGuiLayer = std::make_unique<ImGuiLayer>();
     m_ImGuiLayer->Init(m_Window->GetNativeWindow(), newAPI);
 
-    // 7. Let the application recreate GPU resources
+    // 8. Let the application recreate GPU resources
     OnRendererReloaded(); // second call: recreate with new backend
 
-    // 8. Make sure the new window is visible and focused
+    // 9. Make sure the new window is visible and focused
     glfwShowWindow(m_Window->GetNativeWindow());
     glfwFocusWindow(m_Window->GetNativeWindow());
 
@@ -113,6 +121,9 @@ void Application::Run() {
         float time = static_cast<float>(glfwGetTime());
         m_DeltaTime = time - m_LastFrameTime;
         m_LastFrameTime = time;
+
+        Input::Update();
+        InputActions::UpdateAll();
 
         OnUpdate();
         OnRender();

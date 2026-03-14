@@ -60,6 +60,9 @@ public:
             }
         });
 
+        // Set up default input action map
+        SetupDefaultInputActions();
+
         // Restore last session (scene + camera)
         LoadEditorSettings();
     }
@@ -79,6 +82,9 @@ protected:
         m_AssetDatabase.Update(m_DeltaTime);
         if (m_PlayMode) {
             VE::ScriptEngine::CheckForReload();
+
+            // ── Built-in input test: move "Player"-tagged entities ──
+            UpdatePlayerController(m_DeltaTime);
 
             // Update 3D audio listener from camera
             glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
@@ -530,6 +536,7 @@ protected:
         DrawContentBrowserPanel();
         DrawProjectSettingsPanel();
         DrawGameViewPanel();
+        DrawInputSettingsPanel();
 
     }
 
@@ -798,6 +805,101 @@ private:
     }
 
     // ── Editor settings persistence ──────────────────────────────────
+
+    // ── Built-in player controller for input testing ──────────────────
+    void UpdatePlayerController(float dt) {
+        auto* playerMap = VE::InputActions::GetMap("Player");
+        if (!playerMap || !playerMap->IsEnabled()) return;
+
+        auto* moveH = playerMap->GetAction("MoveHorizontal");
+        auto* moveV = playerMap->GetAction("MoveVertical");
+        auto* jump  = playerMap->GetAction("Jump");
+        auto* sprint = playerMap->GetAction("Sprint");
+
+        float hInput = moveH ? moveH->GetValue() : 0.0f;
+        float vInput = moveV ? moveV->GetValue() : 0.0f;
+
+        if (std::abs(hInput) < 0.01f && std::abs(vInput) < 0.01f
+            && !(jump && jump->IsPressed()))
+            return;
+
+        float speed = 5.0f;
+        if (sprint && sprint->IsDown()) speed *= 2.0f;
+
+        // Move all entities tagged "Player"
+        auto view = m_Scene->GetAllEntitiesWith<VE::TagComponent, VE::TransformComponent>();
+        for (auto e : view) {
+            auto& tag = view.get<VE::TagComponent>(e);
+            if (tag.GameObjectTag != "Player") continue;
+
+            auto& tc = view.get<VE::TransformComponent>(e);
+            tc.Position[0] += hInput * speed * dt;
+            tc.Position[2] -= vInput * speed * dt; // Z is forward in 3D
+
+            // Jump: quick upward impulse
+            if (jump && jump->IsPressed() && tc.Position[1] <= 0.55f) {
+                tc.Position[1] = 2.5f; // simple teleport jump for testing
+            }
+        }
+    }
+
+    void SetupDefaultInputActions() {
+        // Try loading saved input map first
+        auto& playerMap = VE::InputActions::CreateMap("Player");
+        if (playerMap.LoadFromFile("ProjectSettings/InputActions.yaml"))
+            return; // Loaded custom bindings
+
+        // ── Default Player action map ──
+        // Movement (WASD + Gamepad left stick)
+        {
+            auto& moveH = playerMap.AddAction("MoveHorizontal", VE::ActionType::Axis);
+            moveH.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::D), 0,  1.0f });
+            moveH.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::A), 0, -1.0f });
+            moveH.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::Right), 0,  1.0f });
+            moveH.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::Left), 0, -1.0f });
+            moveH.AddBinding({ VE::BindingSource::GamepadAxis, static_cast<int>(VE::GamepadAxis::LeftX), 0, 1.0f });
+        }
+        {
+            auto& moveV = playerMap.AddAction("MoveVertical", VE::ActionType::Axis);
+            moveV.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::W), 0,  1.0f });
+            moveV.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::S), 0, -1.0f });
+            moveV.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::Up), 0,  1.0f });
+            moveV.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::Down), 0, -1.0f });
+            moveV.AddBinding({ VE::BindingSource::GamepadAxis, static_cast<int>(VE::GamepadAxis::LeftY), 0, -1.0f }); // Y inverted
+        }
+        // Look (mouse + right stick)
+        {
+            auto& lookH = playerMap.AddAction("LookHorizontal", VE::ActionType::Axis);
+            lookH.AddBinding({ VE::BindingSource::MouseAxisX, 0, 0, 0.1f });
+            lookH.AddBinding({ VE::BindingSource::GamepadAxis, static_cast<int>(VE::GamepadAxis::RightX), 0, 1.0f });
+        }
+        {
+            auto& lookV = playerMap.AddAction("LookVertical", VE::ActionType::Axis);
+            lookV.AddBinding({ VE::BindingSource::MouseAxisY, 0, 0, 0.1f });
+            lookV.AddBinding({ VE::BindingSource::GamepadAxis, static_cast<int>(VE::GamepadAxis::RightY), 0, 1.0f });
+        }
+        // Actions
+        {
+            auto& jump = playerMap.AddAction("Jump", VE::ActionType::Button);
+            jump.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::Space), 0, 1.0f });
+            jump.AddBinding({ VE::BindingSource::GamepadButton, static_cast<int>(VE::GamepadButton::A), 0, 1.0f });
+        }
+        {
+            auto& fire = playerMap.AddAction("Fire", VE::ActionType::Button);
+            fire.AddBinding({ VE::BindingSource::MouseButton, static_cast<int>(VE::MouseButton::Left), 0, 1.0f });
+            fire.AddBinding({ VE::BindingSource::GamepadButton, static_cast<int>(VE::GamepadButton::RightBumper), 0, 1.0f });
+            fire.AddBinding({ VE::BindingSource::GamepadAxis, static_cast<int>(VE::GamepadAxis::RightTrigger), 0, 1.0f });
+        }
+        {
+            auto& sprint = playerMap.AddAction("Sprint", VE::ActionType::Button);
+            sprint.AddBinding({ VE::BindingSource::Key, static_cast<int>(VE::KeyCode::LeftShift), 0, 1.0f });
+            sprint.AddBinding({ VE::BindingSource::GamepadButton, static_cast<int>(VE::GamepadButton::LeftThumb), 0, 1.0f });
+        }
+
+        // Save defaults
+        std::filesystem::create_directories("ProjectSettings");
+        playerMap.SaveToFile("ProjectSettings/InputActions.yaml");
+    }
 
     void SaveEditorSettings() {
         YAML::Emitter out;
@@ -1141,6 +1243,7 @@ private:
                 ImGui::MenuItem("Scripting", nullptr, &m_ShowScripting);
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
+                ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -3986,6 +4089,146 @@ private:
         return std::to_string(n);
     }
 
+    // ── Input Settings Panel ────────────────────────────────────────────
+
+    static const char* BindingSourceName(VE::BindingSource src) {
+        switch (src) {
+            case VE::BindingSource::Key:           return "Key";
+            case VE::BindingSource::MouseButton:   return "MouseButton";
+            case VE::BindingSource::GamepadButton: return "GamepadButton";
+            case VE::BindingSource::GamepadAxis:   return "GamepadAxis";
+            case VE::BindingSource::MouseAxisX:    return "MouseAxisX";
+            case VE::BindingSource::MouseAxisY:    return "MouseAxisY";
+            case VE::BindingSource::ScrollWheel:   return "ScrollWheel";
+        }
+        return "Unknown";
+    }
+
+    static const char* KeyCodeName(int code) {
+        // Common keys
+        if (code >= 65 && code <= 90) { static char buf[2]; buf[0] = (char)code; buf[1] = 0; return buf; }
+        if (code >= 48 && code <= 57) { static char buf[2]; buf[0] = (char)code; buf[1] = 0; return buf; }
+        switch (code) {
+            case 32:  return "Space";   case 256: return "Escape"; case 257: return "Enter";
+            case 258: return "Tab";     case 259: return "Backspace";
+            case 262: return "Right";   case 263: return "Left";
+            case 264: return "Down";    case 265: return "Up";
+            case 340: return "LShift";  case 341: return "LCtrl";
+            case 342: return "LAlt";    case 344: return "RShift";
+            case 345: return "RCtrl";   case 346: return "RAlt";
+        }
+        static char buf[16]; snprintf(buf, sizeof(buf), "%d", code); return buf;
+    }
+
+    static const char* GamepadButtonName(int code) {
+        const char* names[] = { "A", "B", "X", "Y", "LB", "RB", "Back", "Start",
+                                "Guide", "LStick", "RStick", "Up", "Right", "Down", "Left" };
+        return (code >= 0 && code < 15) ? names[code] : "?";
+    }
+
+    static const char* GamepadAxisName(int code) {
+        const char* names[] = { "LeftX", "LeftY", "RightX", "RightY", "LTrigger", "RTrigger" };
+        return (code >= 0 && code < 6) ? names[code] : "?";
+    }
+
+    void DrawInputSettingsPanel() {
+        if (!m_ShowInputSettings) return;
+        ImGui::Begin("Input Settings", &m_ShowInputSettings);
+
+        // ── Gamepad status ──
+        if (ImGui::CollapsingHeader("Gamepad Status", ImGuiTreeNodeFlags_DefaultOpen)) {
+            for (int i = 0; i < VE::Input::MAX_GAMEPADS; ++i) {
+                if (VE::Input::IsGamepadConnected(i)) {
+                    ImGui::TextColored({0.3f,1.0f,0.3f,1.0f}, "Gamepad %d: %s",
+                        i, VE::Input::GetGamepadName(i).c_str());
+
+                    // Show live axis values
+                    ImGui::Indent();
+                    for (int a = 0; a < 6; ++a) {
+                        float val = VE::Input::GetGamepadAxis(static_cast<VE::GamepadAxis>(a), i);
+                        ImGui::Text("  %s: %.2f", GamepadAxisName(a), val);
+                        ImGui::SameLine(200);
+                        ImGui::ProgressBar((val + 1.0f) * 0.5f, ImVec2(100, 0));
+                    }
+                    // Show active buttons
+                    std::string activeButtons;
+                    for (int b = 0; b < 15; ++b) {
+                        if (VE::Input::IsGamepadButtonDown(static_cast<VE::GamepadButton>(b), i)) {
+                            if (!activeButtons.empty()) activeButtons += " ";
+                            activeButtons += GamepadButtonName(b);
+                        }
+                    }
+                    if (!activeButtons.empty())
+                        ImGui::TextColored({1,1,0,1}, "  Pressed: %s", activeButtons.c_str());
+                    ImGui::Unindent();
+                } else {
+                    ImGui::TextDisabled("Gamepad %d: Not connected", i);
+                }
+            }
+        }
+
+        // ── Deadzone ──
+        float dz = VE::Input::GetDeadzone();
+        if (ImGui::SliderFloat("Stick Deadzone", &dz, 0.0f, 0.5f))
+            VE::Input::SetDeadzone(dz);
+
+        ImGui::Separator();
+
+        // ── Action Maps ──
+        if (ImGui::CollapsingHeader("Action Maps", ImGuiTreeNodeFlags_DefaultOpen)) {
+            auto& maps = VE::InputActions::GetAllMapsMutable();
+            for (size_t mi = 0; mi < maps.size(); ++mi) {
+                auto& map = maps[mi];
+                bool enabled = map.IsEnabled();
+                std::string mapHeader = map.GetName() + (enabled ? "" : " (disabled)");
+                bool mapOpen = ImGui::TreeNode(("##map" + std::to_string(mi)).c_str(), "%s", mapHeader.c_str());
+                ImGui::SameLine(ImGui::GetWindowWidth() - 80);
+                if (ImGui::Checkbox(("##en" + std::to_string(mi)).c_str(), &enabled))
+                    map.SetEnabled(enabled);
+
+                if (mapOpen) {
+                    for (auto& action : map.GetActions()) {
+                        float val = action.GetValue();
+                        bool down = action.IsDown();
+                        ImVec4 col = down ? ImVec4(0.3f,1,0.3f,1) : ImVec4(0.7f,0.7f,0.7f,1);
+                        ImGui::TextColored(col, "  %s = %.2f", action.GetName().c_str(), val);
+
+                        // Show bindings
+                        ImGui::Indent();
+                        for (const auto& b : action.GetBindings()) {
+                            const char* srcName = BindingSourceName(b.Source);
+                            std::string codeName;
+                            switch (b.Source) {
+                                case VE::BindingSource::Key:           codeName = KeyCodeName(b.Code); break;
+                                case VE::BindingSource::MouseButton:   codeName = std::to_string(b.Code); break;
+                                case VE::BindingSource::GamepadButton: codeName = GamepadButtonName(b.Code); break;
+                                case VE::BindingSource::GamepadAxis:   codeName = GamepadAxisName(b.Code); break;
+                                default: codeName = "-"; break;
+                            }
+                            ImGui::TextDisabled("    [%s] %s (x%.1f)", srcName, codeName.c_str(), b.Scale);
+                        }
+                        ImGui::Unindent();
+                    }
+                    ImGui::TreePop();
+                }
+            }
+        }
+
+        // ── Save / Load ──
+        ImGui::Separator();
+        if (ImGui::Button("Save Input Map")) {
+            auto* map = VE::InputActions::GetMap("Player");
+            if (map) map->SaveToFile("ProjectSettings/InputActions.yaml");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Load Input Map")) {
+            auto* map = VE::InputActions::GetMap("Player");
+            if (map) map->LoadFromFile("ProjectSettings/InputActions.yaml");
+        }
+
+        ImGui::End();
+    }
+
 private:
     std::shared_ptr<VE::Scene> m_Scene;
     VE::Entity m_SelectedEntity;
@@ -4013,6 +4256,7 @@ private:
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;
+    bool m_ShowInputSettings = false;
 
     // Project settings: custom tags & layers
     std::vector<std::string> m_CustomTags = {

@@ -20,16 +20,41 @@ struct ScriptTransform {
 
 // Function pointer table passed from engine to script DLL
 struct ScriptAPI {
+    // Logging
     void (*Log_Info)(const char* msg)            = nullptr;
     void (*Log_Warn)(const char* msg)            = nullptr;
     void (*Log_Error)(const char* msg)           = nullptr;
+
+    // Input: keyboard
     bool (*Input_IsKeyDown)(int keyCode)         = nullptr;
+    bool (*Input_IsKeyPressed)(int keyCode)      = nullptr;
+    bool (*Input_IsKeyReleased)(int keyCode)     = nullptr;
+
+    // Input: mouse
     bool (*Input_IsMouseButtonDown)(int button)  = nullptr;
     void (*Input_GetMousePosition)(float* x, float* y) = nullptr;
+    void (*Input_GetMouseDelta)(float* x, float* y)    = nullptr;
+    float (*Input_GetScrollDelta)()              = nullptr;
+
+    // Input: gamepad
+    bool  (*Input_IsGamepadConnected)(int gamepadID)               = nullptr;
+    bool  (*Input_IsGamepadButtonDown)(int button, int gamepadID)  = nullptr;
+    bool  (*Input_IsGamepadButtonPressed)(int button, int gamepadID) = nullptr;
+    float (*Input_GetGamepadAxis)(int axis, int gamepadID)         = nullptr;
+
+    // Input: action system
+    float (*Input_GetActionValue)(const char* path)   = nullptr;
+    bool  (*Input_IsActionPressed)(const char* path)  = nullptr;
+    bool  (*Input_IsActionDown)(const char* path)     = nullptr;
+
+    // Time
     float (*Time_GetDeltaTime)()                 = nullptr;
+
+    // Entity
     void (*Entity_GetTransform)(uint64_t entityID, ScriptTransform* out) = nullptr;
     void (*Entity_SetTransform)(uint64_t entityID, const ScriptTransform* in) = nullptr;
     uint64_t (*Entity_FindByName)(const char* name) = nullptr;
+
     // Audio
     uint32_t (*Audio_Play)(const char* clipPath, float volume, float pitch, bool loop) = nullptr;
     void (*Audio_Stop)(uint32_t soundHandle)         = nullptr;
