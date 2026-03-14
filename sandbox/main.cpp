@@ -2842,7 +2842,9 @@ private:
         if (m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
             auto& ac = m_SelectedEntity.GetComponent<VE::AnimatorComponent>();
             bool removeAnimator = false;
-            if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openAnimator = ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::AnimatorComponent>("##AnimatorCtx", "Animator", removeAnimator);
+            if (openAnimator) {
                 // Show clip info from the associated MeshAsset
                 int clipCount = 0;
                 int boneCount = 0;
@@ -2871,8 +2873,6 @@ private:
                 if (ac._Animator)
                     ImGui::Text("Status: %s", ac._Animator->IsPlaying() ? "Playing" : "Stopped");
 
-                if (ImGui::Button("Remove Component##Animator"))
-                    removeAnimator = true;
             }
             if (removeAnimator)
                 m_SelectedEntity.RemoveComponent<VE::AnimatorComponent>();
@@ -2883,7 +2883,9 @@ private:
         if (m_SelectedEntity.HasComponent<VE::AudioSourceComponent>()) {
             auto& as = m_SelectedEntity.GetComponent<VE::AudioSourceComponent>();
             bool removeAudio = false;
-            if (ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openAudio = ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::AudioSourceComponent>("##AudioSrcCtx", "AudioSource", removeAudio);
+            if (openAudio) {
                 // ── Audio Clip Object Field (Unity-style) ──
                 DrawAudioClipObjectField("Audio Clip", as);
 
@@ -2918,8 +2920,6 @@ private:
                     }
                 }
 
-                if (ImGui::Button("Remove Component##AudioSource"))
-                    removeAudio = true;
             }
             if (removeAudio) {
                 if (as._SoundHandle != 0) {
@@ -2933,10 +2933,10 @@ private:
         // AudioListenerComponent inspector
         if (m_SelectedEntity.HasComponent<VE::AudioListenerComponent>()) {
             bool removeListener = false;
-            if (ImGui::CollapsingHeader("Audio Listener", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openListener = ImGui::CollapsingHeader("Audio Listener", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::AudioListenerComponent>("##AudioListenerCtx", "AudioListener", removeListener);
+            if (openListener) {
                 ImGui::TextWrapped("This entity acts as the 3D audio listener.");
-                if (ImGui::Button("Remove Component##AudioListener"))
-                    removeListener = true;
             }
             if (removeListener)
                 m_SelectedEntity.RemoveComponent<VE::AudioListenerComponent>();
@@ -2946,7 +2946,9 @@ private:
         // SpriteRendererComponent inspector
         if (m_SelectedEntity.HasComponent<VE::SpriteRendererComponent>()) {
             bool removeSprite = false;
-            if (ImGui::CollapsingHeader("Sprite Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openSprite = ImGui::CollapsingHeader("Sprite Renderer", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::SpriteRendererComponent>("##SpriteRendCtx", "SpriteRenderer", removeSprite);
+            if (openSprite) {
                 auto& sr = m_SelectedEntity.GetComponent<VE::SpriteRendererComponent>();
 
                 ImGui::ColorEdit4("Color##Sprite", sr.Color.data());
@@ -2987,8 +2989,6 @@ private:
 
                 ImGui::DragFloat4("UV Rect", sr.UVRect.data(), 0.01f, 0.0f, 1.0f);
 
-                if (ImGui::Button("Remove Component##SpriteRenderer"))
-                    removeSprite = true;
             }
             if (removeSprite)
                 m_SelectedEntity.RemoveComponent<VE::SpriteRendererComponent>();
@@ -2998,7 +2998,9 @@ private:
         // SpriteAnimatorComponent inspector
         if (m_SelectedEntity.HasComponent<VE::SpriteAnimatorComponent>()) {
             bool removeSA = false;
-            if (ImGui::CollapsingHeader("Sprite Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openSA = ImGui::CollapsingHeader("Sprite Animator", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::SpriteAnimatorComponent>("##SpriteAnimCtx", "SpriteAnimator", removeSA);
+            if (openSA) {
                 auto& sa = m_SelectedEntity.GetComponent<VE::SpriteAnimatorComponent>();
 
                 int totalFrames = sa.Columns * sa.Rows;
@@ -3013,8 +3015,6 @@ private:
                 if (m_PlayMode)
                     ImGui::Text("Frame: %d / %d", sa._CurrentFrame, sa.EndFrame);
 
-                if (ImGui::Button("Remove Component##SpriteAnimator"))
-                    removeSA = true;
             }
             if (removeSA)
                 m_SelectedEntity.RemoveComponent<VE::SpriteAnimatorComponent>();
@@ -3024,7 +3024,9 @@ private:
         // ParticleSystemComponent inspector
         if (m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
             bool removePS = false;
-            if (ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openPS = ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::ParticleSystemComponent>("##ParticleCtx", "ParticleSystem", removePS);
+            if (openPS) {
                 auto& ps = m_SelectedEntity.GetComponent<VE::ParticleSystemComponent>();
 
                 ImGui::DragFloat("Emission Rate", &ps.EmissionRate, 0.5f, 0.0f, 1000.0f);
@@ -3070,8 +3072,6 @@ private:
                     ImGui::Text("Active Particles: %d / %d", active, ps.MaxParticles);
                 }
 
-                if (ImGui::Button("Remove Component##ParticleSystem"))
-                    removePS = true;
             }
             if (removePS)
                 m_SelectedEntity.RemoveComponent<VE::ParticleSystemComponent>();
@@ -3081,7 +3081,9 @@ private:
         // CameraComponent inspector
         if (m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
             bool removeCam = false;
-            if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openCam = ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::CameraComponent>("##CameraCtx", "Camera", removeCam);
+            if (openCam) {
                 auto& cam = m_SelectedEntity.GetComponent<VE::CameraComponent>();
 
                 const char* projTypes[] = { "Perspective", "Orthographic" };
@@ -3098,8 +3100,6 @@ private:
                 ImGui::DragFloat("Far Clip",  &cam.FarClip,  1.0f, cam.NearClip + 0.001f, 10000.0f);
                 ImGui::DragInt("Priority", &cam.Priority, 1);
 
-                if (ImGui::Button("Remove Component##Camera"))
-                    removeCam = true;
             }
             if (removeCam)
                 m_SelectedEntity.RemoveComponent<VE::CameraComponent>();
@@ -3324,7 +3324,9 @@ private:
         // ── Terrain Component Inspector ───────────────────────────
         if (m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openTerrain = ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::TerrainComponent>("##TerrainCtx", "Terrain", removeC);
+            if (openTerrain) {
                 auto& t = m_SelectedEntity.GetComponent<VE::TerrainComponent>();
                 bool changed = false;
 
@@ -3390,7 +3392,6 @@ private:
                 if (ImGui::Button("Regenerate"))
                     t._NeedsRebuild = true;
 
-                if (ImGui::Button("Remove##Terrain")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::TerrainComponent>();
             ImGui::Separator();
@@ -3399,11 +3400,12 @@ private:
         // ── UI Components Inspector ──────────────────────────────
         if (m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Canvas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Canvas", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UICanvasComponent>("##UICanvasCtx", "UICanvas", removeC);
+            if (openC) {
                 auto& uc = m_SelectedEntity.GetComponent<VE::UICanvasComponent>();
                 ImGui::Checkbox("Screen Space", &uc.ScreenSpace);
                 ImGui::DragInt("Sort Order", &uc.SortOrder, 1, 0, 100);
-                if (ImGui::Button("Remove##UICanvas")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UICanvasComponent>();
             ImGui::Separator();
@@ -3411,7 +3413,9 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UIRectTransformComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Rect Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Rect Transform", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UIRectTransformComponent>("##UIRectCtx", "UIRectTransform", removeC);
+            if (openC) {
                 auto& rt = m_SelectedEntity.GetComponent<VE::UIRectTransformComponent>();
                 const char* anchorNames[] = {
                     "TopLeft", "TopCenter", "TopRight",
@@ -3424,7 +3428,6 @@ private:
                 ImGui::DragFloat2("Position", rt.AnchoredPosition.data(), 1.0f);
                 ImGui::DragFloat2("Size", rt.Size.data(), 1.0f, 1.0f, 10000.0f);
                 ImGui::DragFloat2("Pivot", rt.Pivot.data(), 0.01f, 0.0f, 1.0f);
-                if (ImGui::Button("Remove##UIRectTransform")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UIRectTransformComponent>();
             ImGui::Separator();
@@ -3432,7 +3435,9 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UITextComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Text", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Text", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UITextComponent>("##UITextCtx", "UIText", removeC);
+            if (openC) {
                 auto& txt = m_SelectedEntity.GetComponent<VE::UITextComponent>();
                 char buf[256];
                 strncpy(buf, txt.Text.c_str(), sizeof(buf));
@@ -3441,7 +3446,6 @@ private:
                     txt.Text = buf;
                 ImGui::DragFloat("Font Size", &txt.FontSize, 0.5f, 4.0f, 200.0f);
                 ImGui::ColorEdit4("Color##UIText", txt.Color.data());
-                if (ImGui::Button("Remove##UIText")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UITextComponent>();
             ImGui::Separator();
@@ -3449,10 +3453,11 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UIImageComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Image", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Image", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UIImageComponent>("##UIImageCtx", "UIImage", removeC);
+            if (openC) {
                 auto& img = m_SelectedEntity.GetComponent<VE::UIImageComponent>();
                 ImGui::ColorEdit4("Color##UIImage", img.Color.data());
-                // Texture path
                 std::string texLabel = img.TexturePath.empty() ? "None" : img.TexturePath;
                 ImGui::Text("Texture: %s", texLabel.c_str());
                 if (ImGui::BeginDragDropTarget()) {
@@ -3462,7 +3467,6 @@ private:
                     }
                     ImGui::EndDragDropTarget();
                 }
-                if (ImGui::Button("Remove##UIImage")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UIImageComponent>();
             ImGui::Separator();
@@ -3470,7 +3474,9 @@ private:
 
         if (m_SelectedEntity.HasComponent<VE::UIButtonComponent>()) {
             bool removeC = false;
-            if (ImGui::CollapsingHeader("UI Button", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool openC = ImGui::CollapsingHeader("UI Button", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::UIButtonComponent>("##UIButtonCtx", "UIButton", removeC);
+            if (openC) {
                 auto& btn = m_SelectedEntity.GetComponent<VE::UIButtonComponent>();
                 char lblBuf[256];
                 strncpy(lblBuf, btn.Label.c_str(), sizeof(lblBuf));
@@ -3486,7 +3492,6 @@ private:
                     ImGui::Text("Hovered: %s", btn._Hovered ? "Yes" : "No");
                     ImGui::Text("Clicked: %s", btn._Clicked ? "Yes" : "No");
                 }
-                if (ImGui::Button("Remove##UIButton")) removeC = true;
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::UIButtonComponent>();
             ImGui::Separator();
