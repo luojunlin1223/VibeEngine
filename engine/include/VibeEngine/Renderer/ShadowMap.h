@@ -46,6 +46,7 @@ public:
     const glm::mat4& GetLightSpaceMatrix(int cascade) const { return m_LightSpaceMatrices[cascade]; }
     float GetCascadeSplit(int cascade) const { return m_CascadeSplits[cascade]; }
     const std::shared_ptr<Shader>& GetDepthShader() const { return m_DepthShader; }
+    uint32_t GetDepthTextureID() const { return m_DepthTexture; }
 
 private:
     void Init();

@@ -174,63 +174,123 @@ protected:
         glDepthMask(GL_TRUE);
     }
 
+    VE::PostProcessSettings BuildPostProcessSettings() const {
+        auto& ps = m_Scene->GetPipelineSettings();
+        VE::PostProcessSettings s;
+        s.Bloom    = { ps.BloomEnabled, ps.BloomThreshold, ps.BloomIntensity, ps.BloomIterations };
+        s.Vignette = { ps.VignetteEnabled, ps.VignetteIntensity, ps.VignetteSmoothness };
+        s.Color    = { ps.ColorAdjustEnabled, ps.ColorExposure, ps.ColorContrast,
+                       ps.ColorSaturation, ps.ColorFilter, ps.ColorGamma };
+        s.SMH      = { ps.SMHEnabled, ps.SMH_Shadows, ps.SMH_Midtones, ps.SMH_Highlights,
+                       ps.SMH_ShadowStart, ps.SMH_ShadowEnd, ps.SMH_HighlightStart, ps.SMH_HighlightEnd };
+        s.Curves.Enabled       = ps.CurvesEnabled;
+        s.Curves.Master.Points = ps.CurvesMaster;
+        s.Curves.Red.Points    = ps.CurvesRed;
+        s.Curves.Green.Points  = ps.CurvesGreen;
+        s.Curves.Blue.Points   = ps.CurvesBlue;
+        s.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+        return s;
+    }
+
     void OnRender() override {
         m_FrameVP = m_Camera.GetViewProjection();
         glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
             ? m_Camera.GetPosition3D()
             : glm::vec3(m_Camera.GetPosition(), 5.0f);
 
-        // Compute CSM shadows before main render (only in 3D perspective mode)
-        // Must run before binding the scene framebuffer since it uses its own FBO
-        if (m_Camera.GetMode() == VE::CameraMode::Perspective3D) {
-            m_Scene->ComputeShadows(m_Camera.GetViewMatrix(),
-                                    m_Camera.GetProjectionMatrix(),
-                                    m_Camera.GetNearClip(),
-                                    m_Camera.GetFarClip());
+        uint32_t fbW = m_Framebuffer ? m_Framebuffer->GetWidth()  : 1280;
+        uint32_t fbH = m_Framebuffer ? m_Framebuffer->GetHeight() : 720;
+        bool perspective3D = (m_Camera.GetMode() == VE::CameraMode::Perspective3D);
+
+        VE::RenderGraph rg;
+        rg.SetViewportSize(fbW, fbH);
+        VE::RGHandle shadowMap, sceneColor;
+
+        // Pass 0: Shadow depth (3D perspective only)
+        if (perspective3D) {
+            rg.AddPass("ShadowDepth", [&](VE::RGBuilder& b) {
+                shadowMap = b.Import("ShadowMap",
+                    m_Scene->GetShadowMap() ? m_Scene->GetShadowMap()->GetDepthTextureID() : 0,
+                    VE::ShadowMap::MAP_SIZE, VE::ShadowMap::MAP_SIZE);
+                b.Write(shadowMap);
+                b.SideEffect();
+            }, [&](const VE::RGResources&) {
+                m_Scene->ComputeShadows(m_Camera.GetViewMatrix(),
+                                        m_Camera.GetProjectionMatrix(),
+                                        m_Camera.GetNearClip(),
+                                        m_Camera.GetFarClip());
+            });
         }
 
-        if (m_Framebuffer) {
-            m_Framebuffer->Bind();
-            VE::RenderCommand::SetDepthWrite(true); // ensure depth clear works
-            VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-            VE::RenderCommand::Clear();
+        // Pass 1: Sky
+        rg.AddPass("Sky", [&](VE::RGBuilder& b) {
+            sceneColor = b.Import("SceneHDR",
+                m_Framebuffer ? static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID()) : 0,
+                fbW, fbH);
+            b.Write(sceneColor);
+            b.SideEffect();
+        }, [&](const VE::RGResources&) {
+            if (m_Framebuffer) {
+                m_Framebuffer->Bind();
+                VE::RenderCommand::SetDepthWrite(true);
+                VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+                VE::RenderCommand::Clear();
+            }
+            m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
+        });
+
+        // Pass 2: Opaque geometry
+        rg.AddPass("Opaque", [&](VE::RGBuilder& b) {
+            if (shadowMap.IsValid()) b.Read(shadowMap);
+            b.Write(sceneColor);
+            b.SideEffect();
+        }, [&](const VE::RGResources&) {
+            m_Scene->OnRender(m_FrameVP, camPos);
+        });
+
+        // Pass 3: Sprites
+        rg.AddPass("Sprites", [&](VE::RGBuilder& b) {
+            b.Write(sceneColor);
+            b.SideEffect();
+        }, [&](const VE::RGResources&) {
+            m_Scene->OnRenderSprites(m_FrameVP);
+        });
+
+        // Pass 4: Particles
+        rg.AddPass("Particles", [&](VE::RGBuilder& b) {
+            b.Write(sceneColor);
+            b.SideEffect();
+        }, [&](const VE::RGResources&) {
+            m_Scene->OnRenderParticles(m_FrameVP, camPos);
+        });
+
+        // Pass 5: Outline (conditional on selection)
+        if (m_OutlineEnabled && m_SelectedEntity) {
+            rg.AddPass("Outline", [&](VE::RGBuilder& b) {
+                b.Write(sceneColor);
+                b.SideEffect();
+            }, [&](const VE::RGResources&) {
+                RenderSelectedOutline();
+            });
         }
 
-        m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
-        m_Scene->OnRender(m_FrameVP, camPos);
-        m_Scene->OnRenderSprites(m_FrameVP);
-        m_Scene->OnRenderParticles(m_FrameVP, camPos);
-        RenderSelectedOutline();
+        // Pass 6: PostProcess
+        rg.AddPass("PostProcess", [&](VE::RGBuilder& b) {
+            b.Read(sceneColor);
+            b.SideEffect();
+        }, [&](const VE::RGResources&) {
+            if (m_Framebuffer) {
+                m_Framebuffer->Unbind();
+                auto ppSettings = BuildPostProcessSettings();
+                uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
+                m_PostProcessedTexture = m_PostProcessing.Apply(
+                    sceneTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(), ppSettings);
+                if (m_PostProcessedTexture == sceneTex)
+                    m_PostProcessedTexture = 0;
+            }
+        });
 
-        if (m_Framebuffer) {
-            m_Framebuffer->Unbind();
-
-            // Apply post-processing
-            auto& ps = m_Scene->GetPipelineSettings();
-            VE::PostProcessSettings ppSettings;
-            ppSettings.Bloom = { ps.BloomEnabled, ps.BloomThreshold, ps.BloomIntensity, ps.BloomIterations };
-            ppSettings.Vignette = { ps.VignetteEnabled, ps.VignetteIntensity, ps.VignetteSmoothness };
-            ppSettings.Color = { ps.ColorAdjustEnabled, ps.ColorExposure, ps.ColorContrast,
-                                 ps.ColorSaturation, ps.ColorFilter, ps.ColorGamma };
-            ppSettings.SMH = { ps.SMHEnabled, ps.SMH_Shadows, ps.SMH_Midtones, ps.SMH_Highlights,
-                               ps.SMH_ShadowStart, ps.SMH_ShadowEnd, ps.SMH_HighlightStart, ps.SMH_HighlightEnd };
-            ppSettings.Curves.Enabled = ps.CurvesEnabled;
-            ppSettings.Curves.Master.Points = ps.CurvesMaster;
-            ppSettings.Curves.Red.Points    = ps.CurvesRed;
-            ppSettings.Curves.Green.Points  = ps.CurvesGreen;
-            ppSettings.Curves.Blue.Points   = ps.CurvesBlue;
-            ppSettings.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
-
-            uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
-            m_PostProcessedTexture = m_PostProcessing.Apply(
-                sceneTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(), ppSettings);
-
-            // If no effects active, Apply returns the original texture
-            if (m_PostProcessedTexture == sceneTex)
-                m_PostProcessedTexture = 0;
-        }
-
-        // ── Game Camera Render Pass ──
+        // ── Game Camera Render Passes ──
         if (m_ShowGameView && m_GameFramebuffer) {
             entt::entity mainCamEntity = entt::null;
             auto camView = m_Scene->GetAllEntitiesWith<VE::TagComponent, VE::TransformComponent, VE::CameraComponent>();
@@ -249,7 +309,6 @@ protected:
                     }
                 }
             }
-            // If only one camera in scene, use it regardless of tag
             if (camCount == 1)
                 mainCamEntity = singleCam;
 
@@ -266,43 +325,72 @@ protected:
                 glm::mat4 gameVP = gameProj * gameView;
                 glm::vec3 gameCamPos = glm::vec3(worldXform[3]);
 
-                m_GameFramebuffer->Bind();
-                VE::RenderCommand::SetDepthWrite(true);
-                VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-                VE::RenderCommand::Clear();
+                VE::RGHandle gameSceneColor;
 
-                // Sky (strip translation from view)
-                glm::mat4 skyView = glm::mat4(glm::mat3(gameView));
-                m_Scene->OnRenderSky(gameProj * skyView);
+                // Game Pass 0: Sky
+                rg.AddPass("GameSky", [&](VE::RGBuilder& b) {
+                    gameSceneColor = b.Import("GameSceneHDR",
+                        static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID()),
+                        m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight());
+                    b.Write(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    m_GameFramebuffer->Bind();
+                    VE::RenderCommand::SetDepthWrite(true);
+                    VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+                    VE::RenderCommand::Clear();
+                    glm::mat4 skyView = glm::mat4(glm::mat3(gameView));
+                    m_Scene->OnRenderSky(gameProj * skyView);
+                });
 
-                m_Scene->OnRender(gameVP, gameCamPos);
-                m_Scene->OnRenderSprites(gameVP);
-                m_Scene->OnRenderParticles(gameVP, gameCamPos);
-                m_GameFramebuffer->Unbind();
+                // Game Pass 1: Opaque
+                rg.AddPass("GameOpaque", [&](VE::RGBuilder& b) {
+                    b.Write(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    m_Scene->OnRender(gameVP, gameCamPos);
+                });
 
-                // Post-processing
-                auto& ps = m_Scene->GetPipelineSettings();
-                VE::PostProcessSettings gppSettings;
-                gppSettings.Bloom = { ps.BloomEnabled, ps.BloomThreshold, ps.BloomIntensity, ps.BloomIterations };
-                gppSettings.Vignette = { ps.VignetteEnabled, ps.VignetteIntensity, ps.VignetteSmoothness };
-                gppSettings.Color = { ps.ColorAdjustEnabled, ps.ColorExposure, ps.ColorContrast,
-                                     ps.ColorSaturation, ps.ColorFilter, ps.ColorGamma };
-                gppSettings.SMH = { ps.SMHEnabled, ps.SMH_Shadows, ps.SMH_Midtones, ps.SMH_Highlights,
-                                   ps.SMH_ShadowStart, ps.SMH_ShadowEnd, ps.SMH_HighlightStart, ps.SMH_HighlightEnd };
-                gppSettings.Curves.Enabled = ps.CurvesEnabled;
-                gppSettings.Curves.Master.Points = ps.CurvesMaster;
-                gppSettings.Curves.Red.Points    = ps.CurvesRed;
-                gppSettings.Curves.Green.Points  = ps.CurvesGreen;
-                gppSettings.Curves.Blue.Points   = ps.CurvesBlue;
-                gppSettings.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+                // Game Pass 2: Sprites
+                rg.AddPass("GameSprites", [&](VE::RGBuilder& b) {
+                    b.Write(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    m_Scene->OnRenderSprites(gameVP);
+                });
 
-                uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
-                m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
-                    gameTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(), gppSettings);
-                if (m_GamePostProcessedTexture == gameTex)
-                    m_GamePostProcessedTexture = 0;
+                // Game Pass 3: Particles
+                rg.AddPass("GameParticles", [&](VE::RGBuilder& b) {
+                    b.Write(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    m_Scene->OnRenderParticles(gameVP, gameCamPos);
+                });
+
+                // Game Pass 4: PostProcess
+                rg.AddPass("GamePostProcess", [&](VE::RGBuilder& b) {
+                    b.Read(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    m_GameFramebuffer->Unbind();
+                    auto ppSettings = BuildPostProcessSettings();
+                    uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
+                    m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
+                        gameTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(), ppSettings);
+                    if (m_GamePostProcessedTexture == gameTex)
+                        m_GamePostProcessedTexture = 0;
+                });
             }
         }
+
+        rg.Compile();
+        // Log graph structure once on first frame
+        static bool s_DumpedOnce = false;
+        if (!s_DumpedOnce) {
+            VE_INFO("{}", rg.DumpGraph());
+            s_DumpedOnce = true;
+        }
+        rg.Execute();
     }
 
     // Helper: build rotation matrix from a TransformComponent
