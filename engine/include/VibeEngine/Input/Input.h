@@ -57,15 +57,15 @@ public:
     static void  SetDeadzone(float deadzone);
     static float GetDeadzone();
 
-    // Public for GLFW callback access (internal use only)
-    static std::array<bool, static_cast<int>(KeyCode::MaxKey)> s_KeysCurrent;
-    static std::array<bool, static_cast<int>(MouseButton::MaxButton)> s_MouseCurrent;
-
 private:
     static GLFWwindow* s_Window;
 
+    // Keyboard state
+    static std::array<bool, static_cast<int>(KeyCode::MaxKey)> s_KeysCurrent;
     static std::array<bool, static_cast<int>(KeyCode::MaxKey)> s_KeysPrevious;
 
+    // Mouse state
+    static std::array<bool, static_cast<int>(MouseButton::MaxButton)> s_MouseCurrent;
     static std::array<bool, static_cast<int>(MouseButton::MaxButton)> s_MousePrevious;
     static glm::vec2 s_MousePos;
     static glm::vec2 s_MousePosPrev;

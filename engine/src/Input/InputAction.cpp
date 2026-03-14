@@ -185,6 +185,12 @@ bool InputActionMap::SaveToFile(const std::string& path) const {
 }
 
 bool InputActionMap::LoadFromFile(const std::string& path) {
+    // Check file exists before attempting to parse
+    {
+        std::ifstream test(path);
+        if (!test.is_open()) return false;
+    }
+
     YAML::Node root;
     try {
         root = YAML::LoadFile(path);

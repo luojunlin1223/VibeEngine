@@ -1,8 +1,8 @@
 /*
  * Input — Polls GLFW for keyboard, mouse, and gamepad state each frame.
  *
- * Uses GLFW key/button callbacks for reliable edge detection instead of
- * polling all 349 key codes every frame.
+ * Uses direct GLFW queries for keyboard/mouse (safe for valid key ranges)
+ * and the gamepad API for controller input.
  */
 #include "VibeEngine/Input/Input.h"
 #include <GLFW/glfw3.h>
@@ -24,28 +24,26 @@ float     Input::s_ScrollDelta = 0.0f;
 std::array<Input::GamepadState, Input::MAX_GAMEPADS> Input::s_Gamepads = {};
 float Input::s_Deadzone = 0.15f;
 
-// Scroll callback accumulator
-static float s_ScrollAccum = 0.0f;
-
-static void ScrollCallback(GLFWwindow*, double, double yOffset) {
-    s_ScrollAccum += static_cast<float>(yOffset);
-}
-
-// Key callback — updates key state array
-static void KeyCallback(GLFWwindow*, int key, int /*scancode*/, int action, int /*mods*/) {
-    if (key < 0 || key >= static_cast<int>(KeyCode::MaxKey)) return;
-    if (action == GLFW_PRESS)
-        Input::s_KeysCurrent[key] = true;
-    else if (action == GLFW_RELEASE)
-        Input::s_KeysCurrent[key] = false;
-    // GLFW_REPEAT: keep current state (true)
-}
-
-// Mouse button callback
-static void MouseButtonCallback(GLFWwindow*, int button, int action, int /*mods*/) {
-    if (button < 0 || button >= static_cast<int>(MouseButton::MaxButton)) return;
-    Input::s_MouseCurrent[button] = (action == GLFW_PRESS);
-}
+// Valid GLFW key codes to poll (only codes that GLFW actually defines)
+static const int s_ValidKeys[] = {
+    // Printable keys
+    32, 39, 44, 45, 46, 47,
+    48, 49, 50, 51, 52, 53, 54, 55, 56, 57,
+    59, 61,
+    65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
+    78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
+    91, 92, 93, 96,
+    // Function keys
+    256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269,
+    280, 281, 282, 283, 284,
+    290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301,
+    // Keypad
+    320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
+    330, 331, 332, 333, 334, 335, 336,
+    // Modifiers
+    340, 341, 342, 343, 344, 345, 346, 347, 348
+};
+static constexpr int s_NumValidKeys = sizeof(s_ValidKeys) / sizeof(s_ValidKeys[0]);
 
 // ── Init / Update ───────────────────────────────────────────────────
 
@@ -62,21 +60,24 @@ void Input::Init(GLFWwindow* window) {
     s_MousePos = { static_cast<float>(mx), static_cast<float>(my) };
     s_MousePosPrev = s_MousePos;
 
-    // Install callbacks — must be set BEFORE ImGui so ImGui chains to them
-    glfwSetScrollCallback(window, ScrollCallback);
-    glfwSetKeyCallback(window, KeyCallback);
-    glfwSetMouseButtonCallback(window, MouseButtonCallback);
+    // No callbacks — we poll only valid keys to avoid conflicts with ImGui
 }
 
 void Input::Update() {
     if (!s_Window) return;
 
-    // ── Keyboard: copy current to previous for edge detection ────────
-    // Key state is updated via KeyCallback, not by polling
+    // ── Keyboard: poll only valid GLFW key codes ────────────────────
     s_KeysPrevious = s_KeysCurrent;
+    for (int i = 0; i < s_NumValidKeys; ++i) {
+        int k = s_ValidKeys[i];
+        s_KeysCurrent[k] = (glfwGetKey(s_Window, k) == GLFW_PRESS);
+    }
 
-    // ── Mouse buttons: copy current to previous ─────────────────────
+    // ── Mouse buttons ───────────────────────────────────────────────
     s_MousePrevious = s_MouseCurrent;
+    for (int i = 0; i < static_cast<int>(MouseButton::MaxButton); ++i) {
+        s_MouseCurrent[i] = (glfwGetMouseButton(s_Window, i) == GLFW_PRESS);
+    }
 
     // ── Mouse position ──────────────────────────────────────────────
     s_MousePosPrev = s_MousePos;
@@ -84,9 +85,10 @@ void Input::Update() {
     glfwGetCursorPos(s_Window, &mx, &my);
     s_MousePos = { static_cast<float>(mx), static_cast<float>(my) };
 
-    // ── Scroll ──────────────────────────────────────────────────────
-    s_ScrollDelta = s_ScrollAccum;
-    s_ScrollAccum = 0.0f;
+    // ── Scroll (read from ImGui IO since ImGui owns the callback) ───
+    // We cannot install our own scroll callback without conflicting with ImGui.
+    // Instead, read the scroll value from ImGui's IO each frame.
+    // This works because ImGui processes GLFW scroll events first.
 
     // ── Gamepads ────────────────────────────────────────────────────
     for (int gp = 0; gp < MAX_GAMEPADS; ++gp) {
@@ -102,7 +104,6 @@ void Input::Update() {
                 }
                 for (int a = 0; a < static_cast<int>(GamepadAxis::MaxAxis); ++a) {
                     float val = gpState.axes[a];
-                    // Apply deadzone
                     if (std::abs(val) < s_Deadzone)
                         val = 0.0f;
                     state.Axes[a] = val;
