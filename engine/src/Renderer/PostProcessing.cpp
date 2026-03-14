@@ -77,6 +77,10 @@ layout(location = 0) out vec4 FragColor;
 uniform sampler2D u_Scene;
 uniform sampler2D u_Bloom;
 uniform sampler2D u_CurvesLUT;  // 256x1 RGBA
+uniform sampler2D u_SSAOTex;
+
+// SSAO
+uniform bool u_SSAOEnabled;
 
 // Bloom
 uniform bool  u_BloomEnabled;
@@ -147,6 +151,12 @@ void main() {
     if (u_BloomEnabled) {
         vec3 bloom = texture(u_Bloom, v_UV).rgb;
         color += bloom * u_BloomIntensity;
+    }
+
+    // 1b. SSAO
+    if (u_SSAOEnabled) {
+        float ao = texture(u_SSAOTex, v_UV).r;
+        color *= ao;
     }
 
     // 2. Exposure (before color grading, in linear HDR)
@@ -621,7 +631,8 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
     bool anyEffect = settings.Bloom.Enabled || settings.Vignette.Enabled
                   || settings.Color.Enabled || settings.SMH.Enabled
                   || settings.Curves.Enabled || settings.Tonemap.Enabled
-                  || settings.FXAA.Enabled || settings.TAA.Enabled;
+                  || settings.FXAA.Enabled || settings.TAA.Enabled
+                  || settings.SSAOTexture;
     if (!anyEffect)
         return sceneColorTexture;
 
@@ -690,6 +701,14 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glUniform1f(glGetUniformLocation(m_CompositeShader, "u_BloomIntensity"), settings.Bloom.Intensity);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, bloomTex);
+    }
+
+    // Texture unit 3: SSAO
+    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSAOEnabled"), settings.SSAOTexture ? 1 : 0);
+    if (settings.SSAOTexture) {
+        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSAOTex"), 3);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, settings.SSAOTexture);
     }
 
     // Texture unit 2: curves LUT

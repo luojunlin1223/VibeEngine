@@ -325,10 +325,22 @@ protected:
         }, [&](const VE::RGResources&) {
             if (m_Framebuffer) {
                 m_Framebuffer->Unbind();
-                // Resolve MSAA if active
                 if (m_Framebuffer->IsMultisampled())
                     m_Framebuffer->Resolve();
+
                 auto ppSettings = BuildPostProcessSettings();
+
+                // Compute SSAO if enabled
+                auto& ps = m_Scene->GetPipelineSettings();
+                if (ps.SSAOEnabled) {
+                    uint32_t depthTex = static_cast<uint32_t>(m_Framebuffer->GetDepthAttachmentID());
+                    VE::SSAOSettings ssaoSettings{ true, ps.SSAORadius, ps.SSAOBias,
+                                                    ps.SSAOIntensity, ps.SSAOKernelSize };
+                    ppSettings.SSAOTexture = m_SSAO.Compute(
+                        depthTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(),
+                        m_Camera.GetProjectionMatrix(), m_Camera.GetViewMatrix(), ssaoSettings);
+                }
+
                 uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
                 m_PostProcessedTexture = m_PostProcessing.Apply(
                     sceneTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(), ppSettings);
@@ -438,6 +450,17 @@ protected:
                     if (m_GameFramebuffer->IsMultisampled())
                         m_GameFramebuffer->Resolve();
                     auto ppSettings = BuildPostProcessSettings();
+
+                    auto& gps = m_Scene->GetPipelineSettings();
+                    if (gps.SSAOEnabled) {
+                        uint32_t depthTex = static_cast<uint32_t>(m_GameFramebuffer->GetDepthAttachmentID());
+                        VE::SSAOSettings ssaoS{ true, gps.SSAORadius, gps.SSAOBias,
+                                                 gps.SSAOIntensity, gps.SSAOKernelSize };
+                        ppSettings.SSAOTexture = m_GameSSAO.Compute(
+                            depthTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(),
+                            gameProj, gameView, ssaoS);
+                    }
+
                     uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
                     m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
                         gameTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(), ppSettings);
@@ -4156,6 +4179,16 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable SSAO", &ps.SSAOEnabled);
+            if (ps.SSAOEnabled) {
+                ImGui::SliderFloat("Radius##SSAO", &ps.SSAORadius, 0.01f, 3.0f, "%.2f");
+                ImGui::SliderFloat("Bias##SSAO", &ps.SSAOBias, 0.001f, 0.1f, "%.3f");
+                ImGui::SliderFloat("Intensity##SSAO", &ps.SSAOIntensity, 0.0f, 3.0f, "%.2f");
+                ImGui::SliderInt("Kernel Size##SSAO", &ps.SSAOKernelSize, 4, 64);
+            }
+        }
+
         if (ImGui::CollapsingHeader("Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
             const char* aaModes[] = { "None", "MSAA 2x", "MSAA 4x", "MSAA 8x", "FXAA", "TAA" };
             ImGui::Combo("AA Mode", &ps.AAMode, aaModes, 6);
@@ -5010,6 +5043,8 @@ private:
     // Post-processing
     VE::PostProcessing m_PostProcessing;
     uint32_t m_PostProcessedTexture = 0;
+    VE::SSAO m_SSAO;
+    VE::SSAO m_GameSSAO;
 
     // Game viewport
     bool m_ShowGameView = false;

@@ -97,6 +97,7 @@ struct PostProcessSettings {
     TonemappingSettings Tonemap;
     FXAASettings        FXAA;
     TAASettings         TAA;
+    uint32_t            SSAOTexture = 0; // 0 = no SSAO, else AO texture to multiply
 };
 
 class PostProcessing {

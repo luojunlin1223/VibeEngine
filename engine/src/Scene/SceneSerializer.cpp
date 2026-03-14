@@ -509,6 +509,11 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     serializeCurve("CurvesBlue", ps.CurvesBlue);
     out << YAML::Key << "TonemapEnabled" << YAML::Value << ps.TonemapEnabled;
     out << YAML::Key << "TonemapMode" << YAML::Value << ps.TonemapMode;
+    out << YAML::Key << "SSAOEnabled" << YAML::Value << ps.SSAOEnabled;
+    out << YAML::Key << "SSAORadius" << YAML::Value << ps.SSAORadius;
+    out << YAML::Key << "SSAOBias" << YAML::Value << ps.SSAOBias;
+    out << YAML::Key << "SSAOIntensity" << YAML::Value << ps.SSAOIntensity;
+    out << YAML::Key << "SSAOKernelSize" << YAML::Value << ps.SSAOKernelSize;
     out << YAML::Key << "AAMode" << YAML::Value << ps.AAMode;
     out << YAML::Key << "FXAAEdgeThreshold" << YAML::Value << ps.FXAAEdgeThreshold;
     out << YAML::Key << "FXAAEdgeThresholdMin" << YAML::Value << ps.FXAAEdgeThresholdMin;
@@ -591,6 +596,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         deserializeCurve("CurvesBlue", ps.CurvesBlue);
         if (psNode["TonemapEnabled"]) ps.TonemapEnabled = psNode["TonemapEnabled"].as<bool>();
         if (psNode["TonemapMode"]) ps.TonemapMode = psNode["TonemapMode"].as<int>();
+        if (psNode["SSAOEnabled"]) ps.SSAOEnabled = psNode["SSAOEnabled"].as<bool>();
+        if (psNode["SSAORadius"]) ps.SSAORadius = psNode["SSAORadius"].as<float>();
+        if (psNode["SSAOBias"]) ps.SSAOBias = psNode["SSAOBias"].as<float>();
+        if (psNode["SSAOIntensity"]) ps.SSAOIntensity = psNode["SSAOIntensity"].as<float>();
+        if (psNode["SSAOKernelSize"]) ps.SSAOKernelSize = psNode["SSAOKernelSize"].as<int>();
         if (psNode["AAMode"]) ps.AAMode = psNode["AAMode"].as<int>();
         if (psNode["FXAAEdgeThreshold"]) ps.FXAAEdgeThreshold = psNode["FXAAEdgeThreshold"].as<float>();
         if (psNode["FXAAEdgeThresholdMin"]) ps.FXAAEdgeThresholdMin = psNode["FXAAEdgeThresholdMin"].as<float>();
