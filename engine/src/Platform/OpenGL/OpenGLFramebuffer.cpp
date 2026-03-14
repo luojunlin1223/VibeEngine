@@ -5,7 +5,8 @@
 namespace VE {
 
 OpenGLFramebuffer::OpenGLFramebuffer(const FramebufferSpec& spec)
-    : m_Width(spec.Width), m_Height(spec.Height), m_HDR(spec.HDR)
+    : m_Width(spec.Width), m_Height(spec.Height), m_HDR(spec.HDR),
+      m_Samples(spec.Samples), m_Multisampled(spec.Samples > 1)
 {
     Invalidate();
 }
@@ -17,28 +18,71 @@ OpenGLFramebuffer::~OpenGLFramebuffer() {
 void OpenGLFramebuffer::Invalidate() {
     Cleanup();
 
+    GLenum internalFormat = m_HDR ? GL_RGBA16F : GL_RGBA8;
+
     glGenFramebuffers(1, &m_FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
 
-    // Color attachment (RGBA texture)
-    glGenTextures(1, &m_ColorAttachment);
-    glBindTexture(GL_TEXTURE_2D, m_ColorAttachment);
-    if (m_HDR)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, m_Width, m_Height, 0, GL_RGBA, GL_FLOAT, nullptr);
-    else
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_Width, m_Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_ColorAttachment, 0);
+    if (m_Multisampled) {
+        // ── Multisample color attachment ──
+        glGenTextures(1, &m_ColorAttachment);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, m_ColorAttachment);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, m_Samples, internalFormat,
+                                m_Width, m_Height, GL_TRUE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D_MULTISAMPLE, m_ColorAttachment, 0);
 
-    // Depth+stencil renderbuffer
-    glGenRenderbuffers(1, &m_DepthAttachment);
-    glBindRenderbuffer(GL_RENDERBUFFER, m_DepthAttachment);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, m_Width, m_Height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_DepthAttachment);
+        // ── Multisample depth+stencil renderbuffer ──
+        glGenRenderbuffers(1, &m_DepthAttachment);
+        glBindRenderbuffer(GL_RENDERBUFFER, m_DepthAttachment);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, m_Samples,
+                                         GL_DEPTH24_STENCIL8, m_Width, m_Height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                                  GL_RENDERBUFFER, m_DepthAttachment);
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        VE_ENGINE_ERROR("Framebuffer is not complete!");
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            VE_ENGINE_ERROR("MSAA Framebuffer is not complete!");
+
+        // ── Resolve FBO (non-multisample, for post-processing / display) ──
+        glGenFramebuffers(1, &m_ResolveFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_ResolveFBO);
+
+        glGenTextures(1, &m_ResolveColorAttachment);
+        glBindTexture(GL_TEXTURE_2D, m_ResolveColorAttachment);
+        if (m_HDR)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, m_Width, m_Height, 0, GL_RGBA, GL_FLOAT, nullptr);
+        else
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_Width, m_Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, m_ResolveColorAttachment, 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            VE_ENGINE_ERROR("MSAA Resolve Framebuffer is not complete!");
+    } else {
+        // ── Standard non-multisample framebuffer ──
+        glGenTextures(1, &m_ColorAttachment);
+        glBindTexture(GL_TEXTURE_2D, m_ColorAttachment);
+        if (m_HDR)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, m_Width, m_Height, 0, GL_RGBA, GL_FLOAT, nullptr);
+        else
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_Width, m_Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, m_ColorAttachment, 0);
+
+        // Depth+stencil renderbuffer
+        glGenRenderbuffers(1, &m_DepthAttachment);
+        glBindRenderbuffer(GL_RENDERBUFFER, m_DepthAttachment);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, m_Width, m_Height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                                  GL_RENDERBUFFER, m_DepthAttachment);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            VE_ENGINE_ERROR("Framebuffer is not complete!");
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -52,6 +96,12 @@ void OpenGLFramebuffer::Cleanup() {
         m_ColorAttachment = 0;
         m_DepthAttachment = 0;
     }
+    if (m_ResolveFBO) {
+        glDeleteFramebuffers(1, &m_ResolveFBO);
+        glDeleteTextures(1, &m_ResolveColorAttachment);
+        m_ResolveFBO = 0;
+        m_ResolveColorAttachment = 0;
+    }
 }
 
 void OpenGLFramebuffer::Bind() {
@@ -61,6 +111,20 @@ void OpenGLFramebuffer::Bind() {
 
 void OpenGLFramebuffer::Unbind() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+uint64_t OpenGLFramebuffer::Resolve() {
+    if (!m_Multisampled)
+        return static_cast<uint64_t>(m_ColorAttachment);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_FBO);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_ResolveFBO);
+    glBlitFramebuffer(0, 0, m_Width, m_Height,
+                      0, 0, m_Width, m_Height,
+                      GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    return static_cast<uint64_t>(m_ResolveColorAttachment);
 }
 
 void OpenGLFramebuffer::Resize(uint32_t width, uint32_t height) {

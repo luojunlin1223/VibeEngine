@@ -71,6 +71,15 @@ struct RenderPipelineSettings {
     bool TonemapEnabled = false;
     int  TonemapMode = 2; // 0=None, 1=Reinhard, 2=ACES, 3=Uncharted2
 
+    // Anti-Aliasing
+    int AAMode = 0;  // 0=None, 1=MSAA 2x, 2=MSAA 4x, 3=MSAA 8x, 4=FXAA, 5=TAA
+    // FXAA params
+    float FXAAEdgeThreshold    = 0.0833f;
+    float FXAAEdgeThresholdMin = 0.0625f;
+    float FXAASubpixelQuality  = 0.75f;
+    // TAA params
+    float TAABlendFactor = 0.1f;  // weight of current frame (lower = more smoothing)
+
     // Shadows (CSM)
     bool ShadowEnabled = true;
     float ShadowBias = 0.0005f;

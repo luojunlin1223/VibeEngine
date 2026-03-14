@@ -448,6 +448,11 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     serializeCurve("CurvesBlue", ps.CurvesBlue);
     out << YAML::Key << "TonemapEnabled" << YAML::Value << ps.TonemapEnabled;
     out << YAML::Key << "TonemapMode" << YAML::Value << ps.TonemapMode;
+    out << YAML::Key << "AAMode" << YAML::Value << ps.AAMode;
+    out << YAML::Key << "FXAAEdgeThreshold" << YAML::Value << ps.FXAAEdgeThreshold;
+    out << YAML::Key << "FXAAEdgeThresholdMin" << YAML::Value << ps.FXAAEdgeThresholdMin;
+    out << YAML::Key << "FXAASubpixelQuality" << YAML::Value << ps.FXAASubpixelQuality;
+    out << YAML::Key << "TAABlendFactor" << YAML::Value << ps.TAABlendFactor;
     out << YAML::Key << "ShadowEnabled" << YAML::Value << ps.ShadowEnabled;
     out << YAML::Key << "ShadowBias" << YAML::Value << ps.ShadowBias;
     out << YAML::Key << "ShadowNormalBias" << YAML::Value << ps.ShadowNormalBias;
@@ -525,6 +530,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         deserializeCurve("CurvesBlue", ps.CurvesBlue);
         if (psNode["TonemapEnabled"]) ps.TonemapEnabled = psNode["TonemapEnabled"].as<bool>();
         if (psNode["TonemapMode"]) ps.TonemapMode = psNode["TonemapMode"].as<int>();
+        if (psNode["AAMode"]) ps.AAMode = psNode["AAMode"].as<int>();
+        if (psNode["FXAAEdgeThreshold"]) ps.FXAAEdgeThreshold = psNode["FXAAEdgeThreshold"].as<float>();
+        if (psNode["FXAAEdgeThresholdMin"]) ps.FXAAEdgeThresholdMin = psNode["FXAAEdgeThresholdMin"].as<float>();
+        if (psNode["FXAASubpixelQuality"]) ps.FXAASubpixelQuality = psNode["FXAASubpixelQuality"].as<float>();
+        if (psNode["TAABlendFactor"]) ps.TAABlendFactor = psNode["TAABlendFactor"].as<float>();
         if (psNode["ShadowEnabled"]) ps.ShadowEnabled = psNode["ShadowEnabled"].as<bool>();
         if (psNode["ShadowBias"]) ps.ShadowBias = psNode["ShadowBias"].as<float>();
         if (psNode["ShadowNormalBias"]) ps.ShadowNormalBias = psNode["ShadowNormalBias"].as<float>();

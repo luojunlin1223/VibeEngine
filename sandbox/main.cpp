@@ -193,10 +193,34 @@ protected:
         s.Curves.Green.Points  = ps.CurvesGreen;
         s.Curves.Blue.Points   = ps.CurvesBlue;
         s.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+        // Anti-aliasing
+        if (ps.AAMode == 4) // FXAA
+            s.FXAA = { true, ps.FXAAEdgeThreshold, ps.FXAAEdgeThresholdMin, ps.FXAASubpixelQuality };
+        if (ps.AAMode == 5) // TAA
+            s.TAA = { true, ps.TAABlendFactor };
         return s;
     }
 
     void OnRender() override {
+        // Check if MSAA sample count changed and recreate framebuffers
+        auto& pipeSettings = m_Scene->GetPipelineSettings();
+        uint32_t wantedSamples = 1;
+        if (pipeSettings.AAMode == 1) wantedSamples = 2;
+        else if (pipeSettings.AAMode == 2) wantedSamples = 4;
+        else if (pipeSettings.AAMode == 3) wantedSamples = 8;
+        if (wantedSamples != m_CurrentMSAASamples && m_Framebuffer) {
+            m_CurrentMSAASamples = wantedSamples;
+            VE::FramebufferSpec fbSpec;
+            fbSpec.Width = m_Framebuffer->GetWidth();
+            fbSpec.Height = m_Framebuffer->GetHeight();
+            fbSpec.HDR = true;
+            fbSpec.Samples = wantedSamples;
+            m_Framebuffer = VE::Framebuffer::Create(fbSpec);
+            m_GameFramebuffer = VE::Framebuffer::Create(fbSpec);
+            m_PostProcessing.Shutdown();
+            m_GamePostProcessing.Shutdown();
+        }
+
         m_FrameVP = m_Camera.GetViewProjection();
         glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
             ? m_Camera.GetPosition3D()
@@ -285,6 +309,9 @@ protected:
         }, [&](const VE::RGResources&) {
             if (m_Framebuffer) {
                 m_Framebuffer->Unbind();
+                // Resolve MSAA if active
+                if (m_Framebuffer->IsMultisampled())
+                    m_Framebuffer->Resolve();
                 auto ppSettings = BuildPostProcessSettings();
                 uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
                 m_PostProcessedTexture = m_PostProcessing.Apply(
@@ -391,6 +418,8 @@ protected:
                     b.SideEffect();
                 }, [&](const VE::RGResources&) {
                     m_GameFramebuffer->Unbind();
+                    if (m_GameFramebuffer->IsMultisampled())
+                        m_GameFramebuffer->Resolve();
                     auto ppSettings = BuildPostProcessSettings();
                     uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
                     m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
@@ -3630,6 +3659,24 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const char* aaModes[] = { "None", "MSAA 2x", "MSAA 4x", "MSAA 8x", "FXAA", "TAA" };
+            ImGui::Combo("AA Mode", &ps.AAMode, aaModes, 6);
+
+            if (ps.AAMode >= 1 && ps.AAMode <= 3) {
+                ImGui::TextDisabled("Hardware multisample anti-aliasing");
+            }
+            if (ps.AAMode == 4) { // FXAA
+                ImGui::SliderFloat("Edge Threshold", &ps.FXAAEdgeThreshold, 0.01f, 0.5f, "%.4f");
+                ImGui::SliderFloat("Edge Threshold Min", &ps.FXAAEdgeThresholdMin, 0.001f, 0.1f, "%.4f");
+                ImGui::SliderFloat("Subpixel Quality", &ps.FXAASubpixelQuality, 0.0f, 1.0f, "%.2f");
+            }
+            if (ps.AAMode == 5) { // TAA
+                ImGui::SliderFloat("Blend Factor", &ps.TAABlendFactor, 0.01f, 0.5f, "%.2f");
+                ImGui::TextDisabled("Lower = more temporal smoothing");
+            }
+        }
+
         ImGui::End();
     }
 
@@ -4107,6 +4154,7 @@ private:
     glm::mat4 m_FrameVP = glm::mat4(1.0f);
     std::string m_CurrentScenePath;
     std::shared_ptr<VE::Framebuffer> m_Framebuffer;
+    uint32_t m_CurrentMSAASamples = 1; // track to detect changes
     bool m_ViewportHovered = false;
     bool m_ViewportFocused = false;
     bool m_GizmosEnabled   = true;
