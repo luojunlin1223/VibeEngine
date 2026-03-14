@@ -2696,6 +2696,59 @@ private:
 
     // ── Inspector Panel ────────────────────────────────────────────────
 
+    // ── Undo-aware widget helpers ────────────────────────────────────
+    // Wrap ImGui widgets with automatic undo tracking.
+
+    bool UndoDragFloat(const char* label, float* v, float speed = 0.01f,
+                       float min = 0.0f, float max = 0.0f) {
+        bool changed = ImGui::DragFloat(label, v, speed, min, max);
+        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
+        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+        return changed;
+    }
+
+    bool UndoDragFloat3(const char* label, float* v, float speed = 0.01f) {
+        bool changed = ImGui::DragFloat3(label, v, speed);
+        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
+        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+        return changed;
+    }
+
+    bool UndoDragInt(const char* label, int* v, float speed = 1.0f, int min = 0, int max = 0) {
+        bool changed = ImGui::DragInt(label, v, speed, min, max);
+        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
+        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+        return changed;
+    }
+
+    bool UndoSliderFloat(const char* label, float* v, float min, float max, const char* fmt = "%.3f") {
+        bool changed = ImGui::SliderFloat(label, v, min, max, fmt);
+        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
+        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+        return changed;
+    }
+
+    bool UndoColorEdit3(const char* label, float* col) {
+        bool changed = ImGui::ColorEdit3(label, col);
+        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
+        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+        return changed;
+    }
+
+    bool UndoColorEdit4(const char* label, float* col) {
+        bool changed = ImGui::ColorEdit4(label, col);
+        if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit(label);
+        if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+        return changed;
+    }
+
+    bool UndoCheckbox(const char* label, bool* v) {
+        auto snap = m_CommandHistory.CaptureSnapshot();
+        bool changed = ImGui::Checkbox(label, v);
+        if (changed) m_CommandHistory.RecordPropertyEdit(label, std::move(snap));
+        return changed;
+    }
+
     void DrawInspectorPanel() {
         if (!m_ShowInspector) return;
         ImGui::Begin("Inspector", &m_ShowInspector);
@@ -3063,11 +3116,11 @@ private:
                 // Animation source — Object Field with drag-drop
                 DrawAnimationObjectField("Animation", ac);
 
-                ImGui::DragInt("Clip Index", &ac.ClipIndex, 1, 0, 100);
+                UndoDragInt("Clip Index", &ac.ClipIndex, 1, 0, 100);
 
-                ImGui::Checkbox("Play On Start", &ac.PlayOnStart);
-                ImGui::Checkbox("Loop", &ac.Loop);
-                ImGui::DragFloat("Speed", &ac.Speed, 0.05f, 0.0f, 10.0f);
+                UndoCheckbox("Play On Start", &ac.PlayOnStart);
+                UndoCheckbox("Loop", &ac.Loop);
+                UndoDragFloat("Speed", &ac.Speed, 0.05f, 0.0f, 10.0f);
 
                 if (ac._Animator)
                     ImGui::Text("Status: %s", ac._Animator->IsPlaying() ? "Playing" : "Stopped");
@@ -3076,7 +3129,9 @@ private:
                     removeAnimator = true;
             }
             if (removeAnimator)
-                m_SelectedEntity.RemoveComponent<VE::AnimatorComponent>();
+                m_CommandHistory.Execute("Remove Animator", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::AnimatorComponent>();
+                });
             ImGui::Separator();
         }
 
@@ -3088,14 +3143,14 @@ private:
                 // ── Audio Clip Object Field (Unity-style) ──
                 DrawAudioClipObjectField("Audio Clip", as);
 
-                ImGui::SliderFloat("Volume", &as.Volume, 0.0f, 1.0f);
-                ImGui::SliderFloat("Pitch", &as.Pitch, 0.1f, 3.0f);
-                ImGui::Checkbox("Loop", &as.Loop);
-                ImGui::Checkbox("Play On Awake", &as.PlayOnAwake);
-                ImGui::Checkbox("Spatial (3D)", &as.Spatial);
+                UndoSliderFloat("Volume", &as.Volume, 0.0f, 1.0f);
+                UndoSliderFloat("Pitch", &as.Pitch, 0.1f, 3.0f);
+                UndoCheckbox("Loop##Audio", &as.Loop);
+                UndoCheckbox("Play On Awake", &as.PlayOnAwake);
+                UndoCheckbox("Spatial (3D)", &as.Spatial);
                 if (as.Spatial) {
-                    ImGui::DragFloat("Min Distance", &as.MinDistance, 0.1f, 0.0f, 1000.0f);
-                    ImGui::DragFloat("Max Distance", &as.MaxDistance, 1.0f, 0.0f, 10000.0f);
+                    UndoDragFloat("Min Distance", &as.MinDistance, 0.1f, 0.0f, 1000.0f);
+                    UndoDragFloat("Max Distance", &as.MaxDistance, 1.0f, 0.0f, 10000.0f);
                 }
 
                 // Preview controls (works outside play mode)
@@ -3126,7 +3181,9 @@ private:
                 if (as._SoundHandle != 0) {
                     VE::AudioEngine::Stop(as._SoundHandle);
                 }
-                m_SelectedEntity.RemoveComponent<VE::AudioSourceComponent>();
+                m_CommandHistory.Execute("Remove Audio Source", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::AudioSourceComponent>();
+                });
             }
             ImGui::Separator();
         }
@@ -3140,7 +3197,9 @@ private:
                     removeListener = true;
             }
             if (removeListener)
-                m_SelectedEntity.RemoveComponent<VE::AudioListenerComponent>();
+                m_CommandHistory.Execute("Remove Audio Listener", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::AudioListenerComponent>();
+                });
             ImGui::Separator();
         }
 
@@ -3150,8 +3209,8 @@ private:
             if (ImGui::CollapsingHeader("Sprite Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
                 auto& sr = m_SelectedEntity.GetComponent<VE::SpriteRendererComponent>();
 
-                ImGui::ColorEdit4("Color##Sprite", sr.Color.data());
-                ImGui::DragInt("Sorting Order", &sr.SortingOrder, 1);
+                UndoColorEdit4("Color##Sprite", sr.Color.data());
+                UndoDragInt("Sorting Order", &sr.SortingOrder);
 
                 // Texture field
                 ImGui::Text("Sprite");
@@ -3192,7 +3251,9 @@ private:
                     removeSprite = true;
             }
             if (removeSprite)
-                m_SelectedEntity.RemoveComponent<VE::SpriteRendererComponent>();
+                m_CommandHistory.Execute("Remove Sprite Renderer", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::SpriteRendererComponent>();
+                });
             ImGui::Separator();
         }
 
@@ -3320,7 +3381,7 @@ private:
                 // ── Material Object Field (Unity-style) ──
                 DrawMaterialObjectField("Material", mr);
 
-                ImGui::Checkbox("Cast Shadows", &mr.CastShadows);
+                UndoCheckbox("Cast Shadows", &mr.CastShadows);
 
                 // Per-entity material property overrides
                 if (mr.Mat) {
@@ -3343,18 +3404,18 @@ private:
                             switch (ov.Type) {
                                 case VE::MaterialPropertyType::Float:
                                     if (ov.IsRange)
-                                        ImGui::SliderFloat(label, &ov.FloatValue, ov.RangeMin, ov.RangeMax, "%.3f");
+                                        UndoSliderFloat(label, &ov.FloatValue, ov.RangeMin, ov.RangeMax);
                                     else
-                                        ImGui::DragFloat(label, &ov.FloatValue, 0.01f);
+                                        UndoDragFloat(label, &ov.FloatValue, 0.01f);
                                     break;
                                 case VE::MaterialPropertyType::Int:
-                                    ImGui::DragInt(label, &ov.IntValue, 1);
+                                    UndoDragInt(label, &ov.IntValue);
                                     break;
                                 case VE::MaterialPropertyType::Vec3:
-                                    ImGui::ColorEdit3(label, &ov.Vec3Value.x);
+                                    UndoColorEdit3(label, &ov.Vec3Value.x);
                                     break;
                                 case VE::MaterialPropertyType::Vec4:
-                                    ImGui::ColorEdit4(label, &ov.Vec4Value.x);
+                                    UndoColorEdit4(label, &ov.Vec4Value.x);
                                     break;
                                 case VE::MaterialPropertyType::Texture2D: {
                                     // Texture Object Field (Unity-style drag-drop)
@@ -3518,7 +3579,9 @@ private:
                 }
             }
             if (removeLOD)
-                m_SelectedEntity.RemoveComponent<VE::LODGroupComponent>();
+                m_CommandHistory.Execute("Remove LOD Group", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::LODGroupComponent>();
+                });
             ImGui::Separator();
         }
 
@@ -3536,7 +3599,9 @@ private:
                 ImGui::Text("Path Points: %d (index %d)", static_cast<int>(nav._Path.size()), nav._PathIndex);
             }
             if (removeNav)
-                m_SelectedEntity.RemoveComponent<VE::NavAgentComponent>();
+                m_CommandHistory.Execute("Remove Nav Agent", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::NavAgentComponent>();
+                });
             ImGui::Separator();
         }
 
