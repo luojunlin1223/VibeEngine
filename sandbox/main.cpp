@@ -120,72 +120,61 @@ protected:
         }
         if (!vao) return;
 
-        // Load outline shader once
-        static std::shared_ptr<VE::Shader> s_OutlineShader;
-        if (!s_OutlineShader) {
-            s_OutlineShader = VE::Shader::CreateFromFile("shaders/Outline.shader");
-            if (!s_OutlineShader) return;
-        }
+        auto shader = VE::MeshLibrary::GetDefaultShader();
+        if (!shader) return;
 
         glm::mat4 model = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
         glm::mat4 mvp = m_FrameVP * model;
 
-        uint32_t vpW = m_Framebuffer ? m_Framebuffer->GetWidth()  : 1280;
-        uint32_t vpH = m_Framebuffer ? m_Framebuffer->GetHeight() : 720;
-
-        // ── Pass 1: write stencil=1 for visible object pixels ──
+        // Pass 1: draw the mesh into stencil buffer only (no color/depth writes)
         glEnable(GL_STENCIL_TEST);
-        glClear(GL_STENCIL_BUFFER_BIT);
+        glDepthFunc(GL_LEQUAL);
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         glStencilMask(0xFF);
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         glDepthMask(GL_FALSE);
-        glDepthFunc(GL_LEQUAL);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
 
-        auto litShader = VE::MeshLibrary::GetLitShader();
-        if (!litShader) litShader = VE::MeshLibrary::GetDefaultShader();
-        if (!litShader) return;
-        litShader->Bind();
-        litShader->SetMat4("u_MVP", mvp);
-        litShader->SetMat4("u_Model", model);
-        litShader->SetInt("u_UseTexture", 0);
-        litShader->SetVec4("u_EntityColor", glm::vec4(1.0f));
-
+        shader->Bind();
+        shader->SetMat4("u_MVP", mvp);
+        shader->SetInt("u_UseTexture", 0);
+        shader->SetVec4("u_EntityColor", glm::vec4(1.0f));
         vao->Bind();
         glDrawElements(GL_TRIANGLES,
             static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
             GL_UNSIGNED_INT, nullptr);
 
-        // ── Pass 2: draw extruded back-faces where stencil != 1 ──
+        // Pass 2: draw scaled-up mesh in outline color, only where stencil != 1
         glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
         glStencilMask(0x00);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glDepthFunc(GL_LEQUAL);
-        glCullFace(GL_FRONT); // only back-faces
+        glDisable(GL_DEPTH_TEST);
 
-        s_OutlineShader->Bind();
-        s_OutlineShader->SetMat4("u_MVP", mvp);
-        s_OutlineShader->SetMat4("u_Model", model);
-        s_OutlineShader->SetVec4("u_ViewportSize", glm::vec4(vpW, vpH, 0, 0));
-        s_OutlineShader->SetFloat("u_OutlinePixels", 3.0f);
-        s_OutlineShader->SetVec4("u_OutlineColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+        VE::AABB localBox = VE::AABB{ glm::vec3(-0.5f), glm::vec3(0.5f) };
+        if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>())
+            localBox = GetEntityLocalAABB(m_SelectedEntity.GetComponent<VE::MeshRendererComponent>());
+        glm::vec3 center = localBox.Center();
 
+        float outlineScale = 1.05f;
+        glm::mat4 scaledModel = model
+            * glm::translate(glm::mat4(1.0f), center)
+            * glm::scale(glm::mat4(1.0f), glm::vec3(outlineScale))
+            * glm::translate(glm::mat4(1.0f), -center);
+        glm::mat4 scaledMVP = m_FrameVP * scaledModel;
+
+        shader->SetMat4("u_MVP", scaledMVP);
+        shader->SetVec4("u_EntityColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
         glDrawElements(GL_TRIANGLES,
             static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
             GL_UNSIGNED_INT, nullptr);
 
-        // ── Restore GL state ──
+        // Restore GL state
         glStencilMask(0xFF);
         glStencilFunc(GL_ALWAYS, 0, 0xFF);
         glDisable(GL_STENCIL_TEST);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
     }
 
     VE::PostProcessSettings BuildPostProcessSettings() const {
