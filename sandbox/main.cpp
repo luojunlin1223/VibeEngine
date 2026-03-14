@@ -1707,7 +1707,9 @@ private:
                 ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
             if (ImGui::BeginMenu("Create")) {
                 if (ImGui::MenuItem("Empty"))
-                    m_CommandHistory.Execute("Create Entity", [this]() { m_Scene->CreateEntity("GameObject"); });
+                    m_CommandHistory.Execute("Create Entity", [this]() {
+                        m_SelectedEntity = m_Scene->CreateEntity("GameObject");
+                    });
                 ImGui::Separator();
                 if (ImGui::MenuItem("Triangle"))
                     m_CommandHistory.Execute("Create Triangle", [this]() {
@@ -1715,6 +1717,7 @@ private:
                         auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = VE::MeshLibrary::GetTriangle();
                         mr.Mat = VE::MaterialLibrary::Get("Default");
+                        m_SelectedEntity = e;
                     });
                 if (ImGui::MenuItem("Quad"))
                     m_CommandHistory.Execute("Create Quad", [this]() {
@@ -1722,6 +1725,7 @@ private:
                         auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = VE::MeshLibrary::GetQuad();
                         mr.Mat = VE::MaterialLibrary::Get("Default");
+                        m_SelectedEntity = e;
                     });
                 if (ImGui::MenuItem("Cube"))
                     m_CommandHistory.Execute("Create Cube", [this]() {
@@ -1729,6 +1733,7 @@ private:
                         auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = VE::MeshLibrary::GetCube();
                         mr.Mat = VE::MaterialLibrary::Get("Lit");
+                        m_SelectedEntity = e;
                     });
                 if (ImGui::MenuItem("Sphere"))
                     m_CommandHistory.Execute("Create Sphere", [this]() {
@@ -1737,22 +1742,26 @@ private:
                         mr.Mesh = VE::MeshLibrary::GetSphere();
                         mr.Mat = VE::MaterialLibrary::Get("Lit");
                         mr.LocalBounds = VE::MeshLibrary::GetMeshAABB(3);
+                        m_SelectedEntity = e;
                     });
                 ImGui::Separator();
                 if (ImGui::MenuItem("Directional Light"))
                     m_CommandHistory.Execute("Create Light", [this]() {
                         auto e = m_Scene->CreateEntity("Directional Light");
                         e.AddComponent<VE::DirectionalLightComponent>();
+                        m_SelectedEntity = e;
                     });
                 if (ImGui::MenuItem("Point Light"))
                     m_CommandHistory.Execute("Create Point Light", [this]() {
                         auto e = m_Scene->CreateEntity("Point Light");
                         e.AddComponent<VE::PointLightComponent>();
+                        m_SelectedEntity = e;
                     });
                 if (ImGui::MenuItem("Camera"))
                     m_CommandHistory.Execute("Create Camera", [this]() {
                         auto e = m_Scene->CreateEntity("Camera");
                         e.AddComponent<VE::CameraComponent>();
+                        m_SelectedEntity = e;
                     });
                 ImGui::EndMenu();
             }
