@@ -353,9 +353,23 @@ void Scene::StartAnimations() {
                 ac._Animator->SetClips(std::move(externalClips));
         }
 
-        int clipCount = ac._Animator->GetClipCount();
-        if (ac.PlayOnStart && ac.ClipIndex < clipCount)
-            ac._Animator->Play(ac.ClipIndex, ac.Loop, ac.Speed);
+        // Configure state machine if enabled
+        if (ac.UseStateMachine && !ac.States.empty()) {
+            auto& sm = ac._Animator->GetStateMachine();
+            for (auto& s : ac.States) sm.AddState(s);
+            for (auto& t : ac.Transitions) sm.AddTransition(t);
+            for (auto& p : ac.Parameters) sm.AddParameter(p);
+            sm.SetDefaultState(ac.DefaultState);
+            sm.Reset();
+            ac._Animator->SetUseStateMachine(true);
+            ac._Animator->Play(ac.States[ac.DefaultState].ClipIndex,
+                               ac.States[ac.DefaultState].Loop,
+                               ac.States[ac.DefaultState].Speed);
+        } else {
+            int clipCount = ac._Animator->GetClipCount();
+            if (ac.PlayOnStart && ac.ClipIndex < clipCount)
+                ac._Animator->Play(ac.ClipIndex, ac.Loop, ac.Speed);
+        }
     }
     VE_ENGINE_INFO("Animations started");
 }

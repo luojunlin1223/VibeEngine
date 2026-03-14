@@ -26,6 +26,7 @@
 #include <variant>
 
 namespace VE { class Animator; }
+#include "VibeEngine/Animation/AnimStateMachine.h"
 
 namespace VE {
 
@@ -165,6 +166,14 @@ struct AnimatorComponent {
     bool  PlayOnStart = true;
     bool  Loop = true;
     float Speed = 1.0f;
+
+    // State machine config (serialized)
+    bool UseStateMachine = false;
+    std::vector<AnimState>      States;
+    std::vector<AnimTransition> Transitions;
+    std::vector<AnimParameter>  Parameters;
+    int DefaultState = 0;
+
     std::shared_ptr<Animator> _Animator; // runtime only, not serialized
 
     AnimatorComponent() = default;

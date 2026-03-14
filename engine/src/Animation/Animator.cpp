@@ -71,9 +71,64 @@ void Animator::Stop() {
     }
 }
 
+float Animator::GetCurrentClipDuration() const {
+    auto& clips = m_OverrideClips.empty() ? m_Mesh->Clips : m_OverrideClips;
+    if (m_ClipIndex >= 0 && m_ClipIndex < static_cast<int>(clips.size()))
+        return clips[m_ClipIndex].Duration;
+    return 0.0f;
+}
+
 void Animator::Update(float deltaTime) {
     if (!m_Playing || !m_Mesh || !m_Mesh->IsSkinned()) return;
     auto& clips = m_OverrideClips.empty() ? m_Mesh->Clips : m_OverrideClips;
+
+    // ── State Machine path ───────────────────────────────────────────
+    if (m_UseStateMachine && !m_StateMachine.GetStates().empty()) {
+        float clipDur = GetCurrentClipDuration();
+        auto eval = m_StateMachine.Evaluate(deltaTime, m_CurrentTime, clipDur);
+
+        if (eval.StateChanged && eval.ClipB < 0) {
+            // Immediate state change (transition complete)
+            m_ClipIndex = eval.ClipA;
+            m_Speed = eval.SpeedA;
+            m_Loop = eval.LoopA;
+            m_CurrentTime = 0.0f;
+            m_BlendTimeB = 0.0f;
+        }
+
+        // Update clip index from state machine
+        if (!m_StateMachine.IsTransitioning()) {
+            m_ClipIndex = eval.ClipA;
+            m_Speed = eval.SpeedA;
+            m_Loop = eval.LoopA;
+        }
+
+        if (m_ClipIndex < 0 || m_ClipIndex >= static_cast<int>(clips.size())) return;
+        auto& clip = clips[m_ClipIndex];
+
+        m_CurrentTime += deltaTime * m_Speed;
+        if (m_Loop && clip.Duration > 0.0f)
+            m_CurrentTime = std::fmod(m_CurrentTime, clip.Duration);
+        else if (!m_Loop && m_CurrentTime >= clip.Duration)
+            m_CurrentTime = clip.Duration;
+
+        // Blending?
+        if (eval.ClipB >= 0 && eval.ClipB < static_cast<int>(clips.size()) && eval.BlendT > 0.0f) {
+            m_BlendTimeB += deltaTime * eval.SpeedB;
+            auto& clipB = clips[eval.ClipB];
+            if (eval.LoopB && clipB.Duration > 0.0f)
+                m_BlendTimeB = std::fmod(m_BlendTimeB, clipB.Duration);
+
+            SamplePoseBlended(m_CurrentTime, m_ClipIndex, m_BlendTimeB, eval.ClipB, eval.BlendT);
+        } else {
+            SamplePose(m_CurrentTime);
+        }
+
+        ApplySkinning();
+        return;
+    }
+
+    // ── Legacy direct playback path ──────────────────────────────────
     if (m_ClipIndex < 0 || m_ClipIndex >= static_cast<int>(clips.size())) return;
 
     auto& clip = clips[m_ClipIndex];
@@ -91,30 +146,6 @@ void Animator::Update(float deltaTime) {
 
     SamplePose(m_CurrentTime);
     ApplySkinning();
-
-    // Debug: log once per second
-    m_DebugTimer += deltaTime;
-    if (m_DebugTimer >= 1.0f) {
-        m_DebugTimer = 0.0f;
-        // Check max vertex displacement from bind pose
-        float maxDisp = 0.0f;
-        for (size_t i = 0; i < m_SkinnedVertices.size() / 11; i++) {
-            float dx = m_SkinnedVertices[i*11+0] - m_Mesh->BindPoseVertices[i*11+0];
-            float dy = m_SkinnedVertices[i*11+1] - m_Mesh->BindPoseVertices[i*11+1];
-            float dz = m_SkinnedVertices[i*11+2] - m_Mesh->BindPoseVertices[i*11+2];
-            float d = dx*dx + dy*dy + dz*dz;
-            if (d > maxDisp) maxDisp = d;
-        }
-        // Check bone matrix deviation from identity
-        float maxBoneDev = 0.0f;
-        for (auto& bm : m_BoneMatrices) {
-            float dev = glm::length(bm[3] - glm::vec4(0,0,0,1));
-            if (dev > maxBoneDev) maxBoneDev = dev;
-        }
-        VE_ENGINE_INFO("Animator debug: t={0:.2f}/{1:.2f}, maxVertDisp={2:.4f}, maxBoneDev={3:.4f}, clip='{4}' tracks={5}",
-            m_CurrentTime, clip.Duration, std::sqrt(maxDisp), maxBoneDev,
-            clip.Name, clip.Tracks.size());
-    }
 }
 
 static BoneKeyframe LerpKeyframes(const BoneKeyframe& a, const BoneKeyframe& b, float t) {
@@ -177,6 +208,71 @@ void Animator::SamplePose(float time) {
     // Final bone matrices: global * inverseBindMatrix
     for (int i = 0; i < boneCount; i++) {
         m_BoneMatrices[i] = globalTransforms[i] * skeleton.Bones[i].InverseBindMatrix;
+    }
+}
+
+void Animator::SamplePoseBlended(float timeA, int clipIdxA, float timeB, int clipIdxB, float blend) {
+    if (!m_Mesh || !m_Mesh->SkeletonRef) return;
+    auto& skeleton = *m_Mesh->SkeletonRef;
+    auto& clips = m_OverrideClips.empty() ? m_Mesh->Clips : m_OverrideClips;
+    if (clipIdxA < 0 || clipIdxA >= (int)clips.size()) return;
+    if (clipIdxB < 0 || clipIdxB >= (int)clips.size()) return;
+
+    auto& clipA = clips[clipIdxA];
+    auto& clipB = clips[clipIdxB];
+    int boneCount = skeleton.GetBoneCount();
+
+    if ((int)m_BoneMatricesB.size() != boneCount)
+        m_BoneMatricesB.resize(boneCount, glm::mat4(1.0f));
+
+    // Sample pose A → m_BoneMatrices
+    {
+        std::vector<glm::mat4> local(boneCount), global(boneCount);
+        for (int i = 0; i < boneCount; i++) {
+            const BoneTrack* track = clipA.FindTrack(i);
+            if (track && !track->Keyframes.empty()) {
+                BoneKeyframe kf = SampleTrack(*track, timeA);
+                local[i] = glm::translate(glm::mat4(1.0f), kf.Position) *
+                           glm::toMat4(kf.Rotation) *
+                           glm::scale(glm::mat4(1.0f), kf.Scale);
+            } else {
+                local[i] = skeleton.Bones[i].LocalBindTransform;
+            }
+        }
+        for (int i = 0; i < boneCount; i++) {
+            global[i] = (skeleton.Bones[i].ParentIndex >= 0)
+                ? global[skeleton.Bones[i].ParentIndex] * local[i] : local[i];
+        }
+        for (int i = 0; i < boneCount; i++)
+            m_BoneMatrices[i] = global[i] * skeleton.Bones[i].InverseBindMatrix;
+    }
+
+    // Sample pose B → m_BoneMatricesB
+    {
+        std::vector<glm::mat4> local(boneCount), global(boneCount);
+        for (int i = 0; i < boneCount; i++) {
+            const BoneTrack* track = clipB.FindTrack(i);
+            if (track && !track->Keyframes.empty()) {
+                BoneKeyframe kf = SampleTrack(*track, timeB);
+                local[i] = glm::translate(glm::mat4(1.0f), kf.Position) *
+                           glm::toMat4(kf.Rotation) *
+                           glm::scale(glm::mat4(1.0f), kf.Scale);
+            } else {
+                local[i] = skeleton.Bones[i].LocalBindTransform;
+            }
+        }
+        for (int i = 0; i < boneCount; i++) {
+            global[i] = (skeleton.Bones[i].ParentIndex >= 0)
+                ? global[skeleton.Bones[i].ParentIndex] * local[i] : local[i];
+        }
+        for (int i = 0; i < boneCount; i++)
+            m_BoneMatricesB[i] = global[i] * skeleton.Bones[i].InverseBindMatrix;
+    }
+
+    // Blend: lerp bone matrices
+    for (int i = 0; i < boneCount; i++) {
+        for (int c = 0; c < 4; c++)
+            m_BoneMatrices[i][c] = glm::mix(m_BoneMatrices[i][c], m_BoneMatricesB[i][c], blend);
     }
 }
 

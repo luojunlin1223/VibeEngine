@@ -252,6 +252,57 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "PlayOnStart" << YAML::Value << ac.PlayOnStart;
         out << YAML::Key << "Loop" << YAML::Value << ac.Loop;
         out << YAML::Key << "Speed" << YAML::Value << ac.Speed;
+
+        // State machine
+        out << YAML::Key << "UseStateMachine" << YAML::Value << ac.UseStateMachine;
+        if (ac.UseStateMachine) {
+            out << YAML::Key << "DefaultState" << YAML::Value << ac.DefaultState;
+
+            out << YAML::Key << "States" << YAML::Value << YAML::BeginSeq;
+            for (auto& s : ac.States) {
+                out << YAML::BeginMap;
+                out << YAML::Key << "Name" << YAML::Value << s.Name;
+                out << YAML::Key << "Clip" << YAML::Value << s.ClipIndex;
+                out << YAML::Key << "Speed" << YAML::Value << s.Speed;
+                out << YAML::Key << "Loop" << YAML::Value << s.Loop;
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+
+            out << YAML::Key << "Parameters" << YAML::Value << YAML::BeginSeq;
+            for (auto& p : ac.Parameters) {
+                out << YAML::BeginMap;
+                out << YAML::Key << "Name" << YAML::Value << p.Name;
+                out << YAML::Key << "Type" << YAML::Value << static_cast<int>(p.Type);
+                out << YAML::Key << "Float" << YAML::Value << p.FloatValue;
+                out << YAML::Key << "Int" << YAML::Value << p.IntValue;
+                out << YAML::Key << "Bool" << YAML::Value << p.BoolValue;
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+
+            out << YAML::Key << "Transitions" << YAML::Value << YAML::BeginSeq;
+            for (auto& t : ac.Transitions) {
+                out << YAML::BeginMap;
+                out << YAML::Key << "From" << YAML::Value << t.FromState;
+                out << YAML::Key << "To" << YAML::Value << t.ToState;
+                out << YAML::Key << "Duration" << YAML::Value << t.Duration;
+                out << YAML::Key << "HasExitTime" << YAML::Value << t.HasExitTime;
+                out << YAML::Key << "ExitTime" << YAML::Value << t.ExitTime;
+                out << YAML::Key << "Conditions" << YAML::Value << YAML::BeginSeq;
+                for (auto& c : t.Conditions) {
+                    out << YAML::BeginMap;
+                    out << YAML::Key << "Param" << YAML::Value << c.ParamName;
+                    out << YAML::Key << "Op" << YAML::Value << static_cast<int>(c.Op);
+                    out << YAML::Key << "Threshold" << YAML::Value << c.Threshold;
+                    out << YAML::EndMap;
+                }
+                out << YAML::EndSeq;
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+        }
+
         out << YAML::EndMap;
     }
 
@@ -844,6 +895,51 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             if (acNode["PlayOnStart"]) ac.PlayOnStart = acNode["PlayOnStart"].as<bool>();
             if (acNode["Loop"])        ac.Loop        = acNode["Loop"].as<bool>();
             if (acNode["Speed"])       ac.Speed       = acNode["Speed"].as<float>();
+
+            if (acNode["UseStateMachine"]) ac.UseStateMachine = acNode["UseStateMachine"].as<bool>();
+            if (acNode["DefaultState"])    ac.DefaultState    = acNode["DefaultState"].as<int>();
+
+            if (auto statesNode = acNode["States"]) {
+                for (auto sn : statesNode) {
+                    AnimState s;
+                    s.Name = sn["Name"].as<std::string>("State");
+                    s.ClipIndex = sn["Clip"].as<int>(0);
+                    s.Speed = sn["Speed"].as<float>(1.0f);
+                    s.Loop = sn["Loop"].as<bool>(true);
+                    ac.States.push_back(s);
+                }
+            }
+            if (auto paramsNode = acNode["Parameters"]) {
+                for (auto pn : paramsNode) {
+                    AnimParameter p;
+                    p.Name = pn["Name"].as<std::string>();
+                    p.Type = static_cast<AnimParamType>(pn["Type"].as<int>(0));
+                    p.FloatValue = pn["Float"].as<float>(0.0f);
+                    p.IntValue = pn["Int"].as<int>(0);
+                    p.BoolValue = pn["Bool"].as<bool>(false);
+                    ac.Parameters.push_back(p);
+                }
+            }
+            if (auto transNode = acNode["Transitions"]) {
+                for (auto tn : transNode) {
+                    AnimTransition t;
+                    t.FromState = tn["From"].as<int>(-1);
+                    t.ToState = tn["To"].as<int>(0);
+                    t.Duration = tn["Duration"].as<float>(0.2f);
+                    t.HasExitTime = tn["HasExitTime"].as<bool>(false);
+                    t.ExitTime = tn["ExitTime"].as<float>(1.0f);
+                    if (auto condsNode = tn["Conditions"]) {
+                        for (auto cn : condsNode) {
+                            AnimCondition c;
+                            c.ParamName = cn["Param"].as<std::string>();
+                            c.Op = static_cast<AnimConditionOp>(cn["Op"].as<int>(0));
+                            c.Threshold = cn["Threshold"].as<float>(0.0f);
+                            t.Conditions.push_back(c);
+                        }
+                    }
+                    ac.Transitions.push_back(t);
+                }
+            }
         }
 
         if (auto lodNode = entityNode["LODGroupComponent"]) {

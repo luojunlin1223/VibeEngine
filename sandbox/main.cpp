@@ -2965,6 +2965,187 @@ private:
                 if (ac._Animator)
                     ImGui::Text("Status: %s", ac._Animator->IsPlaying() ? "Playing" : "Stopped");
 
+                // ── State Machine Editor ─────────────────────────────
+                ImGui::Separator();
+                ImGui::Checkbox("Use State Machine", &ac.UseStateMachine);
+                if (ac.UseStateMachine) {
+                    // Parameters
+                    if (ImGui::TreeNode("Parameters")) {
+                        for (int i = 0; i < (int)ac.Parameters.size(); i++) {
+                            ImGui::PushID(i);
+                            auto& p = ac.Parameters[i];
+                            char nameBuf[128];
+                            strncpy(nameBuf, p.Name.c_str(), sizeof(nameBuf)); nameBuf[127] = '\0';
+                            ImGui::SetNextItemWidth(100);
+                            if (ImGui::InputText("##PName", nameBuf, sizeof(nameBuf))) p.Name = nameBuf;
+                            ImGui::SameLine();
+                            const char* typeNames[] = { "Float", "Int", "Bool", "Trigger" };
+                            ImGui::SetNextItemWidth(70);
+                            int typeIdx = static_cast<int>(p.Type);
+                            if (ImGui::Combo("##PType", &typeIdx, typeNames, 4))
+                                p.Type = static_cast<VE::AnimParamType>(typeIdx);
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X##DelParam")) {
+                                ac.Parameters.erase(ac.Parameters.begin() + i); --i;
+                            }
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("+ Parameter")) {
+                            VE::AnimParameter p; p.Name = "Param" + std::to_string(ac.Parameters.size());
+                            ac.Parameters.push_back(p);
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    // States
+                    if (ImGui::TreeNode("States")) {
+                        for (int i = 0; i < (int)ac.States.size(); i++) {
+                            ImGui::PushID(i + 1000);
+                            auto& s = ac.States[i];
+                            char sBuf[128];
+                            strncpy(sBuf, s.Name.c_str(), sizeof(sBuf)); sBuf[127] = '\0';
+                            ImGui::SetNextItemWidth(100);
+                            if (ImGui::InputText("##SName", sBuf, sizeof(sBuf))) s.Name = sBuf;
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(50);
+                            ImGui::DragInt("##SClip", &s.ClipIndex, 1, 0, 100);
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(50);
+                            ImGui::DragFloat("##SSpd", &s.Speed, 0.05f, 0.0f, 10.0f);
+                            ImGui::SameLine();
+                            ImGui::Checkbox("##SLoop", &s.Loop);
+                            ImGui::SameLine();
+                            bool isDef = (ac.DefaultState == i);
+                            if (isDef) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.3f, 1.0f, 0.3f, 1.0f));
+                            if (ImGui::SmallButton(isDef ? "Default" : "Set Default"))
+                                ac.DefaultState = i;
+                            if (isDef) ImGui::PopStyleColor();
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X##DelState")) {
+                                ac.States.erase(ac.States.begin() + i); --i;
+                                if (ac.DefaultState >= (int)ac.States.size())
+                                    ac.DefaultState = std::max(0, (int)ac.States.size() - 1);
+                            }
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("+ State")) {
+                            VE::AnimState s;
+                            s.Name = "State" + std::to_string(ac.States.size());
+                            s.ClipIndex = (int)ac.States.size();
+                            ac.States.push_back(s);
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    // Transitions
+                    if (ImGui::TreeNode("Transitions")) {
+                        for (int i = 0; i < (int)ac.Transitions.size(); i++) {
+                            ImGui::PushID(i + 2000);
+                            auto& t = ac.Transitions[i];
+
+                            // From -> To
+                            std::string fromName = (t.FromState < 0) ? "Any" :
+                                (t.FromState < (int)ac.States.size() ? ac.States[t.FromState].Name : "?");
+                            std::string toName = (t.ToState >= 0 && t.ToState < (int)ac.States.size())
+                                ? ac.States[t.ToState].Name : "?";
+                            ImGui::Text("%s -> %s", fromName.c_str(), toName.c_str());
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(40);
+                            ImGui::DragInt("##TFrom", &t.FromState, 1, -1, (int)ac.States.size() - 1);
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(40);
+                            ImGui::DragInt("##TTo", &t.ToState, 1, 0, (int)ac.States.size() - 1);
+
+                            ImGui::SetNextItemWidth(60);
+                            ImGui::DragFloat("Blend##T", &t.Duration, 0.01f, 0.0f, 2.0f);
+                            ImGui::SameLine();
+                            ImGui::Checkbox("ExitTime##T", &t.HasExitTime);
+                            if (t.HasExitTime) {
+                                ImGui::SameLine();
+                                ImGui::SetNextItemWidth(50);
+                                ImGui::DragFloat("##TExitT", &t.ExitTime, 0.01f, 0.0f, 1.0f);
+                            }
+
+                            // Conditions
+                            for (int c = 0; c < (int)t.Conditions.size(); c++) {
+                                ImGui::PushID(c + 3000);
+                                auto& cond = t.Conditions[c];
+                                ImGui::Indent(20);
+                                char cBuf[64];
+                                strncpy(cBuf, cond.ParamName.c_str(), sizeof(cBuf)); cBuf[63] = '\0';
+                                ImGui::SetNextItemWidth(80);
+                                ImGui::InputText("##CParam", cBuf, sizeof(cBuf));
+                                cond.ParamName = cBuf;
+                                ImGui::SameLine();
+                                const char* opNames[] = { ">", "<", "==", "!=", "true", "false" };
+                                int opIdx = static_cast<int>(cond.Op);
+                                ImGui::SetNextItemWidth(50);
+                                if (ImGui::Combo("##COp", &opIdx, opNames, 6))
+                                    cond.Op = static_cast<VE::AnimConditionOp>(opIdx);
+                                ImGui::SameLine();
+                                ImGui::SetNextItemWidth(50);
+                                ImGui::DragFloat("##CVal", &cond.Threshold, 0.1f);
+                                ImGui::SameLine();
+                                if (ImGui::SmallButton("X##DelCond")) {
+                                    t.Conditions.erase(t.Conditions.begin() + c); --c;
+                                }
+                                ImGui::Unindent(20);
+                                ImGui::PopID();
+                            }
+                            if (ImGui::SmallButton("+ Condition"))
+                                t.Conditions.push_back({});
+
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X##DelTrans")) {
+                                ac.Transitions.erase(ac.Transitions.begin() + i); --i;
+                            }
+                            ImGui::Separator();
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("+ Transition"))
+                            ac.Transitions.push_back({});
+                        ImGui::TreePop();
+                    }
+
+                    // Runtime state info
+                    if (m_PlayMode && ac._Animator && ac._Animator->IsUsingStateMachine()) {
+                        auto& sm = ac._Animator->GetStateMachine();
+                        ImGui::Text("Current: %s", sm.GetCurrentStateName().c_str());
+                        if (sm.IsTransitioning())
+                            ImGui::TextColored(ImVec4(1,1,0,1), "Transitioning...");
+
+                        // Live parameter editing
+                        for (auto& p : sm.GetParameters()) {
+                            ImGui::PushID(p.Name.c_str());
+                            switch (p.Type) {
+                                case VE::AnimParamType::Float: {
+                                    float v = sm.GetFloat(p.Name);
+                                    if (ImGui::DragFloat(p.Name.c_str(), &v, 0.1f))
+                                        ac._Animator->GetStateMachine().SetFloat(p.Name, v);
+                                    break;
+                                }
+                                case VE::AnimParamType::Int: {
+                                    int v = sm.GetInt(p.Name);
+                                    if (ImGui::DragInt(p.Name.c_str(), &v))
+                                        ac._Animator->GetStateMachine().SetInt(p.Name, v);
+                                    break;
+                                }
+                                case VE::AnimParamType::Bool: {
+                                    bool v = sm.GetBool(p.Name);
+                                    if (ImGui::Checkbox(p.Name.c_str(), &v))
+                                        ac._Animator->GetStateMachine().SetBool(p.Name, v);
+                                    break;
+                                }
+                                case VE::AnimParamType::Trigger:
+                                    if (ImGui::Button(p.Name.c_str()))
+                                        ac._Animator->GetStateMachine().SetTrigger(p.Name);
+                                    break;
+                            }
+                            ImGui::PopID();
+                        }
+                    }
+                }
+
             }
             if (removeAnimator)
                 m_SelectedEntity.RemoveComponent<VE::AnimatorComponent>();

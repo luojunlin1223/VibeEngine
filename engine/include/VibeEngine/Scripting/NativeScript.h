@@ -85,6 +85,12 @@ struct ScriptAPI {
     int  (*Animator_GetClipCount)(uint64_t entityID)                                = nullptr;
     bool (*Animator_IsPlaying)(uint64_t entityID)                                   = nullptr;
 
+    // Animation state machine
+    void (*Animator_SetFloat)(uint64_t entityID, const char* name, float value)    = nullptr;
+    void (*Animator_SetInt)(uint64_t entityID, const char* name, int value)         = nullptr;
+    void (*Animator_SetBool)(uint64_t entityID, const char* name, bool value)       = nullptr;
+    void (*Animator_SetTrigger)(uint64_t entityID, const char* name)                = nullptr;
+
     // Camera / screen-to-world
     bool (*Camera_ScreenToWorldRay)(float screenX, float screenY,
                                     float* ox, float* oy, float* oz,
