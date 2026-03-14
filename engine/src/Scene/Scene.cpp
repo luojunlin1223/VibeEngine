@@ -17,6 +17,7 @@
 #include "VibeEngine/Core/Log.h"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
 #include <sstream>
 #include <random>
 
@@ -575,90 +576,27 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
     // ── Frustum culling setup ─────────────────────────────────────────
     Frustum frustum(viewProjection);
-    // Default unit AABB for meshes without explicit bounds
     static const AABB s_UnitAABB = { glm::vec3(-0.5f), glm::vec3(0.5f) };
-
-    // ── Begin instanced batching ────────────────────────────────────
-    InstancedRenderer::BeginScene(viewProjection);
 
     auto& stats = const_cast<RenderStats&>(RenderCommand::GetStats());
 
-    auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
-    for (auto entityID : view) {
-        auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
-
-        if (!mr.Mesh || !mr.Mat)
-            continue;
-
-        glm::mat4 model = GetWorldTransform(entityID);
-
-        // ── Frustum cull: transform local AABB to world-space AABB ──
-        {
-            // Lazily populate LocalBounds if not set
-            if (!mr.LocalBounds.Valid()) {
-                // Try to match against MeshLibrary built-in meshes
-                bool found = false;
-                for (int idx = 0; idx < MeshLibrary::GetMeshCount(); ++idx) {
-                    if (mr.Mesh == MeshLibrary::GetMeshByIndex(idx)) {
-                        mr.LocalBounds = MeshLibrary::GetMeshAABB(idx);
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found)
-                    mr.LocalBounds = s_UnitAABB;
-            }
-
-            const AABB& localAABB = mr.LocalBounds;
-            // Transform all 8 corners of the local AABB by the model matrix
-            // and compute a world-space AABB that encloses them
-            glm::vec3 worldMin( std::numeric_limits<float>::max());
-            glm::vec3 worldMax(-std::numeric_limits<float>::max());
-            for (int i = 0; i < 8; ++i) {
-                glm::vec3 corner(
-                    (i & 1) ? localAABB.Max.x : localAABB.Min.x,
-                    (i & 2) ? localAABB.Max.y : localAABB.Min.y,
-                    (i & 4) ? localAABB.Max.z : localAABB.Min.z
-                );
-                glm::vec3 worldCorner = glm::vec3(model * glm::vec4(corner, 1.0f));
-                worldMin = glm::min(worldMin, worldCorner);
-                worldMax = glm::max(worldMax, worldCorner);
-            }
-
-            if (!frustum.TestAABB(worldMin, worldMax)) {
-                stats.CulledObjects++;
-                continue; // outside frustum, skip rendering
-            }
-            stats.VisibleObjects++;
-        }
-
-        glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
-
-        // Determine if this entity can be GPU-instanced:
-        // - No animator (skinned meshes have unique VAOs per frame)
-        // - No per-entity material overrides (they require individual uniform setup)
+    // Helper: draw a single entity (non-instanced path)
+    auto drawEntity = [&](entt::entity entityID, MeshRendererComponent& mr, const glm::mat4& model) {
+        std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
         bool hasAnimator = m_Registry.all_of<AnimatorComponent>(entityID) &&
                            m_Registry.get<AnimatorComponent>(entityID)._Animator &&
                            m_Registry.get<AnimatorComponent>(entityID)._Animator->GetSkinnedVAO();
-        bool hasOverrides = !mr.MaterialOverrides.empty();
-
-        if (!hasAnimator && !hasOverrides) {
-            // Submit to instanced renderer for batching
-            InstancedRenderer::Submit(mr.Mesh, mr.Mat, model, entityColor);
-            continue;
-        }
-
-        // ── Individual (non-instanced) draw path ────────────────────
-        std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
         if (hasAnimator) {
             auto& ac = m_Registry.get<AnimatorComponent>(entityID);
             drawVAO = ac._Animator->GetSkinnedVAO();
         }
 
         glm::mat4 mvp = viewProjection * model;
+        glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
+
         mr.Mat->Bind();
         auto shader = mr.Mat->GetShader();
-        if (!shader) continue;
+        if (!shader) return;
 
         shader->SetMat4("u_MVP", mvp);
 
@@ -704,6 +642,89 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
 
         RenderCommand::DrawIndexed(drawVAO);
+    };
+
+    // ── Collect visible entities, separate opaque vs transparent ─────
+    struct VisibleEntity {
+        entt::entity ID;
+        glm::mat4    Model;
+        float        DistSq; // squared distance to camera (for transparent sort)
+    };
+    std::vector<VisibleEntity> transparentEntities;
+
+    // ── Begin instanced batching (opaque only) ──────────────────────
+    InstancedRenderer::BeginScene(viewProjection);
+
+    auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
+    for (auto entityID : view) {
+        auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
+
+        if (!mr.Mesh || !mr.Mat)
+            continue;
+
+        glm::mat4 model = GetWorldTransform(entityID);
+
+        // ── Frustum cull ──
+        {
+            if (!mr.LocalBounds.Valid()) {
+                bool found = false;
+                for (int idx = 0; idx < MeshLibrary::GetMeshCount(); ++idx) {
+                    if (mr.Mesh == MeshLibrary::GetMeshByIndex(idx)) {
+                        mr.LocalBounds = MeshLibrary::GetMeshAABB(idx);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    mr.LocalBounds = s_UnitAABB;
+            }
+
+            const AABB& localAABB = mr.LocalBounds;
+            glm::vec3 worldMin( std::numeric_limits<float>::max());
+            glm::vec3 worldMax(-std::numeric_limits<float>::max());
+            for (int i = 0; i < 8; ++i) {
+                glm::vec3 corner(
+                    (i & 1) ? localAABB.Max.x : localAABB.Min.x,
+                    (i & 2) ? localAABB.Max.y : localAABB.Min.y,
+                    (i & 4) ? localAABB.Max.z : localAABB.Min.z
+                );
+                glm::vec3 worldCorner = glm::vec3(model * glm::vec4(corner, 1.0f));
+                worldMin = glm::min(worldMin, worldCorner);
+                worldMax = glm::max(worldMax, worldCorner);
+            }
+
+            if (!frustum.TestAABB(worldMin, worldMax)) {
+                stats.CulledObjects++;
+                continue;
+            }
+            stats.VisibleObjects++;
+        }
+
+        // Determine transparency: material blend OR per-entity alpha < 1
+        bool isTransparent = mr.Mat->IsTransparent() || mr.Color[3] < 0.999f;
+
+        if (isTransparent) {
+            // Defer transparent entities for back-to-front sorted rendering
+            glm::vec3 worldPos = glm::vec3(model[3]);
+            float distSq = glm::dot(worldPos - cameraPos, worldPos - cameraPos);
+            transparentEntities.push_back({ entityID, model, distSq });
+            continue;
+        }
+
+        // ── Opaque rendering ────────────────────────────────────────
+        glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
+
+        bool hasAnimator = m_Registry.all_of<AnimatorComponent>(entityID) &&
+                           m_Registry.get<AnimatorComponent>(entityID)._Animator &&
+                           m_Registry.get<AnimatorComponent>(entityID)._Animator->GetSkinnedVAO();
+        bool hasOverrides = !mr.MaterialOverrides.empty();
+
+        if (!hasAnimator && !hasOverrides) {
+            InstancedRenderer::Submit(mr.Mesh, mr.Mat, model, entityColor);
+            continue;
+        }
+
+        drawEntity(entityID, mr, model);
     }
 
     // ── Set lighting uniforms on instanced shaders, then flush ──────
@@ -722,6 +743,22 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     }
 
     InstancedRenderer::EndScene();
+
+    // ── Transparent pass: sort back-to-front, draw individually ─────
+    if (!transparentEntities.empty()) {
+        std::sort(transparentEntities.begin(), transparentEntities.end(),
+            [](const VisibleEntity& a, const VisibleEntity& b) {
+                return a.DistSq > b.DistSq; // back-to-front
+            });
+
+        for (auto& ve : transparentEntities) {
+            auto& mr = m_Registry.get<MeshRendererComponent>(ve.ID);
+            drawEntity(ve.ID, mr, ve.Model);
+        }
+
+        // Restore default depth write after transparent pass
+        RenderCommand::SetDepthWrite(true);
+    }
 }
 
 // ── Sprite Rendering ────────────────────────────────────────────────

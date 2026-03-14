@@ -779,6 +779,9 @@ std::shared_ptr<Shader> ShaderLabCompiler::Compile(const ShaderLabShader& shader
         }
         result->SetPropertyInfos(std::move(infos));
 
+        // Store render state from first pass
+        result->SetRenderState(pass.RenderState);
+
         VE_ENGINE_INFO("ShaderLab: Compiled shader '{}' ({} properties)", shader.Name, shader.Properties.size());
     }
     return result;

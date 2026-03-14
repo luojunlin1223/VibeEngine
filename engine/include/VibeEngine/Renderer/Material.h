@@ -74,6 +74,9 @@ public:
     bool IsLit() const { return m_IsLit; }
     void SetLit(bool lit) { m_IsLit = lit; }
 
+    // Whether this material is transparent (shader has blend enabled)
+    bool IsTransparent() const { return m_Shader && m_Shader->IsTransparent(); }
+
 private:
     MaterialProperty* FindProperty(const std::string& name);
 

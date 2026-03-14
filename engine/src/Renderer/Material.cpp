@@ -109,6 +109,7 @@ void Material::PopulateFromShader() {
 void Material::Bind() const {
     if (!m_Shader) return;
     m_Shader->Bind();
+    m_Shader->ApplyRenderState();
 
     int texSlot = 0;
     bool hasMainTex = false;

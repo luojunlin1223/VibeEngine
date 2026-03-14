@@ -1,5 +1,6 @@
 #pragma once
 
+#include "VibeEngine/Renderer/ShaderLab.h"
 #include <string>
 #include <memory>
 #include <vector>
@@ -45,6 +46,14 @@ public:
     const std::vector<ShaderPropertyInfo>& GetPropertyInfos() const { return m_PropertyInfos; }
     void SetPropertyInfos(std::vector<ShaderPropertyInfo> infos) { m_PropertyInfos = std::move(infos); }
 
+    /// Render state from ShaderLab Pass (blend, zwrite, cull, etc.)
+    const ShaderLabRenderState& GetRenderState() const { return m_RenderState; }
+    void SetRenderState(const ShaderLabRenderState& rs) { m_RenderState = rs; }
+    bool IsTransparent() const { return m_RenderState.BlendEnabled; }
+
+    /// Apply this shader's render state to the GL pipeline
+    void ApplyRenderState() const;
+
     static std::shared_ptr<Shader> Create(const std::string& vertexSrc, const std::string& fragmentSrc);
 
     /// Load and compile a .shader (ShaderLab) file from disk.
@@ -53,6 +62,7 @@ public:
 protected:
     std::string m_Name;
     std::vector<ShaderPropertyInfo> m_PropertyInfos;
+    ShaderLabRenderState m_RenderState;
 };
 
 /// Global shader registry — tracks all loaded shaders by name.
