@@ -1700,35 +1700,57 @@ private:
 
         if (ImGui::BeginPopupContextWindow("HierarchyPopup",
                 ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
-            if (ImGui::MenuItem("Create Empty"))
-                m_CommandHistory.Execute("Create Entity", [this]() { m_Scene->CreateEntity("GameObject"); });
-            if (ImGui::MenuItem("Create Triangle"))
-                m_CommandHistory.Execute("Create Triangle", [this]() {
-                    auto e = m_Scene->CreateEntity("Triangle");
-                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = VE::MeshLibrary::GetTriangle();
-                    mr.Mat = VE::MaterialLibrary::Get("Default");
-                });
-            if (ImGui::MenuItem("Create Quad"))
-                m_CommandHistory.Execute("Create Quad", [this]() {
-                    auto e = m_Scene->CreateEntity("Quad");
-                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = VE::MeshLibrary::GetQuad();
-                    mr.Mat = VE::MaterialLibrary::Get("Default");
-                });
-            if (ImGui::MenuItem("Create Cube"))
-                m_CommandHistory.Execute("Create Cube", [this]() {
-                    auto e = m_Scene->CreateEntity("Cube");
-                    auto& mr = e.AddComponent<VE::MeshRendererComponent>();
-                    mr.Mesh = VE::MeshLibrary::GetCube();
-                    mr.Mat = VE::MaterialLibrary::Get("Lit");
-                });
-            ImGui::Separator();
-            if (ImGui::MenuItem("Create Directional Light"))
-                m_CommandHistory.Execute("Create Light", [this]() {
-                    auto e = m_Scene->CreateEntity("Directional Light");
-                    e.AddComponent<VE::DirectionalLightComponent>();
-                });
+            if (ImGui::BeginMenu("Create")) {
+                if (ImGui::MenuItem("Empty"))
+                    m_CommandHistory.Execute("Create Entity", [this]() { m_Scene->CreateEntity("GameObject"); });
+                ImGui::Separator();
+                if (ImGui::MenuItem("Triangle"))
+                    m_CommandHistory.Execute("Create Triangle", [this]() {
+                        auto e = m_Scene->CreateEntity("Triangle");
+                        auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetTriangle();
+                        mr.Mat = VE::MaterialLibrary::Get("Default");
+                    });
+                if (ImGui::MenuItem("Quad"))
+                    m_CommandHistory.Execute("Create Quad", [this]() {
+                        auto e = m_Scene->CreateEntity("Quad");
+                        auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetQuad();
+                        mr.Mat = VE::MaterialLibrary::Get("Default");
+                    });
+                if (ImGui::MenuItem("Cube"))
+                    m_CommandHistory.Execute("Create Cube", [this]() {
+                        auto e = m_Scene->CreateEntity("Cube");
+                        auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetCube();
+                        mr.Mat = VE::MaterialLibrary::Get("Lit");
+                    });
+                if (ImGui::MenuItem("Sphere"))
+                    m_CommandHistory.Execute("Create Sphere", [this]() {
+                        auto e = m_Scene->CreateEntity("Sphere");
+                        auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                        mr.Mesh = VE::MeshLibrary::GetSphere();
+                        mr.Mat = VE::MaterialLibrary::Get("Lit");
+                        mr.LocalBounds = VE::MeshLibrary::GetMeshAABB(3);
+                    });
+                ImGui::Separator();
+                if (ImGui::MenuItem("Directional Light"))
+                    m_CommandHistory.Execute("Create Light", [this]() {
+                        auto e = m_Scene->CreateEntity("Directional Light");
+                        e.AddComponent<VE::DirectionalLightComponent>();
+                    });
+                if (ImGui::MenuItem("Point Light"))
+                    m_CommandHistory.Execute("Create Point Light", [this]() {
+                        auto e = m_Scene->CreateEntity("Point Light");
+                        e.AddComponent<VE::PointLightComponent>();
+                    });
+                if (ImGui::MenuItem("Camera"))
+                    m_CommandHistory.Execute("Create Camera", [this]() {
+                        auto e = m_Scene->CreateEntity("Camera");
+                        e.AddComponent<VE::CameraComponent>();
+                    });
+                ImGui::EndMenu();
+            }
             ImGui::EndPopup();
         }
 

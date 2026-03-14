@@ -879,6 +879,13 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 auto mat = MaterialLibrary::Get(matNameNode.as<std::string>());
                 if (mat) mr.Mat = mat;
             }
+            // Ensure lit meshes use lit material (fix for old scenes that saved
+            // Sphere with "Default" unlit material before the vertex layout fix)
+            if (meshIndex >= 0 && MeshLibrary::IsLitMesh(meshIndex) && mr.Mat) {
+                if (mr.Mat->GetName() == "Default")
+                    mr.Mat = MaterialLibrary::Get("Lit");
+            }
+
             if (auto castNode = mrNode["CastShadows"])
                 mr.CastShadows = castNode.as<bool>();
             // Per-entity material property overrides
