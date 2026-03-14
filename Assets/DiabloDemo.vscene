@@ -1,0 +1,483 @@
+Scene: DiabloDemo
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.05, 0.05, 0.15]
+  SkyBottomColor: [0.1, 0.08, 0.12]
+  ShadowEnabled: true
+  ShadowBias: 0.0005
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 1
+Entities:
+  - Entity: 9001
+    TagComponent:
+      Tag: Player
+      GameObjectTag: Player
+      Layer: 0
+    TransformComponent:
+      Position: [0, 0.5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.6, 1.0, 0.6]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.2, 0.5, 1.0, 1.0]
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 1.0
+      LinearDamping: 3.0
+      AngularDamping: 10.0
+      Restitution: 0.0
+      Friction: 0.8
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [0.6, 1.0, 0.6]
+      Offset: [0, 0, 0]
+    ScriptComponent:
+      ClassName: PlayerController
+  - Entity: 9002
+    TagComponent:
+      Tag: Ground
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, -0.5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [40, 1, 40]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.25, 0.22, 0.2, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 1.0
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [40, 1, 40]
+      Offset: [0, 0, 0]
+  - Entity: 9010
+    TagComponent:
+      Tag: Wall N
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 1, -20]
+      Rotation: [0, 0, 0]
+      Scale: [40, 3, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.35, 0.3, 0.28, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [40, 3, 1]
+      Offset: [0, 0, 0]
+  - Entity: 9011
+    TagComponent:
+      Tag: Wall S
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 1, 20]
+      Rotation: [0, 0, 0]
+      Scale: [40, 3, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.35, 0.3, 0.28, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [40, 3, 1]
+      Offset: [0, 0, 0]
+  - Entity: 9012
+    TagComponent:
+      Tag: Wall E
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [20, 1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 3, 40]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.35, 0.3, 0.28, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [1, 3, 40]
+      Offset: [0, 0, 0]
+  - Entity: 9013
+    TagComponent:
+      Tag: Wall W
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [-20, 1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 3, 40]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.35, 0.3, 0.28, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [1, 3, 40]
+      Offset: [0, 0, 0]
+  - Entity: 9020
+    TagComponent:
+      Tag: Pillar 1
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [-5, 1.5, -5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 3, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.35, 0.3, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [1, 3, 1]
+      Offset: [0, 0, 0]
+  - Entity: 9021
+    TagComponent:
+      Tag: Pillar 2
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [5, 1.5, -5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 3, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.35, 0.3, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [1, 3, 1]
+      Offset: [0, 0, 0]
+  - Entity: 9022
+    TagComponent:
+      Tag: Pillar 3
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [-5, 1.5, 5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 3, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.35, 0.3, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [1, 3, 1]
+      Offset: [0, 0, 0]
+  - Entity: 9023
+    TagComponent:
+      Tag: Pillar 4
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [5, 1.5, 5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 3, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.35, 0.3, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [1, 3, 1]
+      Offset: [0, 0, 0]
+  - Entity: 9024
+    TagComponent:
+      Tag: Inner Wall 1
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [-10, 1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.5, 2, 8]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.28, 0.25, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.5, 2, 8]
+      Offset: [0, 0, 0]
+  - Entity: 9025
+    TagComponent:
+      Tag: Inner Wall 2
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [10, 1, -8]
+      Rotation: [0, 0, 0]
+      Scale: [0.5, 2, 6]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.28, 0.25, 1.0]
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.2
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.5, 2, 6]
+      Offset: [0, 0, 0]
+  - Entity: 9030
+    TagComponent:
+      Tag: Enemy Orc 1
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [7, 0.5, -8]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 1.2, 0.8]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.9, 0.15, 0.15, 1.0]
+    RigidbodyComponent:
+      BodyType: Kinematic
+      Mass: 1
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.8, 1.2, 0.8]
+      Offset: [0, 0, 0]
+    ScriptComponent:
+      ClassName: EnemyScript
+  - Entity: 9031
+    TagComponent:
+      Tag: Enemy Orc 2
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [-8, 0.5, 6]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 1.2, 0.8]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.9, 0.15, 0.15, 1.0]
+    RigidbodyComponent:
+      BodyType: Kinematic
+      Mass: 1
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.8, 1.2, 0.8]
+      Offset: [0, 0, 0]
+    ScriptComponent:
+      ClassName: EnemyScript
+  - Entity: 9032
+    TagComponent:
+      Tag: Enemy Orc 3
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [12, 0.5, 10]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 1.2, 0.8]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.9, 0.15, 0.15, 1.0]
+    RigidbodyComponent:
+      BodyType: Kinematic
+      Mass: 1
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.8, 1.2, 0.8]
+      Offset: [0, 0, 0]
+    ScriptComponent:
+      ClassName: EnemyScript
+  - Entity: 9033
+    TagComponent:
+      Tag: Enemy Orc 4
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [-14, 0.5, -12]
+      Rotation: [0, 0, 0]
+      Scale: [1.0, 1.5, 1.0]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.8, 0.1, 0.2, 1.0]
+    RigidbodyComponent:
+      BodyType: Kinematic
+      Mass: 1
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [1.0, 1.5, 1.0]
+      Offset: [0, 0, 0]
+    ScriptComponent:
+      ClassName: EnemyScript
+  - Entity: 9034
+    TagComponent:
+      Tag: Enemy Orc 5
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 0.5, -15]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 1.2, 0.8]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.9, 0.15, 0.15, 1.0]
+    RigidbodyComponent:
+      BodyType: Kinematic
+      Mass: 1
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.8, 1.2, 0.8]
+      Offset: [0, 0, 0]
+    ScriptComponent:
+      ClassName: EnemyScript
+  - Entity: 9040
+    TagComponent:
+      Tag: Point Light 1
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [-5, 3, -5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    PointLightComponent:
+      Color: [1.0, 0.7, 0.3]
+      Intensity: 2.0
+      Range: 12.0
+  - Entity: 9041
+    TagComponent:
+      Tag: Point Light 2
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [5, 3, 5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    PointLightComponent:
+      Color: [1.0, 0.7, 0.3]
+      Intensity: 2.0
+      Range: 12.0
+  - Entity: 9042
+    TagComponent:
+      Tag: Point Light 3
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 4, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    PointLightComponent:
+      Color: [0.6, 0.6, 1.0]
+      Intensity: 1.5
+      Range: 15.0
+  - Entity: 9050
+    TagComponent:
+      Tag: Directional Light
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 20, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [0.3, 1.0, 0.2]
+      Color: [0.4, 0.35, 0.5]
+      Intensity: 0.6
+  - Entity: 9060
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+      Layer: 0
+    TransformComponent:
+      Position: [0, 15, 10]
+      Rotation: [-50, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 50
+      Size: 5
+      NearClip: 0.1
+      FarClip: 500
+      Priority: 0
+    ScriptComponent:
+      ClassName: CameraFollow
