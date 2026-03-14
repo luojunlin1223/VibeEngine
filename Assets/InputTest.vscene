@@ -1,11 +1,47 @@
-Scene: InputTest
+Scene: Untitled
 PipelineSettings:
   SkyEnabled: true
-  SkyTopColor: [0.4, 0.7, 1.0]
-  SkyBottomColor: [0.9, 0.9, 0.95]
+  SkyTopColor: [0.400000006, 0.699999988, 1]
+  SkyBottomColor: [0.899999976, 0.899999976, 0.949999988]
+  BloomEnabled: false
+  BloomThreshold: 0.800000012
+  BloomIntensity: 1
+  BloomIterations: 5
+  VignetteEnabled: false
+  VignetteIntensity: 0.5
+  VignetteSmoothness: 0.5
+  ColorAdjustEnabled: false
+  ColorExposure: 0
+  ColorContrast: 0
+  ColorSaturation: 0
+  ColorFilter: [1, 1, 1]
+  ColorGamma: 1
+  SMHEnabled: false
+  SMH_Shadows: [1, 1, 1]
+  SMH_Midtones: [1, 1, 1]
+  SMH_Highlights: [1, 1, 1]
+  SMH_ShadowStart: 0
+  SMH_ShadowEnd: 0.300000012
+  SMH_HighlightStart: 0.550000012
+  SMH_HighlightEnd: 1
+  CurvesEnabled: false
+  CurvesMaster:
+    - [0, 0]
+    - [1, 1]
+  CurvesRed:
+    - [0, 0]
+    - [1, 1]
+  CurvesGreen:
+    - [0, 0]
+    - [1, 1]
+  CurvesBlue:
+    - [0, 0]
+    - [1, 1]
+  TonemapEnabled: false
+  TonemapMode: 2
   ShadowEnabled: true
-  ShadowBias: 0.0005
-  ShadowNormalBias: 0.02
+  ShadowBias: 0.000500000024
+  ShadowNormalBias: 0.0199999996
   ShadowPCFRadius: 1
 Entities:
   - Entity: 1001
@@ -19,7 +55,9 @@ Entities:
       Scale: [1, 1, 1]
     MeshRendererComponent:
       MeshType: 2
-      Color: [0.2, 0.6, 1.0, 1.0]
+      Color: [0.200000003, 0.600000024, 1, 1]
+      MaterialName: Lit
+      CastShadows: true
   - Entity: 1002
     TagComponent:
       Tag: Ground
@@ -31,7 +69,9 @@ Entities:
       Scale: [20, 1, 20]
     MeshRendererComponent:
       MeshType: 2
-      Color: [0.5, 0.5, 0.5, 1.0]
+      Color: [0.5, 0.5, 0.5, 1]
+      MaterialName: Lit
+      CastShadows: true
   - Entity: 1003
     TagComponent:
       Tag: Obstacle 1
@@ -43,7 +83,9 @@ Entities:
       Scale: [1, 1, 1]
     MeshRendererComponent:
       MeshType: 2
-      Color: [1.0, 0.3, 0.3, 1.0]
+      Color: [1, 0.300000012, 0.300000012, 1]
+      MaterialName: Lit
+      CastShadows: true
   - Entity: 1004
     TagComponent:
       Tag: Obstacle 2
@@ -55,7 +97,9 @@ Entities:
       Scale: [1, 2, 1]
     MeshRendererComponent:
       MeshType: 2
-      Color: [0.3, 1.0, 0.3, 1.0]
+      Color: [0.300000012, 1, 0.300000012, 1]
+      MaterialName: Lit
+      CastShadows: true
   - Entity: 1005
     TagComponent:
       Tag: Obstacle 3
@@ -67,7 +111,9 @@ Entities:
       Scale: [2, 1, 2]
     MeshRendererComponent:
       MeshType: 2
-      Color: [1.0, 1.0, 0.3, 1.0]
+      Color: [1, 1, 0.300000012, 1]
+      MaterialName: Lit
+      CastShadows: true
   - Entity: 1006
     TagComponent:
       Tag: Sphere
@@ -79,7 +125,9 @@ Entities:
       Scale: [1, 1, 1]
     MeshRendererComponent:
       MeshType: 3
-      Color: [0.8, 0.4, 1.0, 1.0]
+      Color: [0.800000012, 0.400000006, 1, 1]
+      MaterialName: Default
+      CastShadows: true
   - Entity: 1007
     TagComponent:
       Tag: Directional Light
@@ -90,6 +138,22 @@ Entities:
       Rotation: [0, 0, 0]
       Scale: [1, 1, 1]
     DirectionalLightComponent:
-      Direction: [0.3, 1.0, 0.5]
-      Color: [1.0, 0.95, 0.9]
-      Intensity: 1.2
+      Direction: [0.300000012, 1, 0.5]
+      Color: [1, 0.949999988, 0.899999976]
+      Intensity: 1.20000005
+  - Entity: 1008
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+      Layer: 0
+    TransformComponent:
+      Position: [0, 5, 10]
+      Rotation: [-20, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60
+      Size: 5
+      NearClip: 0.1
+      FarClip: 1000
+      Priority: 0
