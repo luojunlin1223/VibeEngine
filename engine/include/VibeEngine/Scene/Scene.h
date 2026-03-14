@@ -115,6 +115,7 @@ public:
 
     void OnRender(const glm::mat4& viewProjection,
                   const glm::vec3& cameraPos = glm::vec3(0.0f));
+    void OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
     void OnRenderSprites(const glm::mat4& viewProjection);
     void OnRenderUI(uint32_t screenWidth, uint32_t screenHeight,
                     float mouseX, float mouseY, bool mouseDown);

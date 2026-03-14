@@ -274,6 +274,7 @@ protected:
             b.SideEffect();
         }, [&](const VE::RGResources&) {
             m_Scene->OnRender(m_FrameVP, camPos);
+            m_Scene->OnRenderTerrain(m_FrameVP, camPos);
         });
 
         // Pass 3: Sprites
@@ -381,6 +382,7 @@ protected:
                     b.SideEffect();
                 }, [&](const VE::RGResources&) {
                     m_Scene->OnRender(gameVP, gameCamPos);
+                    m_Scene->OnRenderTerrain(gameVP, gameCamPos);
                 });
 
                 // Game Pass 2: Sprites
@@ -2985,6 +2987,81 @@ private:
             ImGui::Separator();
         }
 
+        // ── Terrain Component Inspector ───────────────────────────
+        if (m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
+            bool removeC = false;
+            if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& t = m_SelectedEntity.GetComponent<VE::TerrainComponent>();
+                bool changed = false;
+
+                // Heightmap source
+                char hmBuf[256];
+                strncpy(hmBuf, t.HeightmapPath.c_str(), sizeof(hmBuf));
+                hmBuf[sizeof(hmBuf)-1] = '\0';
+                if (ImGui::InputText("Heightmap Path", hmBuf, sizeof(hmBuf))) {
+                    t.HeightmapPath = hmBuf;
+                    changed = true;
+                }
+
+                changed |= ImGui::DragInt("Resolution", &t.Resolution, 1, 2, 1024);
+                changed |= ImGui::DragFloat("World Size X", &t.WorldSizeX, 1.0f, 1.0f, 10000.0f);
+                changed |= ImGui::DragFloat("World Size Z", &t.WorldSizeZ, 1.0f, 1.0f, 10000.0f);
+                changed |= ImGui::DragFloat("Height Scale", &t.HeightScale, 0.1f, 0.0f, 500.0f);
+
+                if (t.HeightmapPath.empty()) {
+                    ImGui::Separator();
+                    ImGui::Text("Procedural Noise");
+                    changed |= ImGui::DragInt("Octaves", &t.Octaves, 1, 1, 8);
+                    changed |= ImGui::DragFloat("Persistence", &t.Persistence, 0.01f, 0.0f, 1.0f);
+                    changed |= ImGui::DragFloat("Lacunarity", &t.Lacunarity, 0.1f, 1.0f, 4.0f);
+                    changed |= ImGui::DragFloat("Noise Scale", &t.NoiseScale, 1.0f, 1.0f, 500.0f);
+                    changed |= ImGui::DragInt("Seed", &t.Seed, 1);
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Texture Layers");
+                const char* layerNames[] = { "Low", "Mid-Low", "Mid-High", "High" };
+                for (int i = 0; i < 4; i++) {
+                    ImGui::PushID(i);
+                    ImGui::Text("Layer %d (%s):", i, layerNames[i]);
+                    char texBuf[256];
+                    strncpy(texBuf, t.LayerTexturePaths[i].c_str(), sizeof(texBuf));
+                    texBuf[sizeof(texBuf)-1] = '\0';
+                    if (ImGui::InputText("Texture##Lyr", texBuf, sizeof(texBuf))) {
+                        t.LayerTexturePaths[i] = texBuf;
+                        if (!t.LayerTexturePaths[i].empty())
+                            t._LayerTextures[i] = VE::Texture2D::Create(t.LayerTexturePaths[i]);
+                        else
+                            t._LayerTextures[i].reset();
+                    }
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                            t.LayerTexturePaths[i] = std::string(static_cast<const char*>(payload->Data));
+                            t._LayerTextures[i] = VE::Texture2D::Create(t.LayerTexturePaths[i]);
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                    ImGui::DragFloat("Tiling##Lyr", &t.LayerTiling[i], 0.01f, 0.001f, 1.0f);
+                    ImGui::PopID();
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Blend Heights (0-1)");
+                ImGui::DragFloat("Low->MidLow", &t.BlendHeights[0], 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("MidLow->MidHigh", &t.BlendHeights[1], 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("MidHigh->High", &t.BlendHeights[2], 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("Roughness##Terrain", &t.Roughness, 0.01f, 0.0f, 1.0f);
+
+                if (changed) t._NeedsRebuild = true;
+                if (ImGui::Button("Regenerate"))
+                    t._NeedsRebuild = true;
+
+                if (ImGui::Button("Remove##Terrain")) removeC = true;
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::TerrainComponent>();
+            ImGui::Separator();
+        }
+
         // ── UI Components Inspector ──────────────────────────────
         if (m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
             bool removeC = false;
@@ -3216,6 +3293,11 @@ private:
             if (!m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
                 if (ImGui::MenuItem("Particle System"))
                     m_SelectedEntity.AddComponent<VE::ParticleSystemComponent>();
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
+                if (ImGui::MenuItem("Terrain"))
+                    m_SelectedEntity.AddComponent<VE::TerrainComponent>();
                 anyAdded = true;
             }
             // UI components

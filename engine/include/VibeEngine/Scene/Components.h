@@ -13,6 +13,7 @@
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/Material.h"
 #include "VibeEngine/UI/FontAtlas.h"
+#include "VibeEngine/Terrain/Terrain.h"
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -274,6 +275,38 @@ struct MeshRendererComponent {
     std::vector<VE::MaterialProperty> MaterialOverrides;
 
     MeshRendererComponent() = default;
+};
+
+// ── Terrain Component ─────────────────────────────────────────────────
+
+struct TerrainComponent {
+    // Generation params
+    int   Resolution = 128;
+    float WorldSizeX = 100.0f;
+    float WorldSizeZ = 100.0f;
+    float HeightScale = 10.0f;
+    std::string HeightmapPath; // empty = procedural
+
+    // Procedural noise params
+    int   Octaves = 4;
+    float Persistence = 0.5f;
+    float Lacunarity = 2.0f;
+    float NoiseScale = 50.0f;
+    int   Seed = 42;
+
+    // Texture layers (4 layers, height-based blending)
+    std::array<std::string, 4> LayerTexturePaths;
+    std::array<float, 4> LayerTiling = { 0.1f, 0.1f, 0.1f, 0.1f };
+    std::array<float, 3> BlendHeights = { 0.25f, 0.5f, 0.75f }; // transitions between layers
+    float Roughness = 0.85f;
+
+    // Runtime only (not serialized)
+    std::shared_ptr<Terrain> _Terrain;
+    std::shared_ptr<VertexArray> _Mesh;
+    std::array<std::shared_ptr<Texture2D>, 4> _LayerTextures;
+    bool _NeedsRebuild = true;
+
+    TerrainComponent() = default;
 };
 
 // ── Runtime UI Components ─────────────────────────────────────────────

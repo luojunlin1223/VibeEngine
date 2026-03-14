@@ -46,6 +46,8 @@
 #include "UI/FontAtlas.h"
 #include "UI/UIRenderer.h"
 
+#include "Terrain/Terrain.h"
+
 #include "Editor/EditorCommand.h"
 
 #include "ImGui/ImGuiLayer.h"

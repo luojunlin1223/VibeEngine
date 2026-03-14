@@ -697,6 +697,123 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     InstancedRenderer::EndScene();
 }
 
+// ── Terrain Rendering ───────────────────────────────────────────────
+
+void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos) {
+    auto terrainView = m_Registry.view<TransformComponent, TerrainComponent>();
+    for (auto entity : terrainView) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& tc = terrainView.get<TransformComponent>(entity);
+        auto& terrain = terrainView.get<TerrainComponent>(entity);
+
+        // Lazy generation
+        if (terrain._NeedsRebuild || !terrain._Terrain) {
+            terrain._Terrain = std::make_shared<Terrain>();
+            if (!terrain.HeightmapPath.empty()) {
+                terrain._Terrain->GenerateFromImage(terrain.HeightmapPath,
+                    terrain.WorldSizeX, terrain.WorldSizeZ, terrain.HeightScale);
+            } else {
+                terrain._Terrain->GenerateProcedural(terrain.Resolution,
+                    terrain.WorldSizeX, terrain.WorldSizeZ, terrain.HeightScale,
+                    terrain.Octaves, terrain.Persistence, terrain.Lacunarity,
+                    terrain.NoiseScale, terrain.Seed);
+            }
+            terrain._Mesh = terrain._Terrain->GetMesh();
+            terrain._NeedsRebuild = false;
+
+            // Load textures
+            for (int i = 0; i < 4; i++) {
+                if (!terrain.LayerTexturePaths[i].empty())
+                    terrain._LayerTextures[i] = Texture2D::Create(terrain.LayerTexturePaths[i]);
+            }
+        }
+
+        if (!terrain._Mesh) continue;
+
+        // Load terrain shader
+        static std::shared_ptr<Shader> s_TerrainShader;
+        if (!s_TerrainShader) {
+            s_TerrainShader = Shader::CreateFromFile("shaders/Terrain.shader");
+            if (!s_TerrainShader) {
+                VE_ENGINE_ERROR("Failed to load Terrain.shader");
+                continue;
+            }
+        }
+
+        glm::mat4 model = GetWorldTransform(entity);
+        glm::mat4 mvp = viewProjection * model;
+
+        s_TerrainShader->Bind();
+        s_TerrainShader->SetMat4("u_MVP", mvp);
+        s_TerrainShader->SetMat4("u_Model", model);
+        s_TerrainShader->SetVec4("u_EntityColor", glm::vec4(1.0f));
+
+        // Lighting — find directional light
+        glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+        glm::vec3 lightColor(1.0f);
+        float lightIntensity = 1.0f;
+        {
+            auto lightView = m_Registry.view<DirectionalLightComponent>();
+            for (auto le : lightView) {
+                if (!IsEntityActiveInHierarchy(le)) continue;
+                auto& dl = lightView.get<DirectionalLightComponent>(le);
+                glm::vec3 d(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
+                float len = glm::length(d);
+                if (len > 0.0001f) lightDir = d / len;
+                lightColor = glm::vec3(dl.Color[0], dl.Color[1], dl.Color[2]);
+                lightIntensity = dl.Intensity;
+                break;
+            }
+        }
+        s_TerrainShader->SetVec3("u_LightDir", lightDir);
+        s_TerrainShader->SetVec3("u_LightColor", lightColor);
+        s_TerrainShader->SetFloat("u_LightIntensity", lightIntensity);
+        s_TerrainShader->SetVec3("u_ViewPos", cameraPos);
+        s_TerrainShader->SetFloat("u_Roughness", terrain.Roughness);
+
+        // Point lights
+        static constexpr int MAX_PL = 8;
+        int numPL = 0;
+        auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
+        for (auto plE : plView) {
+            if (numPL >= MAX_PL) break;
+            if (!IsEntityActiveInHierarchy(plE)) continue;
+            auto [ptc, pl] = plView.get<TransformComponent, PointLightComponent>(plE);
+            glm::vec3 plPos = glm::vec3(GetWorldTransform(plE)[3]);
+            s_TerrainShader->SetVec3("u_PointLightPositions[" + std::to_string(numPL) + "]", plPos);
+            s_TerrainShader->SetVec3("u_PointLightColors[" + std::to_string(numPL) + "]",
+                glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]));
+            s_TerrainShader->SetFloat("u_PointLightIntensities[" + std::to_string(numPL) + "]", pl.Intensity);
+            s_TerrainShader->SetFloat("u_PointLightRanges[" + std::to_string(numPL) + "]", pl.Range);
+            numPL++;
+        }
+        s_TerrainShader->SetInt("u_NumPointLights", numPL);
+
+        // Blend heights and tiling
+        s_TerrainShader->SetFloat("u_BlendHeight0", terrain.BlendHeights[0]);
+        s_TerrainShader->SetFloat("u_BlendHeight1", terrain.BlendHeights[1]);
+        s_TerrainShader->SetFloat("u_BlendHeight2", terrain.BlendHeights[2]);
+        s_TerrainShader->SetFloat("u_HeightScale", terrain.HeightScale);
+        s_TerrainShader->SetFloat("u_Tiling0", terrain.LayerTiling[0]);
+        s_TerrainShader->SetFloat("u_Tiling1", terrain.LayerTiling[1]);
+        s_TerrainShader->SetFloat("u_Tiling2", terrain.LayerTiling[2]);
+        s_TerrainShader->SetFloat("u_Tiling3", terrain.LayerTiling[3]);
+
+        // Bind layer textures
+        for (int i = 0; i < 4; i++) {
+            std::string uniformName = "u_Layer" + std::to_string(i);
+            s_TerrainShader->SetInt(uniformName, i);
+            if (terrain._LayerTextures[i])
+                terrain._LayerTextures[i]->Bind(i);
+        }
+
+        // Shadow uniforms (if available)
+        s_TerrainShader->SetInt("u_ShadowEnabled", 0);
+
+        RenderCommand::DrawIndexed(terrain._Mesh);
+    }
+}
+
 // ── Sprite Rendering ────────────────────────────────────────────────
 
 void Scene::OnRenderSprites(const glm::mat4& viewProjection) {

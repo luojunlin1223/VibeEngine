@@ -326,6 +326,33 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // TerrainComponent
+    if (entity.HasComponent<TerrainComponent>()) {
+        auto& t = entity.GetComponent<TerrainComponent>();
+        out << YAML::Key << "TerrainComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Resolution" << YAML::Value << t.Resolution;
+        out << YAML::Key << "WorldSizeX" << YAML::Value << t.WorldSizeX;
+        out << YAML::Key << "WorldSizeZ" << YAML::Value << t.WorldSizeZ;
+        out << YAML::Key << "HeightScale" << YAML::Value << t.HeightScale;
+        if (!t.HeightmapPath.empty())
+            out << YAML::Key << "HeightmapPath" << YAML::Value << t.HeightmapPath;
+        out << YAML::Key << "Octaves" << YAML::Value << t.Octaves;
+        out << YAML::Key << "Persistence" << YAML::Value << t.Persistence;
+        out << YAML::Key << "Lacunarity" << YAML::Value << t.Lacunarity;
+        out << YAML::Key << "NoiseScale" << YAML::Value << t.NoiseScale;
+        out << YAML::Key << "Seed" << YAML::Value << t.Seed;
+        out << YAML::Key << "LayerTextures" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << t.LayerTexturePaths[0] << t.LayerTexturePaths[1]
+            << t.LayerTexturePaths[2] << t.LayerTexturePaths[3] << YAML::EndSeq;
+        out << YAML::Key << "LayerTiling" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << t.LayerTiling[0] << t.LayerTiling[1]
+            << t.LayerTiling[2] << t.LayerTiling[3] << YAML::EndSeq;
+        out << YAML::Key << "BlendHeights" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << t.BlendHeights[0] << t.BlendHeights[1] << t.BlendHeights[2] << YAML::EndSeq;
+        out << YAML::Key << "Roughness" << YAML::Value << t.Roughness;
+        out << YAML::EndMap;
+    }
+
     // UICanvasComponent
     if (entity.HasComponent<UICanvasComponent>()) {
         auto& uc = entity.GetComponent<UICanvasComponent>();
@@ -865,6 +892,35 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (!texPath.empty() && mr.Mat)
                     mr.Mat->SetTexture("u_Texture", texPath);
             }
+        }
+
+        // TerrainComponent
+        if (auto tNode = entityNode["TerrainComponent"]) {
+            auto& t = entity.AddComponent<TerrainComponent>();
+            if (tNode["Resolution"])   t.Resolution   = tNode["Resolution"].as<int>();
+            if (tNode["WorldSizeX"])   t.WorldSizeX   = tNode["WorldSizeX"].as<float>();
+            if (tNode["WorldSizeZ"])   t.WorldSizeZ   = tNode["WorldSizeZ"].as<float>();
+            if (tNode["HeightScale"])  t.HeightScale  = tNode["HeightScale"].as<float>();
+            if (tNode["HeightmapPath"]) t.HeightmapPath = tNode["HeightmapPath"].as<std::string>();
+            if (tNode["Octaves"])      t.Octaves      = tNode["Octaves"].as<int>();
+            if (tNode["Persistence"])  t.Persistence  = tNode["Persistence"].as<float>();
+            if (tNode["Lacunarity"])   t.Lacunarity   = tNode["Lacunarity"].as<float>();
+            if (tNode["NoiseScale"])   t.NoiseScale   = tNode["NoiseScale"].as<float>();
+            if (tNode["Seed"])         t.Seed         = tNode["Seed"].as<int>();
+            if (auto lt = tNode["LayerTextures"]) {
+                for (int i = 0; i < 4 && i < (int)lt.size(); i++)
+                    t.LayerTexturePaths[i] = lt[i].as<std::string>();
+            }
+            if (auto tl = tNode["LayerTiling"]) {
+                for (int i = 0; i < 4 && i < (int)tl.size(); i++)
+                    t.LayerTiling[i] = tl[i].as<float>();
+            }
+            if (auto bh = tNode["BlendHeights"]) {
+                for (int i = 0; i < 3 && i < (int)bh.size(); i++)
+                    t.BlendHeights[i] = bh[i].as<float>();
+            }
+            if (tNode["Roughness"]) t.Roughness = tNode["Roughness"].as<float>();
+            t._NeedsRebuild = true;
         }
 
         // UI Components
