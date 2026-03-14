@@ -470,13 +470,13 @@ void MeshLibrary::Init() {
             for (int s = 0; s < segments; s++) {
                 uint32_t a = static_cast<uint32_t>(r * (segments + 1) + s);
                 uint32_t b = a + static_cast<uint32_t>(segments + 1);
-                // Outward-facing winding (for scene objects)
+                // Outward-facing winding (CCW when viewed from outside)
                 indices.push_back(a);
-                indices.push_back(b);
                 indices.push_back(a + 1);
                 indices.push_back(b);
+                indices.push_back(a + 1);
                 indices.push_back(b + 1);
-                indices.push_back(a + 1);
+                indices.push_back(b);
             }
         }
 

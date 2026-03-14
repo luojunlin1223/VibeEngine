@@ -50,11 +50,11 @@ std::shared_ptr<MeshAsset> LODMeshGenerator::CreateSphere(int rings, int segment
             uint32_t a = r * (segments + 1) + s;
             uint32_t b = a + (segments + 1);
             mesh->Indices.push_back(a);
-            mesh->Indices.push_back(b);
             mesh->Indices.push_back(a + 1);
             mesh->Indices.push_back(b);
+            mesh->Indices.push_back(a + 1);
             mesh->Indices.push_back(b + 1);
-            mesh->Indices.push_back(a + 1);
+            mesh->Indices.push_back(b);
         }
     }
 
