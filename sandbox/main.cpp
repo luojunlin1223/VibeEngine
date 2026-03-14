@@ -1680,12 +1680,17 @@ private:
         ImGui::Begin("Hierarchy", &m_ShowHierarchy);
 
         // Draw only root entities (no parent), children are drawn recursively
+        // Collect roots in creation order (entt iterates newest-first, so reverse)
         auto view = m_Scene->GetAllEntitiesWith<VE::RelationshipComponent>();
+        std::vector<entt::entity> roots;
         for (auto entityID : view) {
             auto& rel = view.get<VE::RelationshipComponent>(entityID);
             if (rel.Parent == entt::null)
-                DrawEntityNode(entityID);
+                roots.push_back(entityID);
         }
+        std::reverse(roots.begin(), roots.end());
+        for (auto entityID : roots)
+            DrawEntityNode(entityID);
 
         // Drop on empty space: unparent
         if (ImGui::BeginDragDropTarget()) {
