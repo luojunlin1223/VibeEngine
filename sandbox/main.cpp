@@ -146,18 +146,23 @@ protected:
             static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
             GL_UNSIGNED_INT, nullptr);
 
-        // Pass 2: draw scaled-up mesh in outline color, only where stencil != 1
+        // Pass 2: draw scaled-up mesh with Cull Front (back-faces only),
+        // only where stencil != 1. Depth test stays enabled so the
+        // enlarged back-faces only appear at the silhouette edge.
         glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
         glStencilMask(0x00);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT); // only draw back-faces of the enlarged mesh
 
         VE::AABB localBox = VE::AABB{ glm::vec3(-0.5f), glm::vec3(0.5f) };
         if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>())
             localBox = GetEntityLocalAABB(m_SelectedEntity.GetComponent<VE::MeshRendererComponent>());
         glm::vec3 center = localBox.Center();
 
-        float outlineScale = 1.05f;
+        float outlineScale = 1.04f;
         glm::mat4 scaledModel = model
             * glm::translate(glm::mat4(1.0f), center)
             * glm::scale(glm::mat4(1.0f), glm::vec3(outlineScale))
@@ -177,6 +182,7 @@ protected:
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
+        glCullFace(GL_BACK);
     }
 
     VE::PostProcessSettings BuildPostProcessSettings() const {
