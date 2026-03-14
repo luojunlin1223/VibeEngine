@@ -18,6 +18,7 @@
 #include "VibeEngine/Asset/FBXImporter.h"
 #include "VibeEngine/Core/Log.h"
 
+#include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <sstream>
@@ -466,6 +467,7 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
     RenderCommand::SetDepthFunc(RendererAPI::DepthFunc::LessEqual);
 
     skyShader->Bind();
+    skyShader->ApplyRenderState(); // Cull Front, ZWrite Off, ZTest LEqual
     skyShader->SetMat4("u_MVP", skyViewProjection);
     skyShader->SetVec3("u_TopColor",
         glm::vec3(sky.SkyTopColor[0], sky.SkyTopColor[1], sky.SkyTopColor[2]));
@@ -482,8 +484,11 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
 
     RenderCommand::DrawIndexed(skyMesh);
 
+    // Restore default state for subsequent passes
     RenderCommand::SetDepthWrite(true);
     RenderCommand::SetDepthFunc(RendererAPI::DepthFunc::Less);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 }
 
 void Scene::ComputeShadows(const glm::mat4& viewMatrix,
