@@ -23,6 +23,7 @@ public:
     static std::shared_ptr<VertexArray> GetQuad();
     static std::shared_ptr<VertexArray> GetCube();
     static std::shared_ptr<VertexArray> GetSphere();
+    static std::shared_ptr<VertexArray> GetSkySphere();      // inside-facing for sky rendering
     static std::shared_ptr<Shader>      GetDefaultShader();  // unlit (2D)
     static std::shared_ptr<Shader>      GetLitShader();      // lit (3D)
     static std::shared_ptr<Shader>      GetSkyShader();      // sky gradient/texture
@@ -38,6 +39,7 @@ private:
     static std::shared_ptr<VertexArray> s_Quad;
     static std::shared_ptr<VertexArray> s_Cube;
     static std::shared_ptr<VertexArray> s_Sphere;
+    static std::shared_ptr<VertexArray> s_SkySphere;
     static std::shared_ptr<Shader>      s_DefaultShader;
     static std::shared_ptr<Shader>      s_LitShader;
     static std::shared_ptr<Shader>      s_SkyShader;

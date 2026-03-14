@@ -458,7 +458,7 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
     if (!m_PipelineSettings.SkyEnabled) return;
 
     auto skyShader = MeshLibrary::GetSkyShader();
-    auto skyMesh   = MeshLibrary::GetSphere();
+    auto skyMesh   = MeshLibrary::GetSkySphere();
     if (!skyShader || !skyMesh) return;
 
     auto& sky = m_PipelineSettings;
