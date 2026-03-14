@@ -537,6 +537,7 @@ protected:
         DrawProjectSettingsPanel();
         DrawGameViewPanel();
         DrawInputSettingsPanel();
+        DrawBuildPanel();
 
     }
 
@@ -802,6 +803,96 @@ private:
                 m_CurrentScenePath = path;
             m_CommandHistory.Clear();
         }
+    }
+
+    // ── Build Panel ──────────────────────────────────────────────────
+
+    void DrawBuildPanel() {
+        if (!m_ShowBuildPanel) return;
+        ImGui::Begin("Build Settings", &m_ShowBuildPanel);
+
+        // Game name
+        char nameBuf[256];
+        strncpy(nameBuf, m_BuildSettings.GameName.c_str(), sizeof(nameBuf) - 1);
+        nameBuf[sizeof(nameBuf) - 1] = 0;
+        if (ImGui::InputText("Game Name", nameBuf, sizeof(nameBuf)))
+            m_BuildSettings.GameName = nameBuf;
+
+        // Output directory
+        char outBuf[512];
+        strncpy(outBuf, m_BuildSettings.OutputDir.c_str(), sizeof(outBuf) - 1);
+        outBuf[sizeof(outBuf) - 1] = 0;
+        if (ImGui::InputText("Output Directory", outBuf, sizeof(outBuf)))
+            m_BuildSettings.OutputDir = outBuf;
+
+        // Startup scene
+        ImGui::Text("Startup Scene:");
+        ImGui::SameLine();
+        if (m_BuildSettings.StartupScene.empty()) {
+            ImGui::TextDisabled("(current scene)");
+        } else {
+            ImGui::Text("%s", m_BuildSettings.StartupScene.c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Use Current")) {
+            m_BuildSettings.StartupScene = m_CurrentScenePath;
+        }
+
+        // Config
+        ImGui::Checkbox("Release Mode", &m_BuildSettings.ReleaseMode);
+
+        ImGui::Separator();
+
+        // Build button
+        if (m_BuildInProgress) {
+            ImGui::TextColored({1, 1, 0, 1}, "Building...");
+        } else {
+            if (ImGui::Button("Build", ImVec2(120, 30))) {
+                m_BuildLog.clear();
+                m_BuildInProgress = true;
+
+                // Use current scene if no startup scene set
+                if (m_BuildSettings.StartupScene.empty() && !m_CurrentScenePath.empty())
+                    m_BuildSettings.StartupScene = m_CurrentScenePath;
+
+                std::string cmakePath =
+                    "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE"
+                    "\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe";
+
+                bool ok = VE::BuildExporter::Build(
+                    m_BuildSettings,
+                    std::string(VE_PROJECT_ROOT),
+                    cmakePath,
+                    m_BuildLog);
+
+                m_BuildInProgress = false;
+
+                if (ok)
+                    VE_INFO("Build succeeded!");
+                else
+                    VE_ERROR("Build failed!");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Open Output Folder", ImVec2(160, 30))) {
+                std::string fullPath = std::string(VE_PROJECT_ROOT) + "/" + m_BuildSettings.OutputDir;
+                std::filesystem::create_directories(fullPath);
+                std::string cmd = "explorer \"" + std::filesystem::absolute(fullPath).string() + "\"";
+                std::system(cmd.c_str());
+            }
+        }
+
+        // Build log
+        if (!m_BuildLog.empty()) {
+            ImGui::Separator();
+            ImGui::Text("Build Log:");
+            ImGui::BeginChild("BuildLog", ImVec2(0, 200), true);
+            ImGui::TextUnformatted(m_BuildLog.c_str());
+            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+                ImGui::SetScrollHereY(1.0f);
+            ImGui::EndChild();
+        }
+
+        ImGui::End();
     }
 
     // ── LOD Test Scene ────────────────────────────────────────────────
@@ -1231,6 +1322,8 @@ private:
                 if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) SaveSceneAs();
                 ImGui::Separator();
                 if (ImGui::MenuItem("Create LOD Test Scene")) CreateLODTestScene();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Build Settings...")) m_ShowBuildPanel = true;
                 ImGui::Separator();
                 if (ImGui::MenuItem("Exit"))
                     glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
@@ -4409,6 +4502,12 @@ private:
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
+    bool m_ShowBuildPanel = false;
+
+    // Build settings
+    VE::BuildSettings m_BuildSettings;
+    std::string m_BuildLog;
+    bool m_BuildInProgress = false;
 
     // LOD test scene mesh storage (keep alive)
     std::vector<std::shared_ptr<VE::MeshAsset>> m_LODMeshes;

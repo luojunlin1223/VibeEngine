@@ -7,6 +7,7 @@
 #include "Core/UUID.h"
 #include "Core/Object.h"
 #include "Core/FileDialog.h"
+#include "Core/BuildExporter.h"
 
 #include "Renderer/Renderer.h"
 #include "Renderer/RenderCommand.h"

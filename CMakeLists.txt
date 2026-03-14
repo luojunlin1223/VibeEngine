@@ -123,6 +123,7 @@ FetchContent_MakeAvailable(JoltPhysics)
 # Find Vulkan SDK
 find_package(Vulkan REQUIRED)
 
-# ── Engine & Sandbox ─────────────────────────────────────────────────
+# ── Engine, Sandbox & Runtime ────────────────────────────────────────
 add_subdirectory(engine)
 add_subdirectory(sandbox)
+add_subdirectory(runtime)
