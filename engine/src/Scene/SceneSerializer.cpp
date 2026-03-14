@@ -701,12 +701,14 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 mr.Mat = MeshLibrary::IsLitMesh(meshIndex)
                     ? MaterialLibrary::Get("Lit")
                     : MaterialLibrary::Get("Default");
+                mr.LocalBounds = MeshLibrary::GetMeshAABB(meshIndex);
             } else if (meshIndex == -1 && mrNode["MeshSource"]) {
                 mr.MeshSourcePath = mrNode["MeshSource"].as<std::string>();
                 auto meshAsset = MeshImporter::GetOrLoad(mr.MeshSourcePath);
                 if (meshAsset && meshAsset->VAO) {
                     mr.Mesh = meshAsset->VAO;
                     mr.Mat = MaterialLibrary::Get("Lit");
+                    mr.LocalBounds = meshAsset->BoundingBox;
                 }
             }
             if (auto colorNode = mrNode["Color"]) {

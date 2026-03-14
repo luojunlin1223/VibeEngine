@@ -4,6 +4,7 @@
 namespace VE {
 
 std::unique_ptr<RendererAPI> RenderCommand::s_RendererAPI = nullptr;
+RenderStats RenderCommand::s_Stats = {};
 
 void RenderCommand::Init() {
     s_RendererAPI = RendererAPI::Create();
@@ -28,14 +29,29 @@ void RenderCommand::Clear() {
 
 void RenderCommand::DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray) {
     s_RendererAPI->DrawIndexed(vertexArray);
+    if (vertexArray && vertexArray->GetIndexBuffer()) {
+        uint32_t indexCount = vertexArray->GetIndexBuffer()->GetCount();
+        s_Stats.DrawCalls++;
+        s_Stats.Triangles += indexCount / 3;
+        s_Stats.Vertices += indexCount; // conservative: index count as drawn vertices
+    }
 }
 
 void RenderCommand::DrawIndexedInstanced(const std::shared_ptr<VertexArray>& vertexArray, uint32_t instanceCount) {
     s_RendererAPI->DrawIndexedInstanced(vertexArray, instanceCount);
+    if (vertexArray && vertexArray->GetIndexBuffer()) {
+        uint32_t indexCount = vertexArray->GetIndexBuffer()->GetCount();
+        s_Stats.DrawCalls++;
+        s_Stats.Instances += instanceCount;
+        s_Stats.Triangles += (indexCount / 3) * instanceCount;
+        s_Stats.Vertices += indexCount * instanceCount;
+    }
 }
 
 void RenderCommand::DrawLines(const std::shared_ptr<VertexArray>& vertexArray, uint32_t vertexCount) {
     s_RendererAPI->DrawLines(vertexArray, vertexCount);
+    s_Stats.DrawCalls++;
+    s_Stats.Vertices += vertexCount;
 }
 
 void RenderCommand::SetLineWidth(float width) {

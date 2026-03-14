@@ -10,6 +10,7 @@
 #include "VibeEngine/Audio/AudioEngine.h"
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Renderer/InstancedRenderer.h"
+#include "VibeEngine/Renderer/Frustum.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -572,8 +573,15 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         if (!hasCutoff)    shader->SetFloat("u_Cutoff", 0.0f);
     };
 
+    // ── Frustum culling setup ─────────────────────────────────────────
+    Frustum frustum(viewProjection);
+    // Default unit AABB for meshes without explicit bounds
+    static const AABB s_UnitAABB = { glm::vec3(-0.5f), glm::vec3(0.5f) };
+
     // ── Begin instanced batching ────────────────────────────────────
     InstancedRenderer::BeginScene(viewProjection);
+
+    auto& stats = const_cast<RenderStats&>(RenderCommand::GetStats());
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entityID : view) {
@@ -583,6 +591,47 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             continue;
 
         glm::mat4 model = GetWorldTransform(entityID);
+
+        // ── Frustum cull: transform local AABB to world-space AABB ──
+        {
+            // Lazily populate LocalBounds if not set
+            if (!mr.LocalBounds.Valid()) {
+                // Try to match against MeshLibrary built-in meshes
+                bool found = false;
+                for (int idx = 0; idx < MeshLibrary::GetMeshCount(); ++idx) {
+                    if (mr.Mesh == MeshLibrary::GetMeshByIndex(idx)) {
+                        mr.LocalBounds = MeshLibrary::GetMeshAABB(idx);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    mr.LocalBounds = s_UnitAABB;
+            }
+
+            const AABB& localAABB = mr.LocalBounds;
+            // Transform all 8 corners of the local AABB by the model matrix
+            // and compute a world-space AABB that encloses them
+            glm::vec3 worldMin( std::numeric_limits<float>::max());
+            glm::vec3 worldMax(-std::numeric_limits<float>::max());
+            for (int i = 0; i < 8; ++i) {
+                glm::vec3 corner(
+                    (i & 1) ? localAABB.Max.x : localAABB.Min.x,
+                    (i & 2) ? localAABB.Max.y : localAABB.Min.y,
+                    (i & 4) ? localAABB.Max.z : localAABB.Min.z
+                );
+                glm::vec3 worldCorner = glm::vec3(model * glm::vec4(corner, 1.0f));
+                worldMin = glm::min(worldMin, worldCorner);
+                worldMax = glm::max(worldMax, worldCorner);
+            }
+
+            if (!frustum.TestAABB(worldMin, worldMax)) {
+                stats.CulledObjects++;
+                continue; // outside frustum, skip rendering
+            }
+            stats.VisibleObjects++;
+        }
+
         glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
 
         // Determine if this entity can be GPU-instanced:

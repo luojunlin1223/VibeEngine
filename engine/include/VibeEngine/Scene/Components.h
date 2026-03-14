@@ -12,6 +12,7 @@
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Asset/MeshAsset.h"
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -266,6 +267,10 @@ struct MeshRendererComponent {
     std::string                   MaterialPath;   // .vmat path for custom materials
     std::string                   MeshSourcePath; // for imported meshes (FBX etc.)
     bool                          CastShadows = true;
+
+    // Local-space AABB for frustum culling (set when mesh is assigned).
+    // If invalid (default), a unit AABB [-0.5, 0.5] is assumed.
+    AABB LocalBounds;
 
     /// Per-entity material property overrides (like script property reflection).
     /// Populated from material defaults, editable per-entity, serialized with scene.

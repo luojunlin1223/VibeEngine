@@ -22,6 +22,7 @@
 #include "Renderer/SpriteBatchRenderer.h"
 #include "Renderer/RenderGraph.h"
 #include "Renderer/InstancedRenderer.h"
+#include "Renderer/Frustum.h"
 
 #include "Scene/Components.h"
 #include "Scene/Entity.h"

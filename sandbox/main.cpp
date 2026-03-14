@@ -531,8 +531,6 @@ protected:
         DrawProjectSettingsPanel();
         DrawGameViewPanel();
 
-        if (m_ShowDemo)
-            ImGui::ShowDemoWindow(&m_ShowDemo);
     }
 
     void OnRendererReloaded() override {
@@ -1143,8 +1141,6 @@ private:
                 ImGui::MenuItem("Scripting", nullptr, &m_ShowScripting);
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
-                ImGui::Separator();
-                ImGui::MenuItem("Demo Window", nullptr, &m_ShowDemo);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -3911,9 +3907,8 @@ private:
     void DrawSceneInfoPanel() {
         if (!m_ShowSceneInfo) return;
         ImGui::Begin("Scene Info", &m_ShowSceneInfo);
-        ImGui::Text("VibeEngine v0.2.0");
-        ImGui::Separator();
 
+        // ── Settings ──
         const char* apiNames[] = { "OpenGL", "Vulkan" };
         int currentAPI = (GetCurrentAPI() == VE::RendererAPI::API::OpenGL) ? 0 : 1;
         if (ImGui::Combo("Renderer", &currentAPI, apiNames, 2)) {
@@ -3928,28 +3923,67 @@ private:
                 ? VE::CameraMode::Orthographic2D : VE::CameraMode::Perspective3D);
         }
 
-        int drawCalls = 0;
-        auto view = m_Scene->GetAllEntitiesWith<VE::MeshRendererComponent>();
-        for (auto e : view) {
-            auto& mr = view.get<VE::MeshRendererComponent>(e);
-            if (mr.Mesh && mr.Mat) drawCalls++;
-        }
-        ImGui::Text("Entities: %d", static_cast<int>(m_Scene->GetRegistry().storage<entt::entity>().size()));
-        ImGui::Text("Draw calls: %d", drawCalls);
-
         ImGui::Separator();
         ImGui::Text("Scene: %s", m_CurrentScenePath.empty() ? "(unsaved)" : m_CurrentScenePath.c_str());
 
+        // ── Statistics (Unity-style) ──
         ImGui::Separator();
-        if (m_Camera.GetMode() == VE::CameraMode::Perspective3D) {
-            auto p = m_Camera.GetPosition3D();
-            ImGui::Text("Camera: (%.1f, %.1f, %.1f) dist=%.2f", p.x, p.y, p.z, m_Camera.GetDistance());
-        } else {
-            ImGui::Text("Camera: (%.1f, %.1f) zoom=%.2f",
-                m_Camera.GetPosition().x, m_Camera.GetPosition().y, m_Camera.GetZoom());
+        if (ImGui::CollapsingHeader("Statistics", ImGuiTreeNodeFlags_DefaultOpen)) {
+            float fps = ImGui::GetIO().Framerate;
+            float ms  = 1000.0f / fps;
+            ImGui::Text("FPS: %.1f  (%.2f ms)", fps, ms);
+
+            ImGui::Separator();
+            const auto& stats = VE::RenderCommand::GetStats();
+            auto spriteStats  = VE::SpriteBatchRenderer::GetStats();
+            auto instanceStats = VE::InstancedRenderer::GetStats();
+
+            uint32_t totalDrawCalls = stats.DrawCalls + spriteStats.DrawCalls + instanceStats.DrawCalls;
+            uint32_t totalTris      = stats.Triangles + spriteStats.QuadCount * 2;
+            uint32_t totalVerts     = stats.Vertices + spriteStats.QuadCount * 4;
+
+            // Batches = draw calls saved by batching
+            uint32_t batchedBy = instanceStats.InstanceCount > 0
+                ? (instanceStats.InstanceCount - instanceStats.DrawCalls) : 0;
+
+            int entityCount = static_cast<int>(m_Scene->GetRegistry().storage<entt::entity>().size());
+
+            ImGui::Text("Batches:        %u", totalDrawCalls);
+            ImGui::Text("  Draw Calls:   %u", totalDrawCalls);
+            ImGui::Text("  Saved by batching: %u", batchedBy);
+            ImGui::Text("Triangles:      %s", FormatNumber(totalTris).c_str());
+            ImGui::Text("Vertices:       %s", FormatNumber(totalVerts).c_str());
+            ImGui::Separator();
+            ImGui::Text("Entities:       %d", entityCount);
+            ImGui::Text("  Visible:      %u", stats.VisibleObjects);
+            ImGui::Text("  Culled:       %u", stats.CulledObjects);
+            ImGui::Text("Sprites:        %u", spriteStats.QuadCount);
+            ImGui::Text("Instances:      %u", instanceStats.InstanceCount);
         }
-        ImGui::Text("FPS: %.1f (%.3f ms)", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+
+        // ── Camera ──
+        if (ImGui::CollapsingHeader("Camera")) {
+            if (m_Camera.GetMode() == VE::CameraMode::Perspective3D) {
+                auto p = m_Camera.GetPosition3D();
+                ImGui::Text("Position: (%.1f, %.1f, %.1f)", p.x, p.y, p.z);
+                ImGui::Text("Distance: %.2f", m_Camera.GetDistance());
+            } else {
+                ImGui::Text("Position: (%.1f, %.1f)",
+                    m_Camera.GetPosition().x, m_Camera.GetPosition().y);
+                ImGui::Text("Zoom: %.2f", m_Camera.GetZoom());
+            }
+        }
+
         ImGui::End();
+    }
+
+    static std::string FormatNumber(uint32_t n) {
+        if (n >= 1000000) {
+            return std::to_string(n / 1000000) + "." + std::to_string((n % 1000000) / 100000) + "M";
+        } else if (n >= 1000) {
+            return std::to_string(n / 1000) + "." + std::to_string((n % 1000) / 100) + "k";
+        }
+        return std::to_string(n);
     }
 
 private:
@@ -3978,7 +4012,6 @@ private:
     bool m_ShowPipelineSettings = false;
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
-    bool m_ShowDemo = false;
     bool m_ShowProjectSettings = false;
 
     // Project settings: custom tags & layers
