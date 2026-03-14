@@ -11,6 +11,7 @@
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Renderer/Frustum.h"
+#include "VibeEngine/Renderer/LODSystem.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -698,6 +699,27 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                 continue;
             }
             stats.VisibleObjects++;
+        }
+
+        // ── LOD selection ───────────────────────────────────────────
+        if (m_Registry.all_of<LODGroupComponent>(entityID)) {
+            auto& lodGroup = m_Registry.get<LODGroupComponent>(entityID);
+            if (!lodGroup.Levels.empty()) {
+                glm::vec3 worldPos = glm::vec3(model[3]);
+                float dist = glm::length(worldPos - cameraPos);
+                int lodIndex = SelectLOD(lodGroup, dist);
+
+                if (lodIndex < 0) {
+                    stats.CulledObjects++;
+                    stats.VisibleObjects--; // was counted above
+                    continue; // culled by LOD distance
+                }
+
+                lodGroup._ActiveLOD = lodIndex;
+                auto& level = lodGroup.Levels[lodIndex];
+                if (level.Mesh)
+                    mr.Mesh = level.Mesh;
+            }
         }
 
         // Determine transparency: material blend OR per-entity alpha < 1

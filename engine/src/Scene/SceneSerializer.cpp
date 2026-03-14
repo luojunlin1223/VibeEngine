@@ -4,6 +4,7 @@
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Renderer/LODSystem.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <yaml-cpp/yaml.h>
@@ -249,6 +250,24 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "PlayOnStart" << YAML::Value << ac.PlayOnStart;
         out << YAML::Key << "Loop" << YAML::Value << ac.Loop;
         out << YAML::Key << "Speed" << YAML::Value << ac.Speed;
+        out << YAML::EndMap;
+    }
+
+    // LODGroupComponent
+    if (entity.HasComponent<LODGroupComponent>()) {
+        auto& lod = entity.GetComponent<LODGroupComponent>();
+        out << YAML::Key << "LODGroupComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "CullDistance" << YAML::Value << lod.CullDistance;
+        out << YAML::Key << "Levels" << YAML::Value << YAML::BeginSeq;
+        for (const auto& level : lod.Levels) {
+            out << YAML::BeginMap;
+            out << YAML::Key << "MeshType" << YAML::Value << level.MeshType;
+            if (!level.MeshSourcePath.empty())
+                out << YAML::Key << "MeshSource" << YAML::Value << level.MeshSourcePath;
+            out << YAML::Key << "MaxDistance" << YAML::Value << level.MaxDistance;
+            out << YAML::EndMap;
+        }
+        out << YAML::EndSeq;
         out << YAML::EndMap;
     }
 
@@ -691,6 +710,28 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             if (acNode["PlayOnStart"]) ac.PlayOnStart = acNode["PlayOnStart"].as<bool>();
             if (acNode["Loop"])        ac.Loop        = acNode["Loop"].as<bool>();
             if (acNode["Speed"])       ac.Speed       = acNode["Speed"].as<float>();
+        }
+
+        if (auto lodNode = entityNode["LODGroupComponent"]) {
+            auto& lod = entity.AddComponent<LODGroupComponent>();
+            if (lodNode["CullDistance"])
+                lod.CullDistance = lodNode["CullDistance"].as<float>();
+            if (auto levelsNode = lodNode["Levels"]) {
+                for (auto levelNode : levelsNode) {
+                    LODLevel level;
+                    level.MeshType = levelNode["MeshType"].as<int>(-1);
+                    if (level.MeshType >= 0 && level.MeshType < MeshLibrary::GetMeshCount()) {
+                        level.Mesh = MeshLibrary::GetMeshByIndex(level.MeshType);
+                    } else if (levelNode["MeshSource"]) {
+                        level.MeshSourcePath = levelNode["MeshSource"].as<std::string>();
+                        auto meshAsset = MeshImporter::GetOrLoad(level.MeshSourcePath);
+                        if (meshAsset && meshAsset->VAO)
+                            level.Mesh = meshAsset->VAO;
+                    }
+                    level.MaxDistance = levelNode["MaxDistance"].as<float>(50.0f);
+                    lod.Levels.push_back(level);
+                }
+            }
         }
 
         if (auto mrNode = entityNode["MeshRendererComponent"]) {

@@ -804,6 +804,89 @@ private:
         }
     }
 
+    // ── LOD Test Scene ────────────────────────────────────────────────
+
+    void CreateLODTestScene() {
+        NewScene();
+
+        // Generate LOD sphere meshes with varying detail
+        auto sphereHigh = VE::LODMeshGenerator::CreateSphere(32, 64);   // 4096 tris
+        auto sphereMed  = VE::LODMeshGenerator::CreateSphere(16, 32);   // 1024 tris
+        auto sphereLow  = VE::LODMeshGenerator::CreateSphere(8, 16);    // 256 tris
+        auto sphereMin  = VE::LODMeshGenerator::CreateSphere(4, 8);     // 64 tris
+
+        auto litMat = VE::MaterialLibrary::Get("Lit");
+
+        // Create a grid of LOD spheres
+        float spacing = 4.0f;
+        int gridSize = 5;
+        for (int x = 0; x < gridSize; ++x) {
+            for (int z = 0; z < gridSize; ++z) {
+                float px = (x - gridSize / 2) * spacing;
+                float pz = (z - gridSize / 2) * spacing;
+
+                std::string name = "LOD Sphere (" + std::to_string(x) + "," + std::to_string(z) + ")";
+                auto e = m_Scene->CreateEntity(name);
+
+                auto& tc = e.GetComponent<VE::TransformComponent>();
+                tc.Position = { px, 1.0f, pz };
+
+                auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+                mr.Mesh = sphereHigh->VAO;
+                mr.Mat = litMat;
+                // Vary colors across the grid
+                float hue = static_cast<float>(x * gridSize + z) / (gridSize * gridSize);
+                mr.Color = { 0.3f + hue * 0.7f, 0.5f + (1.0f - hue) * 0.5f, 0.3f + hue * 0.3f, 1.0f };
+                mr.LocalBounds = sphereHigh->BoundingBox;
+
+                // Add LOD group with 4 levels
+                auto& lod = e.AddComponent<VE::LODGroupComponent>();
+                lod.Levels.push_back({ sphereHigh->VAO, "", -1, 0, 10.0f });   // LOD 0: < 10m
+                lod.Levels.push_back({ sphereMed->VAO,  "", -1, 0, 25.0f });   // LOD 1: 10-25m
+                lod.Levels.push_back({ sphereLow->VAO,  "", -1, 0, 50.0f });   // LOD 2: 25-50m
+                lod.Levels.push_back({ sphereMin->VAO,  "", -1, 0, 100.0f });  // LOD 3: 50-100m
+                lod.CullDistance = 150.0f;
+            }
+        }
+
+        // Ground plane
+        {
+            auto e = m_Scene->CreateEntity("Ground");
+            auto& tc = e.GetComponent<VE::TransformComponent>();
+            tc.Position = { 0, -0.5f, 0 };
+            tc.Scale = { 40, 1, 40 };
+            auto& mr = e.AddComponent<VE::MeshRendererComponent>();
+            mr.Mesh = VE::MeshLibrary::GetCube();
+            mr.Mat = litMat;
+            mr.Color = { 0.5f, 0.5f, 0.5f, 1.0f };
+        }
+
+        // Directional light
+        {
+            auto e = m_Scene->CreateEntity("Directional Light");
+            auto& tc = e.GetComponent<VE::TransformComponent>();
+            tc.Position = { 0, 10, 0 };
+            e.AddComponent<VE::DirectionalLightComponent>();
+        }
+
+        // Main camera
+        {
+            auto e = m_Scene->CreateEntity("Main Camera");
+            auto& tag = e.GetComponent<VE::TagComponent>();
+            tag.GameObjectTag = "MainCamera";
+            auto& tc = e.GetComponent<VE::TransformComponent>();
+            tc.Position = { 0, 5, 15 };
+            tc.Rotation = { -15, 0, 0 };
+            auto& cam = e.AddComponent<VE::CameraComponent>();
+            cam.FOV = 60.0f;
+        }
+
+        // Store the generated meshes so they stay alive
+        m_LODMeshes = { sphereHigh, sphereMed, sphereLow, sphereMin };
+
+        VE_INFO("Created LOD Test Scene: {} spheres with 4 LOD levels", gridSize * gridSize);
+    }
+
     // ── Editor settings persistence ──────────────────────────────────
 
     // ── Built-in player controller for input testing ──────────────────
@@ -1146,6 +1229,8 @@ private:
                 ImGui::Separator();
                 if (ImGui::MenuItem("Save Scene", "Ctrl+S")) SaveScene();
                 if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) SaveSceneAs();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Create LOD Test Scene")) CreateLODTestScene();
                 ImGui::Separator();
                 if (ImGui::MenuItem("Exit"))
                     glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
@@ -3028,6 +3113,66 @@ private:
             ImGui::Separator();
         }
 
+        // ── LODGroup Component ──
+        if (m_SelectedEntity.HasComponent<VE::LODGroupComponent>()) {
+            bool removeLOD = false;
+            bool openLOD = ImGui::CollapsingHeader("LOD Group", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::LODGroupComponent>("##LODGroupCtx", "LODGroup", removeLOD);
+            if (openLOD) {
+                auto& lod = m_SelectedEntity.GetComponent<VE::LODGroupComponent>();
+                ImGui::DragFloat("Cull Distance", &lod.CullDistance, 1.0f, 0.0f, 10000.0f, "%.0f");
+                ImGui::Text("Active LOD: %d / %d", lod._ActiveLOD, static_cast<int>(lod.Levels.size()));
+
+                for (int i = 0; i < static_cast<int>(lod.Levels.size()); ++i) {
+                    ImGui::PushID(i);
+                    auto& level = lod.Levels[i];
+
+                    // LOD header with color indicator
+                    float hue = static_cast<float>(i) / std::max(1, static_cast<int>(lod.Levels.size()));
+                    ImVec4 lodColor(1 - hue, hue * 0.7f + 0.3f, 0.3f, 1.0f);
+                    if (i == lod._ActiveLOD)
+                        lodColor = ImVec4(0.3f, 1.0f, 0.3f, 1.0f);
+
+                    ImGui::TextColored(lodColor, "LOD %d", i);
+                    ImGui::SameLine(80);
+
+                    // Mesh info
+                    std::string meshName = "None";
+                    if (level.MeshType >= 0 && level.MeshType < VE::MeshLibrary::GetMeshCount())
+                        meshName = VE::MeshLibrary::GetMeshName(level.MeshType);
+                    else if (!level.MeshSourcePath.empty())
+                        meshName = std::filesystem::path(level.MeshSourcePath).stem().string();
+                    else if (level.Mesh)
+                        meshName = "Custom";
+                    ImGui::Text("%s", meshName.c_str());
+                    ImGui::SameLine(200);
+
+                    ImGui::SetNextItemWidth(100);
+                    ImGui::DragFloat("##dist", &level.MaxDistance, 1.0f, 0.0f, 10000.0f, "%.0f m");
+
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("X")) {
+                        lod.Levels.erase(lod.Levels.begin() + i);
+                        --i;
+                    }
+                    ImGui::PopID();
+                }
+
+                if (ImGui::Button("Add LOD Level")) {
+                    VE::LODLevel newLevel;
+                    newLevel.MaxDistance = lod.Levels.empty() ? 20.0f
+                        : lod.Levels.back().MaxDistance + 20.0f;
+                    // Default to Cube mesh
+                    newLevel.MeshType = 2;
+                    newLevel.Mesh = VE::MeshLibrary::GetCube();
+                    lod.Levels.push_back(newLevel);
+                }
+            }
+            if (removeLOD)
+                m_SelectedEntity.RemoveComponent<VE::LODGroupComponent>();
+            ImGui::Separator();
+        }
+
         if (ImGui::Button("Add Component", ImVec2(-1, 0)))
             ImGui::OpenPopup("AddComponentPopup");
         if (ImGui::BeginPopup("AddComponentPopup")) {
@@ -3071,6 +3216,13 @@ private:
                         auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = VE::MeshLibrary::GetCube();
                         mr.Mat = VE::MaterialLibrary::Get("Lit");
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::LODGroupComponent>()) {
+                if (ImGui::MenuItem("LOD Group"))
+                    m_CommandHistory.Execute("Add LOD Group", [this]() {
+                        m_SelectedEntity.AddComponent<VE::LODGroupComponent>();
                     });
                 anyAdded = true;
             }
@@ -4257,6 +4409,9 @@ private:
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
+
+    // LOD test scene mesh storage (keep alive)
+    std::vector<std::shared_ptr<VE::MeshAsset>> m_LODMeshes;
 
     // Project settings: custom tags & layers
     std::vector<std::string> m_CustomTags = {

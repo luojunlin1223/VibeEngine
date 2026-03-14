@@ -23,6 +23,7 @@
 #include "Renderer/RenderGraph.h"
 #include "Renderer/InstancedRenderer.h"
 #include "Renderer/Frustum.h"
+#include "Renderer/LODSystem.h"
 
 #include "Input/KeyCodes.h"
 #include "Input/Input.h"
