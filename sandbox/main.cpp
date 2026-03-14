@@ -602,6 +602,13 @@ protected:
         DrawInputSettingsPanel();
         DrawBuildPanel();
 
+        // Restore focus on first frame
+        if (m_RestoreFocusFrame > 0) {
+            m_RestoreFocusFrame--;
+            if (m_RestoreFocusFrame == 0 && !m_LastFocusedWindow.empty())
+                ImGui::SetWindowFocus(m_LastFocusedWindow.c_str());
+        }
+
     }
 
     void OnRendererReloaded() override {
@@ -1137,6 +1144,12 @@ private:
         out << YAML::Key << "ShowScripting" << YAML::Value << m_ShowScripting;
         out << YAML::Key << "ShowContentBrowser" << YAML::Value << m_ShowContentBrowser;
         out << YAML::Key << "ShowHierarchy" << YAML::Value << m_ShowHierarchy;
+        out << YAML::Key << "ShowInspector" << YAML::Value << m_ShowInspector;
+        out << YAML::Key << "ShowSceneInfo" << YAML::Value << m_ShowSceneInfo;
+        out << YAML::Key << "ShowInputSettings" << YAML::Value << m_ShowInputSettings;
+
+        // Last focused window
+        out << YAML::Key << "FocusedWindow" << YAML::Value << m_LastFocusedWindow;
 
         out << YAML::EndMap;
 
@@ -1208,6 +1221,16 @@ private:
                 m_ShowContentBrowser = root["ShowContentBrowser"].as<bool>(true);
             if (root["ShowHierarchy"])
                 m_ShowHierarchy = root["ShowHierarchy"].as<bool>(true);
+            if (root["ShowInspector"])
+                m_ShowInspector = root["ShowInspector"].as<bool>(true);
+            if (root["ShowSceneInfo"])
+                m_ShowSceneInfo = root["ShowSceneInfo"].as<bool>(true);
+            if (root["ShowInputSettings"])
+                m_ShowInputSettings = root["ShowInputSettings"].as<bool>(false);
+
+            // Restore focused window (apply on next frame)
+            if (root["FocusedWindow"])
+                m_LastFocusedWindow = root["FocusedWindow"].as<std::string>("");
 
             VE_INFO("Editor settings restored");
         } catch (const std::exception& e) {
@@ -1472,6 +1495,7 @@ private:
 
         m_ViewportHovered = ImGui::IsWindowHovered();
         m_ViewportFocused = ImGui::IsWindowFocused();
+        if (m_ViewportFocused) m_LastFocusedWindow = "Viewport";
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0) {
@@ -1692,6 +1716,7 @@ private:
     void DrawHierarchyPanel() {
         if (!m_ShowHierarchy) return;
         ImGui::Begin("Hierarchy", &m_ShowHierarchy);
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Hierarchy";
 
         // Draw only root entities (no parent), children are drawn recursively
         // Collect roots in creation order (entt iterates newest-first, so reverse)
@@ -2518,6 +2543,7 @@ private:
     void DrawInspectorPanel() {
         if (!m_ShowInspector) return;
         ImGui::Begin("Inspector", &m_ShowInspector);
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Inspector";
 
         // Asset inspector (takes priority when an asset is selected)
         if (!m_SelectedAssetPath.empty()) {
@@ -4230,6 +4256,7 @@ private:
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin("Game", &m_ShowGameView);
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Game";
 
         ImVec2 viewportSize = ImGui::GetContentRegionAvail();
         if (viewportSize.x > 0 && viewportSize.y > 0 && m_GameFramebuffer) {
@@ -4275,6 +4302,7 @@ private:
     void DrawContentBrowserPanel() {
         if (!m_ShowContentBrowser) return;
         ImGui::Begin("Content Browser", &m_ShowContentBrowser);
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Content Browser";
 
         // Breadcrumb navigation
         {
@@ -4652,6 +4680,7 @@ private:
     void DrawSceneInfoPanel() {
         if (!m_ShowSceneInfo) return;
         ImGui::Begin("Scene Info", &m_ShowSceneInfo);
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) m_LastFocusedWindow = "Scene Info";
 
         // ── Settings ──
         const char* apiNames[] = { "OpenGL", "Vulkan" };
@@ -4901,6 +4930,10 @@ private:
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
     bool m_ShowBuildPanel = false;
+
+    // Last focused window for session restore
+    std::string m_LastFocusedWindow;
+    int m_RestoreFocusFrame = 3; // delay a few frames for ImGui layout to settle
 
     // Build settings
     VE::BuildSettings m_BuildSettings;
