@@ -49,14 +49,14 @@ public:
         // Command history (undo/redo)
         m_CommandHistory.SetScene(&m_Scene);
         m_CommandHistory.SetRestoreCallback([this]() {
-            m_SelectedEntity = {};
+            ClearSelection();
             uint64_t uuid = m_CommandHistory.GetSelectedEntityUUID();
             if (uuid != 0) {
                 auto view = m_Scene->GetAllEntitiesWith<VE::IDComponent>();
                 for (auto e : view) {
                     auto& id = view.get<VE::IDComponent>(e);
                     if (static_cast<uint64_t>(id.ID) == uuid) {
-                        m_SelectedEntity = VE::Entity(e, &*m_Scene);
+                        SelectEntityOnly(VE::Entity(e, &*m_Scene));
                         break;
                     }
                 }
@@ -557,8 +557,17 @@ protected:
             }
             if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false))
                 m_CommandHistory.Redo();
-            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && m_SelectedEntity.GetHandle() != entt::null)
+            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && (m_SelectedEntity.GetHandle() != entt::null || !m_SelectedEntities.empty()))
                 DuplicateSelectedEntity();
+            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+                auto& reg = m_Scene->GetRegistry();
+                auto view = reg.view<VE::TagComponent>();
+                ClearSelection();
+                for (auto e : view) {
+                    m_SelectedEntities.insert(e);
+                    m_SelectedEntity = VE::Entity(e, &*m_Scene);
+                }
+            }
 
             // Copy/Cut/Paste (only when no text input is active)
             if (!io.WantTextInput) {
@@ -594,9 +603,24 @@ protected:
                 tc.Position[0] = m_DragStartPos[0] + localDelta.x;
                 tc.Position[1] = m_DragStartPos[1] + localDelta.y;
                 tc.Position[2] = m_DragStartPos[2] + localDelta.z;
+
+                // Batch move: apply same world delta to all other selected entities
+                for (auto selEntity : m_SelectedEntities) {
+                    if (selEntity == m_SelectedEntity.GetHandle()) continue;
+                    if (!m_Scene->GetRegistry().valid(selEntity)) continue;
+                    if (!m_Scene->GetRegistry().any_of<VE::TransformComponent>(selEntity)) continue;
+                    auto it = m_BatchDragStartPositions.find(selEntity);
+                    if (it != m_BatchDragStartPositions.end()) {
+                        auto& otherTc = m_Scene->GetRegistry().get<VE::TransformComponent>(selEntity);
+                        otherTc.Position[0] = it->second[0] + localDelta.x;
+                        otherTc.Position[1] = it->second[1] + localDelta.y;
+                        otherTc.Position[2] = it->second[2] + localDelta.z;
+                    }
+                }
             } else {
                 if (!m_PlayMode) m_CommandHistory.EndPropertyEdit();
                 m_DraggingAxis = VE::GizmoAxis::None;
+                m_BatchDragStartPositions.clear();
             }
         }
 
@@ -670,6 +694,7 @@ protected:
                 }
 
                 if (axis != VE::GizmoAxis::None) {
+                    // Start gizmo drag (batch move will be applied for all selected)
                     if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit("Move Entity");
                     m_DraggingAxis = axis;
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
@@ -692,8 +717,47 @@ protected:
 
                     m_DragOriginVal = VE::GizmoRenderer::ProjectMouseOntoAxis(
                         axis, m_DragWorldStartPos, io.MousePos.x, io.MousePos.y, m_DragWorldRot);
+
+                    // Capture start positions of all selected entities for batch move
+                    m_BatchDragStartPositions.clear();
+                    for (auto selEntity : m_SelectedEntities) {
+                        if (m_Scene->GetRegistry().valid(selEntity) &&
+                            m_Scene->GetRegistry().any_of<VE::TransformComponent>(selEntity)) {
+                            auto& stc = m_Scene->GetRegistry().get<VE::TransformComponent>(selEntity);
+                            m_BatchDragStartPositions[selEntity] = { stc.Position[0], stc.Position[1], stc.Position[2] };
+                        }
+                    }
                 } else {
-                    m_SelectedEntity = HitTestEntities(io.MousePos.x, io.MousePos.y);
+                    // Click to select entity or start box selection
+                    VE::Entity hitEntity = HitTestEntities(io.MousePos.x, io.MousePos.y);
+                    if (hitEntity) {
+                        if (io.KeyCtrl) {
+                            ToggleEntitySelection(hitEntity.GetHandle());
+                        } else {
+                            SelectEntityOnly(hitEntity);
+                        }
+                    } else {
+                        // Clicked on empty space: start box selection
+                        if (!io.KeyCtrl)
+                            ClearSelection();
+                        m_EntityBoxSelecting = true;
+                        m_EntityBoxSelectStart = io.MousePos;
+                        m_EntityBoxSelectEnd = io.MousePos;
+                    }
+                }
+            }
+
+            // Box selection drag continuation
+            if (m_EntityBoxSelecting) {
+                m_EntityBoxSelectEnd = io.MousePos;
+                if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                    // Finish box select
+                    m_EntityBoxSelecting = false;
+                    float dx = m_EntityBoxSelectEnd.x - m_EntityBoxSelectStart.x;
+                    float dy = m_EntityBoxSelectEnd.y - m_EntityBoxSelectStart.y;
+                    if (dx * dx + dy * dy > 25.0f) { // Only box-select if dragged at least 5px
+                        PerformBoxSelect(m_EntityBoxSelectStart, m_EntityBoxSelectEnd, io.KeyCtrl);
+                    }
                 }
             }
         }
@@ -949,7 +1013,7 @@ private:
 
     void NewScene() {
         m_Scene = std::make_shared<VE::Scene>();
-        m_SelectedEntity = {};
+        ClearSelection();
         m_CurrentScenePath.clear();
         m_CommandHistory.Clear();
         VE_INFO("New scene created");
@@ -974,7 +1038,7 @@ private:
         std::string path = VE::FileDialog::OpenFile(s_SceneFilter, GetWindow().GetNativeWindow());
         if (!path.empty()) {
             m_Scene = std::make_shared<VE::Scene>();
-            m_SelectedEntity = {};
+            ClearSelection();
             VE::SceneSerializer serializer(m_Scene);
             if (serializer.Deserialize(path))
                 m_CurrentScenePath = path;
@@ -1403,69 +1467,184 @@ private:
         return wasReset;
     }
 
+    // ── Multi-Select Helpers ────────────────────────────────────────
+
+    void SelectEntity(VE::Entity entity) {
+        m_SelectedEntity = entity;
+        if (entity)
+            m_SelectedEntities.insert(entity.GetHandle());
+        m_SelectedAssetPath.clear();
+    }
+
+    void SelectEntityOnly(VE::Entity entity) {
+        // Single select: clear others, select this one
+        m_SelectedEntities.clear();
+        SelectEntity(entity);
+        if (entity)
+            m_LastClickedEntity = entity.GetHandle();
+    }
+
+    void ToggleEntitySelection(entt::entity entityID) {
+        if (m_SelectedEntities.count(entityID)) {
+            m_SelectedEntities.erase(entityID);
+            if (m_SelectedEntity.GetHandle() == entityID) {
+                // Pick another primary, or clear
+                if (!m_SelectedEntities.empty())
+                    m_SelectedEntity = VE::Entity(*m_SelectedEntities.rbegin(), &*m_Scene);
+                else
+                    m_SelectedEntity = {};
+            }
+        } else {
+            m_SelectedEntities.insert(entityID);
+            m_SelectedEntity = VE::Entity(entityID, &*m_Scene);
+        }
+        m_LastClickedEntity = entityID;
+        m_SelectedAssetPath.clear();
+    }
+
+    void ClearSelection() {
+        m_SelectedEntity = {};
+        m_SelectedEntities.clear();
+    }
+
+    bool IsEntitySelected(entt::entity entityID) const {
+        return m_SelectedEntities.count(entityID) > 0;
+    }
+
+    // Build flat list of hierarchy entities in display order (for Shift+Click range select)
+    void CollectHierarchyOrder(entt::entity entityID, std::vector<entt::entity>& out) {
+        out.push_back(entityID);
+        auto& reg = m_Scene->GetRegistry();
+        if (reg.valid(entityID) && reg.any_of<VE::RelationshipComponent>(entityID)) {
+            auto& rel = reg.get<VE::RelationshipComponent>(entityID);
+            for (auto child : rel.Children)
+                CollectHierarchyOrder(child, out);
+        }
+    }
+
+    std::vector<entt::entity> GetHierarchyDisplayOrder() {
+        std::vector<entt::entity> order;
+        auto view = m_Scene->GetAllEntitiesWith<VE::RelationshipComponent>();
+        std::vector<entt::entity> roots;
+        for (auto entityID : view) {
+            auto& rel = view.get<VE::RelationshipComponent>(entityID);
+            if (rel.Parent == entt::null)
+                roots.push_back(entityID);
+        }
+        std::reverse(roots.begin(), roots.end());
+        for (auto root : roots)
+            CollectHierarchyOrder(root, order);
+        return order;
+    }
+
+    void ShiftSelectRange(entt::entity clickedEntity) {
+        if (m_LastClickedEntity == entt::null) {
+            // No previous click: just single-select
+            SelectEntityOnly(VE::Entity(clickedEntity, &*m_Scene));
+            return;
+        }
+        auto order = GetHierarchyDisplayOrder();
+        int startIdx = -1, endIdx = -1;
+        for (int i = 0; i < (int)order.size(); i++) {
+            if (order[i] == m_LastClickedEntity) startIdx = i;
+            if (order[i] == clickedEntity)       endIdx = i;
+        }
+        if (startIdx < 0 || endIdx < 0) {
+            SelectEntityOnly(VE::Entity(clickedEntity, &*m_Scene));
+            return;
+        }
+        if (startIdx > endIdx) std::swap(startIdx, endIdx);
+        m_SelectedEntities.clear();
+        for (int i = startIdx; i <= endIdx; i++)
+            m_SelectedEntities.insert(order[i]);
+        m_SelectedEntity = VE::Entity(clickedEntity, &*m_Scene);
+        m_SelectedAssetPath.clear();
+        // Note: don't update m_LastClickedEntity on shift-click (anchor stays)
+    }
+
+    // Duplicate a single entity, returns the new entity
+    VE::Entity DuplicateSingleEntity(entt::entity srcEntity) {
+        auto& reg = m_Scene->GetRegistry();
+        auto& srcTag = reg.get<VE::TagComponent>(srcEntity);
+        auto newEntity = m_Scene->CreateEntity(srcTag.Tag + " (Copy)");
+        auto dst = newEntity.GetHandle();
+
+        if (reg.any_of<VE::TransformComponent>(srcEntity))
+            reg.get_or_emplace<VE::TransformComponent>(dst) = reg.get<VE::TransformComponent>(srcEntity);
+        if (reg.any_of<VE::MeshRendererComponent>(srcEntity))
+            reg.get_or_emplace<VE::MeshRendererComponent>(dst) = reg.get<VE::MeshRendererComponent>(srcEntity);
+        if (reg.any_of<VE::DirectionalLightComponent>(srcEntity))
+            reg.get_or_emplace<VE::DirectionalLightComponent>(dst) = reg.get<VE::DirectionalLightComponent>(srcEntity);
+        if (reg.any_of<VE::RigidbodyComponent>(srcEntity)) {
+            auto rb = reg.get<VE::RigidbodyComponent>(srcEntity);
+            rb._JoltBodyID = 0xFFFFFFFF;
+            reg.get_or_emplace<VE::RigidbodyComponent>(dst) = rb;
+        }
+        if (reg.any_of<VE::BoxColliderComponent>(srcEntity))
+            reg.get_or_emplace<VE::BoxColliderComponent>(dst) = reg.get<VE::BoxColliderComponent>(srcEntity);
+        if (reg.any_of<VE::SphereColliderComponent>(srcEntity))
+            reg.get_or_emplace<VE::SphereColliderComponent>(dst) = reg.get<VE::SphereColliderComponent>(srcEntity);
+        if (reg.any_of<VE::CapsuleColliderComponent>(srcEntity))
+            reg.get_or_emplace<VE::CapsuleColliderComponent>(dst) = reg.get<VE::CapsuleColliderComponent>(srcEntity);
+        if (reg.any_of<VE::MeshColliderComponent>(srcEntity))
+            reg.get_or_emplace<VE::MeshColliderComponent>(dst) = reg.get<VE::MeshColliderComponent>(srcEntity);
+        if (reg.any_of<VE::CameraComponent>(srcEntity))
+            reg.get_or_emplace<VE::CameraComponent>(dst) = reg.get<VE::CameraComponent>(srcEntity);
+        if (reg.any_of<VE::ScriptComponent>(srcEntity)) {
+            auto sc = reg.get<VE::ScriptComponent>(srcEntity);
+            sc._Instance = nullptr;
+            reg.get_or_emplace<VE::ScriptComponent>(dst) = sc;
+        }
+        return newEntity;
+    }
+
     // ── Duplicate Entity ─────────────────────────────────────────────
 
     void DuplicateSelectedEntity() {
-        if (m_SelectedEntity.GetHandle() == entt::null) return;
+        if (m_SelectedEntity.GetHandle() == entt::null && m_SelectedEntities.empty()) return;
+
+        if (m_SelectedEntities.size() > 1) {
+            // Batch duplicate
+            m_CommandHistory.Execute("Duplicate Entities", [this]() {
+                std::set<entt::entity> newSelection;
+                VE::Entity lastNew;
+                for (auto srcEntity : m_SelectedEntities) {
+                    if (m_Scene->GetRegistry().valid(srcEntity)) {
+                        auto newEntity = DuplicateSingleEntity(srcEntity);
+                        newSelection.insert(newEntity.GetHandle());
+                        lastNew = newEntity;
+                    }
+                }
+                m_SelectedEntities = newSelection;
+                m_SelectedEntity = lastNew;
+            });
+            return;
+        }
 
         m_CommandHistory.Execute("Duplicate Entity", [this]() {
-            auto& reg = m_Scene->GetRegistry();
-            auto srcEntity = m_SelectedEntity.GetHandle();
-
-            auto& srcTag = reg.get<VE::TagComponent>(srcEntity);
-            auto newEntity = m_Scene->CreateEntity(srcTag.Tag + " (Copy)");
-            auto dst = newEntity.GetHandle();
-
-            // Copy TransformComponent
-            if (reg.any_of<VE::TransformComponent>(srcEntity))
-                reg.get_or_emplace<VE::TransformComponent>(dst) = reg.get<VE::TransformComponent>(srcEntity);
-
-            // Copy MeshRendererComponent
-            if (reg.any_of<VE::MeshRendererComponent>(srcEntity))
-                reg.get_or_emplace<VE::MeshRendererComponent>(dst) = reg.get<VE::MeshRendererComponent>(srcEntity);
-
-            // Copy DirectionalLightComponent
-            if (reg.any_of<VE::DirectionalLightComponent>(srcEntity))
-                reg.get_or_emplace<VE::DirectionalLightComponent>(dst) = reg.get<VE::DirectionalLightComponent>(srcEntity);
-
-            // Copy PointLightComponent
-            if (reg.any_of<VE::PointLightComponent>(srcEntity))
-                reg.get_or_emplace<VE::PointLightComponent>(dst) = reg.get<VE::PointLightComponent>(srcEntity);
-
-            // Copy SpotLightComponent
-            if (reg.any_of<VE::SpotLightComponent>(srcEntity))
-                reg.get_or_emplace<VE::SpotLightComponent>(dst) = reg.get<VE::SpotLightComponent>(srcEntity);
-
-            // Copy RigidbodyComponent (reset runtime body ID)
-            if (reg.any_of<VE::RigidbodyComponent>(srcEntity)) {
-                auto rb = reg.get<VE::RigidbodyComponent>(srcEntity);
-                rb._JoltBodyID = 0xFFFFFFFF;
-                reg.get_or_emplace<VE::RigidbodyComponent>(dst) = rb;
-            }
-
-            // Copy colliders
-            if (reg.any_of<VE::BoxColliderComponent>(srcEntity))
-                reg.get_or_emplace<VE::BoxColliderComponent>(dst) = reg.get<VE::BoxColliderComponent>(srcEntity);
-            if (reg.any_of<VE::SphereColliderComponent>(srcEntity))
-                reg.get_or_emplace<VE::SphereColliderComponent>(dst) = reg.get<VE::SphereColliderComponent>(srcEntity);
-            if (reg.any_of<VE::CapsuleColliderComponent>(srcEntity))
-                reg.get_or_emplace<VE::CapsuleColliderComponent>(dst) = reg.get<VE::CapsuleColliderComponent>(srcEntity);
-            if (reg.any_of<VE::MeshColliderComponent>(srcEntity))
-                reg.get_or_emplace<VE::MeshColliderComponent>(dst) = reg.get<VE::MeshColliderComponent>(srcEntity);
-
-            // Copy CameraComponent
-            if (reg.any_of<VE::CameraComponent>(srcEntity))
-                reg.get_or_emplace<VE::CameraComponent>(dst) = reg.get<VE::CameraComponent>(srcEntity);
-
-            // Copy ScriptComponent (reset runtime instance)
-            if (reg.any_of<VE::ScriptComponent>(srcEntity)) {
-                auto sc = reg.get<VE::ScriptComponent>(srcEntity);
-                sc._Instance = nullptr;
-                reg.get_or_emplace<VE::ScriptComponent>(dst) = sc;
-            }
-
-            m_SelectedEntity = newEntity;
+            auto newEntity = DuplicateSingleEntity(m_SelectedEntity.GetHandle());
+            SelectEntityOnly(newEntity);
         });
+    }
+
+    // Batch delete all selected entities
+    void DeleteSelectedEntities() {
+        if (m_SelectedEntities.empty() && !m_SelectedEntity) return;
+
+        if (m_SelectedEntities.size() > 1) {
+            m_CommandHistory.Execute("Delete Entities", [this]() {
+                for (auto entityID : m_SelectedEntities) {
+                    if (m_Scene->GetRegistry().valid(entityID))
+                        m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
+                }
+                ClearSelection();
+            });
+        } else {
+            m_CommandHistory.Execute("Delete Entity", [this]() {
+                m_Scene->DestroyEntity(m_SelectedEntity);
+                ClearSelection();
+            });
+        }
     }
 
     // ── Copy / Cut / Paste Entity ───────────────────────────────────────
@@ -1480,7 +1659,7 @@ private:
         CopySelectedEntity();
         m_CommandHistory.Execute("Cut Entity", [this]() {
             m_Scene->DestroyEntity(m_SelectedEntity);
-            m_SelectedEntity = {};
+            ClearSelection();
         });
     }
 
@@ -1489,17 +1668,54 @@ private:
         m_CommandHistory.Execute("Paste Entity", [this]() {
             VE::Entity pasted = VE::SceneSerializer::InstantiateFromString(m_EntityClipboard, *m_Scene);
             if (pasted.IsValid()) {
-                // Offset position so it doesn't overlap the original
                 if (pasted.HasComponent<VE::TransformComponent>()) {
                     auto& tc = pasted.GetComponent<VE::TransformComponent>();
                     tc.Position[0] += 1.0f;
                     tc.Position[1] += 1.0f;
                     tc.Position[2] += 1.0f;
                 }
-                m_SelectedEntity = pasted;
+                SelectEntityOnly(pasted);
             }
         });
     }
+
+    // Project entity world position to screen coordinates
+    ImVec2 ProjectEntityToScreen(entt::entity entityID) {
+        glm::mat4 worldMat = m_Scene->GetWorldTransform(entityID);
+        glm::vec3 worldPos = glm::vec3(worldMat[3]);
+        glm::vec4 clip = m_FrameVP * glm::vec4(worldPos, 1.0f);
+        if (clip.w <= 0.0f) return { -1.0f, -1.0f };
+        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        float screenX = m_SceneVpX + (ndc.x * 0.5f + 0.5f) * m_SceneVpW;
+        float screenY = m_SceneVpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * m_SceneVpH;
+        return { screenX, screenY };
+    }
+
+    // Box select: find all entities whose screen projection falls within the rectangle
+    void PerformBoxSelect(ImVec2 boxMin, ImVec2 boxMax, bool additive) {
+        float minX = std::min(boxMin.x, boxMax.x);
+        float maxX = std::max(boxMin.x, boxMax.x);
+        float minY = std::min(boxMin.y, boxMax.y);
+        float maxY = std::max(boxMin.y, boxMax.y);
+
+        if (!additive)
+            ClearSelection();
+
+        auto view = m_Scene->GetAllEntitiesWith<VE::TransformComponent>();
+        VE::Entity lastHit;
+        for (auto entityID : view) {
+            ImVec2 screenPos = ProjectEntityToScreen(entityID);
+            if (screenPos.x >= minX && screenPos.x <= maxX &&
+                screenPos.y >= minY && screenPos.y <= maxY) {
+                m_SelectedEntities.insert(entityID);
+                lastHit = VE::Entity(entityID, &*m_Scene);
+            }
+        }
+        if (lastHit)
+            m_SelectedEntity = lastHit;
+        m_SelectedAssetPath.clear();
+    }
+
 
     // ── Main Menu Bar ──────────────────────────────────────────────────
 
@@ -1535,12 +1751,8 @@ private:
                 ImGui::Separator();
                 if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, m_SelectedEntity.GetHandle() != entt::null))
                     DuplicateSelectedEntity();
-                if (ImGui::MenuItem("Delete", "Del", false, m_SelectedEntity.GetHandle() != entt::null)) {
-                    m_CommandHistory.Execute("Delete Entity", [this]() {
-                        m_Scene->DestroyEntity(m_SelectedEntity);
-                        m_SelectedEntity = {};
-                    });
-                }
+                if (ImGui::MenuItem("Delete", "Del", false, m_SelectedEntity.GetHandle() != entt::null || !m_SelectedEntities.empty()))
+                    DeleteSelectedEntities();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Settings")) {
@@ -1570,11 +1782,13 @@ private:
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Select All", "Ctrl+A")) {
-                    // Select first entity if none selected (no multi-select yet)
                     auto& reg = m_Scene->GetRegistry();
                     auto view = reg.view<VE::TagComponent>();
-                    if (!view.empty())
-                        m_SelectedEntity = VE::Entity(*view.begin(), &*m_Scene);
+                    ClearSelection();
+                    for (auto e : view) {
+                        m_SelectedEntities.insert(e);
+                        m_SelectedEntity = VE::Entity(e, &*m_Scene);
+                    }
                 }
                 ImGui::EndMenu();
             }
@@ -1772,7 +1986,7 @@ private:
                 }
             }
 
-            // Draw collider wireframes
+            // Draw collider wireframes for selected entity
             if (m_ShowColliders) {
                 auto drawColliderForEntity = [&](entt::entity e) {
                     glm::mat4 wm = m_Scene->GetWorldTransform(e);
@@ -1808,10 +2022,18 @@ private:
                     }
                 };
 
-                // Draw for selected entity only, or all entities with colliders
                 if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
                     drawColliderForEntity(m_SelectedEntity.GetHandle());
                 }
+            }
+
+            // Draw selection wireframe for all selected entities (except primary, which gets gizmo)
+            for (auto selEntity : m_SelectedEntities) {
+                if (selEntity == m_SelectedEntity.GetHandle()) continue;
+                if (!m_Scene->GetRegistry().valid(selEntity)) continue;
+                if (!m_Scene->GetRegistry().any_of<VE::TransformComponent>(selEntity)) continue;
+                glm::mat4 wm = m_Scene->GetWorldTransform(selEntity);
+                VE::GizmoRenderer::DrawWireframeBox(wm);
             }
 
             if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
@@ -1833,6 +2055,17 @@ private:
             }
 
             VE::GizmoRenderer::EndScene();
+        }
+
+        // Draw viewport box selection rectangle
+        if (m_EntityBoxSelecting) {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            ImVec2 bMin(std::min(m_EntityBoxSelectStart.x, m_EntityBoxSelectEnd.x),
+                        std::min(m_EntityBoxSelectStart.y, m_EntityBoxSelectEnd.y));
+            ImVec2 bMax(std::max(m_EntityBoxSelectStart.x, m_EntityBoxSelectEnd.x),
+                        std::max(m_EntityBoxSelectStart.y, m_EntityBoxSelectEnd.y));
+            dl->AddRectFilled(bMin, bMax, IM_COL32(80, 140, 230, 40));
+            dl->AddRect(bMin, bMax, IM_COL32(80, 140, 230, 180), 0.0f, 0, 1.5f);
         }
 
         ImGui::End();
@@ -1880,7 +2113,7 @@ private:
 
         // Restore scene from snapshot
         m_Scene = std::make_shared<VE::Scene>();
-        m_SelectedEntity = {};
+        ClearSelection();
         VE::SceneSerializer serializer(m_Scene);
         serializer.DeserializeFromString(m_SceneSnapshot);
         m_SceneSnapshot.clear();
@@ -2007,7 +2240,7 @@ private:
             if (ImGui::BeginMenu("Create")) {
                 if (ImGui::MenuItem("Empty"))
                     m_CommandHistory.Execute("Create Entity", [this]() {
-                        m_SelectedEntity = m_Scene->CreateEntity("GameObject");
+                        SelectEntityOnly(m_Scene->CreateEntity("GameObject"));
                     });
                 ImGui::Separator();
                 if (ImGui::MenuItem("Triangle"))
@@ -2016,7 +2249,7 @@ private:
                         auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = VE::MeshLibrary::GetTriangle();
                         mr.Mat = VE::MaterialLibrary::Get("Default");
-                        m_SelectedEntity = e;
+                        SelectEntityOnly(e);
                     });
                 if (ImGui::MenuItem("Quad"))
                     m_CommandHistory.Execute("Create Quad", [this]() {
@@ -2024,7 +2257,7 @@ private:
                         auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = VE::MeshLibrary::GetQuad();
                         mr.Mat = VE::MaterialLibrary::Get("Default");
-                        m_SelectedEntity = e;
+                        SelectEntityOnly(e);
                     });
                 if (ImGui::MenuItem("Cube"))
                     m_CommandHistory.Execute("Create Cube", [this]() {
@@ -2032,7 +2265,7 @@ private:
                         auto& mr = e.AddComponent<VE::MeshRendererComponent>();
                         mr.Mesh = VE::MeshLibrary::GetCube();
                         mr.Mat = VE::MaterialLibrary::Get("Lit");
-                        m_SelectedEntity = e;
+                        SelectEntityOnly(e);
                     });
                 if (ImGui::MenuItem("Sphere"))
                     m_CommandHistory.Execute("Create Sphere", [this]() {
@@ -2041,20 +2274,20 @@ private:
                         mr.Mesh = VE::MeshLibrary::GetSphere();
                         mr.Mat = VE::MaterialLibrary::Get("Lit");
                         mr.LocalBounds = VE::MeshLibrary::GetMeshAABB(3);
-                        m_SelectedEntity = e;
+                        SelectEntityOnly(e);
                     });
                 ImGui::Separator();
                 if (ImGui::MenuItem("Directional Light"))
                     m_CommandHistory.Execute("Create Light", [this]() {
                         auto e = m_Scene->CreateEntity("Directional Light");
                         e.AddComponent<VE::DirectionalLightComponent>();
-                        m_SelectedEntity = e;
+                        SelectEntityOnly(e);
                     });
                 if (ImGui::MenuItem("Point Light"))
                     m_CommandHistory.Execute("Create Point Light", [this]() {
                         auto e = m_Scene->CreateEntity("Point Light");
                         e.AddComponent<VE::PointLightComponent>();
-                        m_SelectedEntity = e;
+                        SelectEntityOnly(e);
                     });
                 if (ImGui::MenuItem("Spot Light"))
                     m_CommandHistory.Execute("Create Spot Light", [this]() {
@@ -2066,7 +2299,7 @@ private:
                     m_CommandHistory.Execute("Create Camera", [this]() {
                         auto e = m_Scene->CreateEntity("Camera");
                         e.AddComponent<VE::CameraComponent>();
-                        m_SelectedEntity = e;
+                        SelectEntityOnly(e);
                     });
                 ImGui::Separator();
                 if (ImGui::MenuItem("Particle Emitter"))
@@ -2080,11 +2313,8 @@ private:
             ImGui::EndPopup();
         }
 
-        if (m_SelectedEntity && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
-            m_CommandHistory.Execute("Delete Entity", [this]() {
-                m_Scene->DestroyEntity(m_SelectedEntity);
-                m_SelectedEntity = {};
-            });
+        if ((m_SelectedEntity || !m_SelectedEntities.empty()) && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+            DeleteSelectedEntities();
         }
         ImGui::End();
     }
@@ -2096,7 +2326,7 @@ private:
         auto& tag = registry.get<VE::TagComponent>(entityID);
         auto& rel = registry.get<VE::RelationshipComponent>(entityID);
 
-        bool isSelected = (m_SelectedEntity.GetHandle() == entityID);
+        bool isSelected = IsEntitySelected(entityID);
         bool hasChildren = !rel.Children.empty();
         bool isActive = m_Scene->IsEntityActiveInHierarchy(entityID);
 
@@ -2115,8 +2345,17 @@ private:
             ImGui::PopStyleColor();
 
         if (ImGui::IsItemClicked()) {
-            m_SelectedEntity = VE::Entity(entityID, &*m_Scene);
-            m_SelectedAssetPath.clear(); // deselect asset
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.KeyCtrl) {
+                // Ctrl+Click: toggle individual entity in selection
+                ToggleEntitySelection(entityID);
+            } else if (io.KeyShift) {
+                // Shift+Click: range select from last clicked to this entity
+                ShiftSelectRange(entityID);
+            } else {
+                // Plain click: single select (clear others)
+                SelectEntityOnly(VE::Entity(entityID, &*m_Scene));
+            }
         }
 
         // Right-click context menu on entity node
@@ -2129,12 +2368,21 @@ private:
                 }
                 ImGui::Separator();
             }
-            if (ImGui::MenuItem("Delete")) {
-                m_CommandHistory.Execute("Delete Entity", [this, entityID]() {
-                    m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
-                    if (m_SelectedEntity.GetHandle() == entityID)
-                        m_SelectedEntity = {};
-                });
+            bool multiSelected = m_SelectedEntities.size() > 1 && IsEntitySelected(entityID);
+            if (multiSelected) {
+                std::string label = "Delete " + std::to_string(m_SelectedEntities.size()) + " Entities";
+                if (ImGui::MenuItem(label.c_str())) {
+                    DeleteSelectedEntities();
+                }
+            } else {
+                if (ImGui::MenuItem("Delete")) {
+                    m_CommandHistory.Execute("Delete Entity", [this, entityID]() {
+                        m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
+                        m_SelectedEntities.erase(entityID);
+                        if (m_SelectedEntity.GetHandle() == entityID)
+                            m_SelectedEntity = {};
+                    });
+                }
             }
             ImGui::EndPopup();
         }
@@ -2838,8 +3086,57 @@ private:
             return;
         }
 
-        if (!m_SelectedEntity) {
+        if (!m_SelectedEntity && m_SelectedEntities.empty()) {
             ImGui::TextDisabled("No selection");
+            ImGui::End();
+            return;
+        }
+
+        // Multi-select header
+        if (m_SelectedEntities.size() > 1) {
+            ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f),
+                "%d entities selected", (int)m_SelectedEntities.size());
+            ImGui::Separator();
+
+            // Batch color editing for entities that share MeshRendererComponent
+            bool anyHasMesh = false;
+            glm::vec4 sharedColor(1.0f);
+            bool firstColor = true;
+            bool colorsMatch = true;
+            for (auto selEntity : m_SelectedEntities) {
+                if (!m_Scene->GetRegistry().valid(selEntity)) continue;
+                if (!m_Scene->GetRegistry().any_of<VE::MeshRendererComponent>(selEntity)) continue;
+                anyHasMesh = true;
+                auto& mr = m_Scene->GetRegistry().get<VE::MeshRendererComponent>(selEntity);
+                glm::vec4 c(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
+                if (firstColor) { sharedColor = c; firstColor = false; }
+                else if (c != sharedColor) colorsMatch = false;
+            }
+
+            if (anyHasMesh) {
+                float color[4] = { sharedColor.r, sharedColor.g, sharedColor.b, sharedColor.a };
+                if (!colorsMatch)
+                    ImGui::TextDisabled("Color: (mixed)");
+                if (ImGui::ColorEdit4("Batch Color", color)) {
+                    for (auto selEntity : m_SelectedEntities) {
+                        if (!m_Scene->GetRegistry().valid(selEntity)) continue;
+                        if (!m_Scene->GetRegistry().any_of<VE::MeshRendererComponent>(selEntity)) continue;
+                        auto& mr = m_Scene->GetRegistry().get<VE::MeshRendererComponent>(selEntity);
+                        mr.Color[0] = color[0]; mr.Color[1] = color[1];
+                        mr.Color[2] = color[2]; mr.Color[3] = color[3];
+                    }
+                }
+                if (ImGui::IsItemActivated())
+                    m_CommandHistory.BeginPropertyEdit("Batch Color Edit");
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    m_CommandHistory.EndPropertyEdit();
+            }
+            ImGui::Separator();
+            ImGui::TextDisabled("Primary entity details below:");
+            ImGui::Separator();
+        }
+
+        if (!m_SelectedEntity) {
             ImGui::End();
             return;
         }
@@ -4799,7 +5096,7 @@ private:
 
         // Select the asset and show it in inspector
         m_SelectedAssetPath = relPath;
-        m_SelectedEntity = {};
+        ClearSelection();
 
         // Ensure Content Browser is visible
         m_ShowContentBrowser = true;
@@ -5028,7 +5325,7 @@ private:
                     m_SelectedAssets.insert(relPath);
                     m_SelectedAssetPath = relPath;
                 }
-                m_SelectedEntity = {}; // deselect entity
+                ClearSelection(); // deselect entity
             }
 
             // Double-click actions
@@ -5038,7 +5335,7 @@ private:
                 } else if (meta->Type == VE::AssetType::Scene) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     m_Scene = std::make_shared<VE::Scene>();
-                    m_SelectedEntity = {};
+                    ClearSelection();
                     VE::SceneSerializer serializer(m_Scene);
                     if (serializer.Deserialize(absPath))
                         m_CurrentScenePath = absPath;
@@ -5624,7 +5921,15 @@ private:
 
 private:
     std::shared_ptr<VE::Scene> m_Scene;
-    VE::Entity m_SelectedEntity;
+    VE::Entity m_SelectedEntity;                         // primary selection (Inspector/gizmo target)
+    std::set<entt::entity> m_SelectedEntities;           // all selected entities
+    entt::entity m_LastClickedEntity = entt::null;       // for Shift+Click range select in hierarchy
+
+    // Viewport box selection state
+    bool m_EntityBoxSelecting = false;
+    ImVec2 m_EntityBoxSelectStart = { 0, 0 };
+    ImVec2 m_EntityBoxSelectEnd = { 0, 0 };
+
     VE::EditorCamera m_Camera;
     glm::mat4 m_FrameVP = glm::mat4(1.0f);
     std::string m_CurrentScenePath;
@@ -5643,6 +5948,7 @@ private:
     glm::mat3 m_DragWorldRot = glm::mat3(1.0f);              // world rotation at drag start
     glm::mat4 m_DragParentInverse = glm::mat4(1.0f);         // inverse of parent's world transform
     float m_DragOriginVal = 0.0f;
+    std::unordered_map<entt::entity, glm::vec3> m_BatchDragStartPositions; // for batch move
 
     std::unordered_map<uint32_t, int> m_EntityMeshIndex;
 
