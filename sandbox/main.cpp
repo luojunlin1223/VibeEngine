@@ -346,14 +346,28 @@ protected:
             m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
         });
 
-        // Pass 2: Opaque geometry
+        // Pass 2: Opaque geometry (Forward or Deferred+)
         rg.AddPass("Opaque", [&](VE::RGBuilder& b) {
             if (shadowMap.IsValid()) b.Read(shadowMap);
             b.Write(sceneColor);
             b.SideEffect();
         }, [&](const VE::RGResources&) {
-            m_Scene->OnRender(m_FrameVP, camPos);
-            m_Scene->OnRenderTerrain(m_FrameVP, camPos);
+            auto& ps = m_Scene->GetPipelineSettings();
+            if (ps.PipelineMode == VE::RenderPipeline::DeferredPlus && perspective3D && m_Framebuffer) {
+                // Deferred+ pipeline: G-Buffer -> Cull -> Tiled Lighting
+                uint32_t targetFBO = 0;
+                // Get the current bound FBO (should be m_Framebuffer)
+                glGetIntegerv(GL_FRAMEBUFFER_BINDING, reinterpret_cast<GLint*>(&targetFBO));
+                m_Scene->OnRenderDeferredPlus(
+                    m_FrameVP, m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix(),
+                    camPos, targetFBO, fbW, fbH);
+                // Still render terrain in forward
+                m_Scene->OnRenderTerrain(m_FrameVP, camPos);
+            } else {
+                // Standard forward path
+                m_Scene->OnRender(m_FrameVP, camPos);
+                m_Scene->OnRenderTerrain(m_FrameVP, camPos);
+            }
         });
 
         // Pass 3: Decals (after opaque, before sprites)
@@ -6028,6 +6042,25 @@ private:
 
         auto& ps = m_Scene->GetPipelineSettings();
 
+        // ── Pipeline Mode ──
+        if (ImGui::CollapsingHeader("Pipeline Mode", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const char* pipelineModes[] = { "Forward", "Deferred+" };
+            int current = static_cast<int>(ps.PipelineMode);
+            if (ImGui::Combo("Mode", &current, pipelineModes, 2))
+                ps.PipelineMode = static_cast<VE::RenderPipeline>(current);
+
+            if (ps.PipelineMode == VE::RenderPipeline::DeferredPlus) {
+                ImGui::Checkbox("Tile Debug Overlay", &ps.DeferredPlusDebugOverlay);
+                ImGui::TextDisabled("(Colors tiles by light count)");
+
+                auto& dpStats = m_Scene->GetDeferredPlusRenderer().GetStats();
+                ImGui::Separator();
+                ImGui::Text("Tiles: %ux%u (%u total)", dpStats.TileCountX, dpStats.TileCountY, dpStats.TotalTiles);
+                ImGui::Text("Point Lights: %u (no limit)", dpStats.NumPointLights);
+                ImGui::Text("Spot Lights:  %u (no limit)", dpStats.NumSpotLights);
+            }
+        }
+
         if (ImGui::CollapsingHeader("HDR / Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable HDR", &ps.HDREnabled);
             if (ps.HDREnabled) {
@@ -6904,6 +6937,17 @@ private:
             ImGui::Text("  Occluded:     %u", stats.OccludedObjects);
             ImGui::Text("Sprites:        %u", spriteStats.QuadCount);
             ImGui::Text("Instances:      %u", instanceStats.InstanceCount);
+
+            // Deferred+ stats
+            auto& pipeSettings = m_Scene->GetPipelineSettings();
+            if (pipeSettings.PipelineMode == VE::RenderPipeline::DeferredPlus) {
+                ImGui::Separator();
+                auto& dpStats = m_Scene->GetDeferredPlusRenderer().GetStats();
+                ImGui::Text("Deferred+ Tiled Lighting:");
+                ImGui::Text("  Tiles: %ux%u", dpStats.TileCountX, dpStats.TileCountY);
+                ImGui::Text("  Point Lights: %u", dpStats.NumPointLights);
+                ImGui::Text("  Spot Lights:  %u", dpStats.NumSpotLights);
+            }
         }
 
         // ── Camera ──

@@ -11,6 +11,7 @@
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/ReflectionProbe.h"
+#include "VibeEngine/Renderer/DeferredPlusRenderer.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Navigation/NavGrid.h"
 #include <entt/entt.hpp>
@@ -25,7 +26,16 @@ namespace VE {
 
 class Entity;
 
+// Rendering pipeline mode
+enum class RenderPipeline { Forward = 0, DeferredPlus = 1 };
+
 struct RenderPipelineSettings {
+    // Pipeline mode
+    RenderPipeline PipelineMode = RenderPipeline::Forward;
+
+    // Deferred+ (Tiled Deferred) settings
+    bool DeferredPlusDebugOverlay = false; // color tiles by light count
+
     // HDR Pipeline
     bool HDREnabled = true;
     int  ToneMapMode = 1; // 0=Reinhard, 1=ACES Filmic, 2=Uncharted2
@@ -177,6 +187,17 @@ public:
 
     void OnRender(const glm::mat4& viewProjection,
                   const glm::vec3& cameraPos = glm::vec3(0.0f));
+
+    // Deferred+ tiled deferred rendering (G-buffer + compute cull + tiled lighting)
+    void OnRenderDeferredPlus(const glm::mat4& viewProjection,
+                              const glm::mat4& viewMatrix,
+                              const glm::mat4& projMatrix,
+                              const glm::vec3& cameraPos,
+                              uint32_t targetFBO, uint32_t fbWidth, uint32_t fbHeight);
+
+    DeferredPlusRenderer& GetDeferredPlusRenderer() { return m_DeferredPlusRenderer; }
+    const DeferredPlusRenderer& GetDeferredPlusRenderer() const { return m_DeferredPlusRenderer; }
+
     void OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
     void OnRenderSprites(const glm::mat4& viewProjection);
     void OnRenderDecals(const glm::mat4& viewProjection, const glm::mat4& viewMatrix,
@@ -273,6 +294,9 @@ private:
 
     std::string m_PendingScenePath; // scene to load at end of frame
     std::unique_ptr<NavGrid> m_NavGrid;
+
+    // Deferred+ (Tiled Deferred) renderer
+    DeferredPlusRenderer m_DeferredPlusRenderer;
 
     // Deferred entity deletion queue (flushed at end of OnUpdate)
     std::vector<entt::entity> m_PendingDestroy;

@@ -36,6 +36,7 @@
 #include "Renderer/ReflectionProbe.h"
 #include "Renderer/LightProbe.h"
 #include "Renderer/Lightmapper.h"
+#include "Renderer/DeferredPlusRenderer.h"
 
 #include "Navigation/NavGrid.h"
 
