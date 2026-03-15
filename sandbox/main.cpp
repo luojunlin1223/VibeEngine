@@ -2365,6 +2365,12 @@ private:
                         e.AddComponent<VE::SpotLightComponent>();
                         m_SelectedEntity = e;
                     });
+                if (ImGui::MenuItem("Spot Light"))
+                    m_CommandHistory.Execute("Create Spot Light", [this]() {
+                        auto e = m_Scene->CreateEntity("Spot Light");
+                        e.AddComponent<VE::SpotLightComponent>();
+                        m_SelectedEntity = e;
+                    });
                 if (ImGui::MenuItem("Camera"))
                     m_CommandHistory.Execute("Create Camera", [this]() {
                         auto e = m_Scene->CreateEntity("Camera");
@@ -3327,6 +3333,10 @@ private:
                 ImGui::DragFloat("Range##PL", &pl.Range, 0.1f, 0.1f, 100.0f);
                 if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Point Light Range");
                 if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                if (ImGui::Checkbox("Cast Shadows##PL", &pl.CastShadows)) {
+                    auto before = m_CommandHistory.CaptureSnapshot();
+                    m_CommandHistory.RecordPropertyEdit("Toggle Point Light Shadows", std::move(before));
+                }
             }
             if (removePointLight)
                 m_CommandHistory.Execute("Remove Point Light", [this]() {
@@ -3359,6 +3369,10 @@ private:
                 ImGui::DragFloat("Outer Angle##SL", &sl.OuterAngle, 0.5f, sl.InnerAngle, 89.0f);
                 if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Outer Angle");
                 if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                if (ImGui::Checkbox("Cast Shadows##SL", &sl.CastShadows)) {
+                    auto before = m_CommandHistory.CaptureSnapshot();
+                    m_CommandHistory.RecordPropertyEdit("Toggle Spot Light Shadows", std::move(before));
+                }
             }
             if (removeSpotLight)
                 m_CommandHistory.Execute("Remove Spot Light", [this]() {

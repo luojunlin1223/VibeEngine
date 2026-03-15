@@ -592,6 +592,8 @@ void Scene::ComputeShadows(const glm::mat4& viewMatrix,
                             const glm::mat4& projMatrix,
                             float nearClip, float farClip) {
     m_ShadowsComputed = false;
+    m_NumSpotShadows = 0;
+    m_NumPointShadows = 0;
 
     if (!m_PipelineSettings.ShadowEnabled)
         return;
@@ -648,6 +650,111 @@ void Scene::ComputeShadows(const glm::mat4& viewMatrix,
         m_ShadowMap->EndPass();
     }
 
+    // ── Spot light shadow passes (max 2) ────────────────────────────────
+    m_NumSpotShadows = 0;
+    {
+        auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
+        for (auto slEntity : slView) {
+            if (m_NumSpotShadows >= MAX_SPOT_SHADOW_LIGHTS) break;
+            if (!IsEntityActiveInHierarchy(slEntity)) continue;
+            auto [stc, sl] = slView.get<TransformComponent, SpotLightComponent>(slEntity);
+            if (!sl.CastShadows) continue;
+
+            int idx = m_NumSpotShadows;
+            if (!m_SpotShadowMaps[idx])
+                m_SpotShadowMaps[idx] = std::make_unique<SpotLightShadowMap>();
+
+            glm::mat4 worldMat = GetWorldTransform(slEntity);
+            glm::vec3 spotPos = glm::vec3(worldMat[3]);
+            // Transform local direction by entity rotation
+            glm::vec3 spotDir = glm::normalize(glm::mat3(worldMat) *
+                glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
+
+            m_SpotShadowMaps[idx]->ComputeMatrix(spotPos, spotDir, sl.OuterAngle, sl.Range);
+
+            auto spotDepthShader = m_SpotShadowMaps[idx]->GetDepthShader();
+            if (!spotDepthShader) continue;
+
+            m_SpotShadowMaps[idx]->BeginPass();
+            spotDepthShader->Bind();
+            spotDepthShader->SetMat4("u_LightSpaceMatrix", m_SpotShadowMaps[idx]->GetLightSpaceMatrix());
+
+            for (auto entityID : meshView) {
+                if (!IsEntityActiveInHierarchy(entityID)) continue;
+                auto [tc2, mr2] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
+                if (!mr2.Mesh || !mr2.CastShadows) continue;
+
+                std::shared_ptr<VertexArray> shadowVAO = mr2.Mesh;
+                if (m_Registry.all_of<AnimatorComponent>(entityID)) {
+                    auto& ac = m_Registry.get<AnimatorComponent>(entityID);
+                    if (ac._Animator && ac._Animator->GetSkinnedVAO())
+                        shadowVAO = ac._Animator->GetSkinnedVAO();
+                }
+
+                glm::mat4 model = GetWorldTransform(entityID);
+                spotDepthShader->SetMat4("u_Model", model);
+                RenderCommand::DrawIndexed(shadowVAO);
+            }
+
+            m_SpotShadowMaps[idx]->EndPass();
+            m_NumSpotShadows++;
+        }
+    }
+
+    // ── Point light shadow passes (max 2, 6 faces each) ─────────────────
+    m_NumPointShadows = 0;
+    {
+        auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
+        for (auto plEntity : plView) {
+            if (m_NumPointShadows >= MAX_POINT_SHADOW_LIGHTS) break;
+            if (!IsEntityActiveInHierarchy(plEntity)) continue;
+            auto [ptc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
+            if (!pl.CastShadows) continue;
+
+            int idx = m_NumPointShadows;
+            if (!m_PointShadowMaps[idx])
+                m_PointShadowMaps[idx] = std::make_unique<PointLightShadowMap>();
+
+            glm::mat4 worldMat = GetWorldTransform(plEntity);
+            glm::vec3 lightPos = glm::vec3(worldMat[3]);
+            float farPlane = pl.Range;
+
+            m_PointShadowMaps[idx]->ComputeMatrices(lightPos, farPlane);
+
+            auto pointDepthShader = m_PointShadowMaps[idx]->GetDepthShader();
+            if (!pointDepthShader) continue;
+
+            for (int face = 0; face < 6; ++face) {
+                m_PointShadowMaps[idx]->BeginPass(face);
+                pointDepthShader->Bind();
+                pointDepthShader->SetMat4("u_LightSpaceMatrix", m_PointShadowMaps[idx]->GetLightSpaceMatrix(face));
+                pointDepthShader->SetVec3("u_LightPos", lightPos);
+                pointDepthShader->SetFloat("u_FarPlane", farPlane);
+
+                for (auto entityID : meshView) {
+                    if (!IsEntityActiveInHierarchy(entityID)) continue;
+                    auto [tc2, mr2] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
+                    if (!mr2.Mesh || !mr2.CastShadows) continue;
+
+                    std::shared_ptr<VertexArray> shadowVAO = mr2.Mesh;
+                    if (m_Registry.all_of<AnimatorComponent>(entityID)) {
+                        auto& ac = m_Registry.get<AnimatorComponent>(entityID);
+                        if (ac._Animator && ac._Animator->GetSkinnedVAO())
+                            shadowVAO = ac._Animator->GetSkinnedVAO();
+                    }
+
+                    glm::mat4 model = GetWorldTransform(entityID);
+                    pointDepthShader->SetMat4("u_Model", model);
+                    RenderCommand::DrawIndexed(shadowVAO);
+                }
+
+                m_PointShadowMaps[idx]->EndPass();
+            }
+
+            m_NumPointShadows++;
+        }
+    }
+
     m_ShadowsComputed = true;
 }
 
@@ -678,17 +785,23 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     glm::vec3 pointColors[MAX_POINT_LIGHTS];
     float     pointIntensities[MAX_POINT_LIGHTS];
     float     pointRanges[MAX_POINT_LIGHTS];
+    int       pointShadowIndex[MAX_POINT_LIGHTS]; // -1 = no shadow, 0..1 = shadow map index
     {
+        int shadowIdx = 0;
         auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto plEntity : plView) {
             if (numPointLights >= MAX_POINT_LIGHTS) break;
             if (!IsEntityActiveInHierarchy(plEntity)) continue;
             auto [tc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
             glm::mat4 worldMat = GetWorldTransform(plEntity);
-            pointPositions[numPointLights]  = glm::vec3(worldMat[3]); // extract translation
+            pointPositions[numPointLights]  = glm::vec3(worldMat[3]);
             pointColors[numPointLights]     = glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]);
             pointIntensities[numPointLights] = pl.Intensity;
             pointRanges[numPointLights]     = pl.Range;
+            if (pl.CastShadows && shadowIdx < m_NumPointShadows)
+                pointShadowIndex[numPointLights] = shadowIdx++;
+            else
+                pointShadowIndex[numPointLights] = -1;
             numPointLights++;
         }
     }
@@ -703,7 +816,9 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     float     spotRanges[MAX_SPOT_LIGHTS];
     float     spotInnerCos[MAX_SPOT_LIGHTS];
     float     spotOuterCos[MAX_SPOT_LIGHTS];
+    int       spotShadowIndex[MAX_SPOT_LIGHTS]; // -1 = no shadow, 0..1 = shadow map index
     {
+        int shadowIdx = 0;
         auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
         for (auto slEntity : slView) {
             if (numSpotLights >= MAX_SPOT_LIGHTS) break;
@@ -719,6 +834,10 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             spotRanges[numSpotLights]     = sl.Range;
             spotInnerCos[numSpotLights]   = std::cos(glm::radians(sl.InnerAngle));
             spotOuterCos[numSpotLights]   = std::cos(glm::radians(sl.OuterAngle));
+            if (sl.CastShadows && shadowIdx < m_NumSpotShadows)
+                spotShadowIndex[numSpotLights] = shadowIdx++;
+            else
+                spotShadowIndex[numSpotLights] = -1;
             numSpotLights++;
         }
     }
@@ -758,6 +877,41 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
             shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
             shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
+            shader->SetInt("u_PointLightShadowIndex[" + idx + "]", pointShadowIndex[i]);
+        }
+
+        // Spot lights
+        shader->SetInt("u_NumSpotLights", numSpotLights);
+        for (int i = 0; i < numSpotLights; ++i) {
+            std::string idx = std::to_string(i);
+            shader->SetVec3("u_SpotLightPositions[" + idx + "]",   spotPositions[i]);
+            shader->SetVec3("u_SpotLightDirections[" + idx + "]",  spotDirections[i]);
+            shader->SetVec3("u_SpotLightColors[" + idx + "]",      spotColors[i]);
+            shader->SetFloat("u_SpotLightIntensities[" + idx + "]", spotIntensities[i]);
+            shader->SetFloat("u_SpotLightRanges[" + idx + "]",     spotRanges[i]);
+            shader->SetFloat("u_SpotLightInnerCos[" + idx + "]",   spotInnerCos[i]);
+            shader->SetFloat("u_SpotLightOuterCos[" + idx + "]",   spotOuterCos[i]);
+            shader->SetInt("u_SpotLightShadowIndex[" + idx + "]",  spotShadowIndex[i]);
+        }
+
+        // Spot light shadow maps (texture units 9, 10)
+        shader->SetInt("u_NumSpotShadows", m_NumSpotShadows);
+        for (int i = 0; i < m_NumSpotShadows; ++i) {
+            int texUnit = 9 + i; // units 9, 10
+            m_SpotShadowMaps[i]->BindForReading(texUnit);
+            shader->SetInt("u_SpotShadowMaps[" + std::to_string(i) + "]", texUnit);
+            shader->SetMat4("u_SpotLightSpaceMatrices[" + std::to_string(i) + "]",
+                            m_SpotShadowMaps[i]->GetLightSpaceMatrix());
+        }
+
+        // Point light shadow maps (texture units 11, 12)
+        shader->SetInt("u_NumPointShadows", m_NumPointShadows);
+        for (int i = 0; i < m_NumPointShadows; ++i) {
+            int texUnit = 11 + i; // units 11, 12
+            m_PointShadowMaps[i]->BindForReading(texUnit);
+            shader->SetInt("u_PointShadowCubeMaps[" + std::to_string(i) + "]", texUnit);
+            shader->SetFloat("u_PointShadowFarPlanes[" + std::to_string(i) + "]",
+                             m_PointShadowMaps[i]->GetFarPlane());
         }
 
         shader->SetInt("u_NumSpotLights", numSpotLights);

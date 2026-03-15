@@ -107,6 +107,7 @@ uniform vec3  u_PointLightPositions[MAX_POINT_LIGHTS];
 uniform vec3  u_PointLightColors[MAX_POINT_LIGHTS];
 uniform float u_PointLightIntensities[MAX_POINT_LIGHTS];
 uniform float u_PointLightRanges[MAX_POINT_LIGHTS];
+uniform int   u_PointLightShadowIndex[MAX_POINT_LIGHTS];
 
 // Spot lights (max 4)
 const int MAX_SPOT_LIGHTS = 4;
@@ -118,8 +119,9 @@ uniform float u_SpotLightIntensities[MAX_SPOT_LIGHTS];
 uniform float u_SpotLightRanges[MAX_SPOT_LIGHTS];
 uniform float u_SpotLightInnerCos[MAX_SPOT_LIGHTS];
 uniform float u_SpotLightOuterCos[MAX_SPOT_LIGHTS];
+uniform int   u_SpotLightShadowIndex[MAX_SPOT_LIGHTS];
 
-// Shadow uniforms
+// Shadow uniforms (directional CSM)
 uniform int   u_ShadowEnabled;
 uniform sampler2DArrayShadow u_ShadowMap;
 uniform mat4  u_LightSpaceMatrices[3];
@@ -128,6 +130,18 @@ uniform mat4  u_ViewMatrix;
 uniform float u_ShadowBias;
 uniform float u_ShadowNormalBias;
 uniform int   u_PCFRadius;
+
+// Spot light shadow maps (max 2)
+const int MAX_SPOT_SHADOWS = 2;
+uniform int   u_NumSpotShadows;
+uniform sampler2DShadow u_SpotShadowMaps[MAX_SPOT_SHADOWS];
+uniform mat4  u_SpotLightSpaceMatrices[MAX_SPOT_SHADOWS];
+
+// Point light shadow maps (max 2)
+const int MAX_POINT_SHADOWS = 2;
+uniform int   u_NumPointShadows;
+uniform samplerCube u_PointShadowCubeMaps[MAX_POINT_SHADOWS];
+uniform float u_PointShadowFarPlanes[MAX_POINT_SHADOWS];
 
 out vec4 FragColor;
 
@@ -216,6 +230,82 @@ float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {
     return shadow;
 }
 
+// ── Spot Light Shadow Calculation ────────────────────────────────────
+
+float SpotShadowCalculation(int shadowIdx, vec3 fragPos, vec3 normal) {
+    if (shadowIdx < 0 || shadowIdx >= u_NumSpotShadows)
+        return 1.0;
+
+    vec4 fragPosLightSpace = u_SpotLightSpaceMatrices[shadowIdx] * vec4(fragPos, 1.0);
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0 ||
+        projCoords.z > 1.0)
+        return 1.0;
+
+    float bias = 0.001;
+    float currentDepth = projCoords.z - bias;
+
+    float shadow = 0.0;
+    vec2 texelSize;
+    if (shadowIdx == 0)
+        texelSize = 1.0 / vec2(textureSize(u_SpotShadowMaps[0], 0));
+    else
+        texelSize = 1.0 / vec2(textureSize(u_SpotShadowMaps[1], 0));
+
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            vec3 coord = vec3(projCoords.xy + vec2(float(x), float(y)) * texelSize, currentDepth);
+            if (shadowIdx == 0)
+                shadow += texture(u_SpotShadowMaps[0], coord);
+            else
+                shadow += texture(u_SpotShadowMaps[1], coord);
+        }
+    }
+    shadow /= 9.0;
+    return shadow;
+}
+
+// ── Point Light Shadow Calculation ──────────────────────────────────
+
+float PointShadowCalculation(int shadowIdx, vec3 fragPos, vec3 lightPos) {
+    if (shadowIdx < 0 || shadowIdx >= u_NumPointShadows)
+        return 1.0;
+
+    vec3 fragToLight = fragPos - lightPos;
+    float currentDist = length(fragToLight);
+    float farPlane = u_PointShadowFarPlanes[shadowIdx];
+
+    float bias = 0.05;
+    float shadow = 0.0;
+
+    float diskRadius = 0.02;
+    vec3 sampleOffsets[20] = vec3[](
+        vec3( 1,  1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1,  1,  1),
+        vec3( 1,  1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1,  1, -1),
+        vec3( 1,  1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1,  1,  0),
+        vec3( 1,  0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1,  0, -1),
+        vec3( 0,  1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0,  1, -1)
+    );
+
+    int samples = 20;
+    for (int s = 0; s < samples; ++s) {
+        float closestDepth;
+        if (shadowIdx == 0)
+            closestDepth = texture(u_PointShadowCubeMaps[0], fragToLight + sampleOffsets[s] * diskRadius).r;
+        else
+            closestDepth = texture(u_PointShadowCubeMaps[1], fragToLight + sampleOffsets[s] * diskRadius).r;
+        closestDepth *= farPlane;
+        if (currentDist - bias > closestDepth)
+            shadow += 1.0;
+    }
+    shadow /= float(samples);
+
+    return 1.0 - shadow;
+}
+
 void main() {
     vec4 baseColor = v_InstanceColor;
     baseColor.rgb *= v_Color;
@@ -282,7 +372,35 @@ void main() {
         vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
         vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
         float NdotL = max(dot(N, L), 0.0);
-        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
+        float pointShadow = PointShadowCalculation(u_PointLightShadowIndex[i], v_FragPos, u_PointLightPositions[i]);
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL * pointShadow;
+    }
+
+    // Spot lights
+    for (int i = 0; i < u_NumSpotLights; ++i) {
+        vec3  lightVec  = u_SpotLightPositions[i] - v_FragPos;
+        float dist      = length(lightVec);
+        float range     = u_SpotLightRanges[i];
+        if (dist > range) continue;
+        vec3  L = lightVec / dist;
+        vec3  H = normalize(V + L);
+        float theta = dot(L, normalize(-u_SpotLightDirections[i]));
+        float epsilon = u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i];
+        float spotFactor = clamp((theta - u_SpotLightOuterCos[i]) / max(epsilon, 0.0001), 0.0, 1.0);
+        if (spotFactor <= 0.0) continue;
+        float attenuation = 1.0 / (dist * dist + 1.0);
+        float window = 1.0 - pow(clamp(dist / range, 0.0, 1.0), 4.0);
+        window = window * window;
+        attenuation *= window * spotFactor;
+        vec3 radiance = u_SpotLightColors[i] * u_SpotLightIntensities[i] * attenuation;
+        float NDF = DistributionGGX(N, H, roughness);
+        float G   = GeometrySmith(N, V, L, roughness);
+        vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+        vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
+        vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+        float NdotL = max(dot(N, L), 0.0);
+        float spotShadow = SpotShadowCalculation(u_SpotLightShadowIndex[i], v_FragPos, N);
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL * spotShadow;
     }
 
     // Spot lights

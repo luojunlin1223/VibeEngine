@@ -96,6 +96,7 @@ struct PointLightComponent {
     std::array<float, 3> Color = { 1.0f, 1.0f, 1.0f };
     float Intensity = 1.0f;
     float Range     = 10.0f; // world-space radius of influence
+    bool  CastShadows = false; // expensive: cube map shadow (max 2 shadow-casting point lights)
 
     PointLightComponent() = default;
 };
@@ -107,6 +108,7 @@ struct SpotLightComponent {
     float Range      = 15.0f;  // world-space radius of influence
     float InnerAngle = 25.0f;  // degrees — full-brightness cone
     float OuterAngle = 35.0f;  // degrees — falloff cone edge
+    bool  CastShadows = false; // max 2 shadow-casting spot lights
 
     SpotLightComponent() = default;
 };
