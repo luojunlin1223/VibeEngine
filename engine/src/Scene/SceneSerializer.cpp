@@ -631,7 +631,15 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     // Pipeline settings
     auto& ps = scene->GetPipelineSettings();
     out << YAML::Key << "PipelineSettings" << YAML::Value << YAML::BeginMap;
-    out << YAML::Key << "RenderPipeline" << YAML::Value << static_cast<int>(ps.Pipeline);
+    // Serialize pipeline as string for forward compatibility
+    const char* pipelineStr = "Forward";
+    switch (ps.Pipeline) {
+        case RenderPipeline::Forward:     pipelineStr = "Forward"; break;
+        case RenderPipeline::Deferred:    pipelineStr = "Deferred"; break;
+        case RenderPipeline::ForwardPlus: pipelineStr = "ForwardPlus"; break;
+        case RenderPipeline::DeferredPlus: pipelineStr = "DeferredPlus"; break;
+    }
+    out << YAML::Key << "RenderPipeline" << YAML::Value << pipelineStr;
     out << YAML::Key << "HDREnabled" << YAML::Value << ps.HDREnabled;
     out << YAML::Key << "ToneMapMode" << YAML::Value << ps.ToneMapMode;
     out << YAML::Key << "HDRExposure" << YAML::Value << ps.Exposure;
@@ -727,6 +735,9 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "ShadowNormalBias" << YAML::Value << ps.ShadowNormalBias;
     out << YAML::Key << "ShadowPCFRadius" << YAML::Value << ps.ShadowPCFRadius;
     out << YAML::Key << "OcclusionCullingEnabled" << YAML::Value << ps.OcclusionCullingEnabled;
+    out << YAML::Key << "ForwardPlusDebugHeatmap" << YAML::Value << ps.ForwardPlusDebugHeatmap;
+    out << YAML::Key << "GBufferDebugView" << YAML::Value << ps.GBufferDebugView;
+    out << YAML::Key << "DeferredPlusDebugOverlay" << YAML::Value << ps.DeferredPlusDebugOverlay;
     out << YAML::EndMap;
 
     out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
@@ -752,7 +763,19 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
     // Pipeline settings
     if (auto psNode = data["PipelineSettings"]) {
         auto& ps = scene->GetPipelineSettings();
-        if (psNode["RenderPipeline"]) ps.Pipeline = static_cast<RenderPipeline>(psNode["RenderPipeline"].as<int>());
+        if (psNode["RenderPipeline"]) {
+            auto rpNode = psNode["RenderPipeline"];
+            // Support both string and legacy int format
+            try {
+                std::string rpStr = rpNode.as<std::string>();
+                if (rpStr == "Forward")          ps.Pipeline = RenderPipeline::Forward;
+                else if (rpStr == "Deferred")    ps.Pipeline = RenderPipeline::Deferred;
+                else if (rpStr == "ForwardPlus") ps.Pipeline = RenderPipeline::ForwardPlus;
+                else if (rpStr == "DeferredPlus") ps.Pipeline = RenderPipeline::DeferredPlus;
+            } catch (...) {
+                ps.Pipeline = static_cast<RenderPipeline>(rpNode.as<int>(0));
+            }
+        }
         if (psNode["HDREnabled"]) ps.HDREnabled = psNode["HDREnabled"].as<bool>();
         if (psNode["ToneMapMode"]) ps.ToneMapMode = psNode["ToneMapMode"].as<int>();
         if (psNode["HDRExposure"]) ps.Exposure = psNode["HDRExposure"].as<float>();
@@ -851,6 +874,9 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["ShadowNormalBias"]) ps.ShadowNormalBias = psNode["ShadowNormalBias"].as<float>();
         if (psNode["ShadowPCFRadius"]) ps.ShadowPCFRadius = psNode["ShadowPCFRadius"].as<int>();
         if (psNode["OcclusionCullingEnabled"]) ps.OcclusionCullingEnabled = psNode["OcclusionCullingEnabled"].as<bool>();
+        if (psNode["ForwardPlusDebugHeatmap"]) ps.ForwardPlusDebugHeatmap = psNode["ForwardPlusDebugHeatmap"].as<bool>();
+        if (psNode["GBufferDebugView"]) ps.GBufferDebugView = psNode["GBufferDebugView"].as<int>();
+        if (psNode["DeferredPlusDebugOverlay"]) ps.DeferredPlusDebugOverlay = psNode["DeferredPlusDebugOverlay"].as<bool>();
     }
 
     auto entities = data["Entities"];

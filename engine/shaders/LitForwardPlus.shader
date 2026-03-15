@@ -137,14 +137,17 @@ uniform int u_TileCountX;
 struct GPUPointLight {
     vec4 positionAndRange;
     vec4 colorAndIntensity;
+    int  shadowIndex;
+    float _pad0, _pad1, _pad2;
 };
 
 struct GPUSpotLight {
     vec4 posAndRange;
-    vec4 dirAndInnerCos;
+    vec4 dirAndOuterCos;
     vec4 colorAndIntensity;
-    float outerCos;
-    float _pad0, _pad1, _pad2;
+    float innerCos;
+    int  shadowIndex;
+    float _pad0, _pad1;
 };
 
 const uint TILE_STRIDE = 520u;
@@ -460,11 +463,11 @@ void main() {
 
             vec3  lightPos  = spotLights[lightIdx].posAndRange.xyz;
             float range     = spotLights[lightIdx].posAndRange.w;
-            vec3  spotDir   = spotLights[lightIdx].dirAndInnerCos.xyz;
-            float innerCos  = spotLights[lightIdx].dirAndInnerCos.w;
+            vec3  spotDir   = spotLights[lightIdx].dirAndOuterCos.xyz;
+            float outerCos  = spotLights[lightIdx].dirAndOuterCos.w;
             vec3  lightCol  = spotLights[lightIdx].colorAndIntensity.xyz;
             float intensity = spotLights[lightIdx].colorAndIntensity.w;
-            float outerCos  = spotLights[lightIdx].outerCos;
+            float innerCos  = spotLights[lightIdx].innerCos;
 
             vec3  lightVec = lightPos - v_FragPos;
             float dist     = length(lightVec);

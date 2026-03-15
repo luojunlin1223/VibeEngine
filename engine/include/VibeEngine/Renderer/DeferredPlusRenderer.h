@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "VibeEngine/Renderer/GPULightData.h"
 #include <cstdint>
 #include <vector>
 #include <memory>
@@ -24,23 +25,6 @@ namespace VE {
 
 class Scene;
 class Shader;
-
-// GPU-side light structs — 16-byte aligned for std430
-struct GPUPointLight {
-    glm::vec4 positionAndRange;    // xyz = world position, w = range
-    glm::vec4 colorAndIntensity;   // rgb = color, a = intensity
-    int       shadowIndex;         // -1 = no shadow
-    float     padding[3];
-};
-
-struct GPUSpotLight {
-    glm::vec4 posAndRange;         // xyz = world position, w = range
-    glm::vec4 dirAndOuterCos;      // xyz = direction, w = cos(outerAngle)
-    glm::vec4 colorAndIntensity;   // rgb = color, a = intensity
-    float     innerCos;            // cos(innerAngle)
-    int       shadowIndex;         // -1 = no shadow
-    float     padding[2];
-};
 
 // Per-frame stats exposed for the profiler panel
 struct TiledLightingStats {

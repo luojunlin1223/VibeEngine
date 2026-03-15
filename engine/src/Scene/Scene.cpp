@@ -960,7 +960,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
-    const bool useForwardPlus = (m_PipelineSettings.Lighting == LightingMode::ForwardPlus);
+    const bool useForwardPlus = (m_PipelineSettings.Pipeline == RenderPipeline::ForwardPlus);
 
     // Gather point lights (max 8 for classic Forward, unlimited for Forward+)
     static constexpr int MAX_POINT_LIGHTS = 8;
@@ -990,6 +990,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                 GPUPointLight gpu;
                 gpu.PositionAndRange  = glm::vec4(pos, pl.Range);
                 gpu.ColorAndIntensity = glm::vec4(col, pl.Intensity);
+                gpu.ShadowIndex       = -1;
                 gpuPointLights.push_back(gpu);
             }
 
@@ -1035,10 +1036,10 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             if (useForwardPlus) {
                 GPUSpotLight gpu;
                 gpu.PosAndRange       = glm::vec4(pos, sl.Range);
-                gpu.DirAndInnerCos    = glm::vec4(dir, std::cos(glm::radians(sl.InnerAngle)));
+                gpu.DirAndOuterCos    = glm::vec4(dir, std::cos(glm::radians(sl.OuterAngle)));
                 gpu.ColorAndIntensity = glm::vec4(col, sl.Intensity);
-                gpu.OuterCos          = std::cos(glm::radians(sl.OuterAngle));
-                gpu._pad0 = gpu._pad1 = gpu._pad2 = 0.0f;
+                gpu.InnerCos          = std::cos(glm::radians(sl.InnerAngle));
+                gpu.ShadowIndex       = -1;
                 gpuSpotLights.push_back(gpu);
             }
 

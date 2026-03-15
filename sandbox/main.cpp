@@ -316,7 +316,7 @@ protected:
         VE::RGHandle shadowMap, sceneColor;
 
         // Pass 0: Shadow depth (3D perspective only, or Forward+ needs camera matrices)
-        if (perspective3D || pipeSettings.Lighting == VE::LightingMode::ForwardPlus) {
+        if (perspective3D || pipeSettings.Pipeline == VE::RenderPipeline::ForwardPlus) {
             rg.AddPass("ShadowDepth", [&](VE::RGBuilder& b) {
                 shadowMap = b.Import("ShadowMap",
                     m_Scene->GetShadowMap() ? m_Scene->GetShadowMap()->GetDepthTextureID() : 0,
@@ -361,8 +361,8 @@ protected:
 
                 // If debug view is active, replace lighting output with debug visualization
                 auto& dr = m_Scene->GetDeferredRenderer();
-                if (m_GBufferDebugView > 0 && dr.IsInitialized()) {
-                    dr.DebugVisualize(static_cast<VE::GBufferDebugView>(m_GBufferDebugView));
+                if (m_Scene->GetPipelineSettings().GBufferDebugView > 0 && dr.IsInitialized()) {
+                    dr.DebugVisualize(static_cast<VE::GBufferDebugView>(m_Scene->GetPipelineSettings().GBufferDebugView));
                 }
 
                 // Blit deferred lighting output into the scene framebuffer
@@ -6124,18 +6124,24 @@ private:
         auto& ps = m_Scene->GetPipelineSettings();
 
         if (ImGui::CollapsingHeader("Render Pipeline", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const char* pipelineModes[] = { "Forward", "Deferred" };
+            const char* pipelineModes[] = { "Forward", "Deferred", "Forward+", "Deferred+" };
             int pipelineIdx = static_cast<int>(ps.Pipeline);
-            if (ImGui::Combo("Pipeline Mode", &pipelineIdx, pipelineModes, 2)) {
+            if (ImGui::Combo("Pipeline Mode", &pipelineIdx, pipelineModes, 4)) {
                 ps.Pipeline = static_cast<VE::RenderPipeline>(pipelineIdx);
             }
-            if (ps.Pipeline == VE::RenderPipeline::Deferred) {
+            if (ps.Pipeline == VE::RenderPipeline::Deferred || ps.Pipeline == VE::RenderPipeline::DeferredPlus) {
                 ImGui::TextDisabled("G-Buffer MRT: Position, Normal, Albedo, Emission");
                 ImGui::TextDisabled("Transparent objects use forward pass");
 
                 const char* debugViews[] = { "None", "Position", "Normals", "Albedo",
                     "Metallic", "Roughness", "AO", "Emission", "Depth" };
-                ImGui::Combo("G-Buffer Debug", &m_GBufferDebugView, debugViews, 9);
+                ImGui::Combo("G-Buffer Debug", &ps.GBufferDebugView, debugViews, 9);
+            }
+            if (ps.Pipeline == VE::RenderPipeline::ForwardPlus) {
+                ImGui::Checkbox("Tile Heatmap", &ps.ForwardPlusDebugHeatmap);
+            }
+            if (ps.Pipeline == VE::RenderPipeline::DeferredPlus) {
+                ImGui::Checkbox("Tiled Debug Overlay", &ps.DeferredPlusDebugOverlay);
             }
         }
 
@@ -7018,7 +7024,7 @@ private:
 
             // Deferred+ stats
             auto& pipeSettings = m_Scene->GetPipelineSettings();
-            if (pipeSettings.PipelineMode == VE::RenderPipeline::DeferredPlus) {
+            if (pipeSettings.Pipeline == VE::RenderPipeline::DeferredPlus) {
                 ImGui::Separator();
                 auto& dpStats = m_Scene->GetDeferredPlusRenderer().GetStats();
                 ImGui::Text("Deferred+ Tiled Lighting:");
@@ -7188,7 +7194,7 @@ private:
                 Row("Instances", std::to_string(instanceStats.InstanceCount));
 
                 // Forward+ light stats
-                if (m_Scene->GetPipelineSettings().Lighting == VE::LightingMode::ForwardPlus
+                if (m_Scene->GetPipelineSettings().Pipeline == VE::RenderPipeline::ForwardPlus
                     && VE::ForwardPlusRenderer::IsInitialized()) {
                     Row("Point Lights (F+)",
                         std::to_string(VE::ForwardPlusRenderer::GetTotalPointLights()));
@@ -7412,7 +7418,6 @@ private:
     bool m_ShowInspector = true;
     bool m_ShowSceneInfo = true;
     bool m_ShowPipelineSettings = false;
-    int  m_GBufferDebugView = 0; // 0=None, 1..8 = GBufferDebugView enum
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;

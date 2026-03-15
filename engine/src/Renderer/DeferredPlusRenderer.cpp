@@ -1015,10 +1015,9 @@ void DeferredPlusRenderer::UploadLights(Scene& scene) {
             glm::mat4 worldMat = scene.GetWorldTransform(plEntity);
 
             GPUPointLight gpu;
-            gpu.positionAndRange = glm::vec4(glm::vec3(worldMat[3]), pl.Range);
-            gpu.colorAndIntensity = glm::vec4(pl.Color[0], pl.Color[1], pl.Color[2], pl.Intensity);
-            gpu.shadowIndex = (pl.CastShadows && shadowIdx < 2) ? shadowIdx++ : -1;
-            gpu.padding[0] = gpu.padding[1] = gpu.padding[2] = 0.0f;
+            gpu.PositionAndRange = glm::vec4(glm::vec3(worldMat[3]), pl.Range);
+            gpu.ColorAndIntensity = glm::vec4(pl.Color[0], pl.Color[1], pl.Color[2], pl.Intensity);
+            gpu.ShadowIndex = (pl.CastShadows && shadowIdx < 2) ? shadowIdx++ : -1;
             m_PointLights.push_back(gpu);
         }
     }
@@ -1036,12 +1035,11 @@ void DeferredPlusRenderer::UploadLights(Scene& scene) {
             glm::vec3 worldDir = glm::normalize(glm::mat3(worldMat) * localDir);
 
             GPUSpotLight gpu;
-            gpu.posAndRange = glm::vec4(glm::vec3(worldMat[3]), sl.Range);
-            gpu.dirAndOuterCos = glm::vec4(worldDir, std::cos(glm::radians(sl.OuterAngle)));
-            gpu.colorAndIntensity = glm::vec4(sl.Color[0], sl.Color[1], sl.Color[2], sl.Intensity);
-            gpu.innerCos = std::cos(glm::radians(sl.InnerAngle));
-            gpu.shadowIndex = (sl.CastShadows && shadowIdx < 2) ? shadowIdx++ : -1;
-            gpu.padding[0] = gpu.padding[1] = 0.0f;
+            gpu.PosAndRange = glm::vec4(glm::vec3(worldMat[3]), sl.Range);
+            gpu.DirAndOuterCos = glm::vec4(worldDir, std::cos(glm::radians(sl.OuterAngle)));
+            gpu.ColorAndIntensity = glm::vec4(sl.Color[0], sl.Color[1], sl.Color[2], sl.Intensity);
+            gpu.InnerCos = std::cos(glm::radians(sl.InnerAngle));
+            gpu.ShadowIndex = (sl.CastShadows && shadowIdx < 2) ? shadowIdx++ : -1;
             m_SpotLights.push_back(gpu);
         }
     }

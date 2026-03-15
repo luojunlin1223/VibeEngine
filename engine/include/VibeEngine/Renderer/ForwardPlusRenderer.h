@@ -14,6 +14,7 @@
  */
 #pragma once
 
+#include "VibeEngine/Renderer/GPULightData.h"
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <vector>
@@ -22,21 +23,6 @@
 namespace VE {
 
 class Shader;
-
-// GPU-side point light (16-byte aligned for std430)
-struct GPUPointLight {
-    glm::vec4 PositionAndRange;     // xyz = world position, w = range
-    glm::vec4 ColorAndIntensity;    // xyz = color, w = intensity
-};
-
-// GPU-side spot light (16-byte aligned for std430)
-struct GPUSpotLight {
-    glm::vec4 PosAndRange;          // xyz = world position, w = range
-    glm::vec4 DirAndInnerCos;       // xyz = direction, w = cos(innerAngle)
-    glm::vec4 ColorAndIntensity;    // xyz = color, w = intensity
-    float     OuterCos;             // cos(outerAngle)
-    float     _pad0, _pad1, _pad2;  // pad to 16-byte alignment
-};
 
 // Per-tile header stored at the beginning of the tile light index buffer
 struct TileHeader {

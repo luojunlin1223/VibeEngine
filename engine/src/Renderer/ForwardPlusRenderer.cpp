@@ -58,14 +58,17 @@ uniform uint      u_NumSpotLights;
 struct GPUPointLight {
     vec4 positionAndRange;   // xyz = position, w = range
     vec4 colorAndIntensity;  // xyz = color, w = intensity
+    int  shadowIndex;
+    float _pad0, _pad1, _pad2;
 };
 
 struct GPUSpotLight {
     vec4 posAndRange;        // xyz = position, w = range
-    vec4 dirAndInnerCos;     // xyz = direction, w = cos(innerAngle)
+    vec4 dirAndOuterCos;     // xyz = direction, w = cos(outerAngle)
     vec4 colorAndIntensity;  // xyz = color, w = intensity
-    float outerCos;
-    float _pad0, _pad1, _pad2;
+    float innerCos;
+    int  shadowIndex;
+    float _pad0, _pad1;
 };
 
 // ── SSBOs ──
@@ -329,14 +332,17 @@ uniform uint      u_TileCountX;
 struct GPUPointLight {
     vec4 positionAndRange;
     vec4 colorAndIntensity;
+    int  shadowIndex;
+    float _pad0, _pad1, _pad2;
 };
 
 struct GPUSpotLight {
     vec4 posAndRange;
-    vec4 dirAndInnerCos;
+    vec4 dirAndOuterCos;
     vec4 colorAndIntensity;
-    float outerCos;
-    float _pad0, _pad1, _pad2;
+    float innerCos;
+    int  shadowIndex;
+    float _pad0, _pad1;
 };
 
 layout(std430, binding = 1) readonly buffer PointLightBuffer {

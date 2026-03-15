@@ -12,6 +12,7 @@
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/ReflectionProbe.h"
 #include "VibeEngine/Renderer/DeferredRenderer.h"
+#include "VibeEngine/Renderer/DeferredPlusRenderer.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Navigation/NavGrid.h"
 #include <entt/entt.hpp>
@@ -26,10 +27,12 @@ namespace VE {
 
 class Entity;
 
-/// Render pipeline mode: Forward (traditional) or Deferred (G-buffer based).
+/// Render pipeline mode.
 enum class RenderPipeline {
     Forward = 0,
-    Deferred = 1
+    Deferred = 1,
+    ForwardPlus = 2,
+    DeferredPlus = 3
 };
 
 struct RenderPipelineSettings {
@@ -151,6 +154,15 @@ struct RenderPipelineSettings {
 
     // Occlusion Culling
     bool OcclusionCullingEnabled = false;
+
+    // Forward+ debug
+    bool ForwardPlusDebugHeatmap = false;
+
+    // Deferred debug
+    int  GBufferDebugView = 0; // 0=None, 1..8 = GBufferDebugView enum
+
+    // Deferred+ debug
+    bool DeferredPlusDebugOverlay = false;
 };
 
 class Scene {
@@ -195,6 +207,14 @@ public:
 
     /// Get the deferred renderer instance (creates on first access).
     DeferredRenderer& GetDeferredRenderer() { return m_DeferredRenderer; }
+    /// Get the deferred+ (tiled deferred) renderer instance.
+    DeferredPlusRenderer& GetDeferredPlusRenderer() { return m_DeferredPlusRenderer; }
+    /// Deferred+ (tiled deferred) rendering path.
+    void OnRenderDeferredPlus(const glm::mat4& viewProjection,
+                              const glm::mat4& viewMatrix, const glm::mat4& projMatrix,
+                              const glm::vec3& cameraPos,
+                              uint32_t targetFBO, uint32_t fbWidth, uint32_t fbHeight);
+
     void OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
     void OnRenderSprites(const glm::mat4& viewProjection);
     void OnRenderDecals(const glm::mat4& viewProjection, const glm::mat4& viewMatrix,
@@ -295,6 +315,7 @@ private:
 
     // Deferred rendering
     DeferredRenderer m_DeferredRenderer;
+    DeferredPlusRenderer m_DeferredPlusRenderer;
 
     // Deferred entity deletion queue (flushed at end of OnUpdate)
     std::vector<entt::entity> m_PendingDestroy;
