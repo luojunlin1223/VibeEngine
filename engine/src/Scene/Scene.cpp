@@ -87,6 +87,14 @@ Entity Scene::CreateEntityWithUUID(UUID uuid, const std::string& name) {
 }
 
 void Scene::DestroyEntity(Entity entity) {
+    if (!entity.IsValid()) {
+        VE_ENGINE_WARN("Scene::DestroyEntity: invalid entity, ignoring");
+        return;
+    }
+    if (!m_Registry.valid(entity.GetHandle())) {
+        VE_ENGINE_WARN("Scene::DestroyEntity: entity does not exist in registry, ignoring");
+        return;
+    }
     if (entity.HasComponent<TagComponent>()) {
         VE_ENGINE_INFO("Entity destroyed: {0}", entity.GetComponent<TagComponent>().Tag);
     }
@@ -111,14 +119,49 @@ void Scene::DestroyEntity(Entity entity) {
     m_Registry.destroy(entity.GetHandle());
 }
 
+void Scene::QueueDestroy(Entity entity) {
+    entt::entity handle = entity.GetHandle();
+    // Avoid duplicates in the pending list
+    for (auto e : m_PendingDestroy) {
+        if (e == handle) return;
+    }
+    m_PendingDestroy.push_back(handle);
+}
+
+void Scene::FlushDestroyQueue() {
+    if (m_PendingDestroy.empty()) return;
+
+    // Copy and clear so that DestroyEntity during flush doesn't re-enter
+    auto pending = std::move(m_PendingDestroy);
+    m_PendingDestroy.clear();
+
+    for (auto e : pending) {
+        if (m_Registry.valid(e))
+            DestroyEntity(Entity(e, this));
+    }
+}
+
 void Scene::SetParent(entt::entity child, entt::entity parent) {
-    if (child == parent) return;
-    if (!m_Registry.valid(child) || !m_Registry.valid(parent)) return;
+    if (child == parent) {
+        VE_ENGINE_WARN("Scene::SetParent: cannot parent entity to itself");
+        return;
+    }
+    if (!m_Registry.valid(child)) {
+        VE_ENGINE_WARN("Scene::SetParent: child entity is invalid");
+        return;
+    }
+    if (!m_Registry.valid(parent)) {
+        VE_ENGINE_WARN("Scene::SetParent: parent entity is invalid");
+        return;
+    }
 
     // Prevent circular: walk up from parent, if we hit child, it's circular
     entt::entity check = parent;
     while (check != entt::null) {
-        if (check == child) return; // circular!
+        if (check == child) {
+            VE_ENGINE_WARN("Scene::SetParent: circular parenting detected, ignoring");
+            return;
+        }
         auto& rel = m_Registry.get<RelationshipComponent>(check);
         check = rel.Parent;
     }
@@ -146,7 +189,10 @@ void Scene::SetParent(entt::entity child, entt::entity parent) {
 }
 
 void Scene::RemoveParent(entt::entity child) {
-    if (!m_Registry.valid(child)) return;
+    if (!m_Registry.valid(child)) {
+        VE_ENGINE_WARN("Scene::RemoveParent: child entity is invalid");
+        return;
+    }
     auto& childRel = m_Registry.get<RelationshipComponent>(child);
     if (childRel.Parent == entt::null) return;
 
@@ -285,6 +331,9 @@ void Scene::OnUpdate(float deltaTime) {
 
     // Update particle systems
     OnUpdateParticles(deltaTime);
+
+    // Flush deferred entity deletions (safe point — no iteration in progress)
+    FlushDestroyQueue();
 }
 
 void Scene::StartPhysics() {

@@ -9,6 +9,7 @@
  */
 #include "VibeEngine/Renderer/SSAO.h"
 #include "VibeEngine/Renderer/ShaderSources.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 #include "VibeEngine/Core/Log.h"
 #include <glad/gl.h>
 #include <random>
@@ -189,6 +190,7 @@ void SSAO::Init(uint32_t width, uint32_t height) {
 
     CompileShaders();
     glGenVertexArrays(1, &m_QuadVAO);
+    VE_GPU_TRACK(GPUResourceType::VertexArray, m_QuadVAO);
     GenerateKernel();
     GenerateNoiseTexture();
     CreateResources();
@@ -200,10 +202,10 @@ void SSAO::Init(uint32_t width, uint32_t height) {
 void SSAO::Shutdown() {
     if (!m_Initialized) return;
     DestroyResources();
-    if (m_QuadVAO) { glDeleteVertexArrays(1, &m_QuadVAO); m_QuadVAO = 0; }
-    if (m_SSAOShader) { glDeleteProgram(m_SSAOShader); m_SSAOShader = 0; }
-    if (m_BlurShader) { glDeleteProgram(m_BlurShader); m_BlurShader = 0; }
-    if (m_NoiseTexture) { glDeleteTextures(1, &m_NoiseTexture); m_NoiseTexture = 0; }
+    if (m_QuadVAO) { VE_GPU_UNTRACK(GPUResourceType::VertexArray, m_QuadVAO); glDeleteVertexArrays(1, &m_QuadVAO); m_QuadVAO = 0; }
+    if (m_SSAOShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_SSAOShader); glDeleteProgram(m_SSAOShader); m_SSAOShader = 0; }
+    if (m_BlurShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_BlurShader); glDeleteProgram(m_BlurShader); m_BlurShader = 0; }
+    if (m_NoiseTexture) { VE_GPU_UNTRACK(GPUResourceType::Texture, m_NoiseTexture); glDeleteTextures(1, &m_NoiseTexture); m_NoiseTexture = 0; }
     m_Initialized = false;
 }
 
@@ -220,7 +222,9 @@ void SSAO::Resize(uint32_t width, uint32_t height) {
 
 void SSAO::CompileShaders() {
     m_SSAOShader = LinkProgram(s_QuadVertSrc, s_SSAOFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_SSAOShader);
     m_BlurShader = LinkProgram(s_QuadVertSrc, s_BlurFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_BlurShader);
     CacheUniformLocations();
 }
 
@@ -275,6 +279,7 @@ void SSAO::GenerateNoiseTexture() {
     }
 
     glGenTextures(1, &m_NoiseTexture);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_NoiseTexture);
     glBindTexture(GL_TEXTURE_2D, m_NoiseTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, noise.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -287,8 +292,10 @@ void SSAO::CreateResources() {
     // SSAO output (single channel R8)
     auto createR8FBO = [&](uint32_t& fbo, uint32_t& tex) {
         glGenFramebuffers(1, &fbo);
+        VE_GPU_TRACK(GPUResourceType::Framebuffer, fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         glGenTextures(1, &tex);
+        VE_GPU_TRACK(GPUResourceType::Texture, tex);
         glBindTexture(GL_TEXTURE_2D, tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_Width, m_Height, 0, GL_RED, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -305,8 +312,8 @@ void SSAO::CreateResources() {
 
 void SSAO::DestroyResources() {
     auto del = [](uint32_t& fbo, uint32_t& tex) {
-        if (fbo) { glDeleteFramebuffers(1, &fbo); fbo = 0; }
-        if (tex) { glDeleteTextures(1, &tex); tex = 0; }
+        if (fbo) { VE_GPU_UNTRACK(GPUResourceType::Framebuffer, fbo); glDeleteFramebuffers(1, &fbo); fbo = 0; }
+        if (tex) { VE_GPU_UNTRACK(GPUResourceType::Texture, tex); glDeleteTextures(1, &tex); tex = 0; }
     };
     del(m_SSAOFBO, m_SSAOTexture);
     del(m_BlurFBO, m_BlurTexture);

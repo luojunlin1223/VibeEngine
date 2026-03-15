@@ -148,6 +148,11 @@ public:
     Entity CreateEntity(const std::string& name = "GameObject");
     Entity CreateEntityWithUUID(UUID uuid, const std::string& name = "GameObject");
     void DestroyEntity(Entity entity);
+
+    // Deferred deletion — safe to call during iteration (scripts, physics callbacks, etc.)
+    void QueueDestroy(Entity entity);
+    void FlushDestroyQueue();
+
     void SetParent(entt::entity child, entt::entity parent);
     void RemoveParent(entt::entity child);
 
@@ -260,6 +265,9 @@ private:
 
     std::string m_PendingScenePath; // scene to load at end of frame
     std::unique_ptr<NavGrid> m_NavGrid;
+
+    // Deferred entity deletion queue (flushed at end of OnUpdate)
+    std::vector<entt::entity> m_PendingDestroy;
 
     friend class Entity;
 };

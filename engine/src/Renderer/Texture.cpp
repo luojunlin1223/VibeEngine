@@ -7,6 +7,10 @@
 namespace VE {
 
 std::shared_ptr<Texture2D> Texture2D::Create(const std::string& path) {
+    if (path.empty()) {
+        VE_ENGINE_WARN("Texture2D::Create: path is empty");
+        return nullptr;
+    }
     switch (RendererAPI::GetAPI()) {
         case RendererAPI::API::OpenGL:
             return std::make_shared<OpenGLTexture2D>(path);

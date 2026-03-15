@@ -1,5 +1,6 @@
 #include "VibeEngine/Platform/OpenGL/OpenGLShader.h"
 #include "VibeEngine/Core/Log.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 
 #include <glad/gl.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -53,9 +54,11 @@ OpenGLShader::OpenGLShader(const std::string& vertexSrc, const std::string& frag
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_RendererID);
 }
 
 OpenGLShader::~OpenGLShader() {
+    VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_RendererID);
     glDeleteProgram(m_RendererID);
 }
 

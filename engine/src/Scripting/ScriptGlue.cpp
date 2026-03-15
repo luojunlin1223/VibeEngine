@@ -145,7 +145,7 @@ static void Glue_Entity_Destroy(uint64_t entityID) {
     auto e = FindEntityByUUID(scene, entityID);
     if (e == entt::null) return;
     Entity entity(e, scene);
-    scene->DestroyEntity(entity);
+    scene->QueueDestroy(entity);
 }
 
 static void Glue_Entity_SetActive(uint64_t entityID, bool active) {

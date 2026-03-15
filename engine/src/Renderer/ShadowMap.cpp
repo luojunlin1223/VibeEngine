@@ -7,6 +7,7 @@
  */
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/Shader.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <glad/gl.h>
@@ -48,8 +49,8 @@ ShadowMap::ShadowMap() {
 }
 
 ShadowMap::~ShadowMap() {
-    if (m_FBO) glDeleteFramebuffers(1, &m_FBO);
-    if (m_DepthTexture) glDeleteTextures(1, &m_DepthTexture);
+    if (m_FBO) { VE_GPU_UNTRACK(GPUResourceType::Framebuffer, m_FBO); glDeleteFramebuffers(1, &m_FBO); }
+    if (m_DepthTexture) { VE_GPU_UNTRACK(GPUResourceType::Texture, m_DepthTexture); glDeleteTextures(1, &m_DepthTexture); }
 }
 
 void ShadowMap::Init() {
@@ -58,6 +59,7 @@ void ShadowMap::Init() {
 
     // Create depth texture array
     glGenTextures(1, &m_DepthTexture);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_DepthTexture);
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_DepthTexture);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
                  MAP_SIZE, MAP_SIZE, NUM_CASCADES,
@@ -74,6 +76,7 @@ void ShadowMap::Init() {
 
     // Create FBO (we'll attach individual layers per cascade during BeginPass)
     glGenFramebuffers(1, &m_FBO);
+    VE_GPU_TRACK(GPUResourceType::Framebuffer, m_FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
     // Attach layer 0 initially just to validate
     glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, m_DepthTexture, 0, 0);
@@ -245,14 +248,15 @@ SpotLightShadowMap::SpotLightShadowMap() {
 }
 
 SpotLightShadowMap::~SpotLightShadowMap() {
-    if (m_FBO) glDeleteFramebuffers(1, &m_FBO);
-    if (m_DepthTexture) glDeleteTextures(1, &m_DepthTexture);
+    if (m_FBO) { VE_GPU_UNTRACK(GPUResourceType::Framebuffer, m_FBO); glDeleteFramebuffers(1, &m_FBO); }
+    if (m_DepthTexture) { VE_GPU_UNTRACK(GPUResourceType::Texture, m_DepthTexture); glDeleteTextures(1, &m_DepthTexture); }
 }
 
 void SpotLightShadowMap::Init() {
     m_DepthShader = Shader::Create(s_DepthVertexSrc, s_DepthFragmentSrc);
 
     glGenTextures(1, &m_DepthTexture);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_DepthTexture);
     glBindTexture(GL_TEXTURE_2D, m_DepthTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F,
                  MAP_SIZE, MAP_SIZE, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
@@ -266,6 +270,7 @@ void SpotLightShadowMap::Init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
     glGenFramebuffers(1, &m_FBO);
+    VE_GPU_TRACK(GPUResourceType::Framebuffer, m_FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_DepthTexture, 0);
     glDrawBuffer(GL_NONE);
@@ -361,8 +366,8 @@ PointLightShadowMap::PointLightShadowMap() {
 }
 
 PointLightShadowMap::~PointLightShadowMap() {
-    if (m_FBO) glDeleteFramebuffers(1, &m_FBO);
-    if (m_DepthCubeMap) glDeleteTextures(1, &m_DepthCubeMap);
+    if (m_FBO) { VE_GPU_UNTRACK(GPUResourceType::Framebuffer, m_FBO); glDeleteFramebuffers(1, &m_FBO); }
+    if (m_DepthCubeMap) { VE_GPU_UNTRACK(GPUResourceType::Texture, m_DepthCubeMap); glDeleteTextures(1, &m_DepthCubeMap); }
 }
 
 void PointLightShadowMap::Init() {
@@ -370,6 +375,7 @@ void PointLightShadowMap::Init() {
 
     // Create cube map depth texture
     glGenTextures(1, &m_DepthCubeMap);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_DepthCubeMap);
     glBindTexture(GL_TEXTURE_CUBE_MAP, m_DepthCubeMap);
     for (int i = 0; i < 6; ++i) {
         glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT32F,
@@ -383,6 +389,7 @@ void PointLightShadowMap::Init() {
 
     // Create FBO
     glGenFramebuffers(1, &m_FBO);
+    VE_GPU_TRACK(GPUResourceType::Framebuffer, m_FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                            GL_TEXTURE_CUBE_MAP_POSITIVE_X, m_DepthCubeMap, 0);

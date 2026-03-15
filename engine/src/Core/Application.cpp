@@ -4,6 +4,7 @@
 #include "VibeEngine/Core/Profiler.h"
 #include "VibeEngine/Renderer/Renderer.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 #include "VibeEngine/ImGui/ImGuiLayer.h"
 #include "VibeEngine/Input/Input.h"
 #include "VibeEngine/Input/InputAction.h"
@@ -41,6 +42,7 @@ Application::~Application() {
         m_ImGuiLayer->Shutdown();
     }
     Renderer::Shutdown();
+    VE_GPU_REPORT_LEAKS();
     VE_ENGINE_INFO("VibeEngine shutting down");
 }
 

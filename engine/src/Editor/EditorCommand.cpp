@@ -48,6 +48,7 @@ void CommandHistory::Execute(const std::string& name, std::function<void()> acti
     m_UndoStack.push_back(std::move(cmd));
     m_RedoStack.clear();
     TrimStack();
+    if (m_DirtyCallback) m_DirtyCallback();
 }
 
 // ── Property edit support ────────────────────────────────────────────
@@ -78,6 +79,7 @@ void CommandHistory::EndPropertyEdit() {
 
     m_PropertyEditActive = false;
     m_PropertyEditBeforeYAML.clear();
+    if (m_DirtyCallback) m_DirtyCallback();
 }
 
 void CommandHistory::RecordPropertyEdit(const std::string& name, std::string beforeSnapshot) {
@@ -90,6 +92,7 @@ void CommandHistory::RecordPropertyEdit(const std::string& name, std::string bef
     m_UndoStack.push_back(std::move(cmd));
     m_RedoStack.clear();
     TrimStack();
+    if (m_DirtyCallback) m_DirtyCallback();
 }
 
 // ── Undo / Redo ──────────────────────────────────────────────────────

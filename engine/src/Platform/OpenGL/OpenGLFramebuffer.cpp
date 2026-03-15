@@ -1,5 +1,6 @@
 #include "VibeEngine/Platform/OpenGL/OpenGLFramebuffer.h"
 #include "VibeEngine/Core/Log.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 #include <glad/gl.h>
 
 namespace VE {
@@ -21,11 +22,13 @@ void OpenGLFramebuffer::Invalidate() {
     GLenum internalFormat = m_HDR ? GL_RGBA16F : GL_RGBA8;
 
     glGenFramebuffers(1, &m_FBO);
+    VE_GPU_TRACK(GPUResourceType::Framebuffer, m_FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
 
     if (m_Multisampled) {
         // ── Multisample color attachment ──
         glGenTextures(1, &m_ColorAttachment);
+        VE_GPU_TRACK(GPUResourceType::Texture, m_ColorAttachment);
         glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, m_ColorAttachment);
         glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, m_Samples, internalFormat,
                                 m_Width, m_Height, GL_TRUE);
@@ -34,6 +37,7 @@ void OpenGLFramebuffer::Invalidate() {
 
         // ── Multisample depth texture ──
         glGenTextures(1, &m_DepthAttachment);
+        VE_GPU_TRACK(GPUResourceType::Texture, m_DepthAttachment);
         glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, m_DepthAttachment);
         glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, m_Samples,
                                 GL_DEPTH24_STENCIL8, m_Width, m_Height, GL_TRUE);
@@ -45,10 +49,12 @@ void OpenGLFramebuffer::Invalidate() {
 
         // ── Resolve FBO (non-multisample) ──
         glGenFramebuffers(1, &m_ResolveFBO);
+        VE_GPU_TRACK(GPUResourceType::Framebuffer, m_ResolveFBO);
         glBindFramebuffer(GL_FRAMEBUFFER, m_ResolveFBO);
 
         // Resolve color
         glGenTextures(1, &m_ResolveColorAttachment);
+        VE_GPU_TRACK(GPUResourceType::Texture, m_ResolveColorAttachment);
         glBindTexture(GL_TEXTURE_2D, m_ResolveColorAttachment);
         if (m_HDR)
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, m_Width, m_Height, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -61,6 +67,7 @@ void OpenGLFramebuffer::Invalidate() {
 
         // Resolve depth (for SSAO sampling)
         glGenTextures(1, &m_ResolveDepthAttachment);
+        VE_GPU_TRACK(GPUResourceType::Texture, m_ResolveDepthAttachment);
         glBindTexture(GL_TEXTURE_2D, m_ResolveDepthAttachment);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, m_Width, m_Height, 0,
                      GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
@@ -76,6 +83,7 @@ void OpenGLFramebuffer::Invalidate() {
     } else {
         // ── Standard color texture ──
         glGenTextures(1, &m_ColorAttachment);
+        VE_GPU_TRACK(GPUResourceType::Texture, m_ColorAttachment);
         glBindTexture(GL_TEXTURE_2D, m_ColorAttachment);
         if (m_HDR)
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, m_Width, m_Height, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -88,6 +96,7 @@ void OpenGLFramebuffer::Invalidate() {
 
         // ── Depth texture (sampleable for SSAO) ──
         glGenTextures(1, &m_DepthAttachment);
+        VE_GPU_TRACK(GPUResourceType::Texture, m_DepthAttachment);
         glBindTexture(GL_TEXTURE_2D, m_DepthAttachment);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, m_Width, m_Height, 0,
                      GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
@@ -107,6 +116,9 @@ void OpenGLFramebuffer::Invalidate() {
 
 void OpenGLFramebuffer::Cleanup() {
     if (m_FBO) {
+        VE_GPU_UNTRACK(GPUResourceType::Framebuffer, m_FBO);
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_ColorAttachment);
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_DepthAttachment);
         glDeleteFramebuffers(1, &m_FBO);
         glDeleteTextures(1, &m_ColorAttachment);
         glDeleteTextures(1, &m_DepthAttachment);
@@ -115,6 +127,9 @@ void OpenGLFramebuffer::Cleanup() {
         m_DepthAttachment = 0;
     }
     if (m_ResolveFBO) {
+        VE_GPU_UNTRACK(GPUResourceType::Framebuffer, m_ResolveFBO);
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_ResolveColorAttachment);
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_ResolveDepthAttachment);
         glDeleteFramebuffers(1, &m_ResolveFBO);
         glDeleteTextures(1, &m_ResolveColorAttachment);
         glDeleteTextures(1, &m_ResolveDepthAttachment);

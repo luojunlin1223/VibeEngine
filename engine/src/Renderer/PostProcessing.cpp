@@ -13,6 +13,7 @@
  */
 #include "VibeEngine/Renderer/PostProcessing.h"
 #include "VibeEngine/Renderer/ShaderSources.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 #include "VibeEngine/Core/Log.h"
 #include <glad/gl.h>
 #include <cmath>
@@ -765,9 +766,11 @@ void PostProcessing::Init(uint32_t width, uint32_t height) {
 
     CompileShaders();
     glGenVertexArrays(1, &m_QuadVAO);
+    VE_GPU_TRACK(GPUResourceType::VertexArray, m_QuadVAO);
 
     // Create curves LUT texture
     glGenTextures(1, &m_CurvesLUT);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_CurvesLUT);
     glBindTexture(GL_TEXTURE_2D, m_CurvesLUT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -784,16 +787,16 @@ void PostProcessing::Shutdown() {
     if (!m_Initialized) return;
     DestroyResources();
 
-    if (m_QuadVAO) { glDeleteVertexArrays(1, &m_QuadVAO); m_QuadVAO = 0; }
-    if (m_CurvesLUT) { glDeleteTextures(1, &m_CurvesLUT); m_CurvesLUT = 0; }
-    if (m_BrightExtractShader) { glDeleteProgram(m_BrightExtractShader); m_BrightExtractShader = 0; }
-    if (m_BlurShader) { glDeleteProgram(m_BlurShader); m_BlurShader = 0; }
-    if (m_CompositeShader) { glDeleteProgram(m_CompositeShader); m_CompositeShader = 0; }
-    if (m_FXAAShader) { glDeleteProgram(m_FXAAShader); m_FXAAShader = 0; }
-    if (m_TAAShader) { glDeleteProgram(m_TAAShader); m_TAAShader = 0; }
-    if (m_MotionBlurShader) { glDeleteProgram(m_MotionBlurShader); m_MotionBlurShader = 0; }
-    if (m_VolFogShader) { glDeleteProgram(m_VolFogShader); m_VolFogShader = 0; }
-    if (m_DoFShader) { glDeleteProgram(m_DoFShader); m_DoFShader = 0; }
+    if (m_QuadVAO) { VE_GPU_UNTRACK(GPUResourceType::VertexArray, m_QuadVAO); glDeleteVertexArrays(1, &m_QuadVAO); m_QuadVAO = 0; }
+    if (m_CurvesLUT) { VE_GPU_UNTRACK(GPUResourceType::Texture, m_CurvesLUT); glDeleteTextures(1, &m_CurvesLUT); m_CurvesLUT = 0; }
+    if (m_BrightExtractShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_BrightExtractShader); glDeleteProgram(m_BrightExtractShader); m_BrightExtractShader = 0; }
+    if (m_BlurShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_BlurShader); glDeleteProgram(m_BlurShader); m_BlurShader = 0; }
+    if (m_CompositeShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_CompositeShader); glDeleteProgram(m_CompositeShader); m_CompositeShader = 0; }
+    if (m_FXAAShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_FXAAShader); glDeleteProgram(m_FXAAShader); m_FXAAShader = 0; }
+    if (m_TAAShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_TAAShader); glDeleteProgram(m_TAAShader); m_TAAShader = 0; }
+    if (m_MotionBlurShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_MotionBlurShader); glDeleteProgram(m_MotionBlurShader); m_MotionBlurShader = 0; }
+    if (m_VolFogShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_VolFogShader); glDeleteProgram(m_VolFogShader); m_VolFogShader = 0; }
+    if (m_DoFShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_DoFShader); glDeleteProgram(m_DoFShader); m_DoFShader = 0; }
 
     m_Initialized = false;
 }
@@ -811,13 +814,21 @@ void PostProcessing::Resize(uint32_t width, uint32_t height) {
 
 void PostProcessing::CompileShaders() {
     m_BrightExtractShader = LinkProgram(s_QuadVertexSrc, s_BrightExtractFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_BrightExtractShader);
     m_BlurShader = LinkProgram(s_QuadVertexSrc, s_BlurFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_BlurShader);
     m_CompositeShader = LinkProgram(s_QuadVertexSrc, s_CompositeFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_CompositeShader);
     m_FXAAShader = LinkProgram(s_QuadVertexSrc, s_FXAAFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_FXAAShader);
     m_TAAShader = LinkProgram(s_QuadVertexSrc, s_TAAFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_TAAShader);
     m_MotionBlurShader = LinkProgram(s_QuadVertexSrc, s_MotionBlurFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_MotionBlurShader);
     m_VolFogShader = LinkProgram(s_QuadVertexSrc, s_VolFogFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_VolFogShader);
     m_DoFShader = LinkProgram(s_QuadVertexSrc, s_DoFFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_DoFShader);
     CacheUniformLocations();
 }
 
@@ -918,9 +929,11 @@ void PostProcessing::CacheUniformLocations() {
 static uint32_t CreateColorFBO(uint32_t& texture, uint32_t w, uint32_t h) {
     uint32_t fbo;
     glGenFramebuffers(1, &fbo);
+    VE_GPU_TRACK(GPUResourceType::Framebuffer, fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
     glGenTextures(1, &texture);
+    VE_GPU_TRACK(GPUResourceType::Texture, texture);
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -967,8 +980,8 @@ void PostProcessing::CreateResources() {
 
 void PostProcessing::DestroyResources() {
     auto deleteFBO = [](uint32_t& fbo, uint32_t& tex) {
-        if (fbo) { glDeleteFramebuffers(1, &fbo); fbo = 0; }
-        if (tex) { glDeleteTextures(1, &tex); tex = 0; }
+        if (fbo) { VE_GPU_UNTRACK(GPUResourceType::Framebuffer, fbo); glDeleteFramebuffers(1, &fbo); fbo = 0; }
+        if (tex) { VE_GPU_UNTRACK(GPUResourceType::Texture, tex); glDeleteTextures(1, &tex); tex = 0; }
     };
     deleteFBO(m_BrightFBO, m_BrightTexture);
     deleteFBO(m_BlurFBO[0], m_BlurTexture[0]);
@@ -1312,10 +1325,12 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
             // Create a temp FBO pointing to currentOutput for reading
             uint32_t readFBO;
             glGenFramebuffers(1, &readFBO);
+            VE_GPU_TRACK(GPUResourceType::Framebuffer, readFBO);
             glBindFramebuffer(GL_READ_FRAMEBUFFER, readFBO);
             glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, currentOutput, 0);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_TAAHistoryFBO[prevIdx]);
             glBlitFramebuffer(0, 0, m_Width, m_Height, 0, 0, m_Width, m_Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            VE_GPU_UNTRACK(GPUResourceType::Framebuffer, readFBO);
             glDeleteFramebuffers(1, &readFBO);
             m_TAAFirstFrame = false;
         }

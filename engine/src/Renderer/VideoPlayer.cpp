@@ -7,6 +7,7 @@
  * captures each decoded frame and converts YCrCb -> RGB -> GPU upload.
  */
 #include "VibeEngine/Renderer/VideoPlayer.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <pl_mpeg.h>
@@ -143,6 +144,7 @@ float VideoPlayer::GetFramerate() const {
 
 void VideoPlayer::CreateTexture() {
     glGenTextures(1, &m_TextureID);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_TextureID);
     glBindTexture(GL_TEXTURE_2D, m_TextureID);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -161,6 +163,7 @@ void VideoPlayer::CreateTexture() {
 
 void VideoPlayer::DestroyTexture() {
     if (m_TextureID) {
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_TextureID);
         glDeleteTextures(1, &m_TextureID);
         m_TextureID = 0;
     }

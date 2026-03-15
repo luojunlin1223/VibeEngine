@@ -382,7 +382,14 @@ void PhysicsWorld::SyncTransformsToScene(entt::registry& registry) {
 }
 
 void PhysicsWorld::RemoveBody(uint32_t joltBodyID) {
-    if (joltBodyID == 0xFFFFFFFF) return;
+    if (joltBodyID == 0xFFFFFFFF) {
+        VE_ENGINE_WARN("PhysicsWorld::RemoveBody: invalid body ID (0xFFFFFFFF)");
+        return;
+    }
+    if (!m_Impl || !m_Impl->PhysicsSystem) {
+        VE_ENGINE_ERROR("PhysicsWorld::RemoveBody: physics world not initialized");
+        return;
+    }
     auto& bodyInterface = m_Impl->PhysicsSystem->GetBodyInterface();
     JPH::BodyID id(joltBodyID);
     bodyInterface.RemoveBody(id);
@@ -420,26 +427,36 @@ bool PhysicsWorld::Raycast(const glm::vec3& origin, const glm::vec3& direction,
 // ── Body manipulation ───────────────────────────────────────────────
 
 void PhysicsWorld::AddForce(uint32_t bodyID, const glm::vec3& force) {
+    if (bodyID == 0xFFFFFFFF) { VE_ENGINE_WARN("PhysicsWorld::AddForce: invalid body ID"); return; }
+    if (!m_Impl || !m_Impl->PhysicsSystem) { VE_ENGINE_ERROR("PhysicsWorld::AddForce: physics world not initialized"); return; }
     auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
     bi.AddForce(JPH::BodyID(bodyID), ToJolt(force));
 }
 
 void PhysicsWorld::AddImpulse(uint32_t bodyID, const glm::vec3& impulse) {
+    if (bodyID == 0xFFFFFFFF) { VE_ENGINE_WARN("PhysicsWorld::AddImpulse: invalid body ID"); return; }
+    if (!m_Impl || !m_Impl->PhysicsSystem) { VE_ENGINE_ERROR("PhysicsWorld::AddImpulse: physics world not initialized"); return; }
     auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
     bi.AddImpulse(JPH::BodyID(bodyID), ToJolt(impulse));
 }
 
 void PhysicsWorld::SetLinearVelocity(uint32_t bodyID, const glm::vec3& velocity) {
+    if (bodyID == 0xFFFFFFFF) { VE_ENGINE_WARN("PhysicsWorld::SetLinearVelocity: invalid body ID"); return; }
+    if (!m_Impl || !m_Impl->PhysicsSystem) { VE_ENGINE_ERROR("PhysicsWorld::SetLinearVelocity: physics world not initialized"); return; }
     auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
     bi.SetLinearVelocity(JPH::BodyID(bodyID), ToJolt(velocity));
 }
 
 glm::vec3 PhysicsWorld::GetLinearVelocity(uint32_t bodyID) const {
+    if (bodyID == 0xFFFFFFFF) { VE_ENGINE_WARN("PhysicsWorld::GetLinearVelocity: invalid body ID"); return glm::vec3(0.0f); }
+    if (!m_Impl || !m_Impl->PhysicsSystem) { VE_ENGINE_ERROR("PhysicsWorld::GetLinearVelocity: physics world not initialized"); return glm::vec3(0.0f); }
     auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
     return FromJolt(bi.GetLinearVelocity(JPH::BodyID(bodyID)));
 }
 
 void PhysicsWorld::SetAngularVelocity(uint32_t bodyID, const glm::vec3& velocity) {
+    if (bodyID == 0xFFFFFFFF) { VE_ENGINE_WARN("PhysicsWorld::SetAngularVelocity: invalid body ID"); return; }
+    if (!m_Impl || !m_Impl->PhysicsSystem) { VE_ENGINE_ERROR("PhysicsWorld::SetAngularVelocity: physics world not initialized"); return; }
     auto& bi = m_Impl->PhysicsSystem->GetBodyInterface();
     bi.SetAngularVelocity(JPH::BodyID(bodyID), ToJolt(velocity));
 }

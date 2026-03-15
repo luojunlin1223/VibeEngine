@@ -9,6 +9,7 @@
 
 #include <yaml-cpp/yaml.h>
 #include <fstream>
+#include <filesystem>
 
 namespace VE {
 
@@ -1443,6 +1444,23 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
 }
 
 void SceneSerializer::Serialize(const std::string& filepath) {
+    if (filepath.empty()) {
+        VE_ENGINE_ERROR("SceneSerializer::Serialize: filepath is empty");
+        return;
+    }
+
+    // Ensure parent directory exists (create if needed)
+    auto parentDir = std::filesystem::path(filepath).parent_path();
+    if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
+        std::error_code ec;
+        std::filesystem::create_directories(parentDir, ec);
+        if (ec) {
+            VE_ENGINE_ERROR("SceneSerializer::Serialize: failed to create directory '{0}': {1}",
+                            parentDir.string(), ec.message());
+            return;
+        }
+    }
+
     std::string yaml = SerializeSceneToYAML(m_Scene);
     std::ofstream fout(filepath);
     fout << yaml;
@@ -1453,6 +1471,15 @@ void SceneSerializer::Serialize(const std::string& filepath) {
 // ── Deserialize ────────────────────────────────────────────────────
 
 bool SceneSerializer::Deserialize(const std::string& filepath) {
+    if (filepath.empty()) {
+        VE_ENGINE_ERROR("SceneSerializer::Deserialize: filepath is empty");
+        return false;
+    }
+    if (!std::filesystem::exists(filepath)) {
+        VE_ENGINE_ERROR("SceneSerializer::Deserialize: file not found: {0}", filepath);
+        return false;
+    }
+
     YAML::Node data;
     try {
         data = YAML::LoadFile(filepath);

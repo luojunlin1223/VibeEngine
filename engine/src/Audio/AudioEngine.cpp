@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <vector>
+#include <filesystem>
 
 namespace VE {
 
@@ -118,7 +119,18 @@ void AudioEngine::PlayOneShot(const std::string& filepath) {
 }
 
 uint32_t AudioEngine::Play(const std::string& filepath, float volume, float pitch, bool loop) {
-    if (!s_Engine || filepath.empty()) return 0;
+    if (filepath.empty()) {
+        VE_ENGINE_WARN("AudioEngine::Play: filepath is empty");
+        return 0;
+    }
+    if (!s_Engine) {
+        VE_ENGINE_ERROR("AudioEngine::Play: audio engine not initialized");
+        return 0;
+    }
+    if (!std::filesystem::exists(filepath)) {
+        VE_ENGINE_ERROR("AudioEngine::Play: file not found: {0}", filepath);
+        return 0;
+    }
 
     PruneSounds();
 

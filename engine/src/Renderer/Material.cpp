@@ -44,6 +44,10 @@ std::string Material::ComputeFlagName(const std::string& name) {
 }
 
 void Material::SetFloat(const std::string& name, float value) {
+    if (name.empty()) {
+        VE_ENGINE_WARN("Material::SetFloat: property name is empty");
+        return;
+    }
     if (auto* p = FindProperty(name)) { p->FloatValue = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Float; prop.FloatValue = value;
@@ -52,6 +56,10 @@ void Material::SetFloat(const std::string& name, float value) {
 }
 
 void Material::SetInt(const std::string& name, int value) {
+    if (name.empty()) {
+        VE_ENGINE_WARN("Material::SetInt: property name is empty");
+        return;
+    }
     if (auto* p = FindProperty(name)) { p->IntValue = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Int; prop.IntValue = value;
@@ -60,6 +68,10 @@ void Material::SetInt(const std::string& name, int value) {
 }
 
 void Material::SetVec3(const std::string& name, const glm::vec3& value) {
+    if (name.empty()) {
+        VE_ENGINE_WARN("Material::SetVec3: property name is empty");
+        return;
+    }
     if (auto* p = FindProperty(name)) { p->Vec3Value = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Vec3; prop.Vec3Value = value;
@@ -68,6 +80,10 @@ void Material::SetVec3(const std::string& name, const glm::vec3& value) {
 }
 
 void Material::SetVec4(const std::string& name, const glm::vec4& value) {
+    if (name.empty()) {
+        VE_ENGINE_WARN("Material::SetVec4: property name is empty");
+        return;
+    }
     if (auto* p = FindProperty(name)) { p->Vec4Value = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Vec4; prop.Vec4Value = value;
@@ -76,6 +92,10 @@ void Material::SetVec4(const std::string& name, const glm::vec4& value) {
 }
 
 void Material::SetTexture(const std::string& name, const std::string& path) {
+    if (name.empty()) {
+        VE_ENGINE_WARN("Material::SetTexture: property name is empty");
+        return;
+    }
     if (auto* p = FindProperty(name)) {
         p->TexturePath = path;
         p->TextureRef = path.empty() ? nullptr : Texture2D::Create(path);

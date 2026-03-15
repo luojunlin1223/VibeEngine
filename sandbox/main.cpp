@@ -65,6 +65,7 @@ public:
                 }
             }
         });
+        m_CommandHistory.SetDirtyCallback([this]() { MarkDirty(); });
 
         // Set up default input action map
         SetupDefaultInputActions();
@@ -100,6 +101,19 @@ protected:
         }
 
         m_AssetDatabase.Update(m_DeltaTime);
+
+        // Auto-save timer (only outside play mode and when scene is dirty)
+        if (m_AutoSaveEnabled && !m_PlayMode && m_SceneDirty) {
+            m_AutoSaveTimer += m_DeltaTime;
+            if (m_AutoSaveTimer >= m_AutoSaveInterval) {
+                m_AutoSaveTimer = 0.0f;
+                std::filesystem::create_directories("ProjectSettings");
+                VE::SceneSerializer serializer(m_Scene);
+                serializer.Serialize("ProjectSettings/AutoSave.vscene");
+                VE_INFO("Auto-saved scene to ProjectSettings/AutoSave.vscene");
+            }
+        }
+
         if (m_PlayMode) {
             VE::ScriptEngine::CheckForReload();
 
@@ -610,6 +624,36 @@ protected:
             ImGui::End();
         }
 
+        // ── Crash recovery popup ─────────────────────────────────────
+        if (m_ShowRecoveryPopup) {
+            ImGui::OpenPopup("Recover Auto-Save?");
+            m_ShowRecoveryPopup = false;
+        }
+        if (ImGui::BeginPopupModal("Recover Auto-Save?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("An auto-save was found that is newer than the last saved scene.");
+            ImGui::Text("Would you like to recover it?");
+            ImGui::Spacing();
+            if (ImGui::Button("Yes", ImVec2(120, 0))) {
+                m_Scene = std::make_shared<VE::Scene>();
+                ClearSelection();
+                VE::SceneSerializer serializer(m_Scene);
+                if (serializer.Deserialize("ProjectSettings/AutoSave.vscene")) {
+                    VE_INFO("Recovered scene from auto-save");
+                    m_SceneManager.UnloadAllScenes();
+                    m_SceneManager.AddScene(m_Scene, "Recovered");
+                    MarkDirty();
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("No", ImVec2(120, 0))) {
+                std::filesystem::remove("ProjectSettings/AutoSave.vscene");
+                VE_INFO("Discarded auto-save file");
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
         // ── Undo/Redo keyboard shortcuts ────────────────────────────
         if (!m_PlayMode) {
             // Update selected entity UUID for undo system
@@ -1087,6 +1131,25 @@ private:
         }
     }
 
+    void MarkDirty() {
+        m_SceneDirty = true;
+        UpdateWindowTitle();
+    }
+
+    void ClearDirty() {
+        m_SceneDirty = false;
+        UpdateWindowTitle();
+    }
+
+    void UpdateWindowTitle() {
+        std::string sceneName = m_CurrentScenePath.empty()
+            ? "Untitled"
+            : std::filesystem::path(m_CurrentScenePath).stem().string();
+        std::string title = std::string("VibeEngine - ") + sceneName;
+        if (m_SceneDirty) title += " *";
+        glfwSetWindowTitle(GetWindow().GetNativeWindow(), title.c_str());
+    }
+
     void NewScene() {
         m_Scene = std::make_shared<VE::Scene>();
         ClearSelection();
@@ -1097,6 +1160,7 @@ private:
         m_SceneManager.UnloadAllScenes();
         m_SceneManager.AddScene(m_Scene, "Untitled");
 
+        ClearDirty();
         VE_INFO("New scene created");
     }
 
@@ -1104,6 +1168,10 @@ private:
         if (m_CurrentScenePath.empty()) { SaveSceneAs(); return; }
         VE::SceneSerializer serializer(m_Scene);
         serializer.Serialize(m_CurrentScenePath);
+        ClearDirty();
+        m_AutoSaveTimer = 0.0f;
+        // Remove auto-save file since scene is now saved
+        std::filesystem::remove("ProjectSettings/AutoSave.vscene");
     }
 
     void SaveSceneAs() {
@@ -1112,6 +1180,9 @@ private:
             m_CurrentScenePath = path;
             VE::SceneSerializer serializer(m_Scene);
             serializer.Serialize(m_CurrentScenePath);
+            ClearDirty();
+            m_AutoSaveTimer = 0.0f;
+            std::filesystem::remove("ProjectSettings/AutoSave.vscene");
         }
     }
 
@@ -1558,6 +1629,10 @@ private:
 
         out << YAML::Key << "ShowSceneManager" << YAML::Value << m_ShowSceneManager;
 
+        // Auto-save settings
+        out << YAML::Key << "AutoSaveEnabled" << YAML::Value << m_AutoSaveEnabled;
+        out << YAML::Key << "AutoSaveInterval" << YAML::Value << m_AutoSaveInterval;
+
         out << YAML::EndMap;
 
         std::filesystem::create_directories("ProjectSettings");
@@ -1645,6 +1720,30 @@ private:
 
             if (root["ShowSceneManager"])
                 m_ShowSceneManager = root["ShowSceneManager"].as<bool>(false);
+
+            // Auto-save settings
+            if (root["AutoSaveEnabled"])
+                m_AutoSaveEnabled = root["AutoSaveEnabled"].as<bool>(true);
+            if (root["AutoSaveInterval"])
+                m_AutoSaveInterval = root["AutoSaveInterval"].as<float>(120.0f);
+
+            // Check for crash recovery: auto-save file newer than last saved scene
+            const std::string autoSavePath = "ProjectSettings/AutoSave.vscene";
+            if (std::filesystem::exists(autoSavePath)) {
+                bool shouldRecover = false;
+                if (m_CurrentScenePath.empty() || !std::filesystem::exists(m_CurrentScenePath)) {
+                    // No saved scene — any auto-save is worth recovering
+                    shouldRecover = true;
+                } else {
+                    auto autoSaveTime = std::filesystem::last_write_time(autoSavePath);
+                    auto sceneTime = std::filesystem::last_write_time(m_CurrentScenePath);
+                    shouldRecover = (autoSaveTime > sceneTime);
+                }
+                if (shouldRecover) {
+                    m_ShowRecoveryPopup = true;
+                    VE_INFO("Auto-save recovery file detected");
+                }
+            }
 
             VE_INFO("Editor settings restored");
         } catch (const std::exception& e) {
@@ -5740,8 +5839,8 @@ private:
 
         // Left-side category list + right-side content
         static int selectedCategory = 0;
-        const char* categories[] = { "Tags and Layers" };
-        constexpr int categoryCount = 1;
+        const char* categories[] = { "Tags and Layers", "Auto-Save" };
+        constexpr int categoryCount = 2;
 
         ImGui::BeginChild("##categories", ImVec2(150, 0), true);
         for (int i = 0; i < categoryCount; i++) {
@@ -5752,6 +5851,28 @@ private:
 
         ImGui::SameLine();
         ImGui::BeginChild("##content", ImVec2(0, 0), true);
+
+        if (selectedCategory == 1) {
+            // ── Auto-Save Settings ──
+            ImGui::Text("Auto-Save");
+            ImGui::Separator();
+            ImGui::Checkbox("Enabled", &m_AutoSaveEnabled);
+
+            ImGui::SliderFloat("Interval (seconds)", &m_AutoSaveInterval, 30.0f, 600.0f, "%.0f");
+            ImGui::TextDisabled("Auto-saves to ProjectSettings/AutoSave.vscene");
+
+            ImGui::Spacing();
+            if (m_SceneDirty)
+                ImGui::TextColored(ImVec4(1, 1, 0, 1), "Scene has unsaved changes");
+            else
+                ImGui::TextColored(ImVec4(0, 1, 0, 1), "Scene is up to date");
+
+            if (m_AutoSaveEnabled) {
+                float remaining = m_AutoSaveInterval - m_AutoSaveTimer;
+                if (m_SceneDirty && remaining > 0)
+                    ImGui::Text("Next auto-save in: %.0f seconds", remaining);
+            }
+        }
 
         if (selectedCategory == 0) {
             // ── Tags ──
@@ -6799,6 +6920,14 @@ private:
 
     // Entity clipboard (copy/paste)
     std::string m_EntityClipboard;
+
+    // Auto-save and crash recovery
+    float m_AutoSaveTimer = 0.0f;
+    float m_AutoSaveInterval = 120.0f; // seconds (2 minutes default)
+    bool  m_AutoSaveEnabled = true;
+    bool  m_SceneDirty = false;
+    bool  m_ShowRecoveryPopup = false;
+    bool  m_RecoveryCheckDone = false;
 };
 
 int main() {

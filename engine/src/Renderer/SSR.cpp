@@ -10,6 +10,7 @@
  */
 #include "VibeEngine/Renderer/SSR.h"
 #include "VibeEngine/Renderer/ShaderSources.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 #include "VibeEngine/Core/Log.h"
 #include <glad/gl.h>
 
@@ -254,6 +255,7 @@ void SSR::Init(uint32_t width, uint32_t height) {
 
     CompileShaders();
     glGenVertexArrays(1, &m_QuadVAO);
+    VE_GPU_TRACK(GPUResourceType::VertexArray, m_QuadVAO);
     CreateResources();
 
     m_Initialized = true;
@@ -263,8 +265,8 @@ void SSR::Init(uint32_t width, uint32_t height) {
 void SSR::Shutdown() {
     if (!m_Initialized) return;
     DestroyResources();
-    if (m_QuadVAO) { glDeleteVertexArrays(1, &m_QuadVAO); m_QuadVAO = 0; }
-    if (m_SSRShader) { glDeleteProgram(m_SSRShader); m_SSRShader = 0; }
+    if (m_QuadVAO) { VE_GPU_UNTRACK(GPUResourceType::VertexArray, m_QuadVAO); glDeleteVertexArrays(1, &m_QuadVAO); m_QuadVAO = 0; }
+    if (m_SSRShader) { VE_GPU_UNTRACK(GPUResourceType::ShaderProgram, m_SSRShader); glDeleteProgram(m_SSRShader); m_SSRShader = 0; }
     m_Initialized = false;
 }
 
@@ -281,6 +283,7 @@ void SSR::Resize(uint32_t width, uint32_t height) {
 
 void SSR::CompileShaders() {
     m_SSRShader = LinkProgram(s_QuadVertSrc, s_SSRFragSrc);
+    VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_SSRShader);
     CacheUniformLocations();
 }
 
@@ -300,8 +303,10 @@ void SSR::CacheUniformLocations() {
 void SSR::CreateResources() {
     // SSR output (RGBA16F — RGB = reflected color, A = confidence)
     glGenFramebuffers(1, &m_SSRFBO);
+    VE_GPU_TRACK(GPUResourceType::Framebuffer, m_SSRFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_SSRFBO);
     glGenTextures(1, &m_ReflectionTexture);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_ReflectionTexture);
     glBindTexture(GL_TEXTURE_2D, m_ReflectionTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, m_Width, m_Height, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -313,8 +318,8 @@ void SSR::CreateResources() {
 }
 
 void SSR::DestroyResources() {
-    if (m_SSRFBO) { glDeleteFramebuffers(1, &m_SSRFBO); m_SSRFBO = 0; }
-    if (m_ReflectionTexture) { glDeleteTextures(1, &m_ReflectionTexture); m_ReflectionTexture = 0; }
+    if (m_SSRFBO) { VE_GPU_UNTRACK(GPUResourceType::Framebuffer, m_SSRFBO); glDeleteFramebuffers(1, &m_SSRFBO); m_SSRFBO = 0; }
+    if (m_ReflectionTexture) { VE_GPU_UNTRACK(GPUResourceType::Texture, m_ReflectionTexture); glDeleteTextures(1, &m_ReflectionTexture); m_ReflectionTexture = 0; }
 }
 
 void SSR::RenderFullscreenQuad() {

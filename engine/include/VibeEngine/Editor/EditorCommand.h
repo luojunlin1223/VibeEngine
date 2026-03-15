@@ -70,6 +70,9 @@ public:
     using RestoreCallback = std::function<void()>;
     void SetRestoreCallback(RestoreCallback cb) { m_RestoreCallback = std::move(cb); }
 
+    using DirtyCallback = std::function<void()>;
+    void SetDirtyCallback(DirtyCallback cb) { m_DirtyCallback = std::move(cb); }
+
     // ── Structural operations ──
     // Captures before-snapshot, executes action, captures after-snapshot.
     void Execute(const std::string& name, std::function<void()> action);
@@ -103,6 +106,7 @@ private:
 
     std::shared_ptr<Scene>* m_ScenePtr = nullptr;
     RestoreCallback m_RestoreCallback;
+    DirtyCallback m_DirtyCallback;
     uint64_t m_SelectedUUID = 0;
 
     // In-progress property edit state

@@ -1,4 +1,5 @@
 #include "VibeEngine/Platform/OpenGL/OpenGLVertexArray.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 
 #include <glad/gl.h>
 
@@ -23,9 +24,11 @@ static GLenum ShaderDataTypeToOpenGLBaseType(ShaderDataType type) {
 
 OpenGLVertexArray::OpenGLVertexArray() {
     glGenVertexArrays(1, &m_RendererID);
+    VE_GPU_TRACK(GPUResourceType::VertexArray, m_RendererID);
 }
 
 OpenGLVertexArray::~OpenGLVertexArray() {
+    VE_GPU_UNTRACK(GPUResourceType::VertexArray, m_RendererID);
     glDeleteVertexArrays(1, &m_RendererID);
 }
 

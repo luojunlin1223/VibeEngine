@@ -1,5 +1,6 @@
 #include "VibeEngine/Platform/OpenGL/OpenGLTexture.h"
 #include "VibeEngine/Core/Log.h"
+#include "VibeEngine/Renderer/GPUResourceTracker.h"
 
 #include <glad/gl.h>
 #include <stb_image.h>
@@ -46,6 +47,7 @@ OpenGLTexture2D::OpenGLTexture2D(const std::string& path)
     glBindTexture(GL_TEXTURE_2D, 0);
     stbi_image_free(data);
 
+    VE_GPU_TRACK(GPUResourceType::Texture, m_RendererID);
     VE_ENGINE_INFO("Texture loaded: {0} ({1}x{2}, {3}ch) [GL ID={4}]", path, width, height, channels, m_RendererID);
 }
 
@@ -62,9 +64,11 @@ OpenGLTexture2D::OpenGLTexture2D(uint32_t width, uint32_t height, const void* da
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     glBindTexture(GL_TEXTURE_2D, 0);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_RendererID);
 }
 
 OpenGLTexture2D::~OpenGLTexture2D() {
+    VE_GPU_UNTRACK(GPUResourceType::Texture, m_RendererID);
     glDeleteTextures(1, &m_RendererID);
 }
 

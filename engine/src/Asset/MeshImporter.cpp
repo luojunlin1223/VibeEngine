@@ -38,6 +38,11 @@ std::shared_ptr<MeshAsset> MeshImporter::LoadGLTF(const std::string& absolutePat
 }
 
 std::shared_ptr<MeshAsset> MeshImporter::GetOrLoad(const std::string& absolutePath) {
+    if (absolutePath.empty()) {
+        VE_ENGINE_ERROR("MeshImporter::GetOrLoad: path is empty");
+        return nullptr;
+    }
+
     auto it = s_Cache.find(absolutePath);
     if (it != s_Cache.end() && it->second && it->second->VAO)
         return it->second;
@@ -53,8 +58,12 @@ std::shared_ptr<MeshAsset> MeshImporter::GetOrLoad(const std::string& absolutePa
         asset = LoadFBX(absolutePath);
     }
 
-    if (asset)
-        s_Cache[absolutePath] = asset;
+    if (!asset) {
+        VE_ENGINE_ERROR("MeshImporter::GetOrLoad: failed to load mesh from '{0}'", absolutePath);
+        return nullptr;
+    }
+
+    s_Cache[absolutePath] = asset;
     return asset;
 }
 
