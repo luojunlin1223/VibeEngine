@@ -510,4 +510,136 @@ void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
         DrawLineWorld(dl, corners[e[0]], corners[e[1]], wireColor, 1.5f);
 }
 
+// ── Collider wireframe defaults ────────────────────────────────────
+
+static ImU32 ColliderColor(const glm::vec4& color) {
+    if (color.a <= 0.0f)
+        return IM_COL32(0, 255, 0, 153); // green, ~0.6 alpha
+    return IM_COL32((int)(color.r * 255), (int)(color.g * 255),
+                    (int)(color.b * 255), (int)(color.a * 255));
+}
+
+void GizmoRenderer::DrawWireframeBoxCollider(const glm::vec3& center, const glm::vec3& size,
+                                              const glm::mat3& rotation, const glm::vec4& color) {
+    ImDrawList* dl = s_DrawList;
+    ImU32 col = ColliderColor(color);
+
+    glm::vec3 half = size * 0.5f;
+
+    // 8 corners of an oriented box
+    glm::vec3 local[8] = {
+        { -half.x, -half.y, -half.z }, {  half.x, -half.y, -half.z },
+        {  half.x,  half.y, -half.z }, { -half.x,  half.y, -half.z },
+        { -half.x, -half.y,  half.z }, {  half.x, -half.y,  half.z },
+        {  half.x,  half.y,  half.z }, { -half.x,  half.y,  half.z },
+    };
+
+    glm::vec3 corners[8];
+    for (int i = 0; i < 8; i++)
+        corners[i] = center + rotation * local[i];
+
+    int edges[][2] = {
+        {0,1},{1,2},{2,3},{3,0},
+        {4,5},{5,6},{6,7},{7,4},
+        {0,4},{1,5},{2,6},{3,7},
+    };
+    for (auto& e : edges)
+        DrawLineWorld(dl, corners[e[0]], corners[e[1]], col, 1.5f);
+}
+
+void GizmoRenderer::DrawWireframeSphereCollider(const glm::vec3& center, float radius,
+                                                 const glm::vec4& color) {
+    ImDrawList* dl = s_DrawList;
+    ImU32 col = ColliderColor(color);
+    constexpr int SEGMENTS = 32;
+    constexpr float PI2 = 2.0f * 3.14159265f;
+
+    // XY circle
+    for (int i = 0; i < SEGMENTS; ++i) {
+        float a0 = (float)i / SEGMENTS * PI2;
+        float a1 = (float)(i + 1) / SEGMENTS * PI2;
+        DrawLineWorld(dl,
+            center + glm::vec3(std::cos(a0), std::sin(a0), 0.0f) * radius,
+            center + glm::vec3(std::cos(a1), std::sin(a1), 0.0f) * radius,
+            col, 1.5f);
+    }
+    // XZ circle
+    for (int i = 0; i < SEGMENTS; ++i) {
+        float a0 = (float)i / SEGMENTS * PI2;
+        float a1 = (float)(i + 1) / SEGMENTS * PI2;
+        DrawLineWorld(dl,
+            center + glm::vec3(std::cos(a0), 0.0f, std::sin(a0)) * radius,
+            center + glm::vec3(std::cos(a1), 0.0f, std::sin(a1)) * radius,
+            col, 1.5f);
+    }
+    // YZ circle
+    for (int i = 0; i < SEGMENTS; ++i) {
+        float a0 = (float)i / SEGMENTS * PI2;
+        float a1 = (float)(i + 1) / SEGMENTS * PI2;
+        DrawLineWorld(dl,
+            center + glm::vec3(0.0f, std::cos(a0), std::sin(a0)) * radius,
+            center + glm::vec3(0.0f, std::cos(a1), std::sin(a1)) * radius,
+            col, 1.5f);
+    }
+}
+
+void GizmoRenderer::DrawWireframeCapsuleCollider(const glm::vec3& center, float radius, float height,
+                                                  const glm::mat3& rotation, const glm::vec4& color) {
+    ImDrawList* dl = s_DrawList;
+    ImU32 col = ColliderColor(color);
+    constexpr int SEGMENTS = 32;
+    constexpr float PI  = 3.14159265f;
+    constexpr float PI2 = 2.0f * PI;
+
+    // Capsule is oriented along local Y axis
+    // Half-height of the cylindrical section (total height minus two hemisphere radii)
+    float cylHalf = std::max(0.0f, (height - 2.0f * radius) * 0.5f);
+
+    glm::vec3 up    = rotation * glm::vec3(0, 1, 0);
+    glm::vec3 right = rotation * glm::vec3(1, 0, 0);
+    glm::vec3 fwd   = rotation * glm::vec3(0, 0, 1);
+
+    glm::vec3 topCenter    = center + up * cylHalf;
+    glm::vec3 bottomCenter = center - up * cylHalf;
+
+    // Draw two full circles at top and bottom of cylinder section
+    for (int i = 0; i < SEGMENTS; ++i) {
+        float a0 = (float)i / SEGMENTS * PI2;
+        float a1 = (float)(i + 1) / SEGMENTS * PI2;
+        glm::vec3 p0 = right * (std::cos(a0) * radius) + fwd * (std::sin(a0) * radius);
+        glm::vec3 p1 = right * (std::cos(a1) * radius) + fwd * (std::sin(a1) * radius);
+        DrawLineWorld(dl, topCenter + p0, topCenter + p1, col, 1.5f);
+        DrawLineWorld(dl, bottomCenter + p0, bottomCenter + p1, col, 1.5f);
+    }
+
+    // 4 vertical lines connecting the circles
+    for (int i = 0; i < 4; ++i) {
+        float a = (float)i / 4.0f * PI2;
+        glm::vec3 offset = right * (std::cos(a) * radius) + fwd * (std::sin(a) * radius);
+        DrawLineWorld(dl, topCenter + offset, bottomCenter + offset, col, 1.5f);
+    }
+
+    // Draw hemisphere arcs (2 arcs per cap: one in right-up plane, one in fwd-up plane)
+    constexpr int HALF_SEGS = 16;
+
+    auto drawHemiArc = [&](const glm::vec3& capCenter, float sign,
+                           const glm::vec3& tangent) {
+        for (int i = 0; i < HALF_SEGS; ++i) {
+            float a0 = (float)i / HALF_SEGS * PI;
+            float a1 = (float)(i + 1) / HALF_SEGS * PI;
+            // Arc goes from tangent direction, over up, to -tangent direction
+            glm::vec3 p0 = capCenter + tangent * (std::cos(a0) * radius) + up * (sign * std::sin(a0) * radius);
+            glm::vec3 p1 = capCenter + tangent * (std::cos(a1) * radius) + up * (sign * std::sin(a1) * radius);
+            DrawLineWorld(dl, p0, p1, col, 1.5f);
+        }
+    };
+
+    // Top hemisphere (arcs going upward)
+    drawHemiArc(topCenter,  1.0f, right);
+    drawHemiArc(topCenter,  1.0f, fwd);
+    // Bottom hemisphere (arcs going downward)
+    drawHemiArc(bottomCenter, -1.0f, right);
+    drawHemiArc(bottomCenter, -1.0f, fwd);
+}
+
 } // namespace VE

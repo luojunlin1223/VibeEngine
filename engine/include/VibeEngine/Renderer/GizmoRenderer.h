@@ -40,6 +40,17 @@ public:
                                    int projType, float fov, float size,
                                    float nearClip, float farClip, float aspect);
 
+    // Collider wireframes (semi-transparent green, Unity-style)
+    // color: RGBA in 0..1; default (0,0,0,0) uses green (0, 1, 0, 0.6)
+    static void DrawWireframeBoxCollider(const glm::vec3& center, const glm::vec3& size,
+                                         const glm::mat3& rotation = glm::mat3(1.0f),
+                                         const glm::vec4& color = glm::vec4(0.0f));
+    static void DrawWireframeSphereCollider(const glm::vec3& center, float radius,
+                                            const glm::vec4& color = glm::vec4(0.0f));
+    static void DrawWireframeCapsuleCollider(const glm::vec3& center, float radius, float height,
+                                             const glm::mat3& rotation = glm::mat3(1.0f),
+                                             const glm::vec4& color = glm::vec4(0.0f));
+
     // Screen ↔ World conversion
     static glm::vec2 ScreenToWorld(float screenX, float screenY);
 
