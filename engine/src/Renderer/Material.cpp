@@ -156,6 +156,9 @@ void Material::Save(const std::string& filePath) const {
     out << YAML::Key << "Material" << YAML::Value << YAML::BeginMap;
     out << YAML::Key << "Name" << YAML::Value << m_Name;
     out << YAML::Key << "IsLit" << YAML::Value << m_IsLit;
+    // Save shader name for proper resolution on load (PBR, Lit, Default, etc.)
+    if (m_Shader)
+        out << YAML::Key << "ShaderName" << YAML::Value << m_Shader->GetName();
     out << YAML::Key << "Properties" << YAML::Value << YAML::BeginSeq;
 
     for (auto& prop : m_Properties) {
@@ -212,10 +215,19 @@ std::shared_ptr<Material> Material::Load(const std::string& filePath) {
     std::string name = matNode["Name"].as<std::string>("Unnamed");
     bool isLit = matNode["IsLit"].as<bool>(false);
 
-    // Resolve shader from MaterialLibrary built-ins
-    auto shader = isLit
-        ? MaterialLibrary::Get("Lit")->GetShader()
-        : MaterialLibrary::Get("Default")->GetShader();
+    // Resolve shader: first try explicit ShaderName, then fall back to IsLit heuristic
+    std::shared_ptr<Shader> shader;
+    if (auto shaderNameNode = matNode["ShaderName"]) {
+        std::string shaderName = shaderNameNode.as<std::string>();
+        shader = ShaderLibrary::Get(shaderName);
+    }
+    if (!shader) {
+        // Legacy fallback: resolve by IsLit flag
+        auto litMat = MaterialLibrary::Get("Lit");
+        auto defMat = MaterialLibrary::Get("Default");
+        shader = (isLit && litMat) ? litMat->GetShader()
+               : (defMat ? defMat->GetShader() : nullptr);
+    }
 
     auto material = std::make_shared<Material>(name, shader);
     material->m_FilePath = filePath;

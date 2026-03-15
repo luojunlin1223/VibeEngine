@@ -2084,8 +2084,10 @@ private:
                     bool isSelected = (shader == currentShader);
                     if (ImGui::Selectable(name.c_str(), isSelected)) {
                         m_InspectedMaterial->SetShader(shader);
-                        // Auto-detect lit status: "Lit" shader or shaders with lighting uniforms
-                        m_InspectedMaterial->SetLit(name == "Lit");
+                        // Auto-detect lit status: "Lit", "PBR", or "Water" shaders need lighting
+                        m_InspectedMaterial->SetLit(name == "Lit" || name == "PBR" || name == "Water");
+                        // Auto-populate properties from new shader's ShaderLab declarations
+                        m_InspectedMaterial->PopulateFromShader();
                     }
                     if (isSelected) ImGui::SetItemDefaultFocus();
                 }
@@ -2100,24 +2102,28 @@ private:
         ImGui::Separator();
         ImGui::Text("Properties:");
 
-        // Material properties editor
+        // Material properties editor (uses display names and range sliders)
         for (auto& prop : m_InspectedMaterial->GetProperties()) {
+            const char* label = prop.DisplayName.empty() ? prop.Name.c_str() : prop.DisplayName.c_str();
             ImGui::PushID(prop.Name.c_str());
             switch (prop.Type) {
                 case VE::MaterialPropertyType::Float:
-                    ImGui::DragFloat(prop.Name.c_str(), &prop.FloatValue, 0.01f);
+                    if (prop.IsRange)
+                        ImGui::SliderFloat(label, &prop.FloatValue, prop.RangeMin, prop.RangeMax, "%.3f");
+                    else
+                        ImGui::DragFloat(label, &prop.FloatValue, 0.01f);
                     break;
                 case VE::MaterialPropertyType::Int:
-                    ImGui::DragInt(prop.Name.c_str(), &prop.IntValue);
+                    ImGui::DragInt(label, &prop.IntValue);
                     break;
                 case VE::MaterialPropertyType::Vec3:
-                    ImGui::ColorEdit3(prop.Name.c_str(), &prop.Vec3Value.x);
+                    ImGui::ColorEdit3(label, &prop.Vec3Value.x);
                     break;
                 case VE::MaterialPropertyType::Vec4:
-                    ImGui::ColorEdit4(prop.Name.c_str(), &prop.Vec4Value.x);
+                    ImGui::ColorEdit4(label, &prop.Vec4Value.x);
                     break;
                 case VE::MaterialPropertyType::Texture2D: {
-                    ImGui::Text("%s: %s", prop.Name.c_str(),
+                    ImGui::Text("%s: %s", label,
                         prop.TexturePath.empty() ? "(none)" : prop.TexturePath.c_str());
                     if (ImGui::Button("Browse##tex")) {
                         static const char* filter =
