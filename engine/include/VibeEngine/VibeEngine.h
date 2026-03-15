@@ -32,6 +32,10 @@
 #include "Renderer/SSR.h"
 #include "Renderer/LODSystem.h"
 #include "Renderer/VideoPlayer.h"
+#include "Renderer/OcclusionCulling.h"
+#include "Renderer/ReflectionProbe.h"
+#include "Renderer/LightProbe.h"
+#include "Renderer/Lightmapper.h"
 
 #include "Navigation/NavGrid.h"
 

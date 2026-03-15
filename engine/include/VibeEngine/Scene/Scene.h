@@ -139,6 +139,9 @@ struct RenderPipelineSettings {
     bool  MotionBlurEnabled  = false;
     float MotionBlurStrength  = 0.5f;
     int   MotionBlurSamples   = 8;
+
+    // Occlusion Culling
+    bool OcclusionCullingEnabled = false;
 };
 
 class Scene {

@@ -34,6 +34,7 @@ public:
         VE::SpriteBatchRenderer::Init();
         VE::ParticleRenderer::Init();
         VE::InstancedRenderer::Init();
+        VE::OcclusionCulling::Init();
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_SceneManager.AddScene(m_Scene, "Untitled");
@@ -77,6 +78,7 @@ public:
     ~Sandbox() override {
         SaveEditorSettings();
         VE::UIRenderer::Shutdown();
+        VE::OcclusionCulling::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::ParticleRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
@@ -1192,8 +1194,17 @@ private:
             m_Scene = std::make_shared<VE::Scene>();
             ClearSelection();
             VE::SceneSerializer serializer(m_Scene);
-            if (serializer.Deserialize(path))
+            if (serializer.Deserialize(path)) {
                 m_CurrentScenePath = path;
+                // Bake reflection probes marked BakeOnLoad
+                auto rpView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::ReflectionProbeComponent>();
+                for (auto e : rpView) {
+                    auto& rp = rpView.get<VE::ReflectionProbeComponent>(e);
+                    if (rp.BakeOnLoad) {
+                        m_Scene->BakeReflectionProbe(e);
+                    }
+                }
+            }
             m_CommandHistory.Clear();
 
             // Sync SceneManager: replace all with this single scene
@@ -1926,6 +1937,26 @@ private:
             reg.get_or_emplace<VE::MeshRendererComponent>(dst) = reg.get<VE::MeshRendererComponent>(srcEntity);
         if (reg.any_of<VE::DirectionalLightComponent>(srcEntity))
             reg.get_or_emplace<VE::DirectionalLightComponent>(dst) = reg.get<VE::DirectionalLightComponent>(srcEntity);
+
+            // Copy ReflectionProbeComponent (reset runtime probe)
+            if (reg.any_of<VE::ReflectionProbeComponent>(srcEntity)) {
+                auto& src = reg.get<VE::ReflectionProbeComponent>(srcEntity);
+                auto& dstRP = reg.get_or_emplace<VE::ReflectionProbeComponent>(dst);
+                dstRP.Resolution = src.Resolution;
+                dstRP.BoxSize = src.BoxSize;
+                dstRP.BakeOnLoad = src.BakeOnLoad;
+                dstRP._Probe = nullptr;
+                dstRP._IsBaked = false;
+            }
+
+            // Copy LightProbeComponent
+            if (reg.any_of<VE::LightProbeComponent>(srcEntity))
+                reg.get_or_emplace<VE::LightProbeComponent>(dst) = reg.get<VE::LightProbeComponent>(srcEntity);
+
+            // Copy LightmapComponent
+            if (reg.any_of<VE::LightmapComponent>(srcEntity))
+                reg.get_or_emplace<VE::LightmapComponent>(dst) = reg.get<VE::LightmapComponent>(srcEntity);
+
         if (reg.any_of<VE::RigidbodyComponent>(srcEntity)) {
             auto rb = reg.get<VE::RigidbodyComponent>(srcEntity);
             rb._JoltBodyID = 0xFFFFFFFF;
@@ -2111,6 +2142,133 @@ private:
                 ImGui::MenuItem("Project Settings", nullptr, &m_ShowProjectSettings);
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("Lighting")) {
+                if (ImGui::MenuItem("Bake All Reflection Probes"))
+                    m_Scene->BakeReflectionProbes();
+                if (ImGui::MenuItem("Bake Light Probes")) {
+                    // Bake all light probes in the scene
+                    auto probeView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::LightProbeComponent>();
+                    int bakedCount = 0;
+                    for (auto e : probeView) {
+                        auto& tc = probeView.get<VE::TransformComponent>(e);
+                        auto& lpc = probeView.get<VE::LightProbeComponent>(e);
+                        glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                        VE::LightProbe probe;
+                        probe.Bake(*m_Scene, pos, static_cast<uint32_t>(lpc.Resolution));
+                        auto coeffs = probe.GetCoefficients();
+                        for (int i = 0; i < 9; ++i) lpc.SHCoefficients[i] = coeffs[i];
+                        lpc.IsBaked = true;
+                        bakedCount++;
+                    }
+                    VE_INFO("Baked {} light probes", bakedCount);
+                }
+                if (ImGui::MenuItem("Bake Lightmaps")) {
+                    // Bake lightmaps for all entities with LightmapComponent + IsStatic
+                    auto& reg = m_Scene->GetRegistry();
+                    auto view = reg.view<VE::TransformComponent, VE::MeshRendererComponent, VE::LightmapComponent>();
+                    int bakedCount = 0;
+                    for (auto e : view) {
+                        auto& lmc = view.get<VE::LightmapComponent>(e);
+                        if (!lmc.IsStatic) continue;
+
+                        auto& mr = view.get<VE::MeshRendererComponent>(e);
+                        if (!mr.Mesh) continue;
+
+                        glm::mat4 model = m_Scene->GetWorldTransform(e);
+
+                        // Read vertex data from GPU
+                        auto vbs = mr.Mesh->GetVertexBuffers();
+                        if (vbs.empty()) continue;
+                        auto& vb = vbs[0];
+                        uint32_t vbSize = vb->GetSize();
+                        if (vbSize == 0) continue;
+
+                        std::vector<float> vertexData(vbSize / sizeof(float));
+                        vb->Bind();
+                        glGetBufferSubData(GL_ARRAY_BUFFER, 0, vbSize, vertexData.data());
+
+                        auto ib = mr.Mesh->GetIndexBuffer();
+                        if (!ib) continue;
+                        uint32_t indexCount = ib->GetCount();
+                        std::vector<uint32_t> indexData(indexCount);
+                        ib->Bind();
+                        glGetBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, indexCount * sizeof(uint32_t), indexData.data());
+
+                        auto lightmap = VE::Lightmapper::BakeEntity(
+                            *m_Scene, model, vertexData, indexData,
+                            lmc.Resolution, 0.03f);
+
+                        if (lightmap) {
+                            lmc.LightmapTexture = lightmap;
+                            bakedCount++;
+                        }
+                    }
+                    VE_INFO("Baked {} lightmaps", bakedCount);
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Bake All")) {
+                    // Bake both probes and lightmaps
+                    auto probeView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::LightProbeComponent>();
+                    for (auto e : probeView) {
+                        auto& tc = probeView.get<VE::TransformComponent>(e);
+                        auto& lpc = probeView.get<VE::LightProbeComponent>(e);
+                        glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                        VE::LightProbe probe;
+                        probe.Bake(*m_Scene, pos, static_cast<uint32_t>(lpc.Resolution));
+                        auto coeffs = probe.GetCoefficients();
+                        for (int i = 0; i < 9; ++i) lpc.SHCoefficients[i] = coeffs[i];
+                        lpc.IsBaked = true;
+                    }
+
+                    auto& reg = m_Scene->GetRegistry();
+                    auto lmView = reg.view<VE::TransformComponent, VE::MeshRendererComponent, VE::LightmapComponent>();
+                    for (auto e : lmView) {
+                        auto& lmc = lmView.get<VE::LightmapComponent>(e);
+                        if (!lmc.IsStatic) continue;
+                        auto& mr = lmView.get<VE::MeshRendererComponent>(e);
+                        if (!mr.Mesh) continue;
+
+                        glm::mat4 model = m_Scene->GetWorldTransform(e);
+                        auto vbs = mr.Mesh->GetVertexBuffers();
+                        if (vbs.empty()) continue;
+                        auto& vb = vbs[0];
+                        uint32_t vbSize = vb->GetSize();
+                        if (vbSize == 0) continue;
+
+                        std::vector<float> vertexData(vbSize / sizeof(float));
+                        vb->Bind();
+                        glGetBufferSubData(GL_ARRAY_BUFFER, 0, vbSize, vertexData.data());
+
+                        auto ib = mr.Mesh->GetIndexBuffer();
+                        if (!ib) continue;
+                        uint32_t indexCount = ib->GetCount();
+                        std::vector<uint32_t> indexData(indexCount);
+                        ib->Bind();
+                        glGetBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, indexCount * sizeof(uint32_t), indexData.data());
+
+                        auto lightmap = VE::Lightmapper::BakeEntity(
+                            *m_Scene, model, vertexData, indexData,
+                            lmc.Resolution, 0.03f);
+                        if (lightmap) lmc.LightmapTexture = lightmap;
+                    }
+                    VE_INFO("Bake All: light probes and lightmaps complete");
+                }
+                if (ImGui::MenuItem("Clear All Baked Data")) {
+                    auto probeView2 = m_Scene->GetAllEntitiesWith<VE::LightProbeComponent>();
+                    for (auto e : probeView2) {
+                        auto& lpc = probeView2.get<VE::LightProbeComponent>(e);
+                        lpc.IsBaked = false;
+                        for (auto& c : lpc.SHCoefficients) c = glm::vec3(0.0f);
+                    }
+                    auto lmView2 = m_Scene->GetAllEntitiesWith<VE::LightmapComponent>();
+                    for (auto e : lmView2) {
+                        auto& lmc = lmView2.get<VE::LightmapComponent>(e);
+                        lmc.LightmapTexture = nullptr;
+                    }
+                    VE_INFO("Cleared all baked lighting data");
+                }
+                ImGui::EndMenu();
+            }
             if (ImGui::BeginMenu("GameObject")) {
                 if (ImGui::MenuItem("Create Empty"))
                     m_Scene->CreateEntity("GameObject");
@@ -2173,6 +2331,11 @@ private:
                     m_CommandHistory.Execute("Create Light", [this]() {
                         auto e = m_Scene->CreateEntity("Directional Light");
                         e.AddComponent<VE::DirectionalLightComponent>();
+                    });
+                if (ImGui::MenuItem("Create Light Probe"))
+                    m_CommandHistory.Execute("Create Light Probe", [this]() {
+                        auto e = m_Scene->CreateEntity("Light Probe");
+                        e.AddComponent<VE::LightProbeComponent>();
                     });
                 if (ImGui::MenuItem("Create Decal"))
                     m_CommandHistory.Execute("Create Decal", [this]() {
@@ -2329,6 +2492,19 @@ private:
                     glm::vec3 worldDir = glm::normalize(glm::mat3(wm) * localDir);
                     VE::GizmoRenderer::DrawSpotLightGizmo(pos, worldDir, sl.Range, sl.OuterAngle,
                         glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]));
+                }
+            }
+
+            // Draw reflection probe influence boxes
+            {
+                auto rpView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::ReflectionProbeComponent>();
+                for (auto e : rpView) {
+                    auto& rp = rpView.get<VE::ReflectionProbeComponent>(e);
+                    glm::mat4 wm = m_Scene->GetWorldTransform(e);
+                    // Scale the wireframe box by the BoxSize
+                    glm::mat4 boxMat = wm * glm::scale(glm::mat4(1.0f),
+                        glm::vec3(rp.BoxSize[0], rp.BoxSize[1], rp.BoxSize[2]));
+                    VE::GizmoRenderer::DrawWireframeBox(boxMat);
                 }
             }
 
@@ -2695,6 +2871,18 @@ private:
                     m_CommandHistory.Execute("Create Spot Light", [this]() {
                         auto e = m_Scene->CreateEntity("Spot Light");
                         e.AddComponent<VE::SpotLightComponent>();
+                        m_SelectedEntity = e;
+                    });
+                if (ImGui::MenuItem("Reflection Probe"))
+                    m_CommandHistory.Execute("Create Reflection Probe", [this]() {
+                        auto e = m_Scene->CreateEntity("Reflection Probe");
+                        e.AddComponent<VE::ReflectionProbeComponent>();
+                        m_SelectedEntity = e;
+                    });
+                if (ImGui::MenuItem("Light Probe"))
+                    m_CommandHistory.Execute("Create Light Probe", [this]() {
+                        auto e = m_Scene->CreateEntity("Light Probe");
+                        e.AddComponent<VE::LightProbeComponent>();
                         m_SelectedEntity = e;
                     });
                 if (ImGui::MenuItem("Camera"))
@@ -4015,6 +4203,130 @@ private:
             ImGui::Separator();
         }
 
+        if (m_SelectedEntity.HasComponent<VE::ReflectionProbeComponent>()) {
+            bool removeRP = false;
+            bool openRP = ImGui::CollapsingHeader("Reflection Probe", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::ReflectionProbeComponent>("##ReflProbeCtx", "ReflectionProbe", removeRP);
+            if (openRP) {
+                auto& rp = m_SelectedEntity.GetComponent<VE::ReflectionProbeComponent>();
+
+                // Resolution dropdown
+                const int resOptions[] = { 64, 128, 256, 512 };
+                const char* resLabels[] = { "64", "128", "256", "512" };
+                int currentIdx = 1; // default 128
+                for (int i = 0; i < 4; ++i) {
+                    if (resOptions[i] == rp.Resolution) { currentIdx = i; break; }
+                }
+                if (ImGui::Combo("Resolution##RP", &currentIdx, resLabels, 4)) {
+                    rp.Resolution = resOptions[currentIdx];
+                }
+
+                ImGui::DragFloat3("Box Size##RP", rp.BoxSize.data(), 0.1f, 0.1f, 1000.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Probe Box Size");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+
+                ImGui::Checkbox("Bake On Load##RP", &rp.BakeOnLoad);
+
+                // Bake button
+                if (ImGui::Button("Bake##RP")) {
+                    m_Scene->BakeReflectionProbe(m_SelectedEntity.GetHandle());
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Bake All Probes##RP")) {
+                    m_Scene->BakeReflectionProbes();
+                }
+
+                // Status
+                if (rp._IsBaked) {
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Baked (%dx%d)", rp.Resolution, rp.Resolution);
+                } else {
+                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.2f, 1.0f), "Not Baked");
+                }
+            }
+            if (removeRP)
+                m_CommandHistory.Execute("Remove Reflection Probe", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::ReflectionProbeComponent>();
+                });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::LightProbeComponent>()) {
+            bool removeProbe = false;
+            bool openProbe = ImGui::CollapsingHeader("Light Probe", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::LightProbeComponent>("##LightProbeCtx", "LightProbe", removeProbe);
+            if (openProbe) {
+                auto& lpc = m_SelectedEntity.GetComponent<VE::LightProbeComponent>();
+                ImGui::DragFloat("Radius##LP", &lpc.Radius, 0.5f, 1.0f, 500.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Probe Radius");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+
+                const int resOptions[] = { 16, 32, 64, 128 };
+                int currentRes = 2; // default 64
+                for (int i = 0; i < 4; ++i) if (resOptions[i] == lpc.Resolution) currentRes = i;
+                if (ImGui::Combo("Cubemap Resolution##LP", &currentRes, "16\00032\00064\000128\0")) {
+                    lpc.Resolution = resOptions[currentRes];
+                }
+
+                if (lpc.IsBaked) {
+                    ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "BAKED");
+                } else {
+                    ImGui::TextColored(ImVec4(0.8f, 0.4f, 0.2f, 1.0f), "Not Baked");
+                }
+
+                if (ImGui::Button("Bake This Probe")) {
+                    auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
+                    glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
+                    VE::LightProbe probe;
+                    probe.Bake(*m_Scene, pos, static_cast<uint32_t>(lpc.Resolution));
+                    auto coeffs = probe.GetCoefficients();
+                    for (int i = 0; i < 9; ++i) lpc.SHCoefficients[i] = coeffs[i];
+                    lpc.IsBaked = true;
+                }
+            }
+            if (removeProbe)
+                m_CommandHistory.Execute("Remove Light Probe", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::LightProbeComponent>();
+                });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::LightmapComponent>()) {
+            bool removeLM = false;
+            bool openLM = ImGui::CollapsingHeader("Lightmap", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::LightmapComponent>("##LightmapCtx", "Lightmap", removeLM);
+            if (openLM) {
+                auto& lmc = m_SelectedEntity.GetComponent<VE::LightmapComponent>();
+                ImGui::Checkbox("Static##LM", &lmc.IsStatic);
+
+                const int resOptions[] = { 64, 128, 256, 512 };
+                int currentRes = 1; // default 128
+                for (int i = 0; i < 4; ++i) if (resOptions[i] == lmc.Resolution) currentRes = i;
+                if (ImGui::Combo("Resolution##LM", &currentRes, "64\000128\000256\000512\0")) {
+                    lmc.Resolution = resOptions[currentRes];
+                }
+
+                ImGui::DragFloat("UV Scale X##LM", &lmc.UVScaleX, 0.01f, 0.01f, 10.0f);
+                ImGui::DragFloat("UV Scale Y##LM", &lmc.UVScaleY, 0.01f, 0.01f, 10.0f);
+                ImGui::DragFloat("UV Offset X##LM", &lmc.UVOffsetX, 0.01f, -10.0f, 10.0f);
+                ImGui::DragFloat("UV Offset Y##LM", &lmc.UVOffsetY, 0.01f, -10.0f, 10.0f);
+
+                if (lmc.LightmapTexture) {
+                    ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "BAKED (%dx%d)",
+                        lmc.LightmapTexture->GetWidth(), lmc.LightmapTexture->GetHeight());
+                    // Show lightmap preview
+                    ImGui::Image((ImTextureID)lmc.LightmapTexture->GetNativeTextureID(),
+                                 ImVec2(128, 128), ImVec2(0, 1), ImVec2(1, 0));
+                } else {
+                    ImGui::TextColored(ImVec4(0.8f, 0.4f, 0.2f, 1.0f), "Not Baked");
+                }
+            }
+            if (removeLM)
+                m_CommandHistory.Execute("Remove Lightmap", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::LightmapComponent>();
+                });
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
             bool removeRB = false;
             bool openRB = ImGui::CollapsingHeader("Rigidbody", ImGuiTreeNodeFlags_DefaultOpen);
@@ -5233,6 +5545,21 @@ private:
                     m_SelectedEntity.AddComponent<VE::SpotLightComponent>();
                 }))
 
+            ADD_COMPONENT_ITEM("Reflection Probe", VE::ReflectionProbeComponent,
+                m_CommandHistory.Execute("Add Reflection Probe", [this]() {
+                    m_SelectedEntity.AddComponent<VE::ReflectionProbeComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Light Probe", VE::LightProbeComponent,
+                m_CommandHistory.Execute("Add Light Probe", [this]() {
+                    m_SelectedEntity.AddComponent<VE::LightProbeComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Lightmap", VE::LightmapComponent,
+                m_CommandHistory.Execute("Add Lightmap", [this]() {
+                    m_SelectedEntity.AddComponent<VE::LightmapComponent>();
+                }))
+
             ADD_COMPONENT_ITEM("Rigidbody", VE::RigidbodyComponent,
                 m_CommandHistory.Execute("Add Rigidbody", [this]() {
                     m_SelectedEntity.AddComponent<VE::RigidbodyComponent>();
@@ -5672,6 +5999,15 @@ private:
                 ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.1f, "%.3f");
                 const char* pcfModes[] = { "Hard (1x1)", "Soft (3x3)", "Softer (5x5)" };
                 ImGui::Combo("PCF Quality", &ps.ShadowPCFRadius, pcfModes, 3);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Occlusion Culling", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Occlusion Culling", &ps.OcclusionCullingEnabled);
+            if (ps.OcclusionCullingEnabled) {
+                ImGui::TextDisabled("GPU occlusion queries (previous-frame temporal)");
+                auto& renderStats = VE::RenderCommand::GetStats();
+                ImGui::Text("Occluded: %u", renderStats.OccludedObjects);
             }
         }
 
@@ -6450,6 +6786,7 @@ private:
             ImGui::Text("Entities:       %d", entityCount);
             ImGui::Text("  Visible:      %u", stats.VisibleObjects);
             ImGui::Text("  Culled:       %u", stats.CulledObjects);
+            ImGui::Text("  Occluded:     %u", stats.OccludedObjects);
             ImGui::Text("Sprites:        %u", spriteStats.QuadCount);
             ImGui::Text("Instances:      %u", instanceStats.InstanceCount);
         }

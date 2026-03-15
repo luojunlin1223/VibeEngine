@@ -25,6 +25,7 @@ namespace VE {
     class Animator;
     class VertexArray;
     class Texture2D;
+    class ReflectionProbe;
     class VideoPlayer;
     class FontAtlas;
     class Terrain;
@@ -454,6 +455,49 @@ struct DecalComponent {
     int   SortOrder    = 0;     // for overlapping decals (lower draws first)
 
     DecalComponent() = default;
+};
+
+// ── Reflection Probe Component ────────────────────────────────────────
+
+struct ReflectionProbeComponent {
+    int Resolution = 128;                                    // cubemap resolution (64, 128, 256, 512)
+    std::array<float, 3> BoxSize = { 10.0f, 10.0f, 10.0f }; // influence volume (world units)
+    bool BakeOnLoad = false;                                 // auto-bake when scene is loaded
+
+    // Runtime only (not serialized)
+    std::shared_ptr<ReflectionProbe> _Probe;
+    bool _IsBaked = false;
+
+    ReflectionProbeComponent() = default;
+};
+
+// ── Light Probe Component ─────────────────────────────────────────────
+
+struct LightProbeComponent {
+    float Radius = 20.0f;           // influence range in world units
+    int   Resolution = 64;          // cubemap face resolution for baking
+
+    // Runtime only (not serialized -- re-baked when needed)
+    std::array<glm::vec3, 9> SHCoefficients = {};
+    bool IsBaked = false;
+
+    LightProbeComponent() = default;
+};
+
+// ── Lightmap Component ───────────────────────────────────────────────
+
+struct LightmapComponent {
+    bool  IsStatic = true;          // if true, entity is a lightmap candidate
+    int   Resolution = 128;         // per-entity lightmap resolution (64, 128, 256, 512)
+    float UVScaleX = 1.0f;          // lightmap UV scale
+    float UVScaleY = 1.0f;
+    float UVOffsetX = 0.0f;         // lightmap UV offset (for atlas)
+    float UVOffsetY = 0.0f;
+
+    // Runtime only (not serialized -- baked texture kept in memory)
+    std::shared_ptr<Texture2D> LightmapTexture;
+
+    LightmapComponent() = default;
 };
 
 } // namespace VE
