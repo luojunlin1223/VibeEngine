@@ -528,6 +528,79 @@ void main() {
 }
 )";
 
+// ── DoF shader (separable CoC-weighted Gaussian blur) ─────────────────
+
+static const char* s_DoFFragSrc = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+
+uniform sampler2D u_Scene;
+uniform sampler2D u_DepthTex;
+uniform bool  u_Horizontal;
+uniform float u_FocusDistance;
+uniform float u_FocusRange;
+uniform float u_MaxBlur;
+uniform float u_ApertureSize;
+uniform float u_NearClip;
+uniform float u_FarClip;
+
+float LinearizeDepth(float d) {
+    float z = d * 2.0 - 1.0;
+    return 2.0 * u_NearClip * u_FarClip / (u_FarClip + u_NearClip - z * (u_FarClip - u_NearClip));
+}
+
+float ComputeCoC(float depth) {
+    float linDepth = LinearizeDepth(depth);
+    float coc = abs(linDepth - u_FocusDistance) - u_FocusRange;
+    coc = clamp(coc / max(u_FocusDistance * 0.5, 0.001), 0.0, 1.0);
+    return coc * u_ApertureSize * u_MaxBlur;
+}
+
+// 9-tap Gaussian weights (sigma ~2.5)
+const int KERNEL_SIZE = 9;
+const float weights[9] = float[](
+    0.0625, 0.09375, 0.125, 0.15625, 0.125,
+    0.15625, 0.125, 0.09375, 0.0625
+);
+
+void main() {
+    float depth = texture(u_DepthTex, v_UV).r;
+    if (depth >= 1.0) {
+        // Sky: no blur
+        FragColor = texture(u_Scene, v_UV);
+        return;
+    }
+
+    float centerCoC = ComputeCoC(depth);
+    vec2 texelSize = 1.0 / vec2(textureSize(u_Scene, 0));
+    vec2 dir = u_Horizontal ? vec2(texelSize.x, 0.0) : vec2(0.0, texelSize.y);
+
+    vec3 result = vec3(0.0);
+    float totalWeight = 0.0;
+
+    int halfKernel = KERNEL_SIZE / 2;
+    for (int i = -halfKernel; i <= halfKernel; i++) {
+        vec2 sampleUV = v_UV + dir * float(i) * max(centerCoC, 0.5);
+        sampleUV = clamp(sampleUV, vec2(0.001), vec2(0.999));
+
+        float sampleDepth = texture(u_DepthTex, sampleUV).r;
+        float sampleCoC = (sampleDepth >= 1.0) ? 0.0 : ComputeCoC(sampleDepth);
+
+        // Weight: Gaussian * max of center/sample CoC (prevents sharp foreground bleeding)
+        float w = weights[i + halfKernel];
+        // Allow blur from samples that are at least as blurry as center, or from background
+        float cocWeight = max(sampleCoC, centerCoC);
+        w *= mix(1.0, cocWeight / max(u_MaxBlur * u_ApertureSize, 0.001), 0.8);
+
+        result += texture(u_Scene, sampleUV).rgb * w;
+        totalWeight += w;
+    }
+
+    FragColor = vec4(result / max(totalWeight, 0.001), 1.0);
+}
+)";
+
 // ── Shader compilation helpers ───────────────────────────────────────
 
 static uint32_t CompileShader(GLenum type, const char* src) {
@@ -652,6 +725,7 @@ void PostProcessing::Shutdown() {
     if (m_FXAAShader) { glDeleteProgram(m_FXAAShader); m_FXAAShader = 0; }
     if (m_TAAShader) { glDeleteProgram(m_TAAShader); m_TAAShader = 0; }
     if (m_VolFogShader) { glDeleteProgram(m_VolFogShader); m_VolFogShader = 0; }
+    if (m_DoFShader) { glDeleteProgram(m_DoFShader); m_DoFShader = 0; }
 
     m_Initialized = false;
 }
@@ -674,6 +748,7 @@ void PostProcessing::CompileShaders() {
     m_FXAAShader = LinkProgram(s_QuadVertexSrc, s_FXAAFragSrc);
     m_TAAShader = LinkProgram(s_QuadVertexSrc, s_TAAFragSrc);
     m_VolFogShader = LinkProgram(s_QuadVertexSrc, s_VolFogFragSrc);
+    m_DoFShader = LinkProgram(s_QuadVertexSrc, s_DoFFragSrc);
 }
 
 static uint32_t CreateColorFBO(uint32_t& texture, uint32_t w, uint32_t h) {
@@ -709,6 +784,10 @@ void PostProcessing::CreateResources() {
     // Volumetric fog output
     m_VolFogFBO = CreateColorFBO(m_VolFogTexture, m_Width, m_Height);
 
+    // Depth of Field (two-pass: horizontal + vertical)
+    for (int i = 0; i < 2; i++)
+        m_DoFFBO[i] = CreateColorFBO(m_DoFTexture[i], m_Width, m_Height);
+
     // FXAA output
     m_FXAAFBO = CreateColorFBO(m_FXAATexture, m_Width, m_Height);
 
@@ -729,6 +808,8 @@ void PostProcessing::DestroyResources() {
     deleteFBO(m_BlurFBO[1], m_BlurTexture[1]);
     deleteFBO(m_CompositeFBO, m_CompositeTexture);
     deleteFBO(m_VolFogFBO, m_VolFogTexture);
+    deleteFBO(m_DoFFBO[0], m_DoFTexture[0]);
+    deleteFBO(m_DoFFBO[1], m_DoFTexture[1]);
     deleteFBO(m_FXAAFBO, m_FXAATexture);
     deleteFBO(m_TAAHistoryFBO[0], m_TAAHistoryTex[0]);
     deleteFBO(m_TAAHistoryFBO[1], m_TAAHistoryTex[1]);
@@ -769,7 +850,8 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
                   || settings.Curves.Enabled || settings.Tonemap.Enabled
                   || settings.FXAA.Enabled || settings.TAA.Enabled
                   || settings.SSAOTexture || settings.Fog.Enabled
-                  || settings.VolumetricFog.Enabled;
+                  || settings.VolumetricFog.Enabled
+                  || settings.DoF.Enabled;
     if (!anyEffect)
         return sceneColorTexture;
 
@@ -853,6 +935,43 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
 
         RenderFullscreenQuad();
         sceneColorTexture = m_VolFogTexture; // feed into composite
+    }
+
+    // ── Depth of Field pass (two-pass separable CoC-weighted blur) ───
+    if (settings.DoF.Enabled && settings.DepthTexture) {
+        glUseProgram(m_DoFShader);
+        glUniform1i(glGetUniformLocation(m_DoFShader, "u_Scene"), 0);
+        glUniform1i(glGetUniformLocation(m_DoFShader, "u_DepthTex"), 1);
+        glUniform1f(glGetUniformLocation(m_DoFShader, "u_FocusDistance"), settings.DoF.FocusDistance);
+        glUniform1f(glGetUniformLocation(m_DoFShader, "u_FocusRange"), settings.DoF.FocusRange);
+        glUniform1f(glGetUniformLocation(m_DoFShader, "u_MaxBlur"), settings.DoF.MaxBlur);
+        glUniform1f(glGetUniformLocation(m_DoFShader, "u_ApertureSize"), settings.DoF.ApertureSize);
+        glUniform1f(glGetUniformLocation(m_DoFShader, "u_NearClip"), settings.NearClip);
+        glUniform1f(glGetUniformLocation(m_DoFShader, "u_FarClip"), settings.FarClip);
+
+        // Horizontal pass
+        glBindFramebuffer(GL_FRAMEBUFFER, m_DoFFBO[0]);
+        glViewport(0, 0, m_Width, m_Height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUniform1i(glGetUniformLocation(m_DoFShader, "u_Horizontal"), 1);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, settings.DepthTexture);
+        RenderFullscreenQuad();
+
+        // Vertical pass
+        glBindFramebuffer(GL_FRAMEBUFFER, m_DoFFBO[1]);
+        glViewport(0, 0, m_Width, m_Height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUniform1i(glGetUniformLocation(m_DoFShader, "u_Horizontal"), 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_DoFTexture[0]);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, settings.DepthTexture);
+        RenderFullscreenQuad();
+
+        sceneColorTexture = m_DoFTexture[1]; // feed into composite
     }
 
     // ── Composite pass ───────────────────────────────────────────────
