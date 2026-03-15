@@ -5,6 +5,7 @@
 #include "VibeEngine/Scripting/ScriptEngine.h"
 #include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Scene/Scene.h"
+#include "VibeEngine/Scene/SceneManager.h"
 #include "VibeEngine/Scene/Entity.h"
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Core/Log.h"
@@ -50,6 +51,7 @@ struct ScriptEngineData {
 
     // Scene context
     Scene* ActiveScene = nullptr;
+    SceneManager* ActiveSceneManager = nullptr;
 
     // API table
     ScriptAPI APITable;
@@ -305,6 +307,14 @@ void ScriptEngine::SetActiveScene(Scene* scene) {
 
 Scene* ScriptEngine::GetActiveScene() {
     return s_Data ? s_Data->ActiveScene : nullptr;
+}
+
+void ScriptEngine::SetSceneManager(SceneManager* mgr) {
+    if (s_Data) s_Data->ActiveSceneManager = mgr;
+}
+
+SceneManager* ScriptEngine::GetSceneManager() {
+    return s_Data ? s_Data->ActiveSceneManager : nullptr;
 }
 
 std::string ScriptEngine::GetDLLPath() {

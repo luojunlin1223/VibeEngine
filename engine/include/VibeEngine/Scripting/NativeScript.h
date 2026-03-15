@@ -124,6 +124,15 @@ struct ScriptAPI {
     // Scene
     void (*Scene_LoadScene)(const char* path)    = nullptr;
 
+    // Scene Manager
+    int  (*SceneManager_LoadScene)(const char* path, bool additive) = nullptr;
+    bool (*SceneManager_UnloadScene)(int index)                     = nullptr;
+    const char* (*SceneManager_GetActiveSceneName)()                = nullptr;
+    void (*SceneManager_SetActiveScene)(int index)                  = nullptr;
+    int  (*SceneManager_GetSceneCount)()                            = nullptr;
+    void (*SceneManager_TransitionToScene)(const char* path, int transitionType, float duration) = nullptr;
+    bool (*SceneManager_IsTransitioning)()                          = nullptr;
+
     // Audio
     uint32_t (*Audio_Play)(const char* clipPath, float volume, float pitch, bool loop) = nullptr;
     void (*Audio_Stop)(uint32_t soundHandle)         = nullptr;
