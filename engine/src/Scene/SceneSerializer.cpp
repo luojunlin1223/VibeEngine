@@ -670,6 +670,7 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "ShadowBias" << YAML::Value << ps.ShadowBias;
     out << YAML::Key << "ShadowNormalBias" << YAML::Value << ps.ShadowNormalBias;
     out << YAML::Key << "ShadowPCFRadius" << YAML::Value << ps.ShadowPCFRadius;
+    out << YAML::Key << "OcclusionCullingEnabled" << YAML::Value << ps.OcclusionCullingEnabled;
     out << YAML::EndMap;
 
     out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
@@ -792,6 +793,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["ShadowBias"]) ps.ShadowBias = psNode["ShadowBias"].as<float>();
         if (psNode["ShadowNormalBias"]) ps.ShadowNormalBias = psNode["ShadowNormalBias"].as<float>();
         if (psNode["ShadowPCFRadius"]) ps.ShadowPCFRadius = psNode["ShadowPCFRadius"].as<int>();
+        if (psNode["OcclusionCullingEnabled"]) ps.OcclusionCullingEnabled = psNode["OcclusionCullingEnabled"].as<bool>();
     }
 
     auto entities = data["Entities"];
