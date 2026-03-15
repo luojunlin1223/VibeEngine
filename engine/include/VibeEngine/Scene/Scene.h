@@ -11,6 +11,7 @@
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/ReflectionProbe.h"
+#include "VibeEngine/Renderer/DeferredRenderer.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Navigation/NavGrid.h"
 #include <entt/entt.hpp>
@@ -25,7 +26,15 @@ namespace VE {
 
 class Entity;
 
+/// Render pipeline mode: Forward (traditional) or Deferred (G-buffer based).
+enum class RenderPipeline {
+    Forward = 0,
+    Deferred = 1
+};
+
 struct RenderPipelineSettings {
+    // Render Pipeline
+    RenderPipeline Pipeline = RenderPipeline::Forward;
     // HDR Pipeline
     bool HDREnabled = true;
     int  ToneMapMode = 1; // 0=Reinhard, 1=ACES Filmic, 2=Uncharted2
@@ -177,6 +186,15 @@ public:
 
     void OnRender(const glm::mat4& viewProjection,
                   const glm::vec3& cameraPos = glm::vec3(0.0f));
+
+    /// Deferred rendering path — call instead of OnRender when pipeline is Deferred.
+    /// Fills G-buffer, runs lighting pass, then forward-renders transparent objects.
+    void OnRenderDeferred(const glm::mat4& viewProjection,
+                          const glm::vec3& cameraPos,
+                          uint32_t viewportWidth, uint32_t viewportHeight);
+
+    /// Get the deferred renderer instance (creates on first access).
+    DeferredRenderer& GetDeferredRenderer() { return m_DeferredRenderer; }
     void OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
     void OnRenderSprites(const glm::mat4& viewProjection);
     void OnRenderDecals(const glm::mat4& viewProjection, const glm::mat4& viewMatrix,
@@ -273,6 +291,9 @@ private:
 
     std::string m_PendingScenePath; // scene to load at end of frame
     std::unique_ptr<NavGrid> m_NavGrid;
+
+    // Deferred rendering
+    DeferredRenderer m_DeferredRenderer;
 
     // Deferred entity deletion queue (flushed at end of OnUpdate)
     std::vector<entt::entity> m_PendingDestroy;

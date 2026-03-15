@@ -1400,6 +1400,434 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         OcclusionCulling::EndFrame();
 }
 
+// ── Deferred Rendering ─────────────────────────────────────────────
+
+void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
+                              const glm::vec3& cameraPos,
+                              uint32_t viewportWidth, uint32_t viewportHeight) {
+    // ── Initialize or resize the deferred renderer ──
+    if (!m_DeferredRenderer.IsInitialized()) {
+        m_DeferredRenderer.Init(viewportWidth, viewportHeight);
+    } else if (m_DeferredRenderer.GetWidth() != viewportWidth ||
+               m_DeferredRenderer.GetHeight() != viewportHeight) {
+        m_DeferredRenderer.Resize(viewportWidth, viewportHeight);
+    }
+
+    auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
+    if (!gbufferShader) {
+        VE_ENGINE_WARN("DeferredRenderer: No G-buffer shader — falling back to forward");
+        OnRender(viewProjection, cameraPos);
+        return;
+    }
+
+    // ── Gather lights (same as forward path) ──
+    glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+    glm::vec3 lightColor(1.0f);
+    float lightIntensity = 1.0f;
+    {
+        auto lightView = m_Registry.view<DirectionalLightComponent>();
+        for (auto lightEntity : lightView) {
+            if (!IsEntityActiveInHierarchy(lightEntity)) continue;
+            auto& dl = lightView.get<DirectionalLightComponent>(lightEntity);
+            glm::vec3 dir(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
+            float len = glm::length(dir);
+            if (len > 0.0001f) lightDir = dir / len;
+            lightColor = glm::vec3(dl.Color[0], dl.Color[1], dl.Color[2]);
+            lightIntensity = dl.Intensity;
+            break;
+        }
+    }
+
+    static constexpr int MAX_POINT_LIGHTS = 8;
+    int numPointLights = 0;
+    glm::vec3 pointPositions[MAX_POINT_LIGHTS] = {};
+    glm::vec3 pointColors[MAX_POINT_LIGHTS] = {};
+    float     pointIntensities[MAX_POINT_LIGHTS] = {};
+    float     pointRanges[MAX_POINT_LIGHTS] = {};
+    int       pointShadowIndex[MAX_POINT_LIGHTS] = {};
+    {
+        int shadowIdx = 0;
+        auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
+        for (auto plEntity : plView) {
+            if (numPointLights >= MAX_POINT_LIGHTS) break;
+            if (!IsEntityActiveInHierarchy(plEntity)) continue;
+            auto [tc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
+            glm::mat4 worldMat = GetWorldTransform(plEntity);
+            pointPositions[numPointLights]   = glm::vec3(worldMat[3]);
+            pointColors[numPointLights]      = glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]);
+            pointIntensities[numPointLights] = pl.Intensity;
+            pointRanges[numPointLights]      = pl.Range;
+            if (pl.CastShadows && shadowIdx < m_NumPointShadows)
+                pointShadowIndex[numPointLights] = shadowIdx++;
+            else
+                pointShadowIndex[numPointLights] = -1;
+            numPointLights++;
+        }
+    }
+
+    static constexpr int MAX_SPOT_LIGHTS = 4;
+    int numSpotLights = 0;
+    glm::vec3 spotPositions[MAX_SPOT_LIGHTS] = {};
+    glm::vec3 spotDirections[MAX_SPOT_LIGHTS] = {};
+    glm::vec3 spotColors[MAX_SPOT_LIGHTS] = {};
+    float     spotIntensities[MAX_SPOT_LIGHTS] = {};
+    float     spotRanges[MAX_SPOT_LIGHTS] = {};
+    float     spotInnerCos[MAX_SPOT_LIGHTS] = {};
+    float     spotOuterCos[MAX_SPOT_LIGHTS] = {};
+    int       spotShadowIndex[MAX_SPOT_LIGHTS] = {};
+    {
+        int shadowIdx = 0;
+        auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
+        for (auto slEntity : slView) {
+            if (numSpotLights >= MAX_SPOT_LIGHTS) break;
+            if (!IsEntityActiveInHierarchy(slEntity)) continue;
+            auto [tc, sl] = slView.get<TransformComponent, SpotLightComponent>(slEntity);
+            glm::mat4 worldMat = GetWorldTransform(slEntity);
+            spotPositions[numSpotLights]   = glm::vec3(worldMat[3]);
+            glm::vec3 localDir = glm::normalize(glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
+            spotDirections[numSpotLights]  = glm::normalize(glm::mat3(worldMat) * localDir);
+            spotColors[numSpotLights]      = glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]);
+            spotIntensities[numSpotLights] = sl.Intensity;
+            spotRanges[numSpotLights]      = sl.Range;
+            spotInnerCos[numSpotLights]    = std::cos(glm::radians(sl.InnerAngle));
+            spotOuterCos[numSpotLights]    = std::cos(glm::radians(sl.OuterAngle));
+            if (sl.CastShadows && shadowIdx < m_NumSpotShadows)
+                spotShadowIndex[numSpotLights] = shadowIdx++;
+            else
+                spotShadowIndex[numSpotLights] = -1;
+            numSpotLights++;
+        }
+    }
+
+    // Lambda to set lighting uniforms on the deferred lighting shader
+    auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader) {
+        shader->SetVec3("u_LightDir", lightDir);
+        shader->SetVec3("u_LightColor", lightColor);
+        shader->SetFloat("u_LightIntensity", lightIntensity);
+        shader->SetVec3("u_ViewPos", cameraPos);
+
+        if (m_ShadowsComputed && m_ShadowMap) {
+            shader->SetInt("u_ShadowEnabled", 1);
+            m_ShadowMap->BindForReading(8);
+            shader->SetInt("u_ShadowMap", 8);
+            shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
+            shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
+            shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
+            shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
+            for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c)
+                shader->SetMat4(s_LightSpaceMatrices[c], m_ShadowMap->GetLightSpaceMatrix(c));
+            shader->SetVec3("u_CascadeSplits",
+                glm::vec3(m_ShadowMap->GetCascadeSplit(0),
+                          m_ShadowMap->GetCascadeSplit(1),
+                          m_ShadowMap->GetCascadeSplit(2)));
+        } else {
+            shader->SetInt("u_ShadowEnabled", 0);
+        }
+
+        shader->SetInt("u_NumPointLights", numPointLights);
+        for (int i = 0; i < numPointLights; ++i) {
+            shader->SetVec3(s_PointLightPositions[i], pointPositions[i]);
+            shader->SetVec3(s_PointLightColors[i], pointColors[i]);
+            shader->SetFloat(s_PointLightIntensities[i], pointIntensities[i]);
+            shader->SetFloat(s_PointLightRanges[i], pointRanges[i]);
+            shader->SetInt(s_PointLightShadowIndex[i], pointShadowIndex[i]);
+        }
+
+        shader->SetInt("u_NumSpotLights", numSpotLights);
+        for (int i = 0; i < numSpotLights; ++i) {
+            shader->SetVec3(s_SpotLightPositions[i], spotPositions[i]);
+            shader->SetVec3(s_SpotLightDirections[i], spotDirections[i]);
+            shader->SetVec3(s_SpotLightColors[i], spotColors[i]);
+            shader->SetFloat(s_SpotLightIntensities[i], spotIntensities[i]);
+            shader->SetFloat(s_SpotLightRanges[i], spotRanges[i]);
+            shader->SetFloat(s_SpotLightInnerCos[i], spotInnerCos[i]);
+            shader->SetFloat(s_SpotLightOuterCos[i], spotOuterCos[i]);
+            shader->SetInt(s_SpotLightShadowIndex[i], spotShadowIndex[i]);
+        }
+
+        shader->SetInt("u_NumSpotShadows", m_NumSpotShadows);
+        for (int i = 0; i < m_NumSpotShadows; ++i) {
+            if (!m_SpotShadowMaps[i]) continue;
+            int texUnit = 9 + i;
+            m_SpotShadowMaps[i]->BindForReading(texUnit);
+            shader->SetInt(s_SpotShadowMaps[i], texUnit);
+            shader->SetMat4(s_SpotLightSpaceMatrices[i], m_SpotShadowMaps[i]->GetLightSpaceMatrix());
+        }
+
+        shader->SetInt("u_NumPointShadows", m_NumPointShadows);
+        for (int i = 0; i < m_NumPointShadows; ++i) {
+            if (!m_PointShadowMaps[i]) continue;
+            int texUnit = 11 + i;
+            m_PointShadowMaps[i]->BindForReading(texUnit);
+            shader->SetInt(s_PointShadowCubeMaps[i], texUnit);
+            shader->SetFloat(s_PointShadowFarPlanes[i], m_PointShadowMaps[i]->GetFarPlane());
+        }
+    };
+
+    // ── Frustum culling setup ──
+    Frustum frustum(viewProjection);
+    static const AABB s_UnitAABB = { glm::vec3(-0.5f), glm::vec3(0.5f) };
+    auto& stats = const_cast<RenderStats&>(RenderCommand::GetStats());
+
+    // ── Phase 1: G-Buffer Geometry Pass ──
+    m_DeferredRenderer.BeginGeometryPass();
+
+    // Collect transparent entities for later forward pass
+    struct VisibleEntity {
+        entt::entity ID;
+        glm::mat4    Model;
+        float        DistSq;
+    };
+    std::vector<VisibleEntity> transparentEntities;
+
+    auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
+    transparentEntities.reserve(view.size_hint() / 4);
+
+    for (auto entityID : view) {
+        if (!IsEntityActiveInHierarchy(entityID)) continue;
+        auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
+
+        if (!mr.Mesh || !mr.Mat) continue;
+
+        glm::mat4 model = GetWorldTransform(entityID);
+
+        // ── Frustum cull ──
+        {
+            if (!mr.LocalBounds.Valid()) {
+                bool found = false;
+                for (int idx = 0; idx < MeshLibrary::GetMeshCount(); ++idx) {
+                    if (mr.Mesh == MeshLibrary::GetMeshByIndex(idx)) {
+                        mr.LocalBounds = MeshLibrary::GetMeshAABB(idx);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) mr.LocalBounds = s_UnitAABB;
+            }
+
+            const AABB& localAABB = mr.LocalBounds;
+            glm::vec3 worldMin( std::numeric_limits<float>::max());
+            glm::vec3 worldMax(-std::numeric_limits<float>::max());
+            for (int i = 0; i < 8; ++i) {
+                glm::vec3 corner(
+                    (i & 1) ? localAABB.Max.x : localAABB.Min.x,
+                    (i & 2) ? localAABB.Max.y : localAABB.Min.y,
+                    (i & 4) ? localAABB.Max.z : localAABB.Min.z
+                );
+                glm::vec3 worldCorner = glm::vec3(model * glm::vec4(corner, 1.0f));
+                worldMin = glm::min(worldMin, worldCorner);
+                worldMax = glm::max(worldMax, worldCorner);
+            }
+
+            if (!frustum.TestAABB(worldMin, worldMax)) {
+                stats.CulledObjects++;
+                continue;
+            }
+            stats.VisibleObjects++;
+        }
+
+        // ── LOD selection ──
+        if (m_Registry.all_of<LODGroupComponent>(entityID)) {
+            auto& lodGroup = m_Registry.get<LODGroupComponent>(entityID);
+            if (!lodGroup.Levels.empty()) {
+                glm::vec3 worldPos = glm::vec3(model[3]);
+                float dist = glm::length(worldPos - cameraPos);
+                int lodIndex = SelectLOD(lodGroup, dist);
+                if (lodIndex < 0) {
+                    stats.CulledObjects++;
+                    stats.VisibleObjects--;
+                    continue;
+                }
+                lodGroup._ActiveLOD = lodIndex;
+                auto& level = lodGroup.Levels[lodIndex];
+                if (level.Mesh) mr.Mesh = level.Mesh;
+            }
+        }
+
+        // ── Separate transparent from opaque ──
+        bool isTransparent = mr.Mat->IsTransparent() || mr.Color[3] < 0.999f;
+        if (isTransparent) {
+            glm::vec3 worldPos = glm::vec3(model[3]);
+            float distSq = glm::dot(worldPos - cameraPos, worldPos - cameraPos);
+            transparentEntities.push_back({ entityID, model, distSq });
+            continue;
+        }
+
+        // ── Render opaque entity to G-buffer ──
+        std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
+        auto* ac = m_Registry.try_get<AnimatorComponent>(entityID);
+        bool hasAnimator = ac && ac->_Animator && ac->_Animator->GetSkinnedVAO();
+        if (hasAnimator) drawVAO = ac->_Animator->GetSkinnedVAO();
+
+        glm::mat4 mvp = viewProjection * model;
+        glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
+
+        // Use the G-buffer shader for all opaque geometry
+        gbufferShader->Bind();
+        gbufferShader->SetMat4("u_MVP", mvp);
+        gbufferShader->SetMat4("u_Model", model);
+        gbufferShader->SetVec4("u_EntityColor", entityColor);
+
+        // Set PBR material defaults
+        gbufferShader->SetFloat("u_Metallic", 0.0f);
+        gbufferShader->SetFloat("u_Roughness", 0.5f);
+        gbufferShader->SetFloat("u_AO", 1.0f);
+        gbufferShader->SetFloat("u_BumpScale", 1.0f);
+        gbufferShader->SetFloat("u_OcclusionStrength", 1.0f);
+        gbufferShader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        gbufferShader->SetFloat("u_Cutoff", 0.0f);
+        gbufferShader->SetInt("u_UseTexture", 0);
+        gbufferShader->SetInt("u_HasMainTex", 0);
+        gbufferShader->SetInt("u_HasMetallicGlossMap", 0);
+        gbufferShader->SetInt("u_HasBumpMap", 0);
+        gbufferShader->SetInt("u_HasOcclusionMap", 0);
+        gbufferShader->SetInt("u_HasEmissionMap", 0);
+
+        // Bind the original material to extract texture bindings
+        // (Material::Bind sets uniforms on whatever shader is currently bound)
+        if (mr.Mat->IsLit()) {
+            // Set PBR properties from material
+            for (auto& prop : mr.Mat->GetProperties()) {
+                if (prop.Type == MaterialPropertyType::Float)
+                    gbufferShader->SetFloat(prop.Name, prop.FloatValue);
+                else if (prop.Type == MaterialPropertyType::Int)
+                    gbufferShader->SetInt(prop.Name, prop.IntValue);
+                else if (prop.Type == MaterialPropertyType::Vec3)
+                    gbufferShader->SetVec3(prop.Name, prop.Vec3Value);
+                else if (prop.Type == MaterialPropertyType::Vec4)
+                    gbufferShader->SetVec4(prop.Name, prop.Vec4Value);
+                else if (prop.Type == MaterialPropertyType::Texture2D && prop.TextureRef) {
+                    // Find texture unit by name
+                    int unit = 0;
+                    if (prop.Name == "u_MainTex") unit = 0;
+                    else if (prop.Name == "u_MetallicGlossMap") unit = 1;
+                    else if (prop.Name == "u_BumpMap") unit = 2;
+                    else if (prop.Name == "u_OcclusionMap") unit = 3;
+                    else if (prop.Name == "u_EmissionMap") unit = 4;
+                    prop.TextureRef->Bind(unit);
+                    gbufferShader->SetInt(prop.Name, unit);
+                    if (!prop.FlagName.empty())
+                        gbufferShader->SetInt(prop.FlagName, 1);
+                }
+            }
+        }
+
+        // Apply per-entity material overrides
+        for (const auto& ov : mr.MaterialOverrides) {
+            switch (ov.Type) {
+                case MaterialPropertyType::Float:
+                    gbufferShader->SetFloat(ov.Name, ov.FloatValue); break;
+                case MaterialPropertyType::Int:
+                    gbufferShader->SetInt(ov.Name, ov.IntValue); break;
+                case MaterialPropertyType::Vec3:
+                    gbufferShader->SetVec3(ov.Name, ov.Vec3Value); break;
+                case MaterialPropertyType::Vec4:
+                    gbufferShader->SetVec4(ov.Name, ov.Vec4Value); break;
+                case MaterialPropertyType::Texture2D:
+                    if (ov.TextureRef) {
+                        ov.TextureRef->Bind(0);
+                        gbufferShader->SetInt(ov.Name, 0);
+                        gbufferShader->SetInt("u_UseTexture", 1);
+                    }
+                    break;
+            }
+        }
+
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        RenderCommand::DrawIndexed(drawVAO);
+    }
+
+    m_DeferredRenderer.EndGeometryPass();
+
+    // ── Phase 2: Deferred Lighting Pass ──
+    {
+        auto lightingShader = m_DeferredRenderer.GetLightingShader();
+        if (lightingShader) {
+            lightingShader->Bind();
+            setLightingUniforms(lightingShader);
+        }
+        m_DeferredRenderer.LightingPass();
+    }
+
+    // ── Phase 3: Forward pass for transparent objects ──
+    // Transparent objects cannot be deferred-rendered; they need the forward path.
+    if (!transparentEntities.empty()) {
+        // Sort back-to-front
+        std::sort(transparentEntities.begin(), transparentEntities.end(),
+            [](const VisibleEntity& a, const VisibleEntity& b) {
+                return a.DistSq > b.DistSq;
+            });
+
+        // Helper to set lighting on forward shader for transparent
+        auto setForwardLighting = [&](const std::shared_ptr<Shader>& shader, bool isLit) {
+            if (!isLit) return;
+            shader->SetVec3("u_LightDir", lightDir);
+            shader->SetVec3("u_LightColor", lightColor);
+            shader->SetFloat("u_LightIntensity", lightIntensity);
+            shader->SetVec3("u_ViewPos", cameraPos);
+            if (m_ShadowsComputed && m_ShadowMap) {
+                shader->SetInt("u_ShadowEnabled", 1);
+                m_ShadowMap->BindForReading(8);
+                shader->SetInt("u_ShadowMap", 8);
+                shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
+                shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
+                shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
+                shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
+                for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c)
+                    shader->SetMat4(s_LightSpaceMatrices[c], m_ShadowMap->GetLightSpaceMatrix(c));
+                shader->SetVec3("u_CascadeSplits",
+                    glm::vec3(m_ShadowMap->GetCascadeSplit(0),
+                              m_ShadowMap->GetCascadeSplit(1),
+                              m_ShadowMap->GetCascadeSplit(2)));
+            } else {
+                shader->SetInt("u_ShadowEnabled", 0);
+            }
+            shader->SetInt("u_NumPointLights", numPointLights);
+            for (int i = 0; i < numPointLights; ++i) {
+                shader->SetVec3(s_PointLightPositions[i], pointPositions[i]);
+                shader->SetVec3(s_PointLightColors[i], pointColors[i]);
+                shader->SetFloat(s_PointLightIntensities[i], pointIntensities[i]);
+                shader->SetFloat(s_PointLightRanges[i], pointRanges[i]);
+                shader->SetInt(s_PointLightShadowIndex[i], pointShadowIndex[i]);
+            }
+            shader->SetInt("u_NumSpotLights", numSpotLights);
+            for (int i = 0; i < numSpotLights; ++i) {
+                shader->SetVec3(s_SpotLightPositions[i], spotPositions[i]);
+                shader->SetVec3(s_SpotLightDirections[i], spotDirections[i]);
+                shader->SetVec3(s_SpotLightColors[i], spotColors[i]);
+                shader->SetFloat(s_SpotLightIntensities[i], spotIntensities[i]);
+                shader->SetFloat(s_SpotLightRanges[i], spotRanges[i]);
+                shader->SetFloat(s_SpotLightInnerCos[i], spotInnerCos[i]);
+                shader->SetFloat(s_SpotLightOuterCos[i], spotOuterCos[i]);
+                shader->SetInt(s_SpotLightShadowIndex[i], spotShadowIndex[i]);
+            }
+        };
+
+        for (auto& ve : transparentEntities) {
+            auto* mr = m_Registry.try_get<MeshRendererComponent>(ve.ID);
+            if (!mr || !mr->Mesh || !mr->Mat) continue;
+
+            mr->Mat->Bind();
+            auto shader = mr->Mat->GetShader();
+            if (!shader) continue;
+
+            glm::mat4 mvp = viewProjection * ve.Model;
+            glm::vec4 entityColor(mr->Color[0], mr->Color[1], mr->Color[2], mr->Color[3]);
+
+            shader->SetMat4("u_MVP", mvp);
+            shader->SetMat4("u_Model", ve.Model);
+            shader->SetVec4("u_EntityColor", entityColor);
+
+            if (mr->Mat->IsLit())
+                setForwardLighting(shader, true);
+
+            RenderCommand::DrawIndexed(mr->Mesh);
+        }
+        RenderCommand::SetDepthWrite(true);
+    }
+}
+
 // ── Terrain Rendering ───────────────────────────────────────────────
 
 void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos) {

@@ -1,4 +1,5 @@
 #include <VibeEngine/VibeEngine.h>
+#include <VibeEngine/Renderer/ShaderSources.h>
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -346,13 +347,63 @@ protected:
             m_Scene->OnRenderSky(m_Camera.GetSkyViewProjection());
         });
 
-        // Pass 2: Opaque geometry
+        // Pass 2: Opaque geometry (forward or deferred based on pipeline setting)
         rg.AddPass("Opaque", [&](VE::RGBuilder& b) {
             if (shadowMap.IsValid()) b.Read(shadowMap);
             b.Write(sceneColor);
             b.SideEffect();
         }, [&](const VE::RGResources&) {
-            m_Scene->OnRender(m_FrameVP, camPos);
+            if (pipeSettings.Pipeline == VE::RenderPipeline::Deferred && perspective3D) {
+                // Deferred rendering: G-buffer pass + lighting pass
+                // (this renders to the DeferredRenderer's internal FBOs)
+                m_Scene->OnRenderDeferred(m_FrameVP, camPos, fbW, fbH);
+
+                // If debug view is active, replace lighting output with debug visualization
+                auto& dr = m_Scene->GetDeferredRenderer();
+                if (m_GBufferDebugView > 0 && dr.IsInitialized()) {
+                    dr.DebugVisualize(static_cast<VE::GBufferDebugView>(m_GBufferDebugView));
+                }
+
+                // Blit deferred lighting output into the scene framebuffer
+                uint32_t deferredOutput = dr.GetOutputTexture();
+                if (deferredOutput && m_Framebuffer) {
+                    // Re-bind the scene framebuffer (deferred pass unbound it)
+                    m_Framebuffer->Bind();
+
+                    // Draw deferred output as fullscreen quad into scene FBO
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, deferredOutput);
+                    glDisable(GL_DEPTH_TEST);
+                    glDepthMask(GL_FALSE);
+
+                    static std::shared_ptr<VE::Shader> s_BlitShader;
+                    if (!s_BlitShader) {
+                        static const char* blitFrag = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+uniform sampler2D u_Source;
+void main() { FragColor = texture(u_Source, v_UV); }
+)";
+                        s_BlitShader = VE::Shader::Create(VE::QuadVertexShaderSrc, blitFrag);
+                    }
+                    if (s_BlitShader) {
+                        s_BlitShader->Bind();
+                        s_BlitShader->SetInt("u_Source", 0);
+                        static GLuint blitVAO = 0;
+                        if (!blitVAO) glGenVertexArrays(1, &blitVAO);
+                        glBindVertexArray(blitVAO);
+                        glDrawArrays(GL_TRIANGLES, 0, 3);
+                        glBindVertexArray(0);
+                    }
+
+                    glEnable(GL_DEPTH_TEST);
+                    glDepthMask(GL_TRUE);
+                }
+            } else {
+                // Forward rendering (default)
+                m_Scene->OnRender(m_FrameVP, camPos);
+            }
             m_Scene->OnRenderTerrain(m_FrameVP, camPos);
         });
 
@@ -494,12 +545,52 @@ protected:
                     m_Scene->OnRenderSky(gameProj * skyView);
                 });
 
-                // Game Pass 1: Opaque
+                // Game Pass 1: Opaque (forward or deferred)
                 rg.AddPass("GameOpaque", [&](VE::RGBuilder& b) {
                     b.Write(gameSceneColor);
                     b.SideEffect();
                 }, [&](const VE::RGResources&) {
-                    m_Scene->OnRender(gameVP, gameCamPos);
+                    bool gameUsesDeferred = (pipeSettings.Pipeline == VE::RenderPipeline::Deferred);
+                    if (gameUsesDeferred) {
+                        uint32_t gw = m_GameFramebuffer->GetWidth();
+                        uint32_t gh = m_GameFramebuffer->GetHeight();
+                        m_Scene->OnRenderDeferred(gameVP, gameCamPos, gw, gh);
+
+                        auto& dr = m_Scene->GetDeferredRenderer();
+                        uint32_t deferredOut = dr.GetOutputTexture();
+                        if (deferredOut && m_GameFramebuffer) {
+                            m_GameFramebuffer->Bind();
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, deferredOut);
+                            glDisable(GL_DEPTH_TEST);
+                            glDepthMask(GL_FALSE);
+
+                            static std::shared_ptr<VE::Shader> s_GameBlitShader;
+                            if (!s_GameBlitShader) {
+                                static const char* blitFrag = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+uniform sampler2D u_Source;
+void main() { FragColor = texture(u_Source, v_UV); }
+)";
+                                s_GameBlitShader = VE::Shader::Create(VE::QuadVertexShaderSrc, blitFrag);
+                            }
+                            if (s_GameBlitShader) {
+                                s_GameBlitShader->Bind();
+                                s_GameBlitShader->SetInt("u_Source", 0);
+                                static GLuint gameBlitVAO = 0;
+                                if (!gameBlitVAO) glGenVertexArrays(1, &gameBlitVAO);
+                                glBindVertexArray(gameBlitVAO);
+                                glDrawArrays(GL_TRIANGLES, 0, 3);
+                                glBindVertexArray(0);
+                            }
+                            glEnable(GL_DEPTH_TEST);
+                            glDepthMask(GL_TRUE);
+                        }
+                    } else {
+                        m_Scene->OnRender(gameVP, gameCamPos);
+                    }
                     m_Scene->OnRenderTerrain(gameVP, gameCamPos);
                 });
 
@@ -6028,6 +6119,22 @@ private:
 
         auto& ps = m_Scene->GetPipelineSettings();
 
+        if (ImGui::CollapsingHeader("Render Pipeline", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const char* pipelineModes[] = { "Forward", "Deferred" };
+            int pipelineIdx = static_cast<int>(ps.Pipeline);
+            if (ImGui::Combo("Pipeline Mode", &pipelineIdx, pipelineModes, 2)) {
+                ps.Pipeline = static_cast<VE::RenderPipeline>(pipelineIdx);
+            }
+            if (ps.Pipeline == VE::RenderPipeline::Deferred) {
+                ImGui::TextDisabled("G-Buffer MRT: Position, Normal, Albedo, Emission");
+                ImGui::TextDisabled("Transparent objects use forward pass");
+
+                const char* debugViews[] = { "None", "Position", "Normals", "Albedo",
+                    "Metallic", "Roughness", "AO", "Emission", "Depth" };
+                ImGui::Combo("G-Buffer Debug", &m_GBufferDebugView, debugViews, 9);
+            }
+        }
+
         if (ImGui::CollapsingHeader("HDR / Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable HDR", &ps.HDREnabled);
             if (ps.HDREnabled) {
@@ -7278,6 +7385,7 @@ private:
     bool m_ShowInspector = true;
     bool m_ShowSceneInfo = true;
     bool m_ShowPipelineSettings = false;
+    int  m_GBufferDebugView = 0; // 0=None, 1..8 = GBufferDebugView enum
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;

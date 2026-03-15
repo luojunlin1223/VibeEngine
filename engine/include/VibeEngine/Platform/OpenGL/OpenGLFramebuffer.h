@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VibeEngine/Renderer/Framebuffer.h"
+#include <vector>
 
 namespace VE {
 
@@ -14,8 +15,25 @@ public:
     void Resize(uint32_t width, uint32_t height) override;
 
     uint64_t GetColorAttachmentID() const override {
+        if (m_MRT) {
+            return m_ColorAttachments.empty() ? 0 : static_cast<uint64_t>(m_ColorAttachments[0]);
+        }
         return static_cast<uint64_t>(m_Multisampled ? m_ResolveColorAttachment : m_ColorAttachment);
     }
+
+    uint64_t GetColorAttachmentID(int index) const override {
+        if (m_MRT) {
+            if (index >= 0 && index < static_cast<int>(m_ColorAttachments.size()))
+                return static_cast<uint64_t>(m_ColorAttachments[index]);
+            return 0;
+        }
+        return GetColorAttachmentID();
+    }
+
+    int GetColorAttachmentCount() const override {
+        return m_MRT ? static_cast<int>(m_ColorAttachments.size()) : 1;
+    }
+
     uint32_t GetWidth() const override { return m_Width; }
     uint32_t GetHeight() const override { return m_Height; }
 
@@ -41,6 +59,11 @@ private:
     uint32_t m_ResolveFBO = 0;
     uint32_t m_ResolveColorAttachment = 0;
     uint32_t m_ResolveDepthAttachment = 0;
+
+    // MRT support
+    bool m_MRT = false;
+    std::vector<ColorAttachmentFormat> m_ColorFormats;
+    std::vector<uint32_t> m_ColorAttachments; // MRT texture IDs
 };
 
 } // namespace VE
