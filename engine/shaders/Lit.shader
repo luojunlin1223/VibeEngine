@@ -174,6 +174,10 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
 // ── Cotangent-frame Normal Mapping ──────────────────────────────────
 // Compute TBN from screen-space derivatives — no tangent vertex attribute needed.
 
@@ -498,8 +502,37 @@ void main() {
         Lo += (kD * albedo / PI + spec) * radiance * NdotL;
     }
 
-    // ── Ambient + Occlusion ──────────────────────────────────────────
-    vec3 ambient = vec3(0.03) * albedo * ao;
+    // ── Ambient + IBL Reflections + Occlusion ──────────────────────────
+    vec3 ambient;
+    if (u_HasReflectionProbe == 1) {
+        // Image-based lighting from reflection probe cubemap
+        vec3 R = reflect(-V, N);
+
+        // Sample cubemap with roughness-based mip level
+        float maxMipLevel = 4.0; // log2(resolution/16) approx for 128 res
+        float mipLevel = roughness * maxMipLevel;
+        vec3 envColor = textureLod(u_ReflectionProbe, R, mipLevel).rgb;
+
+        // Fresnel with roughness for environment reflections
+        float NdotV = max(dot(N, V), 0.0);
+        vec3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
+
+        // Split-sum approximation (simplified without a BRDF LUT):
+        // kS = Fresnel, kD = 1 - kS (energy conservation)
+        vec3 kS = F;
+        vec3 kD = (1.0 - kS) * (1.0 - metallic);
+
+        // Diffuse IBL: sample cubemap at normal direction (rough mip)
+        vec3 irradiance = textureLod(u_ReflectionProbe, N, maxMipLevel).rgb;
+        vec3 diffuseIBL = irradiance * albedo;
+
+        // Specular IBL: environment reflection
+        vec3 specularIBL = envColor * F;
+
+        ambient = (kD * diffuseIBL + specularIBL) * ao * u_ReflectionIntensity;
+    } else {
+        ambient = vec3(0.03) * albedo * ao;
+    }
     vec3 color = ambient + Lo;
 
     // ── Emission ─────────────────────────────────────────────────────

@@ -586,6 +586,34 @@ static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
     return model;
 }
 
+// ── Reflection Probes ───────────────────────────────────────────────
+
+void Scene::BakeReflectionProbes() {
+    auto probeView = m_Registry.view<TransformComponent, ReflectionProbeComponent>();
+    for (auto entity : probeView) {
+        BakeReflectionProbe(entity);
+    }
+}
+
+void Scene::BakeReflectionProbe(entt::entity probeEntity) {
+    if (!m_Registry.valid(probeEntity)) return;
+    if (!m_Registry.all_of<TransformComponent, ReflectionProbeComponent>(probeEntity)) return;
+
+    auto& tc = m_Registry.get<TransformComponent>(probeEntity);
+    auto& rpc = m_Registry.get<ReflectionProbeComponent>(probeEntity);
+
+    // Create or recreate probe if resolution changed
+    if (!rpc._Probe || rpc._Probe->GetResolution() != rpc.Resolution) {
+        rpc._Probe = std::make_shared<ReflectionProbe>(rpc.Resolution);
+    }
+
+    glm::mat4 worldMat = GetWorldTransform(probeEntity);
+    glm::vec3 position = glm::vec3(worldMat[3]);
+
+    rpc._Probe->Capture(*this, position);
+    rpc._IsBaked = rpc._Probe->IsBaked();
+}
+
 // ── Navigation ──────────────────────────────────────────────────────
 
 void Scene::BakeNavGrid(float cellSize, float worldSize) {

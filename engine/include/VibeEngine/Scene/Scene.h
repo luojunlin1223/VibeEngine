@@ -10,6 +10,7 @@
 #include "VibeEngine/Core/UUID.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/ShadowMap.h"
+#include "VibeEngine/Renderer/ReflectionProbe.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Navigation/NavGrid.h"
 #include <entt/entt.hpp>
@@ -222,6 +223,10 @@ public:
 
     // Physics queries (delegates to PhysicsWorld)
     PhysicsWorld* GetPhysicsWorld() const { return m_PhysicsWorld.get(); }
+
+    // Reflection probes
+    void BakeReflectionProbes();
+    void BakeReflectionProbe(entt::entity probeEntity);
 
     // Navigation
     void BakeNavGrid(float cellSize = 0.5f, float worldSize = 50.0f);

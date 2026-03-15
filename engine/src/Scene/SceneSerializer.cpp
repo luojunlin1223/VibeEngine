@@ -99,6 +99,17 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // ReflectionProbeComponent
+    if (entity.HasComponent<ReflectionProbeComponent>()) {
+        auto& rp = entity.GetComponent<ReflectionProbeComponent>();
+        out << YAML::Key << "ReflectionProbeComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Resolution" << YAML::Value << rp.Resolution;
+        out << YAML::Key << "BoxSize" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << rp.BoxSize[0] << rp.BoxSize[1] << rp.BoxSize[2] << YAML::EndSeq;
+        out << YAML::Key << "BakeOnLoad" << YAML::Value << rp.BakeOnLoad;
+        out << YAML::EndMap;
+    }
+
     // RigidbodyComponent
     if (entity.HasComponent<RigidbodyComponent>()) {
         auto& rb = entity.GetComponent<RigidbodyComponent>();
@@ -876,6 +887,14 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize SpotLightComponent: {}", e.what());
             }
+        }
+
+        if (auto rpNode = entityNode["ReflectionProbeComponent"]) {
+            auto& rp = entity.AddComponent<ReflectionProbeComponent>();
+            if (rpNode["Resolution"]) rp.Resolution = rpNode["Resolution"].as<int>();
+            if (auto bs = rpNode["BoxSize"])
+                rp.BoxSize = { bs[0].as<float>(), bs[1].as<float>(), bs[2].as<float>() };
+            if (rpNode["BakeOnLoad"]) rp.BakeOnLoad = rpNode["BakeOnLoad"].as<bool>();
         }
 
         if (auto rbNode = entityNode["RigidbodyComponent"]) {
@@ -1728,6 +1747,15 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
             if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
             if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
             if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
+        }
+
+        // ReflectionProbeComponent
+        if (auto rpNode = entityNode["ReflectionProbeComponent"]) {
+            auto& rp = entity.AddComponent<ReflectionProbeComponent>();
+            if (rpNode["Resolution"]) rp.Resolution = rpNode["Resolution"].as<int>();
+            if (auto bs = rpNode["BoxSize"])
+                rp.BoxSize = { bs[0].as<float>(), bs[1].as<float>(), bs[2].as<float>() };
+            if (rpNode["BakeOnLoad"]) rp.BakeOnLoad = rpNode["BakeOnLoad"].as<bool>();
         }
 
         // CameraComponent
