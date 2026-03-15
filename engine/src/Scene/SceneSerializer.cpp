@@ -594,6 +594,11 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "SSAOBias" << YAML::Value << ps.SSAOBias;
     out << YAML::Key << "SSAOIntensity" << YAML::Value << ps.SSAOIntensity;
     out << YAML::Key << "SSAOKernelSize" << YAML::Value << ps.SSAOKernelSize;
+    out << YAML::Key << "SSREnabled" << YAML::Value << ps.SSREnabled;
+    out << YAML::Key << "SSRMaxSteps" << YAML::Value << ps.SSRMaxSteps;
+    out << YAML::Key << "SSRStepSize" << YAML::Value << ps.SSRStepSize;
+    out << YAML::Key << "SSRThickness" << YAML::Value << ps.SSRThickness;
+    out << YAML::Key << "SSRMaxDistance" << YAML::Value << ps.SSRMaxDistance;
     out << YAML::Key << "AAMode" << YAML::Value << ps.AAMode;
     out << YAML::Key << "FXAAEdgeThreshold" << YAML::Value << ps.FXAAEdgeThreshold;
     out << YAML::Key << "FXAAEdgeThresholdMin" << YAML::Value << ps.FXAAEdgeThresholdMin;
@@ -700,6 +705,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["SSAOBias"]) ps.SSAOBias = psNode["SSAOBias"].as<float>();
         if (psNode["SSAOIntensity"]) ps.SSAOIntensity = psNode["SSAOIntensity"].as<float>();
         if (psNode["SSAOKernelSize"]) ps.SSAOKernelSize = psNode["SSAOKernelSize"].as<int>();
+        if (psNode["SSREnabled"]) ps.SSREnabled = psNode["SSREnabled"].as<bool>();
+        if (psNode["SSRMaxSteps"]) ps.SSRMaxSteps = psNode["SSRMaxSteps"].as<int>();
+        if (psNode["SSRStepSize"]) ps.SSRStepSize = psNode["SSRStepSize"].as<float>();
+        if (psNode["SSRThickness"]) ps.SSRThickness = psNode["SSRThickness"].as<float>();
+        if (psNode["SSRMaxDistance"]) ps.SSRMaxDistance = psNode["SSRMaxDistance"].as<float>();
         if (psNode["AAMode"]) ps.AAMode = psNode["AAMode"].as<int>();
         if (psNode["FXAAEdgeThreshold"]) ps.FXAAEdgeThreshold = psNode["FXAAEdgeThreshold"].as<float>();
         if (psNode["FXAAEdgeThresholdMin"]) ps.FXAAEdgeThresholdMin = psNode["FXAAEdgeThresholdMin"].as<float>();

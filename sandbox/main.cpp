@@ -364,7 +364,16 @@ protected:
                         m_Camera.GetProjectionMatrix(), m_Camera.GetViewMatrix(), ssaoSettings);
                 }
 
+                // Compute SSR if enabled
                 uint32_t sceneTex = static_cast<uint32_t>(m_Framebuffer->GetColorAttachmentID());
+                if (ps.SSREnabled) {
+                    VE::SSRSettings ssrSettings{ true, ps.SSRMaxSteps, ps.SSRStepSize,
+                                                  ps.SSRThickness, ps.SSRMaxDistance };
+                    ppSettings.SSRTexture = m_SSR.Compute(
+                        sceneTex, depthTex,
+                        m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(),
+                        m_Camera.GetProjectionMatrix(), m_Camera.GetViewMatrix(), ssrSettings);
+                }
                 m_PostProcessedTexture = m_PostProcessing.Apply(
                     sceneTex, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(), ppSettings);
                 if (m_PostProcessedTexture == sceneTex)
@@ -485,7 +494,16 @@ protected:
                             gameProj, gameView, ssaoS);
                     }
 
+                    // Compute SSR for game view
                     uint32_t gameTex = static_cast<uint32_t>(m_GameFramebuffer->GetColorAttachmentID());
+                    if (gps.SSREnabled) {
+                        VE::SSRSettings ssrS{ true, gps.SSRMaxSteps, gps.SSRStepSize,
+                                               gps.SSRThickness, gps.SSRMaxDistance };
+                        ppSettings.SSRTexture = m_GameSSR.Compute(
+                            gameTex, gDepthTex,
+                            m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(),
+                            gameProj, gameView, ssrS);
+                    }
                     m_GamePostProcessedTexture = m_GamePostProcessing.Apply(
                         gameTex, m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight(), ppSettings);
                     if (m_GamePostProcessedTexture == gameTex)
@@ -4426,6 +4444,16 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("SSR (Reflections)", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable SSR", &ps.SSREnabled);
+            if (ps.SSREnabled) {
+                ImGui::SliderInt("Max Steps##SSR", &ps.SSRMaxSteps, 8, 128);
+                ImGui::SliderFloat("Step Size##SSR", &ps.SSRStepSize, 0.005f, 0.2f, "%.3f");
+                ImGui::SliderFloat("Thickness##SSR", &ps.SSRThickness, 0.01f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Max Distance##SSR", &ps.SSRMaxDistance, 5.0f, 200.0f, "%.1f");
+            }
+        }
+
         if (ImGui::CollapsingHeader("Anti-Aliasing", ImGuiTreeNodeFlags_DefaultOpen)) {
             const char* aaModes[] = { "None", "MSAA 2x", "MSAA 4x", "MSAA 8x", "FXAA", "TAA" };
             ImGui::Combo("AA Mode", &ps.AAMode, aaModes, 6);
@@ -5282,6 +5310,8 @@ private:
     uint32_t m_PostProcessedTexture = 0;
     VE::SSAO m_SSAO;
     VE::SSAO m_GameSSAO;
+    VE::SSR  m_SSR;
+    VE::SSR  m_GameSSR;
 
     // Game viewport
     bool m_ShowGameView = false;

@@ -27,6 +27,7 @@
 #include "Renderer/Frustum.h"
 #include "Renderer/GridRenderer.h"
 #include "Renderer/SSAO.h"
+#include "Renderer/SSR.h"
 #include "Renderer/LODSystem.h"
 
 #include "Navigation/NavGrid.h"

@@ -100,6 +100,13 @@ struct RenderPipelineSettings {
     float SSAOIntensity = 1.0f;
     int   SSAOKernelSize = 32;
 
+    // SSR (Screen-Space Reflections)
+    bool  SSREnabled     = false;
+    int   SSRMaxSteps    = 64;
+    float SSRStepSize    = 0.05f;
+    float SSRThickness   = 0.1f;
+    float SSRMaxDistance  = 50.0f;
+
     // Anti-Aliasing
     int AAMode = 0;  // 0=None, 1=MSAA 2x, 2=MSAA 4x, 3=MSAA 8x, 4=FXAA, 5=TAA
     // FXAA params

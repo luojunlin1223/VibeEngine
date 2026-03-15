@@ -78,9 +78,13 @@ uniform sampler2D u_Scene;
 uniform sampler2D u_Bloom;
 uniform sampler2D u_CurvesLUT;  // 256x1 RGBA
 uniform sampler2D u_SSAOTex;
+uniform sampler2D u_SSRTex;
 
 // SSAO
 uniform bool u_SSAOEnabled;
+
+// SSR
+uniform bool u_SSREnabled;
 
 // Fog
 uniform bool  u_FogEnabled;
@@ -172,7 +176,14 @@ void main() {
         color *= ao;
     }
 
-    // 1c. Fog
+    // 1c. SSR (Screen-Space Reflections)
+    if (u_SSREnabled) {
+        vec4 ssr = texture(u_SSRTex, v_UV);
+        // ssr.a = reflection confidence (includes edge/direction fading)
+        color = mix(color, ssr.rgb, ssr.a);
+    }
+
+    // 1d. Fog
     if (u_FogEnabled) {
         float depth = texture(u_DepthTex, v_UV).r;
         if (depth < 1.0) { // skip sky
@@ -768,8 +779,8 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
                   || settings.Color.Enabled || settings.SMH.Enabled
                   || settings.Curves.Enabled || settings.Tonemap.Enabled
                   || settings.FXAA.Enabled || settings.TAA.Enabled
-                  || settings.SSAOTexture || settings.Fog.Enabled
-                  || settings.VolumetricFog.Enabled;
+                  || settings.SSAOTexture || settings.SSRTexture
+                  || settings.Fog.Enabled || settings.VolumetricFog.Enabled;
     if (!anyEffect)
         return sceneColorTexture;
 
@@ -901,6 +912,14 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glBindTexture(GL_TEXTURE_2D, settings.SSAOTexture);
     }
 
+    // Texture unit 5: SSR
+    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSREnabled"), settings.SSRTexture ? 1 : 0);
+    if (settings.SSRTexture) {
+        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSRTex"), 5);
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, settings.SSRTexture);
+    }
+
     // Texture unit 2: curves LUT
     glUniform1i(glGetUniformLocation(m_CompositeShader, "u_CurvesEnabled"), settings.Curves.Enabled ? 1 : 0);
     if (settings.Curves.Enabled) {
@@ -953,7 +972,9 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
     // Track the output of the composite pass
     bool compositeRan = settings.Bloom.Enabled || settings.Vignette.Enabled
                      || settings.Color.Enabled || settings.SMH.Enabled
-                     || settings.Curves.Enabled || settings.Tonemap.Enabled;
+                     || settings.Curves.Enabled || settings.Tonemap.Enabled
+                     || settings.SSAOTexture || settings.SSRTexture
+                     || settings.Fog.Enabled;
     uint32_t currentOutput = compositeRan ? m_CompositeTexture : sceneColorTexture;
 
     // ── FXAA pass ────────────────────────────────────────────────────
