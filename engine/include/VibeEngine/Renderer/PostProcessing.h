@@ -126,6 +126,7 @@ struct PostProcessSettings {
     FogSettings         Fog;
     VolumetricFogSettings VolumetricFog;
     uint32_t            SSAOTexture = 0;
+    uint32_t            SSRTexture  = 0;   // RGBA16F: RGB=reflected color, A=confidence
     uint32_t            DepthTexture = 0;
     float               NearClip = 0.1f;
     float               FarClip  = 1000.0f;
