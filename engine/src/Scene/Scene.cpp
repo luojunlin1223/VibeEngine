@@ -472,6 +472,34 @@ static glm::mat4 ComputeModelMatrix(const TransformComponent& tc) {
     return model;
 }
 
+// ── Reflection Probes ───────────────────────────────────────────────
+
+void Scene::BakeReflectionProbes() {
+    auto probeView = m_Registry.view<TransformComponent, ReflectionProbeComponent>();
+    for (auto entity : probeView) {
+        BakeReflectionProbe(entity);
+    }
+}
+
+void Scene::BakeReflectionProbe(entt::entity probeEntity) {
+    if (!m_Registry.valid(probeEntity)) return;
+    if (!m_Registry.all_of<TransformComponent, ReflectionProbeComponent>(probeEntity)) return;
+
+    auto& tc = m_Registry.get<TransformComponent>(probeEntity);
+    auto& rpc = m_Registry.get<ReflectionProbeComponent>(probeEntity);
+
+    // Create or recreate probe if resolution changed
+    if (!rpc._Probe || rpc._Probe->GetResolution() != rpc.Resolution) {
+        rpc._Probe = std::make_shared<ReflectionProbe>(rpc.Resolution);
+    }
+
+    glm::mat4 worldMat = GetWorldTransform(probeEntity);
+    glm::vec3 position = glm::vec3(worldMat[3]);
+
+    rpc._Probe->Capture(*this, position);
+    rpc._IsBaked = rpc._Probe->IsBaked();
+}
+
 // ── Navigation ──────────────────────────────────────────────────────
 
 void Scene::BakeNavGrid(float cellSize, float worldSize) {
@@ -661,6 +689,26 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
+    // Find closest baked reflection probe (global for now; per-entity would check influence box)
+    std::shared_ptr<ReflectionProbe> activeProbe;
+    {
+        auto probeView = m_Registry.view<TransformComponent, ReflectionProbeComponent>();
+        float closestDist = std::numeric_limits<float>::max();
+        for (auto probeEntity : probeView) {
+            if (!IsEntityActiveInHierarchy(probeEntity)) continue;
+            auto& rpc = probeView.get<ReflectionProbeComponent>(probeEntity);
+            if (!rpc._Probe || !rpc._IsBaked) continue;
+
+            glm::mat4 worldMat = GetWorldTransform(probeEntity);
+            glm::vec3 probePos = glm::vec3(worldMat[3]);
+            float dist = glm::length(probePos - cameraPos);
+            if (dist < closestDist) {
+                closestDist = dist;
+                activeProbe = rpc._Probe;
+            }
+        }
+    }
+
     // Helper: set lighting uniforms on a shader (used for both individual and instanced paths)
     auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader, bool isLit) {
         if (!isLit) return;
@@ -696,6 +744,16 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
             shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
             shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
+        }
+
+        // Reflection probe cubemap (texture unit 9)
+        if (activeProbe) {
+            activeProbe->BindCubemap(9);
+            shader->SetInt("u_ReflectionProbe", 9);
+            shader->SetInt("u_HasReflectionProbe", 1);
+            shader->SetFloat("u_ReflectionIntensity", 1.0f);
+        } else {
+            shader->SetInt("u_HasReflectionProbe", 0);
         }
     };
 

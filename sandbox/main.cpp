@@ -905,8 +905,17 @@ private:
             m_Scene = std::make_shared<VE::Scene>();
             m_SelectedEntity = {};
             VE::SceneSerializer serializer(m_Scene);
-            if (serializer.Deserialize(path))
+            if (serializer.Deserialize(path)) {
                 m_CurrentScenePath = path;
+                // Bake reflection probes marked BakeOnLoad
+                auto rpView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::ReflectionProbeComponent>();
+                for (auto e : rpView) {
+                    auto& rp = rpView.get<VE::ReflectionProbeComponent>(e);
+                    if (rp.BakeOnLoad) {
+                        m_Scene->BakeReflectionProbe(e);
+                    }
+                }
+            }
             m_CommandHistory.Clear();
         }
     }
@@ -1348,6 +1357,17 @@ private:
             if (reg.any_of<VE::DirectionalLightComponent>(srcEntity))
                 reg.get_or_emplace<VE::DirectionalLightComponent>(dst) = reg.get<VE::DirectionalLightComponent>(srcEntity);
 
+            // Copy ReflectionProbeComponent (reset runtime probe)
+            if (reg.any_of<VE::ReflectionProbeComponent>(srcEntity)) {
+                auto& src = reg.get<VE::ReflectionProbeComponent>(srcEntity);
+                auto& dstRP = reg.get_or_emplace<VE::ReflectionProbeComponent>(dst);
+                dstRP.Resolution = src.Resolution;
+                dstRP.BoxSize = src.BoxSize;
+                dstRP.BakeOnLoad = src.BakeOnLoad;
+                dstRP._Probe = nullptr;
+                dstRP._IsBaked = false;
+            }
+
             // Copy RigidbodyComponent (reset runtime body ID)
             if (reg.any_of<VE::RigidbodyComponent>(srcEntity)) {
                 auto rb = reg.get<VE::RigidbodyComponent>(srcEntity);
@@ -1494,6 +1514,11 @@ private:
                 ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("Lighting")) {
+                if (ImGui::MenuItem("Bake All Reflection Probes"))
+                    m_Scene->BakeReflectionProbes();
+                ImGui::EndMenu();
+            }
             ImGui::EndMainMenuBar();
         }
 
@@ -1608,6 +1633,19 @@ private:
                     auto& pl = plView.get<VE::PointLightComponent>(e);
                     VE::GizmoRenderer::DrawPointLightGizmo(pos, pl.Range,
                         glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]));
+                }
+            }
+
+            // Draw reflection probe influence boxes
+            {
+                auto rpView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::ReflectionProbeComponent>();
+                for (auto e : rpView) {
+                    auto& rp = rpView.get<VE::ReflectionProbeComponent>(e);
+                    glm::mat4 wm = m_Scene->GetWorldTransform(e);
+                    // Scale the wireframe box by the BoxSize
+                    glm::mat4 boxMat = wm * glm::scale(glm::mat4(1.0f),
+                        glm::vec3(rp.BoxSize[0], rp.BoxSize[1], rp.BoxSize[2]));
+                    VE::GizmoRenderer::DrawWireframeBox(boxMat);
                 }
             }
 
@@ -1872,6 +1910,12 @@ private:
                     m_CommandHistory.Execute("Create Camera", [this]() {
                         auto e = m_Scene->CreateEntity("Camera");
                         e.AddComponent<VE::CameraComponent>();
+                        m_SelectedEntity = e;
+                    });
+                if (ImGui::MenuItem("Reflection Probe"))
+                    m_CommandHistory.Execute("Create Reflection Probe", [this]() {
+                        auto e = m_Scene->CreateEntity("Reflection Probe");
+                        e.AddComponent<VE::ReflectionProbeComponent>();
                         m_SelectedEntity = e;
                     });
                 ImGui::EndMenu();
@@ -2743,6 +2787,53 @@ private:
             if (removePointLight)
                 m_CommandHistory.Execute("Remove Point Light", [this]() {
                     m_SelectedEntity.RemoveComponent<VE::PointLightComponent>();
+                });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::ReflectionProbeComponent>()) {
+            bool removeRP = false;
+            bool openRP = ImGui::CollapsingHeader("Reflection Probe", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::ReflectionProbeComponent>("##ReflProbeCtx", "ReflectionProbe", removeRP);
+            if (openRP) {
+                auto& rp = m_SelectedEntity.GetComponent<VE::ReflectionProbeComponent>();
+
+                // Resolution dropdown
+                const int resOptions[] = { 64, 128, 256, 512 };
+                const char* resLabels[] = { "64", "128", "256", "512" };
+                int currentIdx = 1; // default 128
+                for (int i = 0; i < 4; ++i) {
+                    if (resOptions[i] == rp.Resolution) { currentIdx = i; break; }
+                }
+                if (ImGui::Combo("Resolution##RP", &currentIdx, resLabels, 4)) {
+                    rp.Resolution = resOptions[currentIdx];
+                }
+
+                ImGui::DragFloat3("Box Size##RP", rp.BoxSize.data(), 0.1f, 0.1f, 1000.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Probe Box Size");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+
+                ImGui::Checkbox("Bake On Load##RP", &rp.BakeOnLoad);
+
+                // Bake button
+                if (ImGui::Button("Bake##RP")) {
+                    m_Scene->BakeReflectionProbe(m_SelectedEntity.GetHandle());
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Bake All Probes##RP")) {
+                    m_Scene->BakeReflectionProbes();
+                }
+
+                // Status
+                if (rp._IsBaked) {
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Baked (%dx%d)", rp.Resolution, rp.Resolution);
+                } else {
+                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.2f, 1.0f), "Not Baked");
+                }
+            }
+            if (removeRP)
+                m_CommandHistory.Execute("Remove Reflection Probe", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::ReflectionProbeComponent>();
                 });
             ImGui::Separator();
         }
@@ -3858,6 +3949,13 @@ private:
                 if (ImGui::MenuItem("Point Light"))
                     m_CommandHistory.Execute("Add Point Light", [this]() {
                         m_SelectedEntity.AddComponent<VE::PointLightComponent>();
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::ReflectionProbeComponent>()) {
+                if (ImGui::MenuItem("Reflection Probe"))
+                    m_CommandHistory.Execute("Add Reflection Probe", [this]() {
+                        m_SelectedEntity.AddComponent<VE::ReflectionProbeComponent>();
                     });
                 anyAdded = true;
             }

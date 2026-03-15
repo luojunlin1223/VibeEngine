@@ -118,6 +118,11 @@ uniform float u_ShadowBias;
 uniform float u_ShadowNormalBias;
 uniform int   u_PCFRadius;
 
+// Reflection probe (cubemap)
+uniform samplerCube u_ReflectionProbe;
+uniform int   u_HasReflectionProbe;
+uniform float u_ReflectionIntensity;
+
 out vec4 FragColor;
 
 const float PI = 3.14159265359;
@@ -144,6 +149,10 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 
 vec3 FresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
@@ -274,7 +283,24 @@ void main() {
         Lo += (kD * albedo / PI + spec) * radiance * NdotL;
     }
 
-    vec3 ambient = vec3(0.03) * albedo * ao;
+    // ── Ambient + IBL Reflections + Occlusion ──────────────────────────
+    vec3 ambient;
+    if (u_HasReflectionProbe == 1) {
+        vec3 R = reflect(-V, N);
+        float maxMipLevel = 4.0;
+        float mipLevel = roughness * maxMipLevel;
+        vec3 envColor = textureLod(u_ReflectionProbe, R, mipLevel).rgb;
+        float NdotV2 = max(dot(N, V), 0.0);
+        vec3 F = FresnelSchlickRoughness(NdotV2, F0, roughness);
+        vec3 kS = F;
+        vec3 kD = (1.0 - kS) * (1.0 - metallic);
+        vec3 irradiance = textureLod(u_ReflectionProbe, N, maxMipLevel).rgb;
+        vec3 diffuseIBL = irradiance * albedo;
+        vec3 specularIBL = envColor * F;
+        ambient = (kD * diffuseIBL + specularIBL) * ao * u_ReflectionIntensity;
+    } else {
+        ambient = vec3(0.03) * albedo * ao;
+    }
     vec3 color = ambient + Lo;
 
     vec3 emission = u_EmissionColor.rgb;

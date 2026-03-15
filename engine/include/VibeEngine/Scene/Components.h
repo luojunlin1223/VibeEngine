@@ -12,6 +12,7 @@
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Renderer/ReflectionProbe.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/UI/FontAtlas.h"
 #include "VibeEngine/Terrain/Terrain.h"
@@ -399,6 +400,20 @@ struct UIButtonComponent {
     bool _Clicked = false; // true for one frame on click
 
     UIButtonComponent() = default;
+};
+
+// ── Reflection Probe Component ────────────────────────────────────────
+
+struct ReflectionProbeComponent {
+    int Resolution = 128;                                    // cubemap resolution (64, 128, 256, 512)
+    std::array<float, 3> BoxSize = { 10.0f, 10.0f, 10.0f }; // influence volume (world units)
+    bool BakeOnLoad = false;                                 // auto-bake when scene is loaded
+
+    // Runtime only (not serialized)
+    std::shared_ptr<ReflectionProbe> _Probe;
+    bool _IsBaked = false;
+
+    ReflectionProbeComponent() = default;
 };
 
 } // namespace VE
