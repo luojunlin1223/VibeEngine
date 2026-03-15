@@ -36,6 +36,7 @@ public:
         VE::ParticleRenderer::Init();
         VE::InstancedRenderer::Init();
         VE::OcclusionCulling::Init();
+        VE::ForwardPlusRenderer::Init(1280, 720);
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_SceneManager.AddScene(m_Scene, "Untitled");
@@ -314,8 +315,8 @@ protected:
         rg.SetViewportSize(fbW, fbH);
         VE::RGHandle shadowMap, sceneColor;
 
-        // Pass 0: Shadow depth (3D perspective only)
-        if (perspective3D) {
+        // Pass 0: Shadow depth (3D perspective only, or Forward+ needs camera matrices)
+        if (perspective3D || pipeSettings.Lighting == VE::LightingMode::ForwardPlus) {
             rg.AddPass("ShadowDepth", [&](VE::RGBuilder& b) {
                 shadowMap = b.Import("ShadowMap",
                     m_Scene->GetShadowMap() ? m_Scene->GetShadowMap()->GetDepthTextureID() : 0,
@@ -998,6 +999,7 @@ void main() { FragColor = texture(u_Source, v_UV); }
             VE::MeshLibrary::Shutdown();
             VE::MeshImporter::ClearCache();
             VE::UIRenderer::Shutdown();
+            VE::ForwardPlusRenderer::Shutdown();
             m_Framebuffer.reset();
             m_GameFramebuffer.reset();
             m_PostProcessing.Shutdown();
@@ -1008,6 +1010,7 @@ void main() { FragColor = texture(u_Source, v_UV); }
             VE::MeshLibrary::Init();
             VE::MeshImporter::ReuploadCache();
             VE::UIRenderer::Init();
+            VE::ForwardPlusRenderer::Init(1280, 720);
             RestoreEntityGPUResources();
             VE::FramebufferSpec fbSpec;
             fbSpec.Width = 1280;
@@ -2481,6 +2484,7 @@ private:
             uint32_t h = static_cast<uint32_t>(viewportSize.y);
             if (m_Framebuffer)
                 m_Framebuffer->Resize(w, h);
+            VE::ForwardPlusRenderer::Resize(w, h);
             m_Camera.SetViewportSize(viewportSize.x, viewportSize.y);
         }
 
@@ -7171,6 +7175,18 @@ private:
                 Row("SetPass Calls", std::to_string(rs.SetPassCalls));
                 Row("Sprites", std::to_string(spriteStats.QuadCount));
                 Row("Instances", std::to_string(instanceStats.InstanceCount));
+
+                // Forward+ light stats
+                if (m_Scene->GetPipelineSettings().Lighting == VE::LightingMode::ForwardPlus
+                    && VE::ForwardPlusRenderer::IsInitialized()) {
+                    Row("Point Lights (F+)",
+                        std::to_string(VE::ForwardPlusRenderer::GetTotalPointLights()));
+                    Row("Spot Lights (F+)",
+                        std::to_string(VE::ForwardPlusRenderer::GetTotalSpotLights()));
+                    Row("Tiles (F+)",
+                        std::to_string(VE::ForwardPlusRenderer::GetTileCountX()) + "x" +
+                        std::to_string(VE::ForwardPlusRenderer::GetTileCountY()));
+                }
 
                 ImGui::EndTable();
             }

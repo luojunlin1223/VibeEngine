@@ -26,6 +26,7 @@
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
+#include "VibeEngine/Renderer/ForwardPlusRenderer.h"
 #include "VibeEngine/Core/Log.h"
 #include "VibeEngine/Core/Profiler.h"
 
@@ -770,6 +771,10 @@ void Scene::ComputeShadows(const glm::mat4& viewMatrix,
     m_NumSpotShadows = 0;
     m_NumPointShadows = 0;
 
+    // Always cache camera matrices (needed by Forward+ light culling even when shadows are off)
+    m_CachedViewMatrix = viewMatrix;
+    m_CachedProjMatrix = projMatrix;
+
     if (!m_PipelineSettings.ShadowEnabled)
         return;
 
@@ -792,6 +797,7 @@ void Scene::ComputeShadows(const glm::mat4& viewMatrix,
         m_ShadowMap = std::make_unique<ShadowMap>();
 
     m_CachedViewMatrix = viewMatrix;
+    m_CachedProjMatrix = projMatrix;
     m_ShadowMap->ComputeCascades(viewMatrix, projMatrix, lightDir, nearClip, farClip);
 
     // Render depth for each cascade
@@ -953,7 +959,9 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
-    // Gather point lights (max 8)
+    const bool useForwardPlus = (m_PipelineSettings.Lighting == LightingMode::ForwardPlus);
+
+    // Gather point lights (max 8 for classic Forward, unlimited for Forward+)
     static constexpr int MAX_POINT_LIGHTS = 8;
     int numPointLights = 0;
     glm::vec3 pointPositions[MAX_POINT_LIGHTS] = {};
@@ -961,27 +969,45 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     float     pointIntensities[MAX_POINT_LIGHTS] = {};
     float     pointRanges[MAX_POINT_LIGHTS] = {};
     int       pointShadowIndex[MAX_POINT_LIGHTS] = {}; // -1 = no shadow, 0..1 = shadow map index
+
+    // Forward+ GPU light arrays (populated only when Forward+ is active)
+    std::vector<GPUPointLight> gpuPointLights;
+    std::vector<GPUSpotLight>  gpuSpotLights;
+
     {
         int shadowIdx = 0;
         auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto plEntity : plView) {
-            if (numPointLights >= MAX_POINT_LIGHTS) break;
             if (!IsEntityActiveInHierarchy(plEntity)) continue;
             auto [tc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
             glm::mat4 worldMat = GetWorldTransform(plEntity);
-            pointPositions[numPointLights]  = glm::vec3(worldMat[3]);
-            pointColors[numPointLights]     = glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]);
-            pointIntensities[numPointLights] = pl.Intensity;
-            pointRanges[numPointLights]     = pl.Range;
-            if (pl.CastShadows && shadowIdx < m_NumPointShadows)
-                pointShadowIndex[numPointLights] = shadowIdx++;
-            else
-                pointShadowIndex[numPointLights] = -1;
-            numPointLights++;
+            glm::vec3 pos = glm::vec3(worldMat[3]);
+            glm::vec3 col = glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]);
+
+            // Forward+ path: add to GPU array (unlimited)
+            if (useForwardPlus) {
+                GPUPointLight gpu;
+                gpu.PositionAndRange  = glm::vec4(pos, pl.Range);
+                gpu.ColorAndIntensity = glm::vec4(col, pl.Intensity);
+                gpuPointLights.push_back(gpu);
+            }
+
+            // Classic forward path: capped at MAX_POINT_LIGHTS
+            if (numPointLights < MAX_POINT_LIGHTS) {
+                pointPositions[numPointLights]   = pos;
+                pointColors[numPointLights]      = col;
+                pointIntensities[numPointLights] = pl.Intensity;
+                pointRanges[numPointLights]      = pl.Range;
+                if (pl.CastShadows && shadowIdx < m_NumPointShadows)
+                    pointShadowIndex[numPointLights] = shadowIdx++;
+                else
+                    pointShadowIndex[numPointLights] = -1;
+                numPointLights++;
+            }
         }
     }
 
-    // Gather spot lights (max 4)
+    // Gather spot lights (max 4 for classic Forward, unlimited for Forward+)
     static constexpr int MAX_SPOT_LIGHTS = 4;
     int numSpotLights = 0;
     glm::vec3 spotPositions[MAX_SPOT_LIGHTS] = {};
@@ -996,25 +1022,46 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         int shadowIdx = 0;
         auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
         for (auto slEntity : slView) {
-            if (numSpotLights >= MAX_SPOT_LIGHTS) break;
             if (!IsEntityActiveInHierarchy(slEntity)) continue;
             auto [tc, sl] = slView.get<TransformComponent, SpotLightComponent>(slEntity);
             glm::mat4 worldMat = GetWorldTransform(slEntity);
-            spotPositions[numSpotLights]  = glm::vec3(worldMat[3]);
-            // Transform direction by world rotation (extract upper 3x3)
+            glm::vec3 pos = glm::vec3(worldMat[3]);
             glm::vec3 localDir = glm::normalize(glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
-            spotDirections[numSpotLights] = glm::normalize(glm::mat3(worldMat) * localDir);
-            spotColors[numSpotLights]     = glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]);
-            spotIntensities[numSpotLights] = sl.Intensity;
-            spotRanges[numSpotLights]     = sl.Range;
-            spotInnerCos[numSpotLights]   = std::cos(glm::radians(sl.InnerAngle));
-            spotOuterCos[numSpotLights]   = std::cos(glm::radians(sl.OuterAngle));
-            if (sl.CastShadows && shadowIdx < m_NumSpotShadows)
-                spotShadowIndex[numSpotLights] = shadowIdx++;
-            else
-                spotShadowIndex[numSpotLights] = -1;
-            numSpotLights++;
+            glm::vec3 dir = glm::normalize(glm::mat3(worldMat) * localDir);
+            glm::vec3 col = glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]);
+
+            // Forward+ path: add to GPU array (unlimited)
+            if (useForwardPlus) {
+                GPUSpotLight gpu;
+                gpu.PosAndRange       = glm::vec4(pos, sl.Range);
+                gpu.DirAndInnerCos    = glm::vec4(dir, std::cos(glm::radians(sl.InnerAngle)));
+                gpu.ColorAndIntensity = glm::vec4(col, sl.Intensity);
+                gpu.OuterCos          = std::cos(glm::radians(sl.OuterAngle));
+                gpu._pad0 = gpu._pad1 = gpu._pad2 = 0.0f;
+                gpuSpotLights.push_back(gpu);
+            }
+
+            // Classic forward path: capped at MAX_SPOT_LIGHTS
+            if (numSpotLights < MAX_SPOT_LIGHTS) {
+                spotPositions[numSpotLights]   = pos;
+                spotDirections[numSpotLights]  = dir;
+                spotColors[numSpotLights]      = col;
+                spotIntensities[numSpotLights] = sl.Intensity;
+                spotRanges[numSpotLights]      = sl.Range;
+                spotInnerCos[numSpotLights]    = std::cos(glm::radians(sl.InnerAngle));
+                spotOuterCos[numSpotLights]    = std::cos(glm::radians(sl.OuterAngle));
+                if (sl.CastShadows && shadowIdx < m_NumSpotShadows)
+                    spotShadowIndex[numSpotLights] = shadowIdx++;
+                else
+                    spotShadowIndex[numSpotLights] = -1;
+                numSpotLights++;
+            }
         }
+    }
+
+    // Forward+ pipeline: upload lights + dispatch compute shader for tiled culling
+    if (useForwardPlus && ForwardPlusRenderer::IsInitialized()) {
+        ForwardPlusRenderer::UploadLights(gpuPointLights, gpuSpotLights);
     }
 
     // Helper: set lighting uniforms on a shader (used for both individual and instanced paths)
@@ -1089,6 +1136,18 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                              m_PointShadowMaps[i]->GetFarPlane());
         }
 
+        // Forward+ tile uniforms (screen size + tile count for SSBO indexing)
+        if (useForwardPlus && ForwardPlusRenderer::IsInitialized()) {
+            shader->SetInt("u_ScreenWidth",
+                static_cast<int>(ForwardPlusRenderer::GetTileCountX() * ForwardPlusRenderer::TILE_SIZE));
+            shader->SetInt("u_ScreenHeight",
+                static_cast<int>(ForwardPlusRenderer::GetTileCountY() * ForwardPlusRenderer::TILE_SIZE));
+            shader->SetInt("u_TileCountX",
+                static_cast<int>(ForwardPlusRenderer::GetTileCountX()));
+            // Bind the tile/light SSBOs
+            ForwardPlusRenderer::BindLightData();
+        }
+
     };
 
     // Cache: skip setPBRDefaults if same material was already set up this frame
@@ -1130,6 +1189,82 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     const bool occlusionEnabled = m_PipelineSettings.OcclusionCullingEnabled;
     if (occlusionEnabled)
         OcclusionCulling::BeginFrame();
+
+    // ── Forward+ depth pre-pass + light culling ────────────────────────
+    // When Forward+ is active, render all opaque geometry depth-only first,
+    // then dispatch the light culling compute shader using the depth buffer.
+    if (useForwardPlus && ForwardPlusRenderer::IsInitialized()) {
+        // Depth pre-pass: disable color writes, render all meshes depth-only
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+
+        // Use a minimal shader for depth-only pass
+        auto depthShader = ShaderLibrary::Get("Default");
+        if (depthShader) {
+            depthShader->Bind();
+            depthShader->SetInt("u_UseTexture", 0);
+            depthShader->SetVec4("u_EntityColor", glm::vec4(1.0f));
+            auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
+            for (auto entityID : meshView) {
+                if (!IsEntityActiveInHierarchy(entityID)) continue;
+                auto [tc, mr] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
+                if (!mr.Mesh) continue;
+
+                // Skip transparent objects in depth pre-pass
+                if (mr.Mat && (mr.Mat->IsTransparent() || mr.Color[3] < 0.999f))
+                    continue;
+
+                glm::mat4 model = GetWorldTransform(entityID);
+                glm::mat4 mvp = viewProjection * model;
+                depthShader->SetMat4("u_MVP", mvp);
+
+                std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
+                auto* ac = m_Registry.try_get<AnimatorComponent>(entityID);
+                if (ac && ac->_Animator && ac->_Animator->GetSkinnedVAO())
+                    drawVAO = ac->_Animator->GetSkinnedVAO();
+
+                RenderCommand::DrawIndexed(drawVAO);
+            }
+            depthShader->Unbind();
+        }
+
+        // Restore color writes
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+        // Get the depth texture from the currently bound framebuffer
+        GLint depthAttachment = 0;
+        glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                               GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+                                               &depthAttachment);
+        if (depthAttachment == 0) {
+            glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                                                   GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+                                                   &depthAttachment);
+        }
+
+        if (depthAttachment > 0) {
+            GLint viewport[4];
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            uint32_t vpW = static_cast<uint32_t>(viewport[2]);
+            uint32_t vpH = static_cast<uint32_t>(viewport[3]);
+
+            ForwardPlusRenderer::Resize(vpW, vpH);
+
+            // Extract view and projection matrices from viewProjection
+            // We use cached matrices from ComputeShadows if available,
+            // otherwise derive view from VP (projection is already cached or identity)
+            ForwardPlusRenderer::CullLights(
+                static_cast<uint32_t>(depthAttachment),
+                m_CachedProjMatrix,
+                m_CachedViewMatrix,
+                vpW, vpH);
+        }
+
+        // Bind SSBOs for the Forward+ fragment shader to read
+        ForwardPlusRenderer::BindLightData();
+    }
 
     // Helper: draw a single entity (non-instanced path)
     auto drawEntity = [&](entt::entity entityID, MeshRendererComponent& mr, const glm::mat4& model) {
@@ -1398,6 +1533,19 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     // ── Finalize occlusion culling ─────────────────────────────────────
     if (occlusionEnabled)
         OcclusionCulling::EndFrame();
+
+    // ── Forward+ cleanup + debug heatmap ────────────────────────────
+    if (useForwardPlus && ForwardPlusRenderer::IsInitialized()) {
+        // Draw debug heatmap overlay if enabled
+        if (m_PipelineSettings.ForwardPlusDebugHeatmap) {
+            GLint viewport[4];
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            ForwardPlusRenderer::DrawDebugHeatmap(
+                static_cast<uint32_t>(viewport[2]),
+                static_cast<uint32_t>(viewport[3]));
+        }
+        ForwardPlusRenderer::UnbindLightData();
+    }
 }
 
 // ── Deferred Rendering ─────────────────────────────────────────────

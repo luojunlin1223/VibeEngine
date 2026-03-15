@@ -278,6 +278,7 @@ private:
     std::unique_ptr<ShadowMap> m_ShadowMap;
     bool m_ShadowsComputed = false; // true if ComputeShadows ran this frame
     glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
+    glm::mat4 m_CachedProjMatrix = glm::mat4(1.0f); // stored from ComputeShadows for Forward+ culling
 
     // Spot light shadows (max 2 shadow-casting spot lights)
     static constexpr int MAX_SPOT_SHADOW_LIGHTS = 2;
