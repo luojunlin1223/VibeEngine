@@ -1,6 +1,7 @@
 #include "VibeEngine/Core/Application.h"
 #include "VibeEngine/Core/Window.h"
 #include "VibeEngine/Core/Log.h"
+#include "VibeEngine/Core/Profiler.h"
 #include "VibeEngine/Renderer/Renderer.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
 #include "VibeEngine/ImGui/ImGuiLayer.h"
@@ -106,6 +107,7 @@ void Application::Run() {
             break;
         }
 
+        Profiler::BeginFrame();
         Renderer::BeginFrame();
 
         // Set viewport every frame to the actual framebuffer size.
@@ -126,17 +128,24 @@ void Application::Run() {
         InputActions::UpdateAll();
 
         OnUpdate();
-        OnRender();
+
+        {
+            PROFILE_SCOPE("Render");
+            OnRender();
+        }
 
         // ImGui rendering pass
         if (m_ImGuiLayer) {
+            Profiler::BeginSection("ImGui");
             m_ImGuiLayer->Begin();
             OnImGuiRender();
             m_ImGuiLayer->End();
+            Profiler::EndSection("ImGui");
         }
 
         Renderer::EndFrame();
         m_Window->OnUpdate();
+        Profiler::EndFrame();
 
         // Handle pending API switch at the end of the frame
         if (m_PendingAPI != RendererAPI::API::None) {

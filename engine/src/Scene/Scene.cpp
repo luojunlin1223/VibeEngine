@@ -17,6 +17,7 @@
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
 #include "VibeEngine/Core/Log.h"
+#include "VibeEngine/Core/Profiler.h"
 
 #include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -146,7 +147,11 @@ bool Scene::IsEntityActiveInHierarchy(entt::entity entity) const {
 }
 
 void Scene::OnUpdate(float deltaTime) {
+    // Update entity count for profiler
+    Profiler::SetEntityCount(static_cast<uint32_t>(m_Registry.storage<entt::entity>().size()));
+
     if (m_PhysicsRunning && m_PhysicsWorld) {
+        PROFILE_SCOPE("Physics");
         static constexpr float PHYSICS_DT = 1.0f / 60.0f;
         m_PhysicsAccumulator += deltaTime;
         while (m_PhysicsAccumulator >= PHYSICS_DT) {
@@ -161,6 +166,7 @@ void Scene::OnUpdate(float deltaTime) {
 
     // Run scripts after physics
     {
+        PROFILE_SCOPE("Scripts");
         auto scriptView = m_Registry.view<ScriptComponent>();
         for (auto entity : scriptView) {
             if (!IsEntityActiveInHierarchy(entity)) continue;

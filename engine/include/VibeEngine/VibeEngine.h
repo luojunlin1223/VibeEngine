@@ -8,6 +8,7 @@
 #include "Core/Object.h"
 #include "Core/FileDialog.h"
 #include "Core/Console.h"
+#include "Core/Profiler.h"
 #include "Core/BuildExporter.h"
 
 #include "Renderer/Renderer.h"

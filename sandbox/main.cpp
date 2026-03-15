@@ -114,7 +114,10 @@ protected:
             float pos[3] = { camPos.x, camPos.y, camPos.z };
             float fwd[3] = { forward.x, forward.y, forward.z };
             float u[3]   = { up.x, up.y, up.z };
-            m_Scene->UpdateAudio(pos, fwd, u);
+            {
+                PROFILE_SCOPE("Audio");
+                m_Scene->UpdateAudio(pos, fwd, u);
+            }
         }
     }
 
@@ -642,6 +645,8 @@ protected:
         DrawGameViewPanel();
         DrawInputSettingsPanel();
         DrawBuildPanel();
+        DrawProfilerPanel();
+        DrawFPSOverlay();
 
     }
 
@@ -1178,6 +1183,8 @@ private:
         out << YAML::Key << "ShowScripting" << YAML::Value << m_ShowScripting;
         out << YAML::Key << "ShowContentBrowser" << YAML::Value << m_ShowContentBrowser;
         out << YAML::Key << "ShowHierarchy" << YAML::Value << m_ShowHierarchy;
+        out << YAML::Key << "ShowProfiler" << YAML::Value << m_ShowProfiler;
+        out << YAML::Key << "ShowFPSOverlay" << YAML::Value << m_ShowFPSOverlay;
 
         out << YAML::EndMap;
 
@@ -1249,6 +1256,10 @@ private:
                 m_ShowContentBrowser = root["ShowContentBrowser"].as<bool>(true);
             if (root["ShowHierarchy"])
                 m_ShowHierarchy = root["ShowHierarchy"].as<bool>(true);
+            if (root["ShowProfiler"])
+                m_ShowProfiler = root["ShowProfiler"].as<bool>(false);
+            if (root["ShowFPSOverlay"])
+                m_ShowFPSOverlay = root["ShowFPSOverlay"].as<bool>(false);
 
             VE_INFO("Editor settings restored");
         } catch (const std::exception& e) {
@@ -1492,6 +1503,9 @@ private:
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
                 ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
+                ImGui::Separator();
+                ImGui::MenuItem("Profiler", nullptr, &m_ShowProfiler);
+                ImGui::MenuItem("FPS Overlay", nullptr, &m_ShowFPSOverlay);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -5056,6 +5070,175 @@ private:
         return std::to_string(n);
     }
 
+    // ── Profiler Panel ───────────────────────────────────────────────────
+
+    void DrawProfilerPanel() {
+        if (!m_ShowProfiler) return;
+        ImGui::Begin("Profiler", &m_ShowProfiler);
+
+        const auto& stats = VE::Profiler::GetCurrentStats();
+
+        // ── FPS / Frame Time header ──
+        ImGui::Text("FPS: %.1f  (avg %.1f)", stats.FPS, VE::Profiler::GetAverageFPS());
+        ImGui::Text("Frame: %.2f ms  (avg %.2f, min %.2f, max %.2f)",
+            stats.FrameTimeMs,
+            VE::Profiler::GetAverageFrameTime(),
+            VE::Profiler::GetMinFrameTime(),
+            VE::Profiler::GetMaxFrameTime());
+
+        ImGui::Separator();
+
+        // ── FPS Graph ──
+        if (ImGui::CollapsingHeader("FPS Graph", ImGuiTreeNodeFlags_DefaultOpen)) {
+            char overlay[32];
+            snprintf(overlay, sizeof(overlay), "%.1f FPS", stats.FPS);
+            ImGui::PlotLines("##fps", VE::Profiler::GetFPSHistory(),
+                VE::Profiler::GetHistorySize(), VE::Profiler::GetHistoryOffset(),
+                overlay, 0.0f, 240.0f, ImVec2(0, 80));
+        }
+
+        // ── Frame Time Graph ──
+        if (ImGui::CollapsingHeader("Frame Time", ImGuiTreeNodeFlags_DefaultOpen)) {
+            char overlay[32];
+            snprintf(overlay, sizeof(overlay), "%.2f ms", stats.FrameTimeMs);
+            ImGui::PlotLines("##frametime", VE::Profiler::GetFrameTimeHistory(),
+                VE::Profiler::GetHistorySize(), VE::Profiler::GetHistoryOffset(),
+                overlay, 0.0f, 33.3f, ImVec2(0, 80));
+        }
+
+        // ── Subsystem Breakdown ──
+        if (ImGui::CollapsingHeader("Subsystem Breakdown", ImGuiTreeNodeFlags_DefaultOpen)) {
+            float total = stats.FrameTimeMs > 0.001f ? stats.FrameTimeMs : 1.0f;
+
+            struct SubsystemEntry { const char* Name; float Ms; ImU32 Color; };
+            SubsystemEntry entries[] = {
+                { "Render",  stats.RenderMs,  IM_COL32(66, 150, 250, 255) },
+                { "Physics", stats.PhysicsMs, IM_COL32(250, 100, 80, 255) },
+                { "Scripts", stats.ScriptsMs, IM_COL32(100, 220, 100, 255) },
+                { "Audio",   stats.AudioMs,   IM_COL32(220, 180, 50, 255) },
+                { "ImGui",   stats.ImGuiMs,   IM_COL32(180, 100, 220, 255) },
+            };
+
+            // Colored bar
+            ImVec2 barPos = ImGui::GetCursorScreenPos();
+            float barW = ImGui::GetContentRegionAvail().x;
+            float barH = 20.0f;
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+
+            float x = barPos.x;
+            for (auto& e : entries) {
+                float frac = e.Ms / total;
+                float segW = frac * barW;
+                if (segW > 0.5f) {
+                    dl->AddRectFilled(ImVec2(x, barPos.y),
+                        ImVec2(x + segW, barPos.y + barH), e.Color);
+                    x += segW;
+                }
+            }
+            // Fill remainder as "Other"
+            if (x < barPos.x + barW) {
+                dl->AddRectFilled(ImVec2(x, barPos.y),
+                    ImVec2(barPos.x + barW, barPos.y + barH), IM_COL32(80, 80, 80, 255));
+            }
+            ImGui::Dummy(ImVec2(barW, barH + 4.0f));
+
+            // Legend table
+            if (ImGui::BeginTable("##subsystems", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
+                ImGui::TableSetupColumn("Subsystem", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+                ImGui::TableSetupColumn("Time (ms)", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                ImGui::TableSetupColumn("%", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+                for (auto& e : entries) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImVec4 col = ImGui::ColorConvertU32ToFloat4(e.Color);
+                    ImGui::TextColored(col, "%s", e.Name);
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::Text("%.3f", e.Ms);
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::Text("%.1f%%", (e.Ms / total) * 100.0f);
+                }
+                // "Other" row
+                float accountedMs = stats.RenderMs + stats.PhysicsMs + stats.ScriptsMs + stats.AudioMs + stats.ImGuiMs;
+                float otherMs = stats.FrameTimeMs - accountedMs;
+                if (otherMs < 0.0f) otherMs = 0.0f;
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Other");
+                ImGui::TableSetColumnIndex(1);
+                ImGui::Text("%.3f", otherMs);
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%.1f%%", (otherMs / total) * 100.0f);
+                ImGui::EndTable();
+            }
+        }
+
+        // ── Render Stats ──
+        if (ImGui::CollapsingHeader("Render Stats", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const auto& rs = VE::RenderCommand::GetStats();
+            auto spriteStats  = VE::SpriteBatchRenderer::GetStats();
+            auto instanceStats = VE::InstancedRenderer::GetStats();
+
+            uint32_t totalDrawCalls = rs.DrawCalls + spriteStats.DrawCalls + instanceStats.DrawCalls;
+            uint32_t totalTris  = rs.Triangles + spriteStats.QuadCount * 2;
+            uint32_t totalVerts = rs.Vertices  + spriteStats.QuadCount * 4;
+
+            if (ImGui::BeginTable("##renderstats", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
+                ImGui::TableSetupColumn("Stat", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                auto Row = [](const char* label, const std::string& val) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0); ImGui::Text("%s", label);
+                    ImGui::TableSetColumnIndex(1); ImGui::Text("%s", val.c_str());
+                };
+
+                Row("Draw Calls", std::to_string(totalDrawCalls));
+                Row("Triangles", FormatNumber(totalTris));
+                Row("Vertices", FormatNumber(totalVerts));
+                Row("Entities", std::to_string(stats.EntityCount));
+                Row("Visible Objects", std::to_string(rs.VisibleObjects));
+                Row("Culled Objects", std::to_string(rs.CulledObjects));
+                Row("SetPass Calls", std::to_string(rs.SetPassCalls));
+                Row("Sprites", std::to_string(spriteStats.QuadCount));
+                Row("Instances", std::to_string(instanceStats.InstanceCount));
+
+                ImGui::EndTable();
+            }
+        }
+
+        ImGui::End();
+    }
+
+    // ── FPS Overlay (small corner display, always on top) ───────────────
+
+    void DrawFPSOverlay() {
+        if (!m_ShowFPSOverlay) return;
+
+        const float PAD = 10.0f;
+        ImGuiIO& io = ImGui::GetIO();
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize
+            | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing
+            | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImVec2 pos(viewport->WorkPos.x + viewport->WorkSize.x - PAD,
+                   viewport->WorkPos.y + PAD);
+        ImGui::SetNextWindowPos(pos, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+        ImGui::SetNextWindowBgAlpha(0.6f);
+
+        if (ImGui::Begin("##FPSOverlay", &m_ShowFPSOverlay, flags)) {
+            const auto& stats = VE::Profiler::GetCurrentStats();
+            ImGui::Text("%.0f FPS", stats.FPS);
+            ImGui::Text("%.2f ms", stats.FrameTimeMs);
+            ImGui::Text("DC: %u  Tri: %s",
+                VE::RenderCommand::GetStats().DrawCalls,
+                FormatNumber(VE::RenderCommand::GetStats().Triangles).c_str());
+        }
+        ImGui::End();
+    }
+
     // ── Input Settings Panel ────────────────────────────────────────────
 
     static const char* BindingSourceName(VE::BindingSource src) {
@@ -5226,6 +5409,8 @@ private:
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
     bool m_ShowBuildPanel = false;
+    bool m_ShowProfiler = false;
+    bool m_ShowFPSOverlay = false;
 
     // Build settings
     VE::BuildSettings m_BuildSettings;
