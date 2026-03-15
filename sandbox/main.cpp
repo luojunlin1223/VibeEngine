@@ -211,6 +211,9 @@ protected:
         s.VolumetricFog = { ps.VolFogEnabled, ps.VolFogDensity, ps.VolFogScattering,
                             ps.VolFogLightIntensity, ps.VolFogColor, ps.VolFogSteps,
                             ps.VolFogMaxDistance, ps.VolFogHeightFalloff, ps.VolFogBaseHeight };
+        // Depth of Field
+        s.DoF = { ps.DoFEnabled, ps.DoFFocusDistance, ps.DoFFocusRange,
+                  ps.DoFMaxBlur, ps.DoFApertureSize };
         s.NearClip = m_Camera.GetNearClip();
         s.FarClip  = m_Camera.GetFarClip();
         s.InvProjection = glm::inverse(m_Camera.GetProjectionMatrix());
@@ -4423,6 +4426,18 @@ private:
                 ImGui::SliderFloat("Bias##SSAO", &ps.SSAOBias, 0.001f, 0.1f, "%.3f");
                 ImGui::SliderFloat("Intensity##SSAO", &ps.SSAOIntensity, 0.0f, 3.0f, "%.2f");
                 ImGui::SliderInt("Kernel Size##SSAO", &ps.SSAOKernelSize, 4, 64);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Depth of Field")) {
+            ImGui::Checkbox("Enable DoF", &ps.DoFEnabled);
+            if (ps.DoFEnabled) {
+                ImGui::DragFloat("Focus Distance", &ps.DoFFocusDistance, 0.5f, 0.1f, 500.0f, "%.1f");
+                ImGui::SliderFloat("Focus Range", &ps.DoFFocusRange, 0.1f, 50.0f, "%.1f");
+                ImGui::TextDisabled("Transition zone around focus distance");
+                ImGui::SliderFloat("Max Blur", &ps.DoFMaxBlur, 1.0f, 10.0f, "%.1f");
+                ImGui::SliderFloat("Aperture Size", &ps.DoFApertureSize, 0.01f, 0.5f, "%.3f");
+                ImGui::TextDisabled("Larger aperture = stronger blur");
             }
         }
 
