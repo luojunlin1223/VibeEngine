@@ -35,6 +35,7 @@ public:
         VE::ParticleRenderer::Init();
         VE::InstancedRenderer::Init();
         VE::OcclusionCulling::Init();
+        VE::ForwardPlusRenderer::Init(1280, 720);
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_SceneManager.AddScene(m_Scene, "Untitled");
@@ -313,8 +314,8 @@ protected:
         rg.SetViewportSize(fbW, fbH);
         VE::RGHandle shadowMap, sceneColor;
 
-        // Pass 0: Shadow depth (3D perspective only)
-        if (perspective3D) {
+        // Pass 0: Shadow depth (3D perspective only, or Forward+ needs camera matrices)
+        if (perspective3D || pipeSettings.Lighting == VE::LightingMode::ForwardPlus) {
             rg.AddPass("ShadowDepth", [&](VE::RGBuilder& b) {
                 shadowMap = b.Import("ShadowMap",
                     m_Scene->GetShadowMap() ? m_Scene->GetShadowMap()->GetDepthTextureID() : 0,
@@ -907,6 +908,7 @@ protected:
             VE::MeshLibrary::Shutdown();
             VE::MeshImporter::ClearCache();
             VE::UIRenderer::Shutdown();
+            VE::ForwardPlusRenderer::Shutdown();
             m_Framebuffer.reset();
             m_GameFramebuffer.reset();
             m_PostProcessing.Shutdown();
@@ -917,6 +919,7 @@ protected:
             VE::MeshLibrary::Init();
             VE::MeshImporter::ReuploadCache();
             VE::UIRenderer::Init();
+            VE::ForwardPlusRenderer::Init(1280, 720);
             RestoreEntityGPUResources();
             VE::FramebufferSpec fbSpec;
             fbSpec.Width = 1280;
@@ -2390,6 +2393,7 @@ private:
             uint32_t h = static_cast<uint32_t>(viewportSize.y);
             if (m_Framebuffer)
                 m_Framebuffer->Resize(w, h);
+            VE::ForwardPlusRenderer::Resize(w, h);
             m_Camera.SetViewportSize(viewportSize.x, viewportSize.y);
         }
 
@@ -6028,6 +6032,38 @@ private:
 
         auto& ps = m_Scene->GetPipelineSettings();
 
+        if (ImGui::CollapsingHeader("Lighting Mode", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const char* lightModes[] = { "Forward", "Forward+" };
+            int currentMode = static_cast<int>(ps.Lighting);
+            if (ImGui::Combo("Mode", &currentMode, lightModes, 2)) {
+                ps.Lighting = static_cast<VE::LightingMode>(currentMode);
+            }
+
+            if (ps.Lighting == VE::LightingMode::ForwardPlus) {
+                ImGui::TextDisabled("Tiled light culling via compute shaders.");
+                ImGui::TextDisabled("No hard light limit per tile (max 256).");
+
+                if (VE::ForwardPlusRenderer::IsInitialized()) {
+                    ImGui::Text("Tiles: %u x %u",
+                        VE::ForwardPlusRenderer::GetTileCountX(),
+                        VE::ForwardPlusRenderer::GetTileCountY());
+                    ImGui::Text("Total Point Lights: %u",
+                        VE::ForwardPlusRenderer::GetTotalPointLights());
+                    ImGui::Text("Total Spot Lights: %u",
+                        VE::ForwardPlusRenderer::GetTotalSpotLights());
+                } else {
+                    ImGui::TextColored(ImVec4(1, 0.5f, 0, 1), "Not initialized");
+                }
+
+                ImGui::Checkbox("Tile Heatmap Debug", &ps.ForwardPlusDebugHeatmap);
+                if (ps.ForwardPlusDebugHeatmap) {
+                    ImGui::TextDisabled("Blue=few lights, Red=many lights per tile");
+                }
+            } else {
+                ImGui::TextDisabled("Classic forward: max 8 point + 4 spot lights.");
+            }
+        }
+
         if (ImGui::CollapsingHeader("HDR / Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable HDR", &ps.HDREnabled);
             if (ps.HDREnabled) {
@@ -7064,6 +7100,18 @@ private:
                 Row("SetPass Calls", std::to_string(rs.SetPassCalls));
                 Row("Sprites", std::to_string(spriteStats.QuadCount));
                 Row("Instances", std::to_string(instanceStats.InstanceCount));
+
+                // Forward+ light stats
+                if (m_Scene->GetPipelineSettings().Lighting == VE::LightingMode::ForwardPlus
+                    && VE::ForwardPlusRenderer::IsInitialized()) {
+                    Row("Point Lights (F+)",
+                        std::to_string(VE::ForwardPlusRenderer::GetTotalPointLights()));
+                    Row("Spot Lights (F+)",
+                        std::to_string(VE::ForwardPlusRenderer::GetTotalSpotLights()));
+                    Row("Tiles (F+)",
+                        std::to_string(VE::ForwardPlusRenderer::GetTileCountX()) + "x" +
+                        std::to_string(VE::ForwardPlusRenderer::GetTileCountY()));
+                }
 
                 ImGui::EndTable();
             }

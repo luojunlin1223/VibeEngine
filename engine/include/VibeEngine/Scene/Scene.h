@@ -25,7 +25,16 @@ namespace VE {
 
 class Entity;
 
+// Lighting mode: Forward (classic, max 8+4 lights) or ForwardPlus (tiled, unlimited)
+enum class LightingMode { Forward = 0, ForwardPlus = 1 };
+
 struct RenderPipelineSettings {
+    // Lighting pipeline mode
+    LightingMode Lighting = LightingMode::Forward;
+
+    // Forward+ settings (only used when Lighting == ForwardPlus)
+    bool ForwardPlusDebugHeatmap = false;
+
     // HDR Pipeline
     bool HDREnabled = true;
     int  ToneMapMode = 1; // 0=Reinhard, 1=ACES Filmic, 2=Uncharted2
@@ -260,6 +269,7 @@ private:
     std::unique_ptr<ShadowMap> m_ShadowMap;
     bool m_ShadowsComputed = false; // true if ComputeShadows ran this frame
     glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
+    glm::mat4 m_CachedProjMatrix = glm::mat4(1.0f); // stored from ComputeShadows for Forward+ culling
 
     // Spot light shadows (max 2 shadow-casting spot lights)
     static constexpr int MAX_SPOT_SHADOW_LIGHTS = 2;

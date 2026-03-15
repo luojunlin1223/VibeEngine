@@ -631,6 +631,8 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     // Pipeline settings
     auto& ps = scene->GetPipelineSettings();
     out << YAML::Key << "PipelineSettings" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "LightingMode" << YAML::Value << static_cast<int>(ps.Lighting);
+    out << YAML::Key << "ForwardPlusDebugHeatmap" << YAML::Value << ps.ForwardPlusDebugHeatmap;
     out << YAML::Key << "HDREnabled" << YAML::Value << ps.HDREnabled;
     out << YAML::Key << "ToneMapMode" << YAML::Value << ps.ToneMapMode;
     out << YAML::Key << "HDRExposure" << YAML::Value << ps.Exposure;
@@ -751,6 +753,8 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
     // Pipeline settings
     if (auto psNode = data["PipelineSettings"]) {
         auto& ps = scene->GetPipelineSettings();
+        if (psNode["LightingMode"]) ps.Lighting = static_cast<LightingMode>(psNode["LightingMode"].as<int>());
+        if (psNode["ForwardPlusDebugHeatmap"]) ps.ForwardPlusDebugHeatmap = psNode["ForwardPlusDebugHeatmap"].as<bool>();
         if (psNode["HDREnabled"]) ps.HDREnabled = psNode["HDREnabled"].as<bool>();
         if (psNode["ToneMapMode"]) ps.ToneMapMode = psNode["ToneMapMode"].as<int>();
         if (psNode["HDRExposure"]) ps.Exposure = psNode["HDRExposure"].as<float>();
