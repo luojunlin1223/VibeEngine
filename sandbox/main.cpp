@@ -1178,6 +1178,7 @@ private:
         out << YAML::Key << "ShowScripting" << YAML::Value << m_ShowScripting;
         out << YAML::Key << "ShowContentBrowser" << YAML::Value << m_ShowContentBrowser;
         out << YAML::Key << "ShowHierarchy" << YAML::Value << m_ShowHierarchy;
+        out << YAML::Key << "ShowColliders" << YAML::Value << m_ShowColliders;
 
         out << YAML::EndMap;
 
@@ -1249,6 +1250,8 @@ private:
                 m_ShowContentBrowser = root["ShowContentBrowser"].as<bool>(true);
             if (root["ShowHierarchy"])
                 m_ShowHierarchy = root["ShowHierarchy"].as<bool>(true);
+            if (root["ShowColliders"])
+                m_ShowColliders = root["ShowColliders"].as<bool>(true);
 
             VE_INFO("Editor settings restored");
         } catch (const std::exception& e) {
@@ -1492,6 +1495,8 @@ private:
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
                 ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
+                ImGui::Separator();
+                ImGui::MenuItem("Show Colliders", nullptr, &m_ShowColliders);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -1623,6 +1628,48 @@ private:
                     VE::GizmoRenderer::DrawCameraFrustum(wm,
                         static_cast<int>(cam.ProjectionType), cam.FOV, cam.Size,
                         cam.NearClip, cam.FarClip, aspect);
+                }
+            }
+
+            // Draw collider wireframes
+            if (m_ShowColliders) {
+                auto drawColliderForEntity = [&](entt::entity e) {
+                    glm::mat4 wm = m_Scene->GetWorldTransform(e);
+                    glm::vec3 pos = glm::vec3(wm[3]);
+                    glm::vec3 scale(glm::length(glm::vec3(wm[0])),
+                                    glm::length(glm::vec3(wm[1])),
+                                    glm::length(glm::vec3(wm[2])));
+                    glm::mat3 rot = glm::mat3(wm);
+                    rot[0] = glm::normalize(rot[0]);
+                    rot[1] = glm::normalize(rot[1]);
+                    rot[2] = glm::normalize(rot[2]);
+
+                    auto& reg = m_Scene->GetRegistry();
+
+                    if (auto* box = reg.try_get<VE::BoxColliderComponent>(e)) {
+                        glm::vec3 offset(box->Offset[0], box->Offset[1], box->Offset[2]);
+                        glm::vec3 center = pos + rot * (offset * scale);
+                        glm::vec3 size(box->Size[0] * scale.x, box->Size[1] * scale.y, box->Size[2] * scale.z);
+                        VE::GizmoRenderer::DrawWireframeBoxCollider(center, size, rot);
+                    }
+                    if (auto* sphere = reg.try_get<VE::SphereColliderComponent>(e)) {
+                        glm::vec3 offset(sphere->Offset[0], sphere->Offset[1], sphere->Offset[2]);
+                        glm::vec3 center = pos + rot * (offset * scale);
+                        float maxScale = std::max({ scale.x, scale.y, scale.z });
+                        VE::GizmoRenderer::DrawWireframeSphereCollider(center, sphere->Radius * maxScale);
+                    }
+                    if (auto* capsule = reg.try_get<VE::CapsuleColliderComponent>(e)) {
+                        glm::vec3 offset(capsule->Offset[0], capsule->Offset[1], capsule->Offset[2]);
+                        glm::vec3 center = pos + rot * (offset * scale);
+                        float maxScale = std::max({ scale.x, scale.y, scale.z });
+                        VE::GizmoRenderer::DrawWireframeCapsuleCollider(center,
+                            capsule->Radius * maxScale, capsule->Height * maxScale, rot);
+                    }
+                };
+
+                // Draw for selected entity only, or all entities with colliders
+                if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
+                    drawColliderForEntity(m_SelectedEntity.GetHandle());
                 }
             }
 
@@ -5226,6 +5273,7 @@ private:
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
     bool m_ShowBuildPanel = false;
+    bool m_ShowColliders = true;
 
     // Build settings
     VE::BuildSettings m_BuildSettings;
