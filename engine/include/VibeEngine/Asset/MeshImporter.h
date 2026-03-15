@@ -17,6 +17,9 @@ public:
     // Load with explicit import settings (reads from .meta if none provided)
     static std::shared_ptr<MeshAsset> LoadFBX(const std::string& absolutePath, FBXImportSettings& settings);
 
+    // Load mesh from a glTF/GLB file
+    static std::shared_ptr<MeshAsset> LoadGLTF(const std::string& absolutePath);
+
     // Cached load: returns existing if already loaded
     static std::shared_ptr<MeshAsset> GetOrLoad(const std::string& absolutePath);
 
