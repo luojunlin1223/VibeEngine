@@ -533,6 +533,22 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // DecalComponent
+    if (entity.HasComponent<DecalComponent>()) {
+        auto& dc = entity.GetComponent<DecalComponent>();
+        out << YAML::Key << "DecalComponent" << YAML::Value << YAML::BeginMap;
+        if (!dc.TexturePath.empty())
+            out << YAML::Key << "TexturePath" << YAML::Value << dc.TexturePath;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << dc.Color[0] << dc.Color[1] << dc.Color[2] << dc.Color[3] << YAML::EndSeq;
+        out << YAML::Key << "Size" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << dc.Size[0] << dc.Size[1] << dc.Size[2] << YAML::EndSeq;
+        out << YAML::Key << "NormalBlend" << YAML::Value << dc.NormalBlend;
+        out << YAML::Key << "FadeDistance" << YAML::Value << dc.FadeDistance;
+        out << YAML::Key << "SortOrder" << YAML::Value << dc.SortOrder;
+        out << YAML::EndMap;
+    }
+
     out << YAML::EndMap;
 }
 
@@ -1257,6 +1273,22 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 btn.HoverColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
             if (auto c = btnNode["PressedColor"])
                 btn.PressedColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+        }
+
+        if (auto dcNode = entityNode["DecalComponent"]) {
+            auto& dc = entity.AddComponent<DecalComponent>();
+            if (dcNode["TexturePath"]) {
+                dc.TexturePath = dcNode["TexturePath"].as<std::string>();
+                if (!dc.TexturePath.empty())
+                    dc._Texture = Texture2D::Create(dc.TexturePath);
+            }
+            if (auto c = dcNode["Color"])
+                dc.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            if (auto s = dcNode["Size"])
+                dc.Size = { s[0].as<float>(), s[1].as<float>(), s[2].as<float>() };
+            if (dcNode["NormalBlend"])  dc.NormalBlend  = dcNode["NormalBlend"].as<float>();
+            if (dcNode["FadeDistance"]) dc.FadeDistance = dcNode["FadeDistance"].as<float>();
+            if (dcNode["SortOrder"])    dc.SortOrder    = dcNode["SortOrder"].as<int>();
         }
     }
 

@@ -424,4 +424,18 @@ struct UIButtonComponent {
     UIButtonComponent() = default;
 };
 
+// ── Decal Component ───────────────────────────────────────────────────
+
+struct DecalComponent {
+    std::string TexturePath;
+    std::shared_ptr<Texture2D> _Texture;           // runtime only
+    std::array<float, 4> Color = { 1.0f, 1.0f, 1.0f, 1.0f }; // RGBA tint
+    std::array<float, 3> Size  = { 1.0f, 1.0f, 1.0f };        // projection volume (width, height, depth)
+    float NormalBlend  = 0.5f;  // 0-1: how much to blend with surface normal
+    float FadeDistance = 0.1f;  // soft edge fade at volume boundaries
+    int   SortOrder    = 0;     // for overlapping decals (lower draws first)
+
+    DecalComponent() = default;
+};
+
 } // namespace VE

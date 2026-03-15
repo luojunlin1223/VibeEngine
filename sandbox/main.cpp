@@ -326,7 +326,20 @@ protected:
             m_Scene->OnRenderTerrain(m_FrameVP, camPos);
         });
 
-        // Pass 3: Sprites
+        // Pass 3: Decals (after opaque, before sprites)
+        rg.AddPass("Decals", [&](VE::RGBuilder& b) {
+            b.Write(sceneColor);
+            b.SideEffect();
+        }, [&](const VE::RGResources&) {
+            if (m_Framebuffer) {
+                uint32_t depthTex = static_cast<uint32_t>(m_Framebuffer->GetDepthAttachmentID());
+                m_Scene->OnRenderDecals(m_FrameVP, m_Camera.GetViewMatrix(),
+                    m_Camera.GetProjectionMatrix(), depthTex,
+                    m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight());
+            }
+        });
+
+        // Pass 4: Sprites
         rg.AddPass("Sprites", [&](VE::RGBuilder& b) {
             b.Write(sceneColor);
             b.SideEffect();
@@ -334,7 +347,7 @@ protected:
             m_Scene->OnRenderSprites(m_FrameVP);
         });
 
-        // Pass 4: Particles
+        // Pass 5: Particles
         rg.AddPass("Particles", [&](VE::RGBuilder& b) {
             b.Write(sceneColor);
             b.SideEffect();
@@ -342,7 +355,7 @@ protected:
             m_Scene->OnRenderParticles(m_FrameVP, camPos);
         });
 
-        // Pass 5: Outline (conditional on selection)
+        // Pass 6: Outline (conditional on selection)
         if (m_OutlineEnabled && m_SelectedEntity) {
             rg.AddPass("Outline", [&](VE::RGBuilder& b) {
                 b.Write(sceneColor);
@@ -352,7 +365,7 @@ protected:
             });
         }
 
-        // Pass 6: PostProcess
+        // Pass 7: PostProcess
         rg.AddPass("PostProcess", [&](VE::RGBuilder& b) {
             b.Read(sceneColor);
             b.SideEffect();
@@ -458,7 +471,19 @@ protected:
                     m_Scene->OnRenderTerrain(gameVP, gameCamPos);
                 });
 
-                // Game Pass 2: Sprites
+                // Game Pass 2: Decals
+                rg.AddPass("GameDecals", [&](VE::RGBuilder& b) {
+                    b.Write(gameSceneColor);
+                    b.SideEffect();
+                }, [&](const VE::RGResources&) {
+                    if (m_GameFramebuffer) {
+                        uint32_t gDepth = static_cast<uint32_t>(m_GameFramebuffer->GetDepthAttachmentID());
+                        m_Scene->OnRenderDecals(gameVP, gameView, gameProj, gDepth,
+                            m_GameFramebuffer->GetWidth(), m_GameFramebuffer->GetHeight());
+                    }
+                });
+
+                // Game Pass 3: Sprites
                 rg.AddPass("GameSprites", [&](VE::RGBuilder& b) {
                     b.Write(gameSceneColor);
                     b.SideEffect();
@@ -466,7 +491,7 @@ protected:
                     m_Scene->OnRenderSprites(gameVP);
                 });
 
-                // Game Pass 3: Particles
+                // Game Pass 4: Particles
                 rg.AddPass("GameParticles", [&](VE::RGBuilder& b) {
                     b.Write(gameSceneColor);
                     b.SideEffect();
@@ -1849,6 +1874,11 @@ private:
                         auto e = m_Scene->CreateEntity("Directional Light");
                         e.AddComponent<VE::DirectionalLightComponent>();
                     });
+                if (ImGui::MenuItem("Create Decal"))
+                    m_CommandHistory.Execute("Create Decal", [this]() {
+                        auto e = m_Scene->CreateEntity("Decal");
+                        e.AddComponent<VE::DecalComponent>();
+                    });
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
@@ -2054,6 +2084,18 @@ private:
                 }
             }
 
+            // Draw decal volume wireframe gizmos
+            {
+                auto decalView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::DecalComponent>();
+                for (auto e : decalView) {
+                    auto& dc = decalView.get<VE::DecalComponent>(e);
+                    glm::mat4 wm = m_Scene->GetWorldTransform(e);
+                    glm::mat4 sizeScale = glm::scale(glm::mat4(1.0f),
+                        glm::vec3(dc.Size[0], dc.Size[1], dc.Size[2]));
+                    VE::GizmoRenderer::DrawWireframeBox(wm * sizeScale);
+                }
+            }
+
             // Draw selection wireframe for all selected entities (except primary, which gets gizmo)
             for (auto selEntity : m_SelectedEntities) {
                 if (selEntity == m_SelectedEntity.GetHandle()) continue;
@@ -2062,6 +2104,7 @@ private:
                 glm::mat4 wm = m_Scene->GetWorldTransform(selEntity);
                 VE::GizmoRenderer::DrawWireframeBox(wm);
             }
+
 
             if (m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
                 glm::mat4 worldMat = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
@@ -2333,6 +2376,12 @@ private:
                     m_CommandHistory.Execute("Create Particle Emitter", [this]() {
                         auto e = m_Scene->CreateEntity("Particle Emitter");
                         e.AddComponent<VE::ParticleSystemComponent>();
+                        m_SelectedEntity = e;
+                    });
+                if (ImGui::MenuItem("Decal"))
+                    m_CommandHistory.Execute("Create Decal", [this]() {
+                        auto e = m_Scene->CreateEntity("Decal");
+                        e.AddComponent<VE::DecalComponent>();
                         m_SelectedEntity = e;
                     });
                 ImGui::EndMenu();
@@ -3963,6 +4012,57 @@ private:
             ImGui::Separator();
         }
 
+        // DecalComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::DecalComponent>()) {
+            bool removeDecal = false;
+            bool openDecal = ImGui::CollapsingHeader("Decal", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::DecalComponent>("##DecalCtx", "Decal", removeDecal);
+            if (openDecal) {
+                auto& dc = m_SelectedEntity.GetComponent<VE::DecalComponent>();
+
+                ImGui::ColorEdit4("Color##Decal", dc.Color.data());
+                ImGui::DragFloat3("Size##Decal", dc.Size.data(), 0.1f, 0.01f, 100.0f);
+                ImGui::SliderFloat("Normal Blend", &dc.NormalBlend, 0.0f, 1.0f);
+                ImGui::DragFloat("Fade Distance", &dc.FadeDistance, 0.01f, 0.0f, 1.0f);
+                ImGui::DragInt("Sort Order##Decal", &dc.SortOrder, 1);
+
+                // Texture field
+                ImGui::Text("Decal Texture");
+                ImGui::SameLine();
+                float fieldW = ImGui::GetContentRegionAvail().x;
+                ImVec2 btnSize(fieldW, 20);
+                std::string label = dc.TexturePath.empty() ? "None (Texture2D)" : dc.TexturePath;
+                ImGui::Button(label.c_str(), btnSize);
+
+                // Drag-drop texture onto field
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                        std::string path(static_cast<const char*>(payload->Data));
+                        dc.TexturePath = path;
+                        dc._Texture = VE::Texture2D::Create(path);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                if (!dc.TexturePath.empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("X##ClearDecalTex")) {
+                        dc.TexturePath.clear();
+                        dc._Texture.reset();
+                    }
+                }
+
+                // Texture preview
+                if (dc._Texture) {
+                    ImGui::Image((ImTextureID)dc._Texture->GetNativeTextureID(),
+                        ImVec2(64, 64), ImVec2(0, 1), ImVec2(1, 0));
+                }
+            }
+            if (removeDecal)
+                m_SelectedEntity.RemoveComponent<VE::DecalComponent>();
+            ImGui::Separator();
+        }
+
         // CameraComponent inspector
         if (m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
             bool removeCam = false;
@@ -4525,6 +4625,9 @@ private:
 
             ADD_COMPONENT_ITEM("Particle System", VE::ParticleSystemComponent,
                 m_SelectedEntity.AddComponent<VE::ParticleSystemComponent>())
+
+            ADD_COMPONENT_ITEM("Decal", VE::DecalComponent,
+                m_SelectedEntity.AddComponent<VE::DecalComponent>())
 
             ADD_COMPONENT_ITEM("Terrain", VE::TerrainComponent,
                 m_SelectedEntity.AddComponent<VE::TerrainComponent>())
