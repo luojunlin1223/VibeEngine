@@ -89,12 +89,26 @@ void Scene::SetParent(entt::entity child, entt::entity parent) {
         check = rel.Parent;
     }
 
+    // Preserve world position: compute current world position before reparenting
+    glm::mat4 childWorld = GetWorldTransform(child);
+    glm::vec3 worldPos = glm::vec3(childWorld[3]);
+
     RemoveParent(child);
 
     auto& childRel = m_Registry.get<RelationshipComponent>(child);
     auto& parentRel = m_Registry.get<RelationshipComponent>(parent);
     childRel.Parent = parent;
     parentRel.Children.push_back(child);
+
+    // Convert world position to new parent's local space
+    glm::mat4 parentWorld = GetWorldTransform(parent);
+    glm::mat4 invParent = glm::inverse(parentWorld);
+    glm::vec3 localPos = glm::vec3(invParent * glm::vec4(worldPos, 1.0f));
+
+    if (m_Registry.all_of<TransformComponent>(child)) {
+        auto& tc = m_Registry.get<TransformComponent>(child);
+        tc.Position = { localPos.x, localPos.y, localPos.z };
+    }
 }
 
 void Scene::RemoveParent(entt::entity child) {
@@ -102,12 +116,22 @@ void Scene::RemoveParent(entt::entity child) {
     auto& childRel = m_Registry.get<RelationshipComponent>(child);
     if (childRel.Parent == entt::null) return;
 
+    // Preserve world position when unparenting
+    glm::mat4 childWorld = GetWorldTransform(child);
+    glm::vec3 worldPos = glm::vec3(childWorld[3]);
+
     if (m_Registry.valid(childRel.Parent)) {
         auto& parentRel = m_Registry.get<RelationshipComponent>(childRel.Parent);
         auto& vec = parentRel.Children;
         vec.erase(std::remove(vec.begin(), vec.end(), child), vec.end());
     }
     childRel.Parent = entt::null;
+
+    // Set local position to the old world position (now root-level)
+    if (m_Registry.all_of<TransformComponent>(child)) {
+        auto& tc = m_Registry.get<TransformComponent>(child);
+        tc.Position = { worldPos.x, worldPos.y, worldPos.z };
+    }
 }
 
 glm::mat4 Scene::GetWorldTransform(entt::entity entity) const {
@@ -1081,8 +1105,8 @@ void Scene::OnRenderSprites(const glm::mat4& viewProjection) {
     for (auto e : view) {
         if (!IsEntityActiveInHierarchy(e)) continue;
         auto& sr = view.get<SpriteRendererComponent>(e);
-        auto& tc = view.get<TransformComponent>(e);
-        sprites.push_back({ e, sr.SortingOrder, tc.Position[2] });
+        glm::mat4 wt = GetWorldTransform(e);
+        sprites.push_back({ e, sr.SortingOrder, wt[3].z });
     }
 
     std::sort(sprites.begin(), sprites.end(), [](const SpriteEntry& a, const SpriteEntry& b) {
@@ -1173,7 +1197,8 @@ void Scene::OnUpdateParticles(float dt) {
         }
 
         glm::vec3 gravity(ps.Gravity[0], ps.Gravity[1], ps.Gravity[2]);
-        glm::vec3 emitterPos(tc.Position[0], tc.Position[1], tc.Position[2]);
+        glm::mat4 worldMat = GetWorldTransform(entity);
+        glm::vec3 emitterPos = glm::vec3(worldMat[3]);
 
         // 1) Age existing particles, apply gravity, lerp color/size
         for (auto& p : ps._Particles) {
