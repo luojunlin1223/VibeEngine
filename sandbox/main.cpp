@@ -592,12 +592,32 @@ protected:
 
         // ── Camera + scene interaction (only when viewport is hovered) ───
         if (m_ViewportHovered && m_DraggingAxis == VE::GizmoAxis::None) {
-            if (io.MouseWheel != 0.0f)
+            bool rightHeld = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+            if (io.MouseWheel != 0.0f && !rightHeld)
                 m_Camera.OnMouseScroll(io.MouseWheel);
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
                 m_Camera.OnMouseDrag(io.MouseDelta.x, io.MouseDelta.y);
-            if (ImGui::IsMouseDragging(ImGuiMouseButton_Right))
-                m_Camera.OnMouseRotate(io.MouseDelta.x, io.MouseDelta.y);
+            if (rightHeld) {
+                if (ImGui::IsMouseDragging(ImGuiMouseButton_Right))
+                    m_Camera.OnMouseRotate(io.MouseDelta.x, io.MouseDelta.y);
+                // WASD fly-through while right-mouse is held
+                m_Camera.OnFlyMove(
+                    ImGui::IsKeyDown(ImGuiKey_W),
+                    ImGui::IsKeyDown(ImGuiKey_S),
+                    ImGui::IsKeyDown(ImGuiKey_A),
+                    ImGui::IsKeyDown(ImGuiKey_D),
+                    ImGui::IsKeyDown(ImGuiKey_E) || ImGui::IsKeyDown(ImGuiKey_Space),
+                    ImGui::IsKeyDown(ImGuiKey_Q),
+                    ImGui::IsKeyDown(ImGuiKey_LeftShift),
+                    m_DeltaTime);
+                // Scroll to adjust fly speed while right-mouse held
+                if (io.MouseWheel != 0.0f) {
+                    float speed = m_Camera.GetFlySpeed();
+                    speed *= (1.0f + io.MouseWheel * 0.15f);
+                    speed = std::clamp(speed, 0.5f, 100.0f);
+                    m_Camera.SetFlySpeed(speed);
+                }
+            }
 
             // Focus camera on selected entity (F key) — zoom in and align to object's +Z
             if (ImGui::IsKeyPressed(ImGuiKey_F) && m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
@@ -3942,20 +3962,40 @@ private:
             ImGui::Separator();
         }
 
-        if (ImGui::Button("Add Component", ImVec2(-1, 0)))
+        if (ImGui::Button("Add Component", ImVec2(-1, 0))) {
             ImGui::OpenPopup("AddComponentPopup");
+            m_AddComponentSearch[0] = '\0';
+            m_AddComponentFocusSearch = true;
+        }
         if (ImGui::BeginPopup("AddComponentPopup")) {
-            bool anyAdded = false;
+            // ── Search bar (Unity-style) ──
+            if (m_AddComponentFocusSearch) {
+                ImGui::SetKeyboardFocusHere();
+                m_AddComponentFocusSearch = false;
+            }
+            ImGui::InputTextWithHint("##ComponentSearch", "Search...", m_AddComponentSearch, sizeof(m_AddComponentSearch));
+            ImGui::Separator();
 
-            // Scripts submenu — list all available scripts from DLL or ScriptProject scan
+            // Case-insensitive substring match helper
+            auto matchesFilter = [this](const char* name) -> bool {
+                if (m_AddComponentSearch[0] == '\0') return true;
+                std::string lower_name(name), lower_filter(m_AddComponentSearch);
+                for (auto& c : lower_name)   c = (char)std::tolower((unsigned char)c);
+                for (auto& c : lower_filter) c = (char)std::tolower((unsigned char)c);
+                return lower_name.find(lower_filter) != std::string::npos;
+            };
+
+            bool anyShown = false;
+
+            // Scripts
             if (!m_SelectedEntity.HasComponent<VE::ScriptComponent>()) {
                 auto scriptNames = VE::ScriptEngine::IsLoaded()
                     ? VE::ScriptEngine::GetRegisteredClassNames()
                     : VE::ScriptEngine::ScanScriptClassNames();
-
-                if (!scriptNames.empty() && ImGui::BeginMenu("Scripts")) {
-                    for (auto& name : scriptNames) {
-                        if (ImGui::MenuItem(name.c_str())) {
+                for (auto& name : scriptNames) {
+                    std::string label = "Script: " + name;
+                    if (matchesFilter(label.c_str())) {
+                        if (ImGui::MenuItem(label.c_str())) {
                             std::string scriptName = name;
                             m_CommandHistory.Execute("Add Script", [this, scriptName]() {
                                 auto& sc = m_SelectedEntity.AddComponent<VE::ScriptComponent>();
@@ -3973,158 +4013,124 @@ private:
                                     }
                                 }
                             });
+                            ImGui::CloseCurrentPopup();
                         }
+                        anyShown = true;
                     }
-                    ImGui::EndMenu();
                 }
-                anyAdded = true;
             }
-            if (!m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()) {
-                if (ImGui::MenuItem("Mesh Renderer"))
-                    m_CommandHistory.Execute("Add Mesh Renderer", [this]() {
-                        auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
-                        mr.Mesh = VE::MeshLibrary::GetCube();
-                        mr.Mat = VE::MaterialLibrary::Get("Lit");
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::LODGroupComponent>()) {
-                if (ImGui::MenuItem("LOD Group"))
-                    m_CommandHistory.Execute("Add LOD Group", [this]() {
-                        m_SelectedEntity.AddComponent<VE::LODGroupComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::DirectionalLightComponent>()) {
-                if (ImGui::MenuItem("Directional Light"))
-                    m_CommandHistory.Execute("Add Light", [this]() {
-                        m_SelectedEntity.AddComponent<VE::DirectionalLightComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::PointLightComponent>()) {
-                if (ImGui::MenuItem("Point Light"))
-                    m_CommandHistory.Execute("Add Point Light", [this]() {
-                        m_SelectedEntity.AddComponent<VE::PointLightComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::SpotLightComponent>()) {
-                if (ImGui::MenuItem("Spot Light"))
-                    m_CommandHistory.Execute("Add Spot Light", [this]() {
-                        m_SelectedEntity.AddComponent<VE::SpotLightComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::RigidbodyComponent>()) {
-                if (ImGui::MenuItem("Rigidbody"))
-                    m_CommandHistory.Execute("Add Rigidbody", [this]() {
-                        m_SelectedEntity.AddComponent<VE::RigidbodyComponent>();
-                        bool hasCol = m_SelectedEntity.HasComponent<VE::BoxColliderComponent>()
-                            || m_SelectedEntity.HasComponent<VE::SphereColliderComponent>()
-                            || m_SelectedEntity.HasComponent<VE::CapsuleColliderComponent>()
-                            || m_SelectedEntity.HasComponent<VE::MeshColliderComponent>();
-                        if (!hasCol)
-                            m_SelectedEntity.AddComponent<VE::BoxColliderComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::BoxColliderComponent>()) {
-                if (ImGui::MenuItem("Box Collider"))
-                    m_CommandHistory.Execute("Add Box Collider", [this]() {
+
+            // Macro to reduce repetition for simple components
+            #define ADD_COMPONENT_ITEM(Label, CompType, Body) \
+                if (!m_SelectedEntity.HasComponent<CompType>() && matchesFilter(Label)) { \
+                    if (ImGui::MenuItem(Label)) { Body; ImGui::CloseCurrentPopup(); } \
+                    anyShown = true; \
+                }
+
+            ADD_COMPONENT_ITEM("Mesh Renderer", VE::MeshRendererComponent,
+                m_CommandHistory.Execute("Add Mesh Renderer", [this]() {
+                    auto& mr = m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mesh = VE::MeshLibrary::GetCube();
+                    mr.Mat = VE::MaterialLibrary::Get("Lit");
+                }))
+
+            ADD_COMPONENT_ITEM("LOD Group", VE::LODGroupComponent,
+                m_CommandHistory.Execute("Add LOD Group", [this]() {
+                    m_SelectedEntity.AddComponent<VE::LODGroupComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Directional Light", VE::DirectionalLightComponent,
+                m_CommandHistory.Execute("Add Light", [this]() {
+                    m_SelectedEntity.AddComponent<VE::DirectionalLightComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Point Light", VE::PointLightComponent,
+                m_CommandHistory.Execute("Add Point Light", [this]() {
+                    m_SelectedEntity.AddComponent<VE::PointLightComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Spot Light", VE::SpotLightComponent,
+                m_CommandHistory.Execute("Add Spot Light", [this]() {
+                    m_SelectedEntity.AddComponent<VE::SpotLightComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Rigidbody", VE::RigidbodyComponent,
+                m_CommandHistory.Execute("Add Rigidbody", [this]() {
+                    m_SelectedEntity.AddComponent<VE::RigidbodyComponent>();
+                    bool hasCol = m_SelectedEntity.HasComponent<VE::BoxColliderComponent>()
+                        || m_SelectedEntity.HasComponent<VE::SphereColliderComponent>()
+                        || m_SelectedEntity.HasComponent<VE::CapsuleColliderComponent>()
+                        || m_SelectedEntity.HasComponent<VE::MeshColliderComponent>();
+                    if (!hasCol)
                         m_SelectedEntity.AddComponent<VE::BoxColliderComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::SphereColliderComponent>()) {
-                if (ImGui::MenuItem("Sphere Collider"))
-                    m_CommandHistory.Execute("Add Sphere Collider", [this]() {
-                        m_SelectedEntity.AddComponent<VE::SphereColliderComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::CapsuleColliderComponent>()) {
-                if (ImGui::MenuItem("Capsule Collider"))
-                    m_CommandHistory.Execute("Add Capsule Collider", [this]() {
-                        m_SelectedEntity.AddComponent<VE::CapsuleColliderComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::MeshColliderComponent>()) {
-                if (ImGui::MenuItem("Mesh Collider"))
-                    m_CommandHistory.Execute("Add Mesh Collider", [this]() {
-                        m_SelectedEntity.AddComponent<VE::MeshColliderComponent>();
-                    });
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
-                if (ImGui::MenuItem("Animator")) {
-                    m_SelectedEntity.AddComponent<VE::AnimatorComponent>();
-                }
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::CameraComponent>()) {
-                if (ImGui::MenuItem("Camera"))
-                    m_SelectedEntity.AddComponent<VE::CameraComponent>();
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::AudioSourceComponent>()) {
-                if (ImGui::MenuItem("Audio Source"))
-                    m_SelectedEntity.AddComponent<VE::AudioSourceComponent>();
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::AudioListenerComponent>()) {
-                if (ImGui::MenuItem("Audio Listener"))
-                    m_SelectedEntity.AddComponent<VE::AudioListenerComponent>();
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::SpriteRendererComponent>()) {
-                if (ImGui::MenuItem("Sprite Renderer"))
-                    m_SelectedEntity.AddComponent<VE::SpriteRendererComponent>();
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::SpriteAnimatorComponent>()) {
-                if (ImGui::MenuItem("Sprite Animator"))
-                    m_SelectedEntity.AddComponent<VE::SpriteAnimatorComponent>();
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::ParticleSystemComponent>()) {
-                if (ImGui::MenuItem("Particle System"))
-                    m_SelectedEntity.AddComponent<VE::ParticleSystemComponent>();
-                anyAdded = true;
-            }
-            if (!m_SelectedEntity.HasComponent<VE::TerrainComponent>()) {
-                if (ImGui::MenuItem("Terrain"))
-                    m_SelectedEntity.AddComponent<VE::TerrainComponent>();
-                anyAdded = true;
-            }
-            // UI components
-            if (ImGui::BeginMenu("UI")) {
-                if (!m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
-                    if (ImGui::MenuItem("UI Canvas"))
-                        m_SelectedEntity.AddComponent<VE::UICanvasComponent>();
-                }
-                if (!m_SelectedEntity.HasComponent<VE::UIRectTransformComponent>()) {
-                    if (ImGui::MenuItem("UI Rect Transform"))
-                        m_SelectedEntity.AddComponent<VE::UIRectTransformComponent>();
-                }
-                if (!m_SelectedEntity.HasComponent<VE::UITextComponent>()) {
-                    if (ImGui::MenuItem("UI Text"))
-                        m_SelectedEntity.AddComponent<VE::UITextComponent>();
-                }
-                if (!m_SelectedEntity.HasComponent<VE::UIImageComponent>()) {
-                    if (ImGui::MenuItem("UI Image"))
-                        m_SelectedEntity.AddComponent<VE::UIImageComponent>();
-                }
-                if (!m_SelectedEntity.HasComponent<VE::UIButtonComponent>()) {
-                    if (ImGui::MenuItem("UI Button"))
-                        m_SelectedEntity.AddComponent<VE::UIButtonComponent>();
-                }
-                ImGui::EndMenu();
-                anyAdded = true;
-            }
-            if (!anyAdded) {
-                ImGui::TextDisabled("All components added");
+                }))
+
+            ADD_COMPONENT_ITEM("Box Collider", VE::BoxColliderComponent,
+                m_CommandHistory.Execute("Add Box Collider", [this]() {
+                    m_SelectedEntity.AddComponent<VE::BoxColliderComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Sphere Collider", VE::SphereColliderComponent,
+                m_CommandHistory.Execute("Add Sphere Collider", [this]() {
+                    m_SelectedEntity.AddComponent<VE::SphereColliderComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Capsule Collider", VE::CapsuleColliderComponent,
+                m_CommandHistory.Execute("Add Capsule Collider", [this]() {
+                    m_SelectedEntity.AddComponent<VE::CapsuleColliderComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Mesh Collider", VE::MeshColliderComponent,
+                m_CommandHistory.Execute("Add Mesh Collider", [this]() {
+                    m_SelectedEntity.AddComponent<VE::MeshColliderComponent>();
+                }))
+
+            ADD_COMPONENT_ITEM("Animator", VE::AnimatorComponent,
+                m_SelectedEntity.AddComponent<VE::AnimatorComponent>())
+
+            ADD_COMPONENT_ITEM("Camera", VE::CameraComponent,
+                m_SelectedEntity.AddComponent<VE::CameraComponent>())
+
+            ADD_COMPONENT_ITEM("Audio Source", VE::AudioSourceComponent,
+                m_SelectedEntity.AddComponent<VE::AudioSourceComponent>())
+
+            ADD_COMPONENT_ITEM("Audio Listener", VE::AudioListenerComponent,
+                m_SelectedEntity.AddComponent<VE::AudioListenerComponent>())
+
+            ADD_COMPONENT_ITEM("Sprite Renderer", VE::SpriteRendererComponent,
+                m_SelectedEntity.AddComponent<VE::SpriteRendererComponent>())
+
+            ADD_COMPONENT_ITEM("Sprite Animator", VE::SpriteAnimatorComponent,
+                m_SelectedEntity.AddComponent<VE::SpriteAnimatorComponent>())
+
+            ADD_COMPONENT_ITEM("Particle System", VE::ParticleSystemComponent,
+                m_SelectedEntity.AddComponent<VE::ParticleSystemComponent>())
+
+            ADD_COMPONENT_ITEM("Terrain", VE::TerrainComponent,
+                m_SelectedEntity.AddComponent<VE::TerrainComponent>())
+
+            ADD_COMPONENT_ITEM("Nav Agent", VE::NavAgentComponent,
+                m_SelectedEntity.AddComponent<VE::NavAgentComponent>())
+
+            ADD_COMPONENT_ITEM("UI Canvas", VE::UICanvasComponent,
+                m_SelectedEntity.AddComponent<VE::UICanvasComponent>())
+
+            ADD_COMPONENT_ITEM("UI Rect Transform", VE::UIRectTransformComponent,
+                m_SelectedEntity.AddComponent<VE::UIRectTransformComponent>())
+
+            ADD_COMPONENT_ITEM("UI Text", VE::UITextComponent,
+                m_SelectedEntity.AddComponent<VE::UITextComponent>())
+
+            ADD_COMPONENT_ITEM("UI Image", VE::UIImageComponent,
+                m_SelectedEntity.AddComponent<VE::UIImageComponent>())
+
+            ADD_COMPONENT_ITEM("UI Button", VE::UIButtonComponent,
+                m_SelectedEntity.AddComponent<VE::UIButtonComponent>())
+
+            #undef ADD_COMPONENT_ITEM
+
+            if (!anyShown) {
+                ImGui::TextDisabled("No matching components");
             }
             ImGui::EndPopup();
         }
@@ -5555,6 +5561,10 @@ private:
     bool m_ShowBuildPanel = false;
     bool m_ShowProfiler = false;
     bool m_ShowFPSOverlay = false;
+
+    // Add Component search
+    char m_AddComponentSearch[128] = {};
+    bool m_AddComponentFocusSearch = false;
 
     // Build settings
     VE::BuildSettings m_BuildSettings;

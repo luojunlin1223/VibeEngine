@@ -1,0 +1,518 @@
+Scene: FeatureShowcase
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.15, 0.3, 0.65]
+  SkyBottomColor: [0.7, 0.75, 0.85]
+  ShadowEnabled: true
+  ShadowBias: 0.002
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 2
+  SSAOEnabled: true
+  SSAORadius: 0.5
+  SSAOBias: 0.025
+  SSAOIntensity: 1.2
+  FogEnabled: false
+  AAMode: 1
+Entities:
+  # ==================== LIGHTING ====================
+
+  # Directional Light (Sun)
+  - Entity: 100001
+    TagComponent:
+      Tag: Sun Light
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [-45, 30, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [-0.3, -1.0, -0.5]
+      Color: [1.0, 0.95, 0.85]
+      Intensity: 1.2
+
+  # Point Light - Red
+  - Entity: 100010
+    TagComponent:
+      Tag: Point Light Red
+    TransformComponent:
+      Position: [-4, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.3, 0.3, 0.3]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 0.2, 0.1, 1.0]
+    PointLightComponent:
+      Color: [1.0, 0.2, 0.1]
+      Intensity: 3.0
+      Range: 10.0
+
+  # Point Light - Blue
+  - Entity: 100011
+    TagComponent:
+      Tag: Point Light Blue
+    TransformComponent:
+      Position: [4, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.3, 0.3, 0.3]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.1, 0.3, 1.0, 1.0]
+    PointLightComponent:
+      Color: [0.1, 0.3, 1.0]
+      Intensity: 3.0
+      Range: 10.0
+
+  # Point Light - Green
+  - Entity: 100012
+    TagComponent:
+      Tag: Point Light Green
+    TransformComponent:
+      Position: [0, 2, -4]
+      Rotation: [0, 0, 0]
+      Scale: [0.3, 0.3, 0.3]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.1, 1.0, 0.2, 1.0]
+    PointLightComponent:
+      Color: [0.1, 1.0, 0.2]
+      Intensity: 2.5
+      Range: 8.0
+
+  # Spot Light - Stage spotlight
+  - Entity: 100020
+    TagComponent:
+      Tag: Spot Light White
+    TransformComponent:
+      Position: [0, 6, 3]
+      Rotation: [0, 0, 0]
+      Scale: [0.25, 0.25, 0.25]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 1.0, 0.9, 1.0]
+    SpotLightComponent:
+      Direction: [0, -1, -0.3]
+      Color: [1.0, 1.0, 0.9]
+      Intensity: 5.0
+      Range: 15.0
+      InnerAngle: 15.0
+      OuterAngle: 30.0
+
+  # Spot Light - Yellow accent
+  - Entity: 100021
+    TagComponent:
+      Tag: Spot Light Yellow
+    TransformComponent:
+      Position: [-3, 5, -3]
+      Rotation: [0, 0, 0]
+      Scale: [0.25, 0.25, 0.25]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 0.85, 0.3, 1.0]
+    SpotLightComponent:
+      Direction: [0.3, -1, 0.3]
+      Color: [1.0, 0.85, 0.3]
+      Intensity: 4.0
+      Range: 12.0
+      InnerAngle: 20.0
+      OuterAngle: 35.0
+
+  # ==================== GROUND ====================
+
+  # Ground plane
+  - Entity: 100100
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [20, 0.1, 20]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.35, 0.35, 0.35, 1.0]
+      CastShadows: false
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0.0
+      LinearDamping: 0.0
+      AngularDamping: 0.05
+      Restitution: 0.3
+      Friction: 0.8
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [20, 0.1, 20]
+      Offset: [0, 0, 0]
+
+  # ==================== PBR MATERIAL SHOWCASE ====================
+
+  # PBR Sphere - Metal (high metallic, low roughness)
+  - Entity: 100200
+    TagComponent:
+      Tag: PBR Metal Sphere
+    TransformComponent:
+      Position: [-4, 1.2, -2]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.95, 0.65, 0.25, 1.0]
+      MaterialName: PBR
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 1.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.1
+
+  # PBR Sphere - Rough stone (low metallic, high roughness)
+  - Entity: 100201
+    TagComponent:
+      Tag: PBR Rough Sphere
+    TransformComponent:
+      Position: [-2, 1.2, -2]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.6, 0.55, 0.5, 1.0]
+      MaterialName: PBR
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.9
+
+  # PBR Sphere - Plastic (low metallic, medium roughness)
+  - Entity: 100202
+    TagComponent:
+      Tag: PBR Plastic Sphere
+    TransformComponent:
+      Position: [0, 1.2, -2]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.1, 0.1, 1.0]
+      MaterialName: PBR
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.02
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.4
+
+  # PBR Sphere - Chrome (high metallic, very low roughness)
+  - Entity: 100203
+    TagComponent:
+      Tag: PBR Chrome Sphere
+    TransformComponent:
+      Position: [2, 1.2, -2]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.92, 1.0]
+      MaterialName: PBR
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 1.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.02
+
+  # PBR Sphere - Emissive (glowing)
+  - Entity: 100204
+    TagComponent:
+      Tag: PBR Emissive Sphere
+    TransformComponent:
+      Position: [4, 1.2, -2]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.1, 0.1, 0.1, 1.0]
+      MaterialName: PBR
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.5
+        - Name: u_EmissionColor
+          Type: Vec3
+          Value: [0.2, 0.8, 1.0]
+        - Name: u_EmissionIntensity
+          Type: Float
+          Value: 3.0
+
+  # ==================== PARENT-CHILD HIERARCHY ====================
+
+  # Solar System Parent
+  - Entity: 100300
+    TagComponent:
+      Tag: Solar System
+    TransformComponent:
+      Position: [6, 2, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 0.85, 0.2, 1.0]
+
+  # Planet (child of Solar System)
+  - Entity: 100301
+    Parent: 100300
+    TagComponent:
+      Tag: Planet
+    TransformComponent:
+      Position: [3, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.5, 0.5, 0.5]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.2, 0.5, 1.0, 1.0]
+
+  # Moon (child of Planet)
+  - Entity: 100302
+    Parent: 100301
+    TagComponent:
+      Tag: Moon
+    TransformComponent:
+      Position: [1.5, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.4, 0.4, 0.4]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.7, 0.7, 0.7, 1.0]
+
+  # Robot Arm base (parent)
+  - Entity: 100310
+    TagComponent:
+      Tag: Robot Arm Base
+    TransformComponent:
+      Position: [-6, 0.5, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.4, 0.45, 1.0]
+
+  # Robot Arm segment 1 (child of base)
+  - Entity: 100311
+    Parent: 100310
+    TagComponent:
+      Tag: Arm Segment 1
+    TransformComponent:
+      Position: [0, 1, 0]
+      Rotation: [0, 0, 15]
+      Scale: [0.4, 1.5, 0.4]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.6, 0.3, 0.1, 1.0]
+
+  # Robot Arm segment 2 (child of segment 1)
+  - Entity: 100312
+    Parent: 100311
+    TagComponent:
+      Tag: Arm Segment 2
+    TransformComponent:
+      Position: [0, 1.2, 0]
+      Rotation: [0, 0, -30]
+      Scale: [0.7, 1.2, 0.7]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.7, 0.4, 0.15, 1.0]
+
+  # Robot Hand (child of segment 2)
+  - Entity: 100313
+    Parent: 100312
+    TagComponent:
+      Tag: Hand
+    TransformComponent:
+      Position: [0, 0.8, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1.8, 0.4, 1.2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.8, 0.8, 0.2, 1.0]
+
+  # ==================== PARTICLE SYSTEMS ====================
+
+  # Fire particle emitter
+  - Entity: 100400
+    TagComponent:
+      Tag: Fire Particles
+    TransformComponent:
+      Position: [0, 0.1, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 80.0
+      ParticleLifetime: 1.5
+      LifetimeVariance: 0.5
+      MaxParticles: 500
+      VelocityMin: [-0.3, 1.5, -0.3]
+      VelocityMax: [0.3, 3.0, 0.3]
+      Gravity: [0, 0.5, 0]
+      StartColor: [1.0, 0.8, 0.1, 1.0]
+      EndColor: [1.0, 0.1, 0.0, 0.0]
+      StartSize: 0.3
+      EndSize: 0.05
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 0
+      ShapeRadius: 0.3
+      ConeAngle: 15.0
+      SpeedMin: 1.5
+      SpeedMax: 3.0
+
+  # Fountain particle emitter (cone shape)
+  - Entity: 100401
+    TagComponent:
+      Tag: Fountain Particles
+    TransformComponent:
+      Position: [3, 0.1, 5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 120.0
+      ParticleLifetime: 2.0
+      LifetimeVariance: 0.3
+      MaxParticles: 800
+      VelocityMin: [-0.5, 4.0, -0.5]
+      VelocityMax: [0.5, 6.0, 0.5]
+      Gravity: [0, -9.8, 0]
+      StartColor: [0.3, 0.6, 1.0, 0.9]
+      EndColor: [0.7, 0.85, 1.0, 0.0]
+      StartSize: 0.15
+      EndSize: 0.08
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 2
+      ShapeRadius: 0.2
+      ConeAngle: 20.0
+      SpeedMin: 4.0
+      SpeedMax: 6.0
+
+  # Sparkle particle emitter (sphere shape)
+  - Entity: 100402
+    TagComponent:
+      Tag: Magic Sparkles
+    TransformComponent:
+      Position: [-3, 2, 5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 40.0
+      ParticleLifetime: 3.0
+      LifetimeVariance: 1.0
+      MaxParticles: 300
+      VelocityMin: [-1, -1, -1]
+      VelocityMax: [1, 1, 1]
+      Gravity: [0, 0.2, 0]
+      StartColor: [1.0, 0.9, 0.3, 1.0]
+      EndColor: [0.8, 0.2, 1.0, 0.0]
+      StartSize: 0.2
+      EndSize: 0.0
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 1
+      ShapeRadius: 1.5
+      ConeAngle: 45.0
+      SpeedMin: 0.5
+      SpeedMax: 1.5
+
+  # ==================== PHYSICS TEST OBJECTS ====================
+
+  # Dynamic Cube (for Play mode testing)
+  - Entity: 100500
+    TagComponent:
+      Tag: Physics Cube
+    TransformComponent:
+      Position: [0, 5, 0]
+      Rotation: [15, 30, 10]
+      Scale: [0.8, 0.8, 0.8]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.9, 0.4, 0.1, 1.0]
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 1.0
+      LinearDamping: 0.1
+      AngularDamping: 0.1
+      Restitution: 0.5
+      Friction: 0.6
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [0.8, 0.8, 0.8]
+      Offset: [0, 0, 0]
+
+  # Dynamic Sphere
+  - Entity: 100501
+    TagComponent:
+      Tag: Physics Sphere
+    TransformComponent:
+      Position: [2, 7, 1]
+      Rotation: [0, 0, 0]
+      Scale: [0.6, 0.6, 0.6]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.3, 0.8, 0.3, 1.0]
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 0.5
+      LinearDamping: 0.1
+      AngularDamping: 0.1
+      Restitution: 0.8
+      Friction: 0.4
+      UseGravity: true
+    SphereColliderComponent:
+      Radius: 0.6
+      Offset: [0, 0, 0]
+
+  # ==================== DECORATIVE OBJECTS ====================
+
+  # Lit cube for comparison with PBR
+  - Entity: 100600
+    TagComponent:
+      Tag: Lit Cube (Blinn-Phong)
+    TransformComponent:
+      Position: [0, 0.75, -5]
+      Rotation: [0, 45, 0]
+      Scale: [1.5, 1.5, 1.5]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.8, 0.3, 0.6, 1.0]
+
+  # Wall for spot light to hit
+  - Entity: 100601
+    TagComponent:
+      Tag: Back Wall
+    TransformComponent:
+      Position: [0, 3, -8]
+      Rotation: [0, 0, 0]
+      Scale: [12, 6, 0.2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.85, 0.85, 0.8, 1.0]
+      CastShadows: false
+
+  # Camera entity (for runtime)
+  - Entity: 100700
+    TagComponent:
+      Tag: Main Camera
+    TransformComponent:
+      Position: [0, 5, 12]
+      Rotation: [-20, 180, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60.0
+      NearClip: 0.1
+      FarClip: 500.0
+      Priority: 0
+    AudioListenerComponent: {}

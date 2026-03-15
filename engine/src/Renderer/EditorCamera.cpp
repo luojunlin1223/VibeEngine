@@ -43,10 +43,38 @@ void EditorCamera::OnMouseDrag(float dx, float dy) {
 void EditorCamera::OnMouseRotate(float dx, float dy) {
     if (m_Mode != CameraMode::Perspective3D) return;
 
-    m_Yaw   -= dx * 0.3f;
-    m_Pitch -= dy * 0.3f;
+    m_Yaw   += dx * 0.3f;
+    m_Pitch += dy * 0.3f;
     m_Pitch = std::clamp(m_Pitch, -89.0f, 89.0f);
+
+    // In fly mode the camera position stays fixed; update focal point from position
+    m_FocalPoint = m_Position3D + GetForwardDirFromAngles() * m_Distance;
     RecalculateMatrix();
+}
+
+void EditorCamera::OnFlyMove(bool forward, bool backward, bool left, bool right,
+                              bool up, bool down, bool boost, float deltaTime) {
+    if (m_Mode != CameraMode::Perspective3D) return;
+
+    float speed = m_FlySpeed * (boost ? m_FlyBoostMultiplier : 1.0f);
+    glm::vec3 fwd = GetForwardDir();
+    glm::vec3 rt  = GetRightDir();
+    glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+
+    glm::vec3 move(0.0f);
+    if (forward)  move += fwd;
+    if (backward) move -= fwd;
+    if (right)    move += rt;
+    if (left)     move -= rt;
+    if (up)       move += worldUp;
+    if (down)     move -= worldUp;
+
+    if (glm::dot(move, move) > 0.0001f) {
+        move = glm::normalize(move) * speed * deltaTime;
+        m_Position3D += move;
+        m_FocalPoint += move;
+        RecalculateMatrix();
+    }
 }
 
 void EditorCamera::RecalculatePosition3D() {
@@ -56,6 +84,16 @@ void EditorCamera::RecalculatePosition3D() {
     m_Position3D.x = m_FocalPoint.x + m_Distance * std::cos(pitchRad) * std::cos(yawRad);
     m_Position3D.y = m_FocalPoint.y + m_Distance * std::sin(pitchRad);
     m_Position3D.z = m_FocalPoint.z + m_Distance * std::cos(pitchRad) * std::sin(yawRad);
+}
+
+glm::vec3 EditorCamera::GetForwardDirFromAngles() const {
+    float yawRad   = glm::radians(m_Yaw);
+    float pitchRad = glm::radians(m_Pitch);
+    return glm::normalize(glm::vec3(
+        -std::cos(pitchRad) * std::cos(yawRad),
+        -std::sin(pitchRad),
+        -std::cos(pitchRad) * std::sin(yawRad)
+    ));
 }
 
 glm::vec3 EditorCamera::GetForwardDir() const {

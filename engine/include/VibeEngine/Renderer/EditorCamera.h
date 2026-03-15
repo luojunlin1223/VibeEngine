@@ -3,7 +3,8 @@
  *
  * Controls:
  *   2D mode: middle-mouse pan, scroll zoom
- *   3D mode: right-mouse orbit, middle-mouse pan, scroll dolly
+ *   3D mode: right-click + WASD fly, middle-mouse pan, scroll dolly
+ *            Shift to boost speed, scroll to adjust base speed
  */
 #pragma once
 
@@ -22,7 +23,11 @@ public:
 
     void OnMouseScroll(float yOffset);
     void OnMouseDrag(float dx, float dy);   // middle-mouse pan
-    void OnMouseRotate(float dx, float dy); // right-mouse orbit (3D only)
+    void OnMouseRotate(float dx, float dy); // right-mouse look (3D only)
+
+    // WASD fly-through (3D only, call while right-mouse is held)
+    void OnFlyMove(bool forward, bool backward, bool left, bool right,
+                   bool up, bool down, bool boost, float deltaTime);
 
     const glm::mat4& GetViewProjection() const { return m_ViewProjection; }
     const glm::mat4& GetSkyViewProjection() const { return m_SkyViewProjection; }
@@ -43,6 +48,7 @@ public:
     float GetYaw() const { return m_Yaw; }
     float GetPitch() const { return m_Pitch; }
     float GetFOV() const { return m_FOV; }
+    float GetFlySpeed() const { return m_FlySpeed; }
 
     // Setters for restoring saved state
     void SetPosition2D(const glm::vec2& pos) { m_Position2D = pos; RecalculateMatrix(); }
@@ -51,10 +57,12 @@ public:
     void SetDistance(float d) { m_Distance = d; RecalculatePosition3D(); RecalculateMatrix(); }
     void SetYaw(float y) { m_Yaw = y; RecalculatePosition3D(); RecalculateMatrix(); }
     void SetPitch(float p) { m_Pitch = p; RecalculatePosition3D(); RecalculateMatrix(); }
+    void SetFlySpeed(float s) { m_FlySpeed = s; }
 
 private:
     void RecalculateMatrix();
     void RecalculatePosition3D();
+    glm::vec3 GetForwardDirFromAngles() const; // from yaw/pitch only
     glm::vec3 GetForwardDir() const;
     glm::vec3 GetRightDir() const;
     glm::vec3 GetUpDir() const;
@@ -79,6 +87,10 @@ private:
     float m_NearClip = 0.1f;
     float m_FarClip  = 1000.0f;
     glm::vec3 m_Position3D = { 0.0f, 0.0f, 0.0f };
+
+    // Fly-through speed
+    float m_FlySpeed = 5.0f;       // base speed (units/sec)
+    float m_FlyBoostMultiplier = 3.0f; // Shift multiplier
 };
 
 } // namespace VE
