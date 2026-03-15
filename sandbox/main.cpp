@@ -7015,6 +7015,17 @@ private:
             ImGui::Text("  Occluded:     %u", stats.OccludedObjects);
             ImGui::Text("Sprites:        %u", spriteStats.QuadCount);
             ImGui::Text("Instances:      %u", instanceStats.InstanceCount);
+
+            // Deferred+ stats
+            auto& pipeSettings = m_Scene->GetPipelineSettings();
+            if (pipeSettings.PipelineMode == VE::RenderPipeline::DeferredPlus) {
+                ImGui::Separator();
+                auto& dpStats = m_Scene->GetDeferredPlusRenderer().GetStats();
+                ImGui::Text("Deferred+ Tiled Lighting:");
+                ImGui::Text("  Tiles: %ux%u", dpStats.TileCountX, dpStats.TileCountY);
+                ImGui::Text("  Point Lights: %u", dpStats.NumPointLights);
+                ImGui::Text("  Spot Lights:  %u", dpStats.NumSpotLights);
+            }
         }
 
         // ── Camera ──

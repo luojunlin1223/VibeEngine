@@ -4,6 +4,7 @@
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
 #include "VibeEngine/Renderer/ShadowMap.h"
+#include "VibeEngine/Renderer/DeferredPlusRenderer.h"
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/VideoPlayer.h"
@@ -1973,6 +1974,170 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             RenderCommand::DrawIndexed(mr->Mesh);
         }
         RenderCommand::SetDepthWrite(true);
+    }
+}
+
+// ── Deferred+ Tiled Deferred Rendering ──────────────────────────────
+
+void Scene::OnRenderDeferredPlus(const glm::mat4& viewProjection,
+                                  const glm::mat4& viewMatrix,
+                                  const glm::mat4& projMatrix,
+                                  const glm::vec3& cameraPos,
+                                  uint32_t targetFBO, uint32_t fbWidth, uint32_t fbHeight) {
+    // Initialize the deferred+ renderer on first use or resize
+    if (!m_DeferredPlusRenderer.IsInitialized()) {
+        m_DeferredPlusRenderer.Init(fbWidth, fbHeight);
+    } else {
+        m_DeferredPlusRenderer.Resize(fbWidth, fbHeight);
+    }
+
+    m_DeferredPlusRenderer.SetDebugOverlay(m_PipelineSettings.DeferredPlusDebugOverlay);
+
+    // Load the G-Buffer shader on first use (lazy init, cached in ShaderLibrary)
+    static std::shared_ptr<Shader> s_GBufferShader;
+    if (!s_GBufferShader) {
+        s_GBufferShader = Shader::CreateFromFile("shaders/GBuffer.shader");
+        if (s_GBufferShader)
+            s_GBufferShader->SetName("GBuffer");
+    }
+
+    // ── Step 1: G-Buffer pass — render all opaque geometry ──────────
+    m_DeferredPlusRenderer.BeginGBufferPass();
+    {
+        Frustum frustum(viewProjection);
+        static const AABB s_UnitAABB_dp = { glm::vec3(-0.5f), glm::vec3(0.5f) };
+
+        // Use the G-Buffer shader for all entities (writes to 4 MRT)
+        auto gbufShader = s_GBufferShader;
+        if (gbufShader) gbufShader->Bind();
+
+        auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
+        for (auto entityID : view) {
+            if (!IsEntityActiveInHierarchy(entityID)) continue;
+            auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
+            if (!mr.Mesh || !mr.Mat) continue;
+
+            // Skip transparent objects (they go in a forward pass later)
+            bool isTransparent = mr.Mat->IsTransparent() || mr.Color[3] < 0.999f;
+            if (isTransparent) continue;
+
+            glm::mat4 model = GetWorldTransform(entityID);
+
+            // Frustum cull
+            {
+                if (!mr.LocalBounds.Valid()) {
+                    bool found = false;
+                    for (int idx = 0; idx < MeshLibrary::GetMeshCount(); ++idx) {
+                        if (mr.Mesh == MeshLibrary::GetMeshByIndex(idx)) {
+                            mr.LocalBounds = MeshLibrary::GetMeshAABB(idx);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) mr.LocalBounds = s_UnitAABB_dp;
+                }
+
+                const AABB& localAABB = mr.LocalBounds;
+                glm::vec3 worldMin( std::numeric_limits<float>::max());
+                glm::vec3 worldMax(-std::numeric_limits<float>::max());
+                for (int i = 0; i < 8; ++i) {
+                    glm::vec3 corner(
+                        (i & 1) ? localAABB.Max.x : localAABB.Min.x,
+                        (i & 2) ? localAABB.Max.y : localAABB.Min.y,
+                        (i & 4) ? localAABB.Max.z : localAABB.Min.z
+                    );
+                    glm::vec3 worldCorner = glm::vec3(model * glm::vec4(corner, 1.0f));
+                    worldMin = glm::min(worldMin, worldCorner);
+                    worldMax = glm::max(worldMax, worldCorner);
+                }
+
+                if (!frustum.TestAABB(worldMin, worldMax)) continue;
+            }
+
+            std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
+            auto* ac = m_Registry.try_get<AnimatorComponent>(entityID);
+            if (ac && ac->_Animator && ac->_Animator->GetSkinnedVAO())
+                drawVAO = ac->_Animator->GetSkinnedVAO();
+
+            glm::mat4 mvp = viewProjection * model;
+            glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
+
+            if (gbufShader) {
+                // Bind material textures (this sets texture units + flags)
+                mr.Mat->Bind();
+                // Re-bind the G-Buffer shader (material may have switched shaders)
+                gbufShader->Bind();
+
+                gbufShader->SetMat4("u_MVP", mvp);
+                gbufShader->SetMat4("u_Model", model);
+                gbufShader->SetVec4("u_EntityColor", entityColor);
+                gbufShader->SetVec3("u_ViewPos", cameraPos);
+
+                // PBR defaults
+                gbufShader->SetFloat("u_Metallic", 0.0f);
+                gbufShader->SetFloat("u_Roughness", 0.5f);
+                gbufShader->SetFloat("u_AO", 1.0f);
+                gbufShader->SetFloat("u_BumpScale", 1.0f);
+                gbufShader->SetFloat("u_OcclusionStrength", 1.0f);
+                gbufShader->SetVec4("u_EmissionColor", glm::vec4(0.0f));
+                gbufShader->SetFloat("u_Cutoff", 0.0f);
+                gbufShader->SetInt("u_HasMainTex", 0);
+                gbufShader->SetInt("u_HasMetallicGlossMap", 0);
+                gbufShader->SetInt("u_HasBumpMap", 0);
+                gbufShader->SetInt("u_HasOcclusionMap", 0);
+                gbufShader->SetInt("u_HasEmissionMap", 0);
+                gbufShader->SetInt("u_UseTexture", 0);
+
+                // Apply per-entity material overrides
+                for (const auto& ov : mr.MaterialOverrides) {
+                    switch (ov.Type) {
+                        case MaterialPropertyType::Float:
+                            gbufShader->SetFloat(ov.Name, ov.FloatValue); break;
+                        case MaterialPropertyType::Int:
+                            gbufShader->SetInt(ov.Name, ov.IntValue); break;
+                        case MaterialPropertyType::Vec3:
+                            gbufShader->SetVec3(ov.Name, ov.Vec3Value); break;
+                        case MaterialPropertyType::Vec4:
+                            gbufShader->SetVec4(ov.Name, ov.Vec4Value); break;
+                        case MaterialPropertyType::Texture2D:
+                            if (ov.TextureRef) {
+                                ov.TextureRef->Bind(0);
+                                gbufShader->SetInt(ov.Name, 0);
+                                gbufShader->SetInt("u_UseTexture", 1);
+                            }
+                            break;
+                    }
+                }
+            }
+
+            RenderCommand::DrawIndexed(drawVAO);
+        }
+    }
+    m_DeferredPlusRenderer.EndGBufferPass();
+
+    // ── Step 2: Upload lights to SSBOs ──
+    m_DeferredPlusRenderer.UploadLights(*this);
+
+    // ── Step 3: Dispatch compute shader for tile culling ──
+    m_DeferredPlusRenderer.CullLights(projMatrix, viewMatrix);
+
+    // ── Step 4: Tiled deferred lighting pass ──
+    // Bind the caller's HDR framebuffer for output
+    glBindFramebuffer(GL_FRAMEBUFFER, targetFBO);
+    glViewport(0, 0, fbWidth, fbHeight);
+
+    m_DeferredPlusRenderer.LightingPass(viewMatrix, projMatrix, cameraPos, *this);
+
+    // ── Step 5: Blit depth from G-Buffer to target FBO for subsequent passes ──
+    // (decals, sprites, particles need depth test against geometry)
+    {
+        GLuint gbufFBO = m_DeferredPlusRenderer.GetGBufferFBO();
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, gbufFBO);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, targetFBO);
+        glBlitFramebuffer(0, 0, fbWidth, fbHeight,
+                          0, 0, fbWidth, fbHeight,
+                          GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, targetFBO);
     }
 }
 
