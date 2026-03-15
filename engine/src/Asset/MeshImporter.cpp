@@ -1,9 +1,11 @@
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
+#include "VibeEngine/Asset/GLTFImporter.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <unordered_map>
 #include <filesystem>
+#include <algorithm>
 
 namespace VE {
 
@@ -19,12 +21,26 @@ std::shared_ptr<MeshAsset> MeshImporter::LoadFBX(const std::string& absolutePath
     return FBXImporter::Import(absolutePath, settings);
 }
 
+std::shared_ptr<MeshAsset> MeshImporter::LoadGLTF(const std::string& absolutePath) {
+    return GLTFImporter::Import(absolutePath);
+}
+
 std::shared_ptr<MeshAsset> MeshImporter::GetOrLoad(const std::string& absolutePath) {
     auto it = s_Cache.find(absolutePath);
     if (it != s_Cache.end() && it->second && it->second->VAO)
         return it->second;
 
-    auto asset = LoadFBX(absolutePath);
+    // Dispatch by file extension
+    std::string ext = std::filesystem::path(absolutePath).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    std::shared_ptr<MeshAsset> asset;
+    if (ext == ".gltf" || ext == ".glb") {
+        asset = LoadGLTF(absolutePath);
+    } else {
+        asset = LoadFBX(absolutePath);
+    }
+
     if (asset)
         s_Cache[absolutePath] = asset;
     return asset;

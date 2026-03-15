@@ -136,7 +136,7 @@ AssetType AssetDatabase::DeduceType(const std::string& extension) const {
         return AssetType::Texture2D;
     if (extension == ".vscene")
         return AssetType::Scene;
-    if (extension == ".fbx" || extension == ".obj")
+    if (extension == ".fbx" || extension == ".obj" || extension == ".gltf" || extension == ".glb")
         return AssetType::Mesh;
     if (extension == ".shader" || extension == ".glsl")
         return AssetType::Shader;

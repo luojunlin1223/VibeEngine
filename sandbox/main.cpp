@@ -5265,7 +5265,14 @@ private:
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(100, 70, 130, 255));
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
                 float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "FBX");
+                // Show format-specific label based on file extension
+                std::string meshExt = std::filesystem::path(filename).extension().string();
+                std::transform(meshExt.begin(), meshExt.end(), meshExt.begin(), ::tolower);
+                const char* meshLabel = "MDL";
+                if (meshExt == ".fbx") meshLabel = "FBX";
+                else if (meshExt == ".gltf" || meshExt == ".glb") meshLabel = "GLT";
+                else if (meshExt == ".obj") meshLabel = "OBJ";
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), meshLabel);
             } else if (meta->Type == VE::AssetType::Shader) {
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(130, 80, 130, 255));
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
