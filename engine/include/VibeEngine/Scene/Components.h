@@ -100,6 +100,17 @@ struct PointLightComponent {
     PointLightComponent() = default;
 };
 
+struct SpotLightComponent {
+    std::array<float, 3> Direction = { 0.0f, -1.0f, 0.0f }; // local-space direction (auto-normalized)
+    std::array<float, 3> Color     = { 1.0f, 1.0f, 1.0f };
+    float Intensity  = 1.0f;
+    float Range      = 15.0f;  // world-space radius of influence
+    float InnerAngle = 25.0f;  // degrees — full-brightness cone
+    float OuterAngle = 35.0f;  // degrees — falloff cone edge
+
+    SpotLightComponent() = default;
+};
+
 enum class BodyType { Static, Kinematic, Dynamic };
 
 struct RigidbodyComponent {
