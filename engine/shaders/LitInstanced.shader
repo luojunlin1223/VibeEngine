@@ -319,9 +319,7 @@ void main() {
         emission *= texture(u_EmissionMap, v_TexCoord).rgb;
     color += emission;
 
-    color = color / (color + vec3(1.0));
-    color = pow(color, vec3(1.0 / 2.2));
-
+    // Output linear HDR — tone mapping and gamma handled by post-processing
     FragColor = vec4(color, baseColor.a);
 }
 #endif

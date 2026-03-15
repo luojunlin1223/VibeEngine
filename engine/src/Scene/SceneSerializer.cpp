@@ -546,6 +546,9 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     // Pipeline settings
     auto& ps = scene->GetPipelineSettings();
     out << YAML::Key << "PipelineSettings" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "HDREnabled" << YAML::Value << ps.HDREnabled;
+    out << YAML::Key << "ToneMapMode" << YAML::Value << ps.ToneMapMode;
+    out << YAML::Key << "HDRExposure" << YAML::Value << ps.Exposure;
     out << YAML::Key << "SkyEnabled" << YAML::Value << ps.SkyEnabled;
     out << YAML::Key << "SkyTopColor" << YAML::Value << YAML::Flow
         << YAML::BeginSeq << ps.SkyTopColor[0] << ps.SkyTopColor[1] << ps.SkyTopColor[2] << YAML::EndSeq;
@@ -649,6 +652,9 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
     // Pipeline settings
     if (auto psNode = data["PipelineSettings"]) {
         auto& ps = scene->GetPipelineSettings();
+        if (psNode["HDREnabled"]) ps.HDREnabled = psNode["HDREnabled"].as<bool>();
+        if (psNode["ToneMapMode"]) ps.ToneMapMode = psNode["ToneMapMode"].as<int>();
+        if (psNode["HDRExposure"]) ps.Exposure = psNode["HDRExposure"].as<float>();
         if (psNode["SkyEnabled"]) ps.SkyEnabled = psNode["SkyEnabled"].as<bool>();
         if (auto top = psNode["SkyTopColor"])
             ps.SkyTopColor = { top[0].as<float>(), top[1].as<float>(), top[2].as<float>() };

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <any>
 #include <set>
+#include <cmath>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
 
@@ -208,7 +209,15 @@ protected:
         s.Curves.Red.Points    = ps.CurvesRed;
         s.Curves.Green.Points  = ps.CurvesGreen;
         s.Curves.Blue.Points   = ps.CurvesBlue;
-        s.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+        // HDR pipeline: when HDR is enabled, force tonemapping on with HDR settings
+        if (ps.HDREnabled) {
+            s.Tonemap = { true, static_cast<VE::TonemapMode>(ps.ToneMapMode + 1) }; // +1 because TonemapMode enum: 0=None,1=Reinhard,2=ACES,3=Uncharted2
+            // Apply HDR exposure via color adjustments (additive with existing exposure)
+            s.Color.Enabled = true;
+            s.Color.Exposure += std::log2(ps.Exposure); // convert linear multiplier to EV
+        } else {
+            s.Tonemap = { ps.TonemapEnabled, static_cast<VE::TonemapMode>(ps.TonemapMode) };
+        }
         // Fog
         s.Fog = { ps.FogEnabled, static_cast<VE::FogMode>(ps.FogMode), ps.FogColor,
                   ps.FogDensity, ps.FogStart, ps.FogEnd, ps.FogHeightFalloff, ps.FogMaxOpacity };
@@ -4796,6 +4805,16 @@ private:
         ImGui::Begin("Render Pipeline", &m_ShowPipelineSettings);
 
         auto& ps = m_Scene->GetPipelineSettings();
+
+        if (ImGui::CollapsingHeader("HDR / Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable HDR", &ps.HDREnabled);
+            if (ps.HDREnabled) {
+                const char* tmModes[] = { "Reinhard", "ACES Filmic", "Uncharted 2" };
+                ImGui::Combo("Tone Map Operator", &ps.ToneMapMode, tmModes, 3);
+                ImGui::SliderFloat("Exposure##HDR", &ps.Exposure, 0.1f, 10.0f, "%.2f");
+                if (ImGui::Button("Reset Exposure")) ps.Exposure = 1.0f;
+            }
+        }
 
         if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable Sky", &ps.SkyEnabled);
