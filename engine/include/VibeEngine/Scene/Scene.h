@@ -217,6 +217,16 @@ private:
     bool m_ShadowsComputed = false; // true if ComputeShadows ran this frame
     glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
 
+    // Spot light shadows (max 2 shadow-casting spot lights)
+    static constexpr int MAX_SPOT_SHADOW_LIGHTS = 2;
+    std::unique_ptr<SpotLightShadowMap> m_SpotShadowMaps[MAX_SPOT_SHADOW_LIGHTS];
+    int m_NumSpotShadows = 0;
+
+    // Point light shadows (max 2 shadow-casting point lights)
+    static constexpr int MAX_POINT_SHADOW_LIGHTS = 2;
+    std::unique_ptr<PointLightShadowMap> m_PointShadowMaps[MAX_POINT_SHADOW_LIGHTS];
+    int m_NumPointShadows = 0;
+
     std::string m_PendingScenePath; // scene to load at end of frame
     std::unique_ptr<NavGrid> m_NavGrid;
 

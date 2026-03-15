@@ -64,4 +64,69 @@ private:
     int m_SavedViewport[4] = {};
 };
 
+// ── Spot Light Shadow Map (single 2D depth texture, perspective projection) ──
+
+class SpotLightShadowMap {
+public:
+    static constexpr int MAP_SIZE = 1024;
+
+    SpotLightShadowMap();
+    ~SpotLightShadowMap();
+
+    // Compute light-space matrix from spot light parameters
+    void ComputeMatrix(const glm::vec3& lightPos, const glm::vec3& lightDir,
+                       float outerAngle, float range);
+
+    void BeginPass();
+    void EndPass();
+    void BindForReading(uint32_t textureUnit) const;
+
+    const glm::mat4& GetLightSpaceMatrix() const { return m_LightSpaceMatrix; }
+    const std::shared_ptr<Shader>& GetDepthShader() const { return m_DepthShader; }
+    uint32_t GetDepthTextureID() const { return m_DepthTexture; }
+
+private:
+    void Init();
+
+    uint32_t m_FBO = 0;
+    uint32_t m_DepthTexture = 0; // GL_TEXTURE_2D
+
+    glm::mat4 m_LightSpaceMatrix = glm::mat4(1.0f);
+    std::shared_ptr<Shader> m_DepthShader;
+    int m_SavedViewport[4] = {};
+};
+
+// ── Point Light Shadow Map (cube map depth texture, 6-face rendering) ──
+
+class PointLightShadowMap {
+public:
+    static constexpr int MAP_SIZE = 512;
+
+    PointLightShadowMap();
+    ~PointLightShadowMap();
+
+    // Compute 6 view-projection matrices from the point light position
+    void ComputeMatrices(const glm::vec3& lightPos, float farPlane);
+
+    void BeginPass(int face); // face 0..5 = +X, -X, +Y, -Y, +Z, -Z
+    void EndPass();
+    void BindForReading(uint32_t textureUnit) const;
+
+    const glm::mat4& GetLightSpaceMatrix(int face) const { return m_LightSpaceMatrices[face]; }
+    const std::shared_ptr<Shader>& GetDepthShader() const { return m_DepthShader; }
+    float GetFarPlane() const { return m_FarPlane; }
+    uint32_t GetDepthTextureID() const { return m_DepthCubeMap; }
+
+private:
+    void Init();
+
+    uint32_t m_FBO = 0;
+    uint32_t m_DepthCubeMap = 0; // GL_TEXTURE_CUBE_MAP
+
+    glm::mat4 m_LightSpaceMatrices[6];
+    float m_FarPlane = 25.0f;
+    std::shared_ptr<Shader> m_DepthShader;
+    int m_SavedViewport[4] = {};
+};
+
 } // namespace VE

@@ -1611,6 +1611,20 @@ private:
                 }
             }
 
+            // Draw spot light gizmos for all spot lights
+            {
+                auto slView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::SpotLightComponent>();
+                for (auto e : slView) {
+                    glm::mat4 wm = m_Scene->GetWorldTransform(e);
+                    glm::vec3 pos = glm::vec3(wm[3]);
+                    auto& sl = slView.get<VE::SpotLightComponent>(e);
+                    glm::vec3 dir = glm::normalize(glm::mat3(wm) *
+                        glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
+                    VE::GizmoRenderer::DrawSpotLightGizmo(pos, dir, sl.Range, sl.OuterAngle,
+                        glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]));
+                }
+            }
+
             // Draw camera frustum gizmos
             {
                 auto camGizView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::CameraComponent>();
@@ -1866,6 +1880,12 @@ private:
                     m_CommandHistory.Execute("Create Point Light", [this]() {
                         auto e = m_Scene->CreateEntity("Point Light");
                         e.AddComponent<VE::PointLightComponent>();
+                        m_SelectedEntity = e;
+                    });
+                if (ImGui::MenuItem("Spot Light"))
+                    m_CommandHistory.Execute("Create Spot Light", [this]() {
+                        auto e = m_Scene->CreateEntity("Spot Light");
+                        e.AddComponent<VE::SpotLightComponent>();
                         m_SelectedEntity = e;
                     });
                 if (ImGui::MenuItem("Camera"))
@@ -2739,10 +2759,50 @@ private:
                 ImGui::DragFloat("Range##PL", &pl.Range, 0.1f, 0.1f, 100.0f);
                 if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Point Light Range");
                 if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                if (ImGui::Checkbox("Cast Shadows##PL", &pl.CastShadows)) {
+                    auto before = m_CommandHistory.CaptureSnapshot();
+                    m_CommandHistory.RecordPropertyEdit("Toggle Point Light Shadows", std::move(before));
+                }
             }
             if (removePointLight)
                 m_CommandHistory.Execute("Remove Point Light", [this]() {
                     m_SelectedEntity.RemoveComponent<VE::PointLightComponent>();
+                });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::SpotLightComponent>()) {
+            bool removeSpotLight = false;
+            bool openSpotLight = ImGui::CollapsingHeader("Spot Light", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::SpotLightComponent>("##SpotLightCtx", "SpotLight", removeSpotLight);
+            if (openSpotLight) {
+                auto& sl = m_SelectedEntity.GetComponent<VE::SpotLightComponent>();
+                ImGui::DragFloat3("Direction##SL", sl.Direction.data(), 0.01f, -1.0f, 1.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Direction");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::ColorEdit3("Color##SL", sl.Color.data());
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Color");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Intensity##SL", &sl.Intensity, 0.01f, 0.0f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Intensity");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Range##SL", &sl.Range, 0.1f, 0.1f, 200.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Range");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Inner Angle##SL", &sl.InnerAngle, 0.5f, 0.0f, sl.OuterAngle);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Inner Angle");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Outer Angle##SL", &sl.OuterAngle, 0.5f, sl.InnerAngle, 90.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Outer Angle");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                if (ImGui::Checkbox("Cast Shadows##SL", &sl.CastShadows)) {
+                    auto before = m_CommandHistory.CaptureSnapshot();
+                    m_CommandHistory.RecordPropertyEdit("Toggle Spot Light Shadows", std::move(before));
+                }
+            }
+            if (removeSpotLight)
+                m_CommandHistory.Execute("Remove Spot Light", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::SpotLightComponent>();
                 });
             ImGui::Separator();
         }
@@ -3858,6 +3918,13 @@ private:
                 if (ImGui::MenuItem("Point Light"))
                     m_CommandHistory.Execute("Add Point Light", [this]() {
                         m_SelectedEntity.AddComponent<VE::PointLightComponent>();
+                    });
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::SpotLightComponent>()) {
+                if (ImGui::MenuItem("Spot Light"))
+                    m_CommandHistory.Execute("Add Spot Light", [this]() {
+                        m_SelectedEntity.AddComponent<VE::SpotLightComponent>();
                     });
                 anyAdded = true;
             }

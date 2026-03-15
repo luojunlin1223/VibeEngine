@@ -33,6 +33,9 @@ public:
     static void DrawWireframeBox(const glm::mat4& worldMatrix);
     static void DrawPointLightGizmo(const glm::vec3& position, float range,
                                      const glm::vec3& color = glm::vec3(1.0f));
+    static void DrawSpotLightGizmo(const glm::vec3& position, const glm::vec3& direction,
+                                    float range, float outerAngle,
+                                    const glm::vec3& color = glm::vec3(1.0f));
     static void DrawCameraFrustum(const glm::mat4& worldTransform,
                                    int projType, float fov, float size,
                                    float nearClip, float farClip, float aspect);
