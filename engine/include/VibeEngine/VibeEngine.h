@@ -28,6 +28,8 @@
 #include "Renderer/GridRenderer.h"
 #include "Renderer/SSAO.h"
 #include "Renderer/LODSystem.h"
+#include "Renderer/LightProbe.h"
+#include "Renderer/Lightmapper.h"
 
 #include "Navigation/NavGrid.h"
 

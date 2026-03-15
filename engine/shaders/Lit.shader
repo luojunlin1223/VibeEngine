@@ -118,6 +118,18 @@ uniform float u_ShadowBias;
 uniform float u_ShadowNormalBias;
 uniform int   u_PCFRadius;
 
+// Spherical Harmonics (L2) — light probe indirect illumination
+uniform int   u_UseSH;
+uniform vec3  u_SHCoeffs[9];
+
+// Lightmap — baked direct illumination for static objects
+uniform int       u_HasLightmap;
+uniform sampler2D u_Lightmap;
+uniform float     u_LightmapScaleX;
+uniform float     u_LightmapScaleY;
+uniform float     u_LightmapOffsetX;
+uniform float     u_LightmapOffsetY;
+
 out vec4 FragColor;
 
 const float PI = 3.14159265359;
@@ -221,6 +233,28 @@ float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {
     return shadow;
 }
 
+// ── SH Evaluation ────────────────────────────────────────────────────
+
+vec3 EvaluateSH(vec3 n) {
+    // L2 Spherical Harmonics evaluation (9 coefficients)
+    const float C0 = 0.282094791;
+    const float C1 = 0.488602512;
+    const float C2_0 = 1.092548431;
+    const float C2_1 = 0.315391565;
+    const float C2_2 = 0.546274215;
+
+    vec3 result = u_SHCoeffs[0] * C0
+                + u_SHCoeffs[1] * (C1 * n.y)
+                + u_SHCoeffs[2] * (C1 * n.z)
+                + u_SHCoeffs[3] * (C1 * n.x)
+                + u_SHCoeffs[4] * (C2_0 * n.x * n.y)
+                + u_SHCoeffs[5] * (C2_0 * n.y * n.z)
+                + u_SHCoeffs[6] * (C2_1 * (3.0 * n.z * n.z - 1.0))
+                + u_SHCoeffs[7] * (C2_0 * n.x * n.z)
+                + u_SHCoeffs[8] * (C2_2 * (n.x * n.x - n.y * n.y));
+    return max(result, vec3(0.0));
+}
+
 // ── Main ─────────────────────────────────────────────────────────────
 
 void main() {
@@ -318,8 +352,30 @@ void main() {
     }
 
     // ── Ambient + Occlusion ──────────────────────────────────────────
-    vec3 ambient = vec3(0.03) * albedo * ao;
-    vec3 color = ambient + Lo;
+    vec3 ambient;
+    if (u_UseSH == 1) {
+        // Use SH-based irradiance from light probe
+        vec3 irradiance = EvaluateSH(N);
+        vec3 kS = FresnelSchlick(max(dot(N, V), 0.0), F0);
+        vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+        ambient = kD * irradiance * albedo * ao;
+    } else {
+        ambient = vec3(0.03) * albedo * ao;
+    }
+
+    vec3 color;
+    if (u_HasLightmap == 1) {
+        // Sample baked lightmap — replaces direct lighting on static objects
+        vec2 lightmapUV = v_TexCoord * vec2(u_LightmapScaleX, u_LightmapScaleY)
+                        + vec2(u_LightmapOffsetX, u_LightmapOffsetY);
+        vec3 lightmapColor = texture(u_Lightmap, lightmapUV).rgb;
+        // Lightmap already contains tonemapped+gamma'd lighting;
+        // undo gamma so we work in linear space, then combine
+        lightmapColor = pow(lightmapColor, vec3(2.2));
+        color = lightmapColor * albedo + ambient;
+    } else {
+        color = ambient + Lo;
+    }
 
     // ── Emission ─────────────────────────────────────────────────────
     vec3 emission = u_EmissionColor.rgb;

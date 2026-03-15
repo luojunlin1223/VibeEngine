@@ -12,6 +12,7 @@
 #include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Renderer/Frustum.h"
 #include "VibeEngine/Renderer/LODSystem.h"
+#include "VibeEngine/Renderer/LightProbe.h"
 #include "VibeEngine/UI/UIRenderer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
@@ -661,8 +662,28 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
+    // ── Build light probe manager from baked probes ─────────────────
+    LightProbeManager probeManager;
+    {
+        auto probeView = m_Registry.view<TransformComponent, LightProbeComponent>();
+        for (auto probeEntity : probeView) {
+            if (!IsEntityActiveInHierarchy(probeEntity)) continue;
+            auto& lpc = probeView.get<LightProbeComponent>(probeEntity);
+            if (!lpc.IsBaked) continue;
+            glm::mat4 worldMat = GetWorldTransform(probeEntity);
+            glm::vec3 probePos = glm::vec3(worldMat[3]);
+
+            SHCoefficients shc;
+            for (int i = 0; i < 9; ++i)
+                shc[i] = lpc.SHCoefficients[i];
+            probeManager.AddProbe(probePos, lpc.Radius, shc);
+        }
+    }
+    bool hasAnyProbe = !probeManager.GetProbes().empty();
+
     // Helper: set lighting uniforms on a shader (used for both individual and instanced paths)
-    auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader, bool isLit) {
+    auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader, bool isLit,
+                                    const glm::vec3& entityWorldPos = glm::vec3(0.0f)) {
         if (!isLit) return;
         shader->SetVec3("u_LightDir", lightDir);
         shader->SetVec3("u_LightColor", lightColor);
@@ -696,6 +717,22 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
             shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
             shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
+        }
+
+        // Set SH light probe coefficients (closest probe to entity)
+        if (hasAnyProbe) {
+            SHCoefficients shCoeffs;
+            if (probeManager.FindClosest(entityWorldPos, shCoeffs)) {
+                shader->SetInt("u_UseSH", 1);
+                for (int i = 0; i < 9; ++i) {
+                    std::string name = "u_SHCoeffs[" + std::to_string(i) + "]";
+                    shader->SetVec3(name, shCoeffs[i]);
+                }
+            } else {
+                shader->SetInt("u_UseSH", 0);
+            }
+        } else {
+            shader->SetInt("u_UseSH", 0);
         }
     };
 
@@ -767,10 +804,30 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetInt("u_UseTexture", 0);
 
         // Always set lighting uniforms for lit materials
+        glm::vec3 entityWorldPos = glm::vec3(model[3]);
         if (mr.Mat->IsLit()) {
-            setLightingUniforms(shader, true);
+            setLightingUniforms(shader, true, entityWorldPos);
             setPBRDefaults(shader, mr.Mat);
         }
+
+        // Lightmap: bind baked lightmap texture if entity has one
+        if (m_Registry.all_of<LightmapComponent>(entityID)) {
+            auto& lmc = m_Registry.get<LightmapComponent>(entityID);
+            if (lmc.LightmapTexture) {
+                shader->SetInt("u_HasLightmap", 1);
+                lmc.LightmapTexture->Bind(9); // texture slot 9
+                shader->SetInt("u_Lightmap", 9);
+                shader->SetFloat("u_LightmapScaleX", lmc.UVScaleX);
+                shader->SetFloat("u_LightmapScaleY", lmc.UVScaleY);
+                shader->SetFloat("u_LightmapOffsetX", lmc.UVOffsetX);
+                shader->SetFloat("u_LightmapOffsetY", lmc.UVOffsetY);
+            } else {
+                shader->SetInt("u_HasLightmap", 0);
+            }
+        } else {
+            shader->SetInt("u_HasLightmap", 0);
+        }
+
         // Always set entity color (even if overrides exist)
         shader->SetVec4("u_EntityColor", entityColor);
 

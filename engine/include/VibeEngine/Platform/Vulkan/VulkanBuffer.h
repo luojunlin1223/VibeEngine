@@ -15,12 +15,14 @@ public:
     void SetData(const void*, uint32_t) override {}
     void SetLayout(const BufferLayout& layout) override { m_Layout = layout; }
     const BufferLayout& GetLayout() const override { return m_Layout; }
+    uint32_t GetSize() const override { return m_Size; }
 
     VkBuffer GetVkBuffer() const { return m_Buffer; }
 
 private:
     VkBuffer       m_Buffer = VK_NULL_HANDLE;
     VkDeviceMemory m_Memory = VK_NULL_HANDLE;
+    uint32_t       m_Size = 0;
     BufferLayout   m_Layout;
 };
 
