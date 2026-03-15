@@ -656,6 +656,11 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "SSRStepSize" << YAML::Value << ps.SSRStepSize;
     out << YAML::Key << "SSRThickness" << YAML::Value << ps.SSRThickness;
     out << YAML::Key << "SSRMaxDistance" << YAML::Value << ps.SSRMaxDistance;
+    out << YAML::Key << "DoFEnabled" << YAML::Value << ps.DoFEnabled;
+    out << YAML::Key << "DoFFocusDistance" << YAML::Value << ps.DoFFocusDistance;
+    out << YAML::Key << "DoFFocusRange" << YAML::Value << ps.DoFFocusRange;
+    out << YAML::Key << "DoFMaxBlur" << YAML::Value << ps.DoFMaxBlur;
+    out << YAML::Key << "DoFApertureSize" << YAML::Value << ps.DoFApertureSize;
     out << YAML::Key << "AAMode" << YAML::Value << ps.AAMode;
     out << YAML::Key << "FXAAEdgeThreshold" << YAML::Value << ps.FXAAEdgeThreshold;
     out << YAML::Key << "FXAAEdgeThresholdMin" << YAML::Value << ps.FXAAEdgeThresholdMin;
@@ -770,6 +775,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["SSRStepSize"]) ps.SSRStepSize = psNode["SSRStepSize"].as<float>();
         if (psNode["SSRThickness"]) ps.SSRThickness = psNode["SSRThickness"].as<float>();
         if (psNode["SSRMaxDistance"]) ps.SSRMaxDistance = psNode["SSRMaxDistance"].as<float>();
+        if (psNode["DoFEnabled"]) ps.DoFEnabled = psNode["DoFEnabled"].as<bool>();
+        if (psNode["DoFFocusDistance"]) ps.DoFFocusDistance = psNode["DoFFocusDistance"].as<float>();
+        if (psNode["DoFFocusRange"]) ps.DoFFocusRange = psNode["DoFFocusRange"].as<float>();
+        if (psNode["DoFMaxBlur"]) ps.DoFMaxBlur = psNode["DoFMaxBlur"].as<float>();
+        if (psNode["DoFApertureSize"]) ps.DoFApertureSize = psNode["DoFApertureSize"].as<float>();
         if (psNode["AAMode"]) ps.AAMode = psNode["AAMode"].as<int>();
         if (psNode["FXAAEdgeThreshold"]) ps.FXAAEdgeThreshold = psNode["FXAAEdgeThreshold"].as<float>();
         if (psNode["FXAAEdgeThresholdMin"]) ps.FXAAEdgeThresholdMin = psNode["FXAAEdgeThresholdMin"].as<float>();

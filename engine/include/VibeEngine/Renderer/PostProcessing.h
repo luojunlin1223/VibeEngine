@@ -114,6 +114,14 @@ struct VolumetricFogSettings {
     float BaseHeight    = 0.0f;  // world Y where fog is densest
 };
 
+struct DoFSettings {
+    bool  Enabled       = false;
+    float FocusDistance  = 10.0f;  // world-space distance from camera
+    float FocusRange    = 5.0f;   // smooth transition zone (half-width)
+    float MaxBlur       = 4.0f;   // maximum blur radius in pixels
+    float ApertureSize  = 0.05f;  // controls overall blur strength
+};
+
 struct PostProcessSettings {
     BloomSettings       Bloom;
     VignetteSettings    Vignette;
@@ -125,6 +133,7 @@ struct PostProcessSettings {
     TAASettings         TAA;
     FogSettings         Fog;
     VolumetricFogSettings VolumetricFog;
+    DoFSettings         DoF;
     uint32_t            SSAOTexture = 0;
     uint32_t            SSRTexture  = 0;   // RGBA16F: RGB=reflected color, A=confidence
     uint32_t            DepthTexture = 0;
@@ -167,6 +176,7 @@ private:
     uint32_t m_FXAAShader = 0;
     uint32_t m_TAAShader = 0;
     uint32_t m_VolFogShader = 0;
+    uint32_t m_DoFShader = 0;
 
     uint32_t m_BrightFBO = 0, m_BrightTexture = 0;
     uint32_t m_BlurFBO[2] = { 0, 0 };
@@ -175,6 +185,10 @@ private:
 
     // Volumetric fog output
     uint32_t m_VolFogFBO = 0, m_VolFogTexture = 0;
+
+    // Depth of Field output (two-pass: H then V)
+    uint32_t m_DoFFBO[2] = { 0, 0 };
+    uint32_t m_DoFTexture[2] = { 0, 0 };
 
     // FXAA output
     uint32_t m_FXAAFBO = 0, m_FXAATexture = 0;

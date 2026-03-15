@@ -98,6 +98,13 @@ struct RenderPipelineSettings {
     float VolFogHeightFalloff = 0.05f;
     float VolFogBaseHeight    = 0.0f;
 
+    // Depth of Field
+    bool DoFEnabled = false;
+    float DoFFocusDistance = 10.0f;
+    float DoFFocusRange = 5.0f;
+    float DoFMaxBlur = 4.0f;
+    float DoFApertureSize = 0.05f;
+
     // SSAO
     bool SSAOEnabled = false;
     float SSAORadius    = 0.5f;
