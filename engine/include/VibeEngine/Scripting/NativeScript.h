@@ -129,6 +129,12 @@ struct ScriptAPI {
     void (*Audio_Stop)(uint32_t soundHandle)         = nullptr;
     void (*Audio_SetVolume)(uint32_t soundHandle, float volume) = nullptr;
     void (*Audio_SetMasterVolume)(float volume)       = nullptr;
+
+    // Video
+    void (*Video_Play)(uint64_t entityID)             = nullptr;
+    void (*Video_Stop)(uint64_t entityID)             = nullptr;
+    void (*Video_SetTime)(uint64_t entityID, double time) = nullptr;
+    bool (*Video_IsPlaying)(uint64_t entityID)        = nullptr;
 };
 
 // ── Property reflection ─────────────────────────────────────────────

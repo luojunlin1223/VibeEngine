@@ -115,6 +115,9 @@ protected:
             float fwd[3] = { forward.x, forward.y, forward.z };
             float u[3]   = { up.x, up.y, up.z };
             m_Scene->UpdateAudio(pos, fwd, u);
+
+            // Update video playback
+            m_Scene->UpdateVideo(m_DeltaTime);
         }
     }
 
@@ -1440,6 +1443,10 @@ private:
                     mr.Mesh = VE::MeshLibrary::GetCube();
                     mr.Mat = VE::MaterialLibrary::Get("Lit");
                 }
+                if (ImGui::MenuItem("Create Video Player")) {
+                    auto e = m_Scene->CreateEntity("Video Player");
+                    e.AddComponent<VE::VideoPlayerComponent>();
+                }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Select All", "Ctrl+A")) {
                     // Select first entity if none selected (no multi-select yet)
@@ -1673,6 +1680,7 @@ private:
         m_Scene->StartSpriteAnimations();
         m_Scene->StartAudio();
         m_Scene->StartParticles();
+        m_Scene->StartVideo();
         m_PlayMode = true;
         m_CommandHistory.Clear();
         VE_INFO("Entered Play mode");
@@ -1683,6 +1691,7 @@ private:
         m_Paused = false;
         m_StepOneFrame = false;
 
+        m_Scene->StopVideo();
         m_Scene->StopParticles();
         m_Scene->StopAudio();
         m_Scene->StopSpriteAnimations();
@@ -1872,6 +1881,12 @@ private:
                     m_CommandHistory.Execute("Create Camera", [this]() {
                         auto e = m_Scene->CreateEntity("Camera");
                         e.AddComponent<VE::CameraComponent>();
+                        m_SelectedEntity = e;
+                    });
+                if (ImGui::MenuItem("Video Player"))
+                    m_CommandHistory.Execute("Create Video Player", [this]() {
+                        auto e = m_Scene->CreateEntity("Video Player");
+                        e.AddComponent<VE::VideoPlayerComponent>();
                         m_SelectedEntity = e;
                     });
                 ImGui::EndMenu();
@@ -3240,6 +3255,86 @@ private:
             ImGui::Separator();
         }
 
+        // VideoPlayerComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::VideoPlayerComponent>()) {
+            auto& vp = m_SelectedEntity.GetComponent<VE::VideoPlayerComponent>();
+            bool removeVideo = false;
+            bool openVideo = ImGui::CollapsingHeader("Video Player", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::VideoPlayerComponent>("##VideoPlayerCtx", "VideoPlayer", removeVideo);
+            if (openVideo) {
+                // Video path input
+                char buf[512];
+                std::strncpy(buf, vp.VideoPath.c_str(), sizeof(buf) - 1);
+                buf[sizeof(buf) - 1] = '\0';
+                if (ImGui::InputText("Video Path", buf, sizeof(buf)))
+                    vp.VideoPath = buf;
+
+                // Accept drag-drop from Content Browser (ASSET_VIDEO)
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_VIDEO")) {
+                        std::string path(static_cast<const char*>(payload->Data));
+                        vp.VideoPath = path;
+                        // If preview player exists, reopen with new path
+                        if (vp._Player) {
+                            vp._Player->Close();
+                            vp._Player->Open(vp.VideoPath);
+                            vp._Player->SetLooping(vp.Loop);
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                ImGui::Checkbox("Play On Awake", &vp.PlayOnAwake);
+                ImGui::Checkbox("Loop", &vp.Loop);
+                ImGui::SliderFloat("Volume", &vp.Volume, 0.0f, 1.0f);
+
+                // Transport controls (only in play mode with active player)
+                if (vp._Player && vp._Player->IsOpen()) {
+                    ImGui::Separator();
+                    ImGui::Text("Duration: %.1fs  |  Current: %.1fs",
+                                vp._Player->GetDuration(), vp._Player->GetCurrentTime());
+                    ImGui::Text("Resolution: %ux%u  |  FPS: %.1f",
+                                vp._Player->GetWidth(), vp._Player->GetHeight(),
+                                vp._Player->GetFramerate());
+
+                    // Seek slider
+                    float currentTime = static_cast<float>(vp._Player->GetCurrentTime());
+                    float duration    = static_cast<float>(vp._Player->GetDuration());
+                    if (duration > 0.0f) {
+                        if (ImGui::SliderFloat("Seek", &currentTime, 0.0f, duration, "%.1fs"))
+                            vp._Player->Seek(static_cast<double>(currentTime));
+                    }
+
+                    // Play / Pause / Stop buttons
+                    if (vp._Player->IsPlaying()) {
+                        if (ImGui::Button("Pause")) vp._Player->Pause();
+                    } else {
+                        if (ImGui::Button("Play")) vp._Player->Play();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Stop")) vp._Player->Stop();
+
+                    // Loop sync
+                    vp._Player->SetLooping(vp.Loop);
+
+                    // Preview thumbnail
+                    if (vp._Player->GetTextureID() != 0) {
+                        ImGui::Separator();
+                        float aspect = (float)vp._Player->GetWidth() / (float)vp._Player->GetHeight();
+                        float previewW = ImGui::GetContentRegionAvail().x;
+                        float previewH = previewW / aspect;
+                        ImGui::Image((ImTextureID)vp._Player->GetNativeTextureID(),
+                                     ImVec2(previewW, previewH), ImVec2(0, 1), ImVec2(1, 0));
+                    }
+                }
+            }
+            if (removeVideo) {
+                if (vp._Player) vp._Player->Close();
+                m_SelectedEntity.RemoveComponent<VE::VideoPlayerComponent>();
+            }
+            ImGui::Separator();
+        }
+
         // SpriteRendererComponent inspector
         if (m_SelectedEntity.HasComponent<VE::SpriteRendererComponent>()) {
             bool removeSprite = false;
@@ -3921,6 +4016,11 @@ private:
             if (!m_SelectedEntity.HasComponent<VE::AudioListenerComponent>()) {
                 if (ImGui::MenuItem("Audio Listener"))
                     m_SelectedEntity.AddComponent<VE::AudioListenerComponent>();
+                anyAdded = true;
+            }
+            if (!m_SelectedEntity.HasComponent<VE::VideoPlayerComponent>()) {
+                if (ImGui::MenuItem("Video Player"))
+                    m_SelectedEntity.AddComponent<VE::VideoPlayerComponent>();
                 anyAdded = true;
             }
             if (!m_SelectedEntity.HasComponent<VE::SpriteRendererComponent>()) {
@@ -4727,6 +4827,11 @@ private:
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
                 float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
                 dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SND");
+            } else if (meta->Type == VE::AssetType::Video) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(100, 70, 140, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "VID");
             } else {
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
             }
@@ -4813,6 +4918,16 @@ private:
                 if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     ImGui::SetDragDropPayload("ASSET_AUDIO", absPath.c_str(), absPath.size() + 1);
+                    ImGui::Text("%s", filename.c_str());
+                    ImGui::EndDragDropSource();
+                }
+            }
+
+            // Drag-drop source for video files
+            if (meta->Type == VE::AssetType::Video) {
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    ImGui::SetDragDropPayload("ASSET_VIDEO", absPath.c_str(), absPath.size() + 1);
                     ImGui::Text("%s", filename.c_str());
                     ImGui::EndDragDropSource();
                 }

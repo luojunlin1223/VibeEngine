@@ -84,6 +84,7 @@ AssetMeta AssetDatabase::LoadOrCreateMeta(const std::string& absPath,
                 else if (t == "Material") meta.Type = AssetType::MaterialAsset;
                 else if (t == "Audio") meta.Type = AssetType::Audio;
                 else if (t == "Prefab") meta.Type = AssetType::Prefab;
+                else if (t == "Video") meta.Type = AssetType::Video;
                 else meta.Type = AssetType::Unknown;
             }
             return meta;
@@ -121,6 +122,7 @@ void AssetDatabase::WriteMeta(const std::string& absPath, const AssetMeta& meta)
         case AssetType::MaterialAsset: typeStr = "Material"; break;
         case AssetType::Audio:         typeStr = "Audio"; break;
         case AssetType::Prefab:        typeStr = "Prefab"; break;
+        case AssetType::Video:         typeStr = "Video"; break;
         default: break;
     }
     out << YAML::Key << "type" << YAML::Value << typeStr;
@@ -146,6 +148,8 @@ AssetType AssetDatabase::DeduceType(const std::string& extension) const {
         return AssetType::Audio;
     if (extension == ".vprefab")
         return AssetType::Prefab;
+    if (extension == ".mpg" || extension == ".mpeg")
+        return AssetType::Video;
     return AssetType::Unknown;
 }
 

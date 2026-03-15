@@ -497,6 +497,40 @@ static void Glue_Audio_Stop(uint32_t handle)              { AudioEngine::Stop(ha
 static void Glue_Audio_SetVolume(uint32_t handle, float v) { AudioEngine::SetVolume(handle, v); }
 static void Glue_Audio_SetMasterVolume(float v)            { AudioEngine::SetMasterVolume(v); }
 
+// ── Video ───────────────────────────────────────────────────────────
+
+static void Glue_Video_Play(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* vc = scene->GetRegistry().try_get<VideoPlayerComponent>(e);
+    if (vc && vc->_Player) vc->_Player->Play();
+}
+
+static void Glue_Video_Stop(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* vc = scene->GetRegistry().try_get<VideoPlayerComponent>(e);
+    if (vc && vc->_Player) vc->_Player->Stop();
+}
+
+static void Glue_Video_SetTime(uint64_t entityID, double time) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* vc = scene->GetRegistry().try_get<VideoPlayerComponent>(e);
+    if (vc && vc->_Player) vc->_Player->Seek(time);
+}
+
+static bool Glue_Video_IsPlaying(uint64_t entityID) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return false;
+    auto* vc = scene->GetRegistry().try_get<VideoPlayerComponent>(e);
+    return vc && vc->_Player && vc->_Player->IsPlaying();
+}
+
 // ── Init ────────────────────────────────────────────────────────────
 
 void InitScriptGlue(ScriptAPI& api) {
@@ -576,6 +610,12 @@ void InitScriptGlue(ScriptAPI& api) {
     api.Audio_Stop               = Glue_Audio_Stop;
     api.Audio_SetVolume          = Glue_Audio_SetVolume;
     api.Audio_SetMasterVolume    = Glue_Audio_SetMasterVolume;
+
+    // Video
+    api.Video_Play               = Glue_Video_Play;
+    api.Video_Stop               = Glue_Video_Stop;
+    api.Video_SetTime            = Glue_Video_SetTime;
+    api.Video_IsPlaying          = Glue_Video_IsPlaying;
 }
 
 } // namespace VE

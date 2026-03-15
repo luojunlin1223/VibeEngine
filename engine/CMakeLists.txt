@@ -3,7 +3,10 @@ file(GLOB_RECURSE ENGINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
-add_library(VibeEngineLib STATIC ${ENGINE_SOURCES} ${CMAKE_SOURCE_DIR}/vendor/ufbx/ufbx.c)
+add_library(VibeEngineLib STATIC ${ENGINE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/vendor/ufbx/ufbx.c
+    ${CMAKE_SOURCE_DIR}/vendor/pl_mpeg/pl_mpeg_impl.c
+)
 
 target_include_directories(VibeEngineLib
     PUBLIC
@@ -12,6 +15,7 @@ target_include_directories(VibeEngineLib
         ${CMAKE_SOURCE_DIR}/vendor/stb
         ${CMAKE_SOURCE_DIR}/vendor/ufbx
         ${CMAKE_SOURCE_DIR}/vendor/miniaudio
+        ${CMAKE_SOURCE_DIR}/vendor/pl_mpeg
 )
 
 target_link_libraries(VibeEngineLib

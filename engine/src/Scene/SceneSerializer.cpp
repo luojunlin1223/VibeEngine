@@ -188,6 +188,17 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // VideoPlayerComponent
+    if (entity.HasComponent<VideoPlayerComponent>()) {
+        auto& vp = entity.GetComponent<VideoPlayerComponent>();
+        out << YAML::Key << "VideoPlayerComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "VideoPath" << YAML::Value << vp.VideoPath;
+        out << YAML::Key << "PlayOnAwake" << YAML::Value << vp.PlayOnAwake;
+        out << YAML::Key << "Loop" << YAML::Value << vp.Loop;
+        out << YAML::Key << "Volume" << YAML::Value << vp.Volume;
+        out << YAML::EndMap;
+    }
+
     // SpriteRendererComponent
     if (entity.HasComponent<SpriteRendererComponent>()) {
         auto& sr = entity.GetComponent<SpriteRendererComponent>();
@@ -881,6 +892,14 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
 
         if (entityNode["AudioListenerComponent"]) {
             entity.AddComponent<AudioListenerComponent>();
+        }
+
+        if (auto vpNode = entityNode["VideoPlayerComponent"]) {
+            auto& vp = entity.AddComponent<VideoPlayerComponent>();
+            if (vpNode["VideoPath"])   vp.VideoPath   = vpNode["VideoPath"].as<std::string>();
+            if (vpNode["PlayOnAwake"]) vp.PlayOnAwake = vpNode["PlayOnAwake"].as<bool>();
+            if (vpNode["Loop"])        vp.Loop        = vpNode["Loop"].as<bool>();
+            if (vpNode["Volume"])      vp.Volume      = vpNode["Volume"].as<float>();
         }
 
         if (auto srNode = entityNode["SpriteRendererComponent"]) {

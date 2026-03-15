@@ -12,6 +12,7 @@
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Renderer/VideoPlayer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/UI/FontAtlas.h"
 #include "VibeEngine/Terrain/Terrain.h"
@@ -399,6 +400,18 @@ struct UIButtonComponent {
     bool _Clicked = false; // true for one frame on click
 
     UIButtonComponent() = default;
+};
+
+struct VideoPlayerComponent {
+    std::string VideoPath;          // path to .mpg file
+    bool PlayOnAwake = true;
+    bool Loop        = false;
+    float Volume     = 1.0f;        // reserved for future audio passthrough
+
+    // Runtime only (not serialized)
+    std::shared_ptr<VideoPlayer> _Player;
+
+    VideoPlayerComponent() = default;
 };
 
 } // namespace VE

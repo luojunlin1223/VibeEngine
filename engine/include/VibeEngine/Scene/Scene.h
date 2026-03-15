@@ -171,6 +171,10 @@ public:
     void OnUpdateParticles(float dt);
     void OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
 
+    void StartVideo();
+    void StopVideo();
+    void UpdateVideo(float deltaTime);
+
     // Camera helpers — compute view/projection from CameraComponent + transform
     static glm::mat4 ComputeCameraView(const glm::mat4& worldTransform);
     static glm::mat4 ComputeCameraProjection(int projType, float fov, float size,

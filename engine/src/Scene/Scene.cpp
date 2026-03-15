@@ -8,6 +8,7 @@
 #include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Animation/Animator.h"
 #include "VibeEngine/Audio/AudioEngine.h"
+#include "VibeEngine/Renderer/VideoPlayer.h"
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Renderer/Frustum.h"
@@ -795,6 +796,17 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             }
         }
 
+        // Override texture with video frame if entity has a VideoPlayerComponent
+        if (m_Registry.all_of<VideoPlayerComponent>(entityID)) {
+            auto& vc = m_Registry.get<VideoPlayerComponent>(entityID);
+            if (vc._Player && vc._Player->GetTextureID() != 0) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, vc._Player->GetTextureID());
+                shader->SetInt("u_Texture", 0);
+                shader->SetInt("u_UseTexture", 1);
+            }
+        }
+
         RenderCommand::DrawIndexed(drawVAO);
     };
 
@@ -1270,6 +1282,54 @@ void Scene::OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& 
     }
 
     SpriteBatchRenderer::EndBatch();
+}
+
+// ── Video Playback ────────────────────────────────────────────────────
+
+void Scene::StartVideo() {
+    auto view = m_Registry.view<VideoPlayerComponent>();
+    for (auto entity : view) {
+        auto& vc = view.get<VideoPlayerComponent>(entity);
+        if (vc.VideoPath.empty()) continue;
+
+        if (!vc._Player) {
+            vc._Player = std::make_shared<VideoPlayer>();
+        }
+
+        if (!vc._Player->IsOpen()) {
+            if (!vc._Player->Open(vc.VideoPath)) continue;
+        }
+
+        vc._Player->SetLooping(vc.Loop);
+
+        if (vc.PlayOnAwake) {
+            vc._Player->Play();
+        }
+    }
+    VE_ENGINE_INFO("Video playback started");
+}
+
+void Scene::StopVideo() {
+    auto view = m_Registry.view<VideoPlayerComponent>();
+    for (auto entity : view) {
+        auto& vc = view.get<VideoPlayerComponent>(entity);
+        if (vc._Player) {
+            vc._Player->Close();
+            vc._Player.reset();
+        }
+    }
+    VE_ENGINE_INFO("Video playback stopped");
+}
+
+void Scene::UpdateVideo(float deltaTime) {
+    auto view = m_Registry.view<VideoPlayerComponent>();
+    for (auto entity : view) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& vc = view.get<VideoPlayerComponent>(entity);
+        if (vc._Player && vc._Player->IsPlaying()) {
+            vc._Player->Update(deltaTime);
+        }
+    }
 }
 
 // ── Runtime UI Rendering ──────────────────────────────────────────────
