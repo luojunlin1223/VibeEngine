@@ -947,20 +947,23 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
     };
 
+    // Cache: skip setPBRDefaults if same material was already set up this frame
+    static std::shared_ptr<Material> lastPBRMat = nullptr;
+    lastPBRMat = nullptr; // reset each frame
     auto setPBRDefaults = [](const std::shared_ptr<Shader>& shader, const std::shared_ptr<Material>& mat) {
         bool hasMetallic = false, hasRoughness = false, hasAO = false;
         bool hasBumpScale = false, hasOccStr = false, hasEmission = false, hasCutoff = false;
         bool hasEmissionIntensity = false, hasReflectance = false;
         for (auto& prop : mat->GetProperties()) {
             if (prop.Name == "u_Metallic") hasMetallic = true;
-            if (prop.Name == "u_Roughness") hasRoughness = true;
-            if (prop.Name == "u_AO") hasAO = true;
-            if (prop.Name == "u_BumpScale") hasBumpScale = true;
-            if (prop.Name == "u_OcclusionStrength") hasOccStr = true;
-            if (prop.Name == "u_EmissionColor") hasEmission = true;
-            if (prop.Name == "u_Cutoff") hasCutoff = true;
-            if (prop.Name == "u_EmissionIntensity") hasEmissionIntensity = true;
-            if (prop.Name == "u_Reflectance") hasReflectance = true;
+            else if (prop.Name == "u_Roughness") hasRoughness = true;
+            else if (prop.Name == "u_AO") hasAO = true;
+            else if (prop.Name == "u_BumpScale") hasBumpScale = true;
+            else if (prop.Name == "u_OcclusionStrength") hasOccStr = true;
+            else if (prop.Name == "u_EmissionColor") hasEmission = true;
+            else if (prop.Name == "u_Cutoff") hasCutoff = true;
+            else if (prop.Name == "u_EmissionIntensity") hasEmissionIntensity = true;
+            else if (prop.Name == "u_Reflectance") hasReflectance = true;
         }
         if (!hasMetallic)  shader->SetFloat("u_Metallic", 0.0f);
         if (!hasRoughness) shader->SetFloat("u_Roughness", 0.5f);
@@ -982,12 +985,10 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     // Helper: draw a single entity (non-instanced path)
     auto drawEntity = [&](entt::entity entityID, MeshRendererComponent& mr, const glm::mat4& model) {
         std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
-        bool hasAnimator = m_Registry.all_of<AnimatorComponent>(entityID) &&
-                           m_Registry.get<AnimatorComponent>(entityID)._Animator &&
-                           m_Registry.get<AnimatorComponent>(entityID)._Animator->GetSkinnedVAO();
+        auto* ac = m_Registry.try_get<AnimatorComponent>(entityID);
+        bool hasAnimator = ac && ac->_Animator && ac->_Animator->GetSkinnedVAO();
         if (hasAnimator) {
-            auto& ac = m_Registry.get<AnimatorComponent>(entityID);
-            drawVAO = ac._Animator->GetSkinnedVAO();
+            drawVAO = ac->_Animator->GetSkinnedVAO();
         }
 
         glm::mat4 mvp = viewProjection * model;
@@ -1011,18 +1012,16 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         float globalTime = std::chrono::duration<float>(now - startTime).count();
         shader->SetFloat("u_Time", globalTime);
 
-        bool hasTexInMat = false;
-        for (auto& prop : mr.Mat->GetProperties()) {
-            if (prop.Type == MaterialPropertyType::Texture2D && prop.TextureRef)
-                hasTexInMat = true;
-        }
-        if (!hasTexInMat)
+        if (!mr.Mat->HasTextureProperty())
             shader->SetInt("u_UseTexture", 0);
 
         // Always set lighting uniforms for lit materials
         if (mr.Mat->IsLit()) {
             setLightingUniforms(shader, true);
-            setPBRDefaults(shader, mr.Mat);
+            if (mr.Mat != lastPBRMat) {
+                setPBRDefaults(shader, mr.Mat);
+                lastPBRMat = mr.Mat;
+            }
         }
         // Always set entity color (even if overrides exist)
         shader->SetVec4("u_EntityColor", entityColor);
@@ -1074,6 +1073,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     InstancedRenderer::BeginScene(viewProjection);
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
+    transparentEntities.reserve(view.size_hint() / 4); // typically a fraction are transparent
     for (auto entityID : view) {
         if (!IsEntityActiveInHierarchy(entityID)) continue;
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);

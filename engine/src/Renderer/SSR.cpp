@@ -281,6 +281,20 @@ void SSR::Resize(uint32_t width, uint32_t height) {
 
 void SSR::CompileShaders() {
     m_SSRShader = LinkProgram(s_QuadVertSrc, s_SSRFragSrc);
+    CacheUniformLocations();
+}
+
+void SSR::CacheUniformLocations() {
+    m_LocSceneColor    = glGetUniformLocation(m_SSRShader, "u_SceneColor");
+    m_LocDepthMap      = glGetUniformLocation(m_SSRShader, "u_DepthMap");
+    m_LocProjection    = glGetUniformLocation(m_SSRShader, "u_Projection");
+    m_LocInvProjection = glGetUniformLocation(m_SSRShader, "u_InvProjection");
+    m_LocView          = glGetUniformLocation(m_SSRShader, "u_View");
+    m_LocScreenSize    = glGetUniformLocation(m_SSRShader, "u_ScreenSize");
+    m_LocMaxSteps      = glGetUniformLocation(m_SSRShader, "u_MaxSteps");
+    m_LocStepSize      = glGetUniformLocation(m_SSRShader, "u_StepSize");
+    m_LocThickness     = glGetUniformLocation(m_SSRShader, "u_Thickness");
+    m_LocMaxDistance    = glGetUniformLocation(m_SSRShader, "u_MaxDistance");
 }
 
 void SSR::CreateResources() {
@@ -330,28 +344,28 @@ uint32_t SSR::Compute(uint32_t colorTexture, uint32_t depthTexture,
     glUseProgram(m_SSRShader);
 
     // Scene color texture
-    glUniform1i(glGetUniformLocation(m_SSRShader, "u_SceneColor"), 0);
+    glUniform1i(m_LocSceneColor, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, colorTexture);
 
     // Depth texture
-    glUniform1i(glGetUniformLocation(m_SSRShader, "u_DepthMap"), 1);
+    glUniform1i(m_LocDepthMap, 1);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, depthTexture);
 
     // Matrices
     glm::mat4 invProjection = glm::inverse(projection);
-    glUniformMatrix4fv(glGetUniformLocation(m_SSRShader, "u_Projection"), 1, GL_FALSE, &projection[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(m_SSRShader, "u_InvProjection"), 1, GL_FALSE, &invProjection[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(m_SSRShader, "u_View"), 1, GL_FALSE, &view[0][0]);
+    glUniformMatrix4fv(m_LocProjection, 1, GL_FALSE, &projection[0][0]);
+    glUniformMatrix4fv(m_LocInvProjection, 1, GL_FALSE, &invProjection[0][0]);
+    glUniformMatrix4fv(m_LocView, 1, GL_FALSE, &view[0][0]);
 
     // Settings
-    glUniform2f(glGetUniformLocation(m_SSRShader, "u_ScreenSize"),
+    glUniform2f(m_LocScreenSize,
                 static_cast<float>(m_Width), static_cast<float>(m_Height));
-    glUniform1i(glGetUniformLocation(m_SSRShader, "u_MaxSteps"), settings.MaxSteps);
-    glUniform1f(glGetUniformLocation(m_SSRShader, "u_StepSize"), settings.StepSize);
-    glUniform1f(glGetUniformLocation(m_SSRShader, "u_Thickness"), settings.Thickness);
-    glUniform1f(glGetUniformLocation(m_SSRShader, "u_MaxDistance"), settings.MaxDistance);
+    glUniform1i(m_LocMaxSteps, settings.MaxSteps);
+    glUniform1f(m_LocStepSize, settings.StepSize);
+    glUniform1f(m_LocThickness, settings.Thickness);
+    glUniform1f(m_LocMaxDistance, settings.MaxDistance);
 
     RenderFullscreenQuad();
 

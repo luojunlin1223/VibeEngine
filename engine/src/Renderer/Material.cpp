@@ -17,15 +17,37 @@ std::shared_ptr<Material> Material::Create(const std::string& name,
 }
 
 MaterialProperty* Material::FindProperty(const std::string& name) {
-    for (auto& prop : m_Properties)
-        if (prop.Name == name) return &prop;
+    auto it = m_PropertyIndex.find(name);
+    if (it != m_PropertyIndex.end())
+        return &m_Properties[it->second];
     return nullptr;
+}
+
+void Material::UpdatePropertyIndex(const std::string& name, size_t index) {
+    m_PropertyIndex[name] = index;
+}
+
+void Material::UpdateHasTextures() {
+    m_HasTextures = false;
+    for (auto& prop : m_Properties) {
+        if (prop.Type == MaterialPropertyType::Texture2D && prop.TextureRef) {
+            m_HasTextures = true;
+            return;
+        }
+    }
+}
+
+std::string Material::ComputeFlagName(const std::string& name) {
+    if (name.size() > 2 && name[0] == 'u' && name[1] == '_')
+        return "u_Has" + name.substr(2);
+    return std::string();
 }
 
 void Material::SetFloat(const std::string& name, float value) {
     if (auto* p = FindProperty(name)) { p->FloatValue = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Float; prop.FloatValue = value;
+    UpdatePropertyIndex(name, m_Properties.size());
     m_Properties.push_back(prop);
 }
 
@@ -33,6 +55,7 @@ void Material::SetInt(const std::string& name, int value) {
     if (auto* p = FindProperty(name)) { p->IntValue = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Int; prop.IntValue = value;
+    UpdatePropertyIndex(name, m_Properties.size());
     m_Properties.push_back(prop);
 }
 
@@ -40,6 +63,7 @@ void Material::SetVec3(const std::string& name, const glm::vec3& value) {
     if (auto* p = FindProperty(name)) { p->Vec3Value = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Vec3; prop.Vec3Value = value;
+    UpdatePropertyIndex(name, m_Properties.size());
     m_Properties.push_back(prop);
 }
 
@@ -47,6 +71,7 @@ void Material::SetVec4(const std::string& name, const glm::vec4& value) {
     if (auto* p = FindProperty(name)) { p->Vec4Value = value; return; }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Vec4; prop.Vec4Value = value;
+    UpdatePropertyIndex(name, m_Properties.size());
     m_Properties.push_back(prop);
 }
 
@@ -54,13 +79,17 @@ void Material::SetTexture(const std::string& name, const std::string& path) {
     if (auto* p = FindProperty(name)) {
         p->TexturePath = path;
         p->TextureRef = path.empty() ? nullptr : Texture2D::Create(path);
+        UpdateHasTextures();
         return;
     }
     MaterialProperty prop;
     prop.Name = name; prop.Type = MaterialPropertyType::Texture2D;
     prop.TexturePath = path;
     prop.TextureRef = path.empty() ? nullptr : Texture2D::Create(path);
+    prop.FlagName = ComputeFlagName(name);
+    UpdatePropertyIndex(name, m_Properties.size());
     m_Properties.push_back(prop);
+    UpdateHasTextures();
 }
 
 void Material::PopulateFromShader() {
@@ -100,10 +129,13 @@ void Material::PopulateFromShader() {
             case ShaderPropertyType::Texture2D:
                 prop.Type = MaterialPropertyType::Texture2D;
                 prop.TexturePath = info.TextureDefault;
+                prop.FlagName = ComputeFlagName(info.Name);
                 break;
         }
+        UpdatePropertyIndex(prop.Name, m_Properties.size());
         m_Properties.push_back(std::move(prop));
     }
+    UpdateHasTextures();
 }
 
 void Material::Bind() const {
@@ -138,9 +170,8 @@ void Material::Bind() const {
                         hasMainTex = true;
                 }
                 // Set per-texture presence flag: u_MainTex -> u_HasMainTex
-                if (prop.Name.size() > 2 && prop.Name[0] == 'u' && prop.Name[1] == '_') {
-                    std::string flagName = "u_Has" + prop.Name.substr(2);
-                    m_Shader->SetInt(flagName, bound ? 1 : 0);
+                if (!prop.FlagName.empty()) {
+                    m_Shader->SetInt(prop.FlagName, bound ? 1 : 0);
                 }
                 break;
             }

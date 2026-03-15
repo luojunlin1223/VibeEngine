@@ -45,6 +45,7 @@ private:
     void CreateResources();
     void DestroyResources();
     void CompileShaders();
+    void CacheUniformLocations();
     void RenderFullscreenQuad();
 
     uint32_t m_Width = 0, m_Height = 0;
@@ -54,6 +55,18 @@ private:
 
     // Shaders
     uint32_t m_SSRShader = 0;
+
+    // Cached uniform locations (looked up once after shader compilation)
+    int32_t m_LocSceneColor    = -1;
+    int32_t m_LocDepthMap      = -1;
+    int32_t m_LocProjection    = -1;
+    int32_t m_LocInvProjection = -1;
+    int32_t m_LocView          = -1;
+    int32_t m_LocScreenSize    = -1;
+    int32_t m_LocMaxSteps      = -1;
+    int32_t m_LocStepSize      = -1;
+    int32_t m_LocThickness     = -1;
+    int32_t m_LocMaxDistance    = -1;
 
     // FBOs
     uint32_t m_SSRFBO = 0, m_ReflectionTexture = 0;

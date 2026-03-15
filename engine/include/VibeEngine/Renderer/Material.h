@@ -23,6 +23,7 @@ enum class MaterialPropertyType { Float, Int, Vec3, Vec4, Texture2D };
 struct MaterialProperty {
     std::string Name;
     std::string DisplayName; // from ShaderLab (e.g. "Roughness")
+    std::string FlagName;    // pre-computed "u_Has..." name for texture presence flags
     MaterialPropertyType Type;
     // Values
     float       FloatValue = 0.0f;
@@ -77,14 +78,22 @@ public:
     // Whether this material is transparent (shader has blend enabled)
     bool IsTransparent() const { return m_Shader && m_Shader->IsTransparent(); }
 
+    // Fast check: does this material have any bound texture properties?
+    bool HasTextureProperty() const { return m_HasTextures; }
+
 private:
     MaterialProperty* FindProperty(const std::string& name);
+    void UpdatePropertyIndex(const std::string& name, size_t index);
+    void UpdateHasTextures();
+    static std::string ComputeFlagName(const std::string& name);
 
     std::string m_Name;
     std::string m_FilePath;
     std::shared_ptr<Shader> m_Shader;
     std::vector<MaterialProperty> m_Properties;
+    std::unordered_map<std::string, size_t> m_PropertyIndex;
     bool m_IsLit = false;
+    bool m_HasTextures = false;
 };
 
 // Global material registry

@@ -14,6 +14,9 @@ std::shared_ptr<MeshAsset> LODMeshGenerator::CreateSphere(int rings, int segment
     auto mesh = std::make_shared<MeshAsset>();
 
     // Generate vertices: pos(3) + normal(3) + color(3) + uv(2) = 11 floats
+    mesh->Vertices.reserve(static_cast<size_t>((rings + 1) * (segments + 1)) * 11);
+    mesh->Indices.reserve(static_cast<size_t>(rings * segments) * 6);
+
     for (int r = 0; r <= rings; ++r) {
         float phi = static_cast<float>(M_PI) * r / rings;
         float y = std::cos(phi);
@@ -68,6 +71,9 @@ std::shared_ptr<MeshAsset> LODMeshGenerator::CreateCube() {
 
     // 6 faces, 4 vertices each = 24 vertices
     // Each vertex: pos(3) + normal(3) + color(3) + uv(2) = 11 floats
+    mesh->Vertices.reserve(24 * 11);
+    mesh->Indices.reserve(36);
+
     struct FaceData { float nx, ny, nz; float verts[4][3]; float uvs[4][2]; };
     FaceData faces[6] = {
         // Front (+Z)

@@ -68,8 +68,9 @@ void GridRenderer::DrawGrid(const glm::mat4& viewProjection,
     if (!s_GridShader || !s_GridVAO) return;
 
     // Build line vertex data: each vertex = pos(3) + color(4) = 7 floats
-    std::vector<float> vertices;
-    vertices.reserve(MAX_GRID_VERTICES * 7);
+    // Static vector avoids reallocation every frame — clear keeps capacity
+    static std::vector<float> vertices;
+    vertices.clear();
 
     auto addLine = [&](const glm::vec3& a, const glm::vec3& b,
                         float r, float g, float bv, float alpha) {

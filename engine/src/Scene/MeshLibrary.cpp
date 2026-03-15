@@ -437,6 +437,11 @@ void MeshLibrary::Init() {
         std::vector<float> vertices;
         std::vector<uint32_t> indices;
 
+        // 11 floats per vertex (pos3 + normal3 + color3 + uv2), (rings+1)*(segments+1) vertices
+        vertices.reserve(static_cast<size_t>((rings + 1) * (segments + 1)) * 11);
+        // 6 indices per quad, rings * segments quads
+        indices.reserve(static_cast<size_t>(rings * segments) * 6);
+
         for (int r = 0; r <= rings; r++) {
             float phi = static_cast<float>(M_PI) * static_cast<float>(r) / static_cast<float>(rings);
             float y   = std::cos(phi);
@@ -501,6 +506,11 @@ void MeshLibrary::Init() {
         const int segments = 64;
         std::vector<float> skyVerts;
         std::vector<uint32_t> skyIndices;
+
+        // 3 floats per vertex (position only), (rings+1)*(segments+1) vertices
+        skyVerts.reserve(static_cast<size_t>((rings + 1) * (segments + 1)) * 3);
+        // 6 indices per quad, rings * segments quads
+        skyIndices.reserve(static_cast<size_t>(rings * segments) * 6);
 
         for (int r = 0; r <= rings; r++) {
             float phi = static_cast<float>(M_PI) * static_cast<float>(r) / static_cast<float>(rings);

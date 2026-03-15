@@ -197,6 +197,18 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
     std::vector<MeshSkinInfo> meshSkinInfos;
 
     size_t meshCount = settings.MergeAllMeshes ? scene->meshes.count : std::min<size_t>(1, scene->meshes.count);
+
+    // Pre-calculate total triangle indices across all meshes for reserve
+    {
+        size_t totalIndices = 0;
+        for (size_t mi = 0; mi < meshCount; mi++)
+            totalIndices += scene->meshes.data[mi]->num_triangles * 3;
+        asset->Indices.reserve(totalIndices);
+        // Vertices may be fewer due to deduplication, but reserve a reasonable estimate
+        asset->Vertices.reserve(totalIndices * 11 / 3); // ~1 unique vertex per 3 index refs
+    }
+    meshSkinInfos.reserve(meshCount);
+
     for (size_t mi = 0; mi < meshCount; mi++) {
         ufbx_mesh* mesh = scene->meshes.data[mi];
         MeshSkinInfo skinInfo;
@@ -455,6 +467,9 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
 
                     // Collect all unique time stamps from T/R/S channels
                     std::vector<double> times;
+                    times.reserve(bakedNode->translation_keys.count +
+                                  bakedNode->rotation_keys.count +
+                                  bakedNode->scale_keys.count);
                     for (size_t i = 0; i < bakedNode->translation_keys.count; i++)
                         times.push_back(bakedNode->translation_keys.data[i].time);
                     for (size_t i = 0; i < bakedNode->rotation_keys.count; i++)
@@ -618,6 +633,9 @@ std::vector<AnimationClip> FBXImporter::ImportAnimations(const std::string& absP
 
             // Collect unique timestamps
             std::vector<double> times;
+            times.reserve(bakedNode->translation_keys.count +
+                          bakedNode->rotation_keys.count +
+                          bakedNode->scale_keys.count);
             for (size_t i = 0; i < bakedNode->translation_keys.count; i++)
                 times.push_back(bakedNode->translation_keys.data[i].time);
             for (size_t i = 0; i < bakedNode->rotation_keys.count; i++)
