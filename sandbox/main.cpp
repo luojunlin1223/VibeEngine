@@ -559,6 +559,16 @@ protected:
                 m_CommandHistory.Redo();
             if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && m_SelectedEntity.GetHandle() != entt::null)
                 DuplicateSelectedEntity();
+
+            // Copy/Cut/Paste (only when no text input is active)
+            if (!io.WantTextInput) {
+                if (ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false) && m_SelectedEntity.GetHandle() != entt::null)
+                    CopySelectedEntity();
+                if (ctrl && ImGui::IsKeyPressed(ImGuiKey_X, false) && m_SelectedEntity.GetHandle() != entt::null)
+                    CutSelectedEntity();
+                if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false))
+                    PasteEntity();
+            }
         }
 
         // ── Gizmo drag continuation (runs even over ImGui panels) ────
@@ -1458,6 +1468,39 @@ private:
         });
     }
 
+    // ── Copy / Cut / Paste Entity ───────────────────────────────────────
+
+    void CopySelectedEntity() {
+        if (m_SelectedEntity.GetHandle() == entt::null) return;
+        m_EntityClipboard = VE::SceneSerializer::SerializeEntityToString(m_SelectedEntity, *m_Scene);
+    }
+
+    void CutSelectedEntity() {
+        if (m_SelectedEntity.GetHandle() == entt::null) return;
+        CopySelectedEntity();
+        m_CommandHistory.Execute("Cut Entity", [this]() {
+            m_Scene->DestroyEntity(m_SelectedEntity);
+            m_SelectedEntity = {};
+        });
+    }
+
+    void PasteEntity() {
+        if (m_EntityClipboard.empty()) return;
+        m_CommandHistory.Execute("Paste Entity", [this]() {
+            VE::Entity pasted = VE::SceneSerializer::InstantiateFromString(m_EntityClipboard, *m_Scene);
+            if (pasted.IsValid()) {
+                // Offset position so it doesn't overlap the original
+                if (pasted.HasComponent<VE::TransformComponent>()) {
+                    auto& tc = pasted.GetComponent<VE::TransformComponent>();
+                    tc.Position[0] += 1.0f;
+                    tc.Position[1] += 1.0f;
+                    tc.Position[2] += 1.0f;
+                }
+                m_SelectedEntity = pasted;
+            }
+        });
+    }
+
     // ── Main Menu Bar ──────────────────────────────────────────────────
 
     void DrawMainMenuBar() {
@@ -1482,6 +1525,13 @@ private:
                     m_CommandHistory.Undo();
                 if (ImGui::MenuItem("Redo", "Ctrl+Y", false, m_CommandHistory.CanRedo()))
                     m_CommandHistory.Redo();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Copy", "Ctrl+C", false, m_SelectedEntity.GetHandle() != entt::null))
+                    CopySelectedEntity();
+                if (ImGui::MenuItem("Cut", "Ctrl+X", false, m_SelectedEntity.GetHandle() != entt::null))
+                    CutSelectedEntity();
+                if (ImGui::MenuItem("Paste", "Ctrl+V", false, !m_EntityClipboard.empty()))
+                    PasteEntity();
                 ImGui::Separator();
                 if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, m_SelectedEntity.GetHandle() != entt::null))
                     DuplicateSelectedEntity();
@@ -5681,6 +5731,9 @@ private:
     // Component clipboard
     std::string m_ClipboardComponentType;
     std::any    m_ClipboardComponentData;
+
+    // Entity clipboard (copy/paste)
+    std::string m_EntityClipboard;
 };
 
 int main() {
