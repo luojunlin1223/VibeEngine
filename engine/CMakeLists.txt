@@ -6,6 +6,7 @@ file(GLOB_RECURSE ENGINE_SOURCES
 add_library(VibeEngineLib STATIC ${ENGINE_SOURCES}
     ${CMAKE_SOURCE_DIR}/vendor/ufbx/ufbx.c
     ${CMAKE_SOURCE_DIR}/vendor/cgltf/cgltf_impl.c
+    ${CMAKE_SOURCE_DIR}/vendor/pl_mpeg/pl_mpeg_impl.c
 )
 
 target_include_directories(VibeEngineLib
@@ -16,6 +17,7 @@ target_include_directories(VibeEngineLib
         ${CMAKE_SOURCE_DIR}/vendor/ufbx
         ${CMAKE_SOURCE_DIR}/vendor/miniaudio
         ${CMAKE_SOURCE_DIR}/vendor/cgltf
+        ${CMAKE_SOURCE_DIR}/vendor/pl_mpeg
 )
 
 target_link_libraries(VibeEngineLib

@@ -133,6 +133,11 @@ struct RenderPipelineSettings {
     float ShadowBias = 0.0005f;
     float ShadowNormalBias = 0.02f;
     int   ShadowPCFRadius = 1; // 0=hard, 1=3x3, 2=5x5
+
+    // Motion Blur
+    bool  MotionBlurEnabled  = false;
+    float MotionBlurStrength  = 0.5f;
+    int   MotionBlurSamples   = 8;
 };
 
 class Scene {

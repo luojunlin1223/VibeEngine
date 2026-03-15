@@ -194,6 +194,9 @@ private:
     uint32_t m_BlurTexture[2] = { 0, 0 };
     uint32_t m_CompositeFBO = 0, m_CompositeTexture = 0;
 
+    // Motion blur output
+    uint32_t m_MotionBlurFBO = 0, m_MotionBlurTexture = 0;
+
     // Volumetric fog output
     uint32_t m_VolFogFBO = 0, m_VolFogTexture = 0;
 

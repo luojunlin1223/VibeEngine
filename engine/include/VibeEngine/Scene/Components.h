@@ -427,6 +427,20 @@ struct UIButtonComponent {
     UIButtonComponent() = default;
 };
 
+// ── Video Player Component ────────────────────────────────────────────
+
+struct VideoPlayerComponent {
+    std::string VideoPath;          // path to .mpg file
+    bool PlayOnAwake = true;
+    bool Loop        = false;
+    float Volume     = 1.0f;        // reserved for future audio passthrough
+
+    // Runtime only (not serialized)
+    std::shared_ptr<VideoPlayer> _Player;
+
+    VideoPlayerComponent() = default;
+};
+
 // ── Decal Component ───────────────────────────────────────────────────
 
 struct DecalComponent {

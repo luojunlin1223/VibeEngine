@@ -845,6 +845,7 @@ protected:
         DrawGameViewPanel();
         DrawInputSettingsPanel();
         DrawBuildPanel();
+        DrawMaterialEditorPanel();
 
         DrawProfilerPanel();
         DrawFPSOverlay();
@@ -970,9 +971,10 @@ private:
         }
 
         if (ext == ".vmat") {
-            // Create a default material file
+            // Create a default material file with properties from ShaderLab metadata
             auto mat = VE::Material::Create(name, VE::MeshLibrary::GetLitShader());
             mat->SetLit(true);
+            mat->PopulateFromShader();
             mat->Save(absPath);
             VE::MaterialLibrary::Register(mat);
         } else if (ext == ".cpp") {
@@ -1548,6 +1550,7 @@ private:
         out << YAML::Key << "ShowScripting" << YAML::Value << m_ShowScripting;
         out << YAML::Key << "ShowContentBrowser" << YAML::Value << m_ShowContentBrowser;
         out << YAML::Key << "ShowHierarchy" << YAML::Value << m_ShowHierarchy;
+        out << YAML::Key << "ShowMaterialEditor" << YAML::Value << m_ShowMaterialEditor;
 
         out << YAML::Key << "ShowProfiler" << YAML::Value << m_ShowProfiler;
         out << YAML::Key << "ShowFPSOverlay" << YAML::Value << m_ShowFPSOverlay;
@@ -1630,6 +1633,8 @@ private:
                 m_ShowContentBrowser = root["ShowContentBrowser"].as<bool>(true);
             if (root["ShowHierarchy"])
                 m_ShowHierarchy = root["ShowHierarchy"].as<bool>(true);
+            if (root["ShowMaterialEditor"])
+                m_ShowMaterialEditor = root["ShowMaterialEditor"].as<bool>(false);
 
             if (root["ShowProfiler"])
                 m_ShowProfiler = root["ShowProfiler"].as<bool>(false);
@@ -2087,6 +2092,7 @@ private:
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
                 ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
+                ImGui::MenuItem("Material Editor", nullptr, &m_ShowMaterialEditor);
 
                 ImGui::Separator();
                 ImGui::MenuItem("Profiler", nullptr, &m_ShowProfiler);
@@ -2770,6 +2776,10 @@ private:
         }
 
         ImGui::Text("Type: Material");
+        if (ImGui::Button("Open in Material Editor")) {
+            m_InspectedMaterial->PopulateFromShader();
+            m_ShowMaterialEditor = true;
+        }
         ImGui::Separator();
 
         // Name
@@ -2876,6 +2886,310 @@ private:
         if (ImGui::Button("Save Material")) {
             m_InspectedMaterial->Save(absPath);
         }
+    }
+
+    // ── Material Editor Panel (dedicated window) ─────────────────────
+    void DrawMaterialEditorPanel() {
+        if (!m_ShowMaterialEditor) return;
+        ImGui::Begin("Material Editor", &m_ShowMaterialEditor);
+
+        // "New Material" button at the top
+        if (ImGui::Button("New Material")) {
+            CreateAssetFile(m_BrowserCurrentDir, "New Material", ".vmat");
+            // Find the newly created file and open it
+            m_AssetDatabase.Refresh();
+        }
+
+        ImGui::Separator();
+
+        // If no material is loaded, show a hint
+        if (!m_InspectedMaterial) {
+            ImGui::TextDisabled("No material selected.");
+            ImGui::TextDisabled("Double-click a .vmat file in Content Browser,");
+            ImGui::TextDisabled("or click 'Edit' on a material in the Inspector.");
+            ImGui::End();
+            return;
+        }
+
+        // ── Header ──────────────────────────────────────────────────
+        ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Material: %s", m_InspectedMaterial->GetName().c_str());
+
+        // Material name
+        char nameBuf[128];
+        strncpy(nameBuf, m_InspectedMaterial->GetName().c_str(), sizeof(nameBuf) - 1);
+        nameBuf[sizeof(nameBuf) - 1] = '\0';
+        if (ImGui::InputText("Name##MatEdName", nameBuf, sizeof(nameBuf)))
+            m_InspectedMaterial->SetName(nameBuf);
+
+        // File path (read-only)
+        if (!m_InspectedMaterialPath.empty()) {
+            ImGui::TextDisabled("Path: %s", m_InspectedMaterialPath.c_str());
+        }
+
+        ImGui::Spacing();
+
+        // ── Shader Selection ────────────────────────────────────────
+        {
+            auto currentShader = m_InspectedMaterial->GetShader();
+            std::string currentName = currentShader ? currentShader->GetName() : "None";
+
+            ImGui::Text("Shader");
+            ImGui::SameLine(100.0f);
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            if (ImGui::BeginCombo("##MatEdShader", currentName.c_str())) {
+                auto allNames = VE::ShaderLibrary::GetAllNames();
+                std::sort(allNames.begin(), allNames.end());
+                for (auto& name : allNames) {
+                    auto shader = VE::ShaderLibrary::Get(name);
+                    bool isSelected = (shader == currentShader);
+                    if (ImGui::Selectable(name.c_str(), isSelected)) {
+                        m_InspectedMaterial->SetShader(shader);
+                        // Auto-detect lit status
+                        m_InspectedMaterial->SetLit(name == "Lit" || name == "PBR");
+                        // Re-populate properties from new shader metadata
+                        m_InspectedMaterial->PopulateFromShader();
+                    }
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        }
+
+        // Is Lit checkbox
+        bool isLit = m_InspectedMaterial->IsLit();
+        if (ImGui::Checkbox("Is Lit##MatEdLit", &isLit))
+            m_InspectedMaterial->SetLit(isLit);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // ── Properties ──────────────────────────────────────────────
+        ImGui::Text("Properties");
+        ImGui::Spacing();
+
+        // Get shader property metadata for display hints
+        std::unordered_map<std::string, VE::ShaderPropertyInfo> shaderPropMap;
+        if (auto shader = m_InspectedMaterial->GetShader()) {
+            for (auto& info : shader->GetPropertyInfos())
+                shaderPropMap[info.Name] = info;
+        }
+
+        bool anyModified = false;
+        int removeIdx = -1;
+        int propIdx = 0;
+
+        for (auto& prop : m_InspectedMaterial->GetProperties()) {
+            ImGui::PushID(propIdx);
+
+            // Use display name from ShaderLab if available, otherwise property name
+            const char* label = !prop.DisplayName.empty() ? prop.DisplayName.c_str() : prop.Name.c_str();
+
+            // Determine if this is a Color type from ShaderLab metadata
+            bool isColor = false;
+            auto it = shaderPropMap.find(prop.Name);
+            if (it != shaderPropMap.end()) {
+                isColor = (it->second.Type == VE::ShaderPropertyType::Color);
+            }
+
+            switch (prop.Type) {
+                case VE::MaterialPropertyType::Float: {
+                    ImGui::Text("%s", label);
+                    ImGui::SameLine(140.0f);
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 30.0f);
+                    if (prop.IsRange) {
+                        if (ImGui::SliderFloat("##val", &prop.FloatValue, prop.RangeMin, prop.RangeMax, "%.3f"))
+                            anyModified = true;
+                    } else {
+                        if (ImGui::DragFloat("##val", &prop.FloatValue, 0.01f))
+                            anyModified = true;
+                    }
+                    break;
+                }
+                case VE::MaterialPropertyType::Int: {
+                    ImGui::Text("%s", label);
+                    ImGui::SameLine(140.0f);
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 30.0f);
+                    if (ImGui::DragInt("##val", &prop.IntValue, 1))
+                        anyModified = true;
+                    break;
+                }
+                case VE::MaterialPropertyType::Vec3: {
+                    ImGui::Text("%s", label);
+                    ImGui::SameLine(140.0f);
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 30.0f);
+                    if (isColor) {
+                        if (ImGui::ColorEdit3("##val", &prop.Vec3Value.x))
+                            anyModified = true;
+                    } else {
+                        if (ImGui::DragFloat3("##val", &prop.Vec3Value.x, 0.01f))
+                            anyModified = true;
+                    }
+                    break;
+                }
+                case VE::MaterialPropertyType::Vec4: {
+                    ImGui::Text("%s", label);
+                    ImGui::SameLine(140.0f);
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 30.0f);
+                    if (isColor) {
+                        if (ImGui::ColorEdit4("##val", &prop.Vec4Value.x))
+                            anyModified = true;
+                    } else {
+                        if (ImGui::DragFloat4("##val", &prop.Vec4Value.x, 0.01f))
+                            anyModified = true;
+                    }
+                    break;
+                }
+                case VE::MaterialPropertyType::Texture2D: {
+                    ImGui::Text("%s", label);
+                    ImGui::SameLine(140.0f);
+
+                    // Texture thumbnail preview
+                    bool hasTex = prop.TextureRef != nullptr;
+                    float thumbSize = 48.0f;
+
+                    ImGui::BeginGroup();
+                    if (hasTex) {
+                        uint64_t texID = prop.TextureRef->GetNativeTextureID();
+                        if (texID != 0) {
+                            ImGui::Image((ImTextureID)texID, ImVec2(thumbSize, thumbSize));
+                        } else {
+                            ImGui::Dummy(ImVec2(thumbSize, thumbSize));
+                        }
+                    } else {
+                        // Empty texture slot placeholder
+                        ImVec2 pos = ImGui::GetCursorScreenPos();
+                        ImDrawList* dl = ImGui::GetWindowDrawList();
+                        dl->AddRectFilled(pos, ImVec2(pos.x + thumbSize, pos.y + thumbSize), IM_COL32(60, 60, 60, 255), 3.0f);
+                        dl->AddRect(pos, ImVec2(pos.x + thumbSize, pos.y + thumbSize), IM_COL32(100, 100, 100, 255), 3.0f);
+                        float cx = pos.x + thumbSize * 0.5f - 10.0f;
+                        float cy = pos.y + thumbSize * 0.5f - 6.0f;
+                        dl->AddText(ImVec2(cx, cy), IM_COL32(150, 150, 150, 255), "None");
+                        ImGui::Dummy(ImVec2(thumbSize, thumbSize));
+                    }
+
+                    // Accept texture drag-drop from Content Browser
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_TEXTURE")) {
+                            std::string path(static_cast<const char*>(payload->Data));
+                            prop.TexturePath = path;
+                            prop.TextureRef = VE::Texture2D::Create(path);
+                            anyModified = true;
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+
+                    // Texture path and buttons
+                    ImGui::SameLine();
+                    ImGui::BeginGroup();
+                    ImGui::TextDisabled("%s", prop.TexturePath.empty() ? "(none)" : std::filesystem::path(prop.TexturePath).filename().generic_string().c_str());
+                    if (ImGui::SmallButton("Browse##texBrowse")) {
+                        static const char* filter =
+                            "Image Files\0*.png;*.jpg;*.jpeg;*.bmp\0All Files\0*.*\0";
+                        std::string path = VE::FileDialog::OpenFile(filter, GetWindow().GetNativeWindow());
+                        if (!path.empty()) {
+                            prop.TexturePath = path;
+                            prop.TextureRef = VE::Texture2D::Create(path);
+                            anyModified = true;
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Clear##texClear")) {
+                        prop.TexturePath.clear();
+                        prop.TextureRef.reset();
+                        anyModified = true;
+                    }
+                    ImGui::EndGroup();
+                    ImGui::EndGroup();
+                    break;
+                }
+            }
+
+            // Remove property button
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X##remove")) {
+                removeIdx = propIdx;
+            }
+
+            ImGui::PopID();
+            propIdx++;
+        }
+
+        // Remove property if requested
+        if (removeIdx >= 0) {
+            auto& props = m_InspectedMaterial->GetProperties();
+            if (removeIdx < (int)props.size())
+                props.erase(props.begin() + removeIdx);
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // ── Add Property ────────────────────────────────────────────
+        if (ImGui::Button("Add Property"))
+            ImGui::OpenPopup("MatEdAddPropPopup");
+        if (ImGui::BeginPopup("MatEdAddPropPopup")) {
+            if (ImGui::MenuItem("Float")) {
+                m_InspectedMaterial->SetFloat("u_NewFloat", 0.0f);
+            }
+            if (ImGui::MenuItem("Int")) {
+                m_InspectedMaterial->SetInt("u_NewInt", 0);
+            }
+            if (ImGui::MenuItem("Color (Vec3)")) {
+                m_InspectedMaterial->SetVec3("u_NewColor", glm::vec3(1.0f));
+            }
+            if (ImGui::MenuItem("Color (Vec4)")) {
+                m_InspectedMaterial->SetVec4("u_NewColor4", glm::vec4(1.0f));
+            }
+            if (ImGui::MenuItem("Vector (Vec3)")) {
+                m_InspectedMaterial->SetVec3("u_NewVector", glm::vec3(0.0f));
+            }
+            if (ImGui::MenuItem("Vector (Vec4)")) {
+                m_InspectedMaterial->SetVec4("u_NewVector4", glm::vec4(0.0f));
+            }
+            if (ImGui::MenuItem("Texture")) {
+                m_InspectedMaterial->SetTexture("u_NewTexture", "");
+            }
+            ImGui::EndPopup();
+        }
+
+        // ── Populate from Shader ────────────────────────────────────
+        ImGui::SameLine();
+        if (ImGui::Button("Populate from Shader")) {
+            m_InspectedMaterial->PopulateFromShader();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Add any missing properties defined in the shader's Properties {} block.");
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // ── Save ────────────────────────────────────────────────────
+        bool hasPath = !m_InspectedMaterialPath.empty();
+        if (hasPath) {
+            if (ImGui::Button("Save", ImVec2(120, 0))) {
+                m_InspectedMaterial->Save(m_InspectedMaterialPath);
+            }
+            ImGui::SameLine();
+        }
+        if (ImGui::Button("Save As...", ImVec2(120, 0))) {
+            static const char* filter = "Material Files\0*.vmat\0All Files\0*.*\0";
+            std::string path = VE::FileDialog::SaveFile(filter, GetWindow().GetNativeWindow());
+            if (!path.empty()) {
+                // Ensure .vmat extension
+                if (path.size() < 5 || path.substr(path.size() - 5) != ".vmat")
+                    path += ".vmat";
+                m_InspectedMaterial->Save(path);
+                m_InspectedMaterialPath = path;
+                VE::MaterialLibrary::Register(m_InspectedMaterial);
+                m_AssetDatabase.Refresh();
+            }
+        }
+
+        ImGui::End();
     }
 
     void DrawMeshAssetInspector() {
@@ -4339,6 +4653,17 @@ private:
                 // ── Material Object Field (Unity-style) ──
                 DrawMaterialObjectField("Material", mr);
 
+                // "Edit Material" button — opens Material Editor panel
+                if (mr.Mat && !mr.MaterialPath.empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Edit##matEdit")) {
+                        m_InspectedMaterial = mr.Mat;
+                        m_InspectedMaterialPath = mr.MaterialPath;
+                        m_InspectedMaterial->PopulateFromShader();
+                        m_ShowMaterialEditor = true;
+                    }
+                }
+
                 ImGui::Checkbox("Cast Shadows", &mr.CastShadows);
 
                 // Per-entity material property overrides
@@ -5752,6 +6077,16 @@ private:
                     VE::SceneSerializer serializer(m_Scene);
                     if (serializer.Deserialize(absPath))
                         m_CurrentScenePath = absPath;
+                } else if (meta->Type == VE::AssetType::MaterialAsset) {
+                    // Open Material Editor on double-click
+                    std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
+                    m_InspectedMaterial = VE::Material::Load(absPath);
+                    m_InspectedMaterialPath = absPath;
+                    if (m_InspectedMaterial) {
+                        VE::MaterialLibrary::Register(m_InspectedMaterial);
+                        m_InspectedMaterial->PopulateFromShader();
+                    }
+                    m_ShowMaterialEditor = true;
                 } else if (meta->Type == VE::AssetType::Mesh) {
                     std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
                     auto meshAsset = VE::MeshImporter::GetOrLoad(absPath);
@@ -6375,6 +6710,7 @@ private:
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
     bool m_ShowBuildPanel = false;
+    bool m_ShowMaterialEditor = false;
 
     bool m_ShowProfiler = false;
     bool m_ShowFPSOverlay = false;

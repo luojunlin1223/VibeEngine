@@ -612,6 +612,65 @@ void main() {
 }
 )";
 
+// ── Motion blur shader (per-pixel camera velocity from depth reprojection) ─
+
+static const char* s_MotionBlurFragSrc = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+
+uniform sampler2D u_Scene;
+uniform sampler2D u_DepthTex;
+uniform mat4  u_InvViewProj;   // current frame
+uniform mat4  u_PrevViewProj;  // previous frame
+uniform float u_BlurStrength;
+uniform int   u_NumSamples;
+
+void main() {
+    float depth = texture(u_DepthTex, v_UV).r;
+
+    // Skip sky pixels (depth == 1.0)
+    if (depth >= 1.0) {
+        FragColor = vec4(texture(u_Scene, v_UV).rgb, 1.0);
+        return;
+    }
+
+    // Reconstruct world position from depth
+    vec4 clipPos = vec4(v_UV * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 worldPos = u_InvViewProj * clipPos;
+    worldPos /= worldPos.w;
+
+    // Project world position with previous frame's VP
+    vec4 prevClip = u_PrevViewProj * worldPos;
+    prevClip /= prevClip.w;
+    vec2 prevUV = prevClip.xy * 0.5 + 0.5;
+
+    // Screen-space velocity
+    vec2 velocity = (v_UV - prevUV) * u_BlurStrength;
+
+    // Clamp velocity to max blur length (fraction of screen)
+    float maxBlur = 0.05; // 5% of screen
+    float velLen = length(velocity);
+    if (velLen > maxBlur) {
+        velocity = velocity / velLen * maxBlur;
+    }
+
+    // Sample along velocity direction
+    vec3 color = vec3(0.0);
+    float totalWeight = 0.0;
+    for (int i = 0; i < u_NumSamples; i++) {
+        float t = float(i) / float(u_NumSamples - 1) - 0.5; // [-0.5, 0.5]
+        vec2 sampleUV = v_UV + velocity * t;
+        sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
+        color += texture(u_Scene, sampleUV).rgb;
+        totalWeight += 1.0;
+    }
+    color /= totalWeight;
+
+    FragColor = vec4(color, 1.0);
+}
+)";
+
 // ── Shader compilation helpers ───────────────────────────────────────
 
 static uint32_t CompileShader(GLenum type, const char* src) {
@@ -797,6 +856,9 @@ void PostProcessing::CreateResources() {
     // Volumetric fog output
     m_VolFogFBO = CreateColorFBO(m_VolFogTexture, m_Width, m_Height);
 
+    // Motion blur output
+    m_MotionBlurFBO = CreateColorFBO(m_MotionBlurTexture, m_Width, m_Height);
+
     // Depth of Field (two-pass: horizontal + vertical)
     for (int i = 0; i < 2; i++)
         m_DoFFBO[i] = CreateColorFBO(m_DoFTexture[i], m_Width, m_Height);
@@ -821,6 +883,7 @@ void PostProcessing::DestroyResources() {
     deleteFBO(m_BlurFBO[1], m_BlurTexture[1]);
     deleteFBO(m_CompositeFBO, m_CompositeTexture);
     deleteFBO(m_VolFogFBO, m_VolFogTexture);
+    deleteFBO(m_MotionBlurFBO, m_MotionBlurTexture);
     deleteFBO(m_DoFFBO[0], m_DoFTexture[0]);
     deleteFBO(m_DoFFBO[1], m_DoFTexture[1]);
     deleteFBO(m_FXAAFBO, m_FXAATexture);
@@ -864,6 +927,7 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
                   || settings.FXAA.Enabled || settings.TAA.Enabled
                   || settings.SSAOTexture || settings.SSRTexture
                   || settings.Fog.Enabled || settings.VolumetricFog.Enabled
+                  || settings.MotionBlur.Enabled
                   || settings.DoF.Enabled;
     if (!anyEffect)
         return sceneColorTexture;
