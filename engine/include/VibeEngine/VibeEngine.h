@@ -28,6 +28,7 @@
 #include "Renderer/GridRenderer.h"
 #include "Renderer/SSAO.h"
 #include "Renderer/LODSystem.h"
+#include "Renderer/OcclusionCulling.h"
 
 #include "Navigation/NavGrid.h"
 

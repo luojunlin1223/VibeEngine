@@ -32,6 +32,7 @@ public:
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
         VE::InstancedRenderer::Init();
+        VE::OcclusionCulling::Init();
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
@@ -72,6 +73,7 @@ public:
     ~Sandbox() override {
         SaveEditorSettings();
         VE::UIRenderer::Shutdown();
+        VE::OcclusionCulling::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
@@ -4322,6 +4324,15 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("Occlusion Culling", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Occlusion Culling", &ps.OcclusionCullingEnabled);
+            if (ps.OcclusionCullingEnabled) {
+                ImGui::TextDisabled("GPU occlusion queries (previous-frame temporal)");
+                auto& renderStats = VE::RenderCommand::GetStats();
+                ImGui::Text("Occluded: %u", renderStats.OccludedObjects);
+            }
+        }
+
         if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable Bloom", &ps.BloomEnabled);
             if (ps.BloomEnabled) {
@@ -5027,6 +5038,7 @@ private:
             ImGui::Text("Entities:       %d", entityCount);
             ImGui::Text("  Visible:      %u", stats.VisibleObjects);
             ImGui::Text("  Culled:       %u", stats.CulledObjects);
+            ImGui::Text("  Occluded:     %u", stats.OccludedObjects);
             ImGui::Text("Sprites:        %u", spriteStats.QuadCount);
             ImGui::Text("Instances:      %u", instanceStats.InstanceCount);
         }

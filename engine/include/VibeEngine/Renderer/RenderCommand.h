@@ -12,8 +12,9 @@ struct RenderStats {
     uint32_t Triangles    = 0;
     uint32_t Instances    = 0;
     uint32_t SetPassCalls = 0; // shader bind count
-    uint32_t VisibleObjects = 0;
-    uint32_t CulledObjects  = 0;
+    uint32_t VisibleObjects  = 0;
+    uint32_t CulledObjects   = 0;
+    uint32_t OccludedObjects = 0;
 };
 
 class RenderCommand {

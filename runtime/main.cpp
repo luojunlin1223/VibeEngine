@@ -26,6 +26,7 @@ public:
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
         VE::InstancedRenderer::Init();
+        VE::OcclusionCulling::Init();
 
         m_Scene = std::make_shared<VE::Scene>();
 
@@ -57,6 +58,7 @@ public:
 
     ~GameRuntime() override {
         StopGame();
+        VE::OcclusionCulling::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();

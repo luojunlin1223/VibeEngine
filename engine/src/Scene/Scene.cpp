@@ -11,6 +11,7 @@
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Renderer/Frustum.h"
+#include "VibeEngine/Renderer/OcclusionCulling.h"
 #include "VibeEngine/Renderer/LODSystem.h"
 #include "VibeEngine/UI/UIRenderer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
@@ -726,6 +727,11 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
     auto& stats = const_cast<RenderStats&>(RenderCommand::GetStats());
 
+    // ── Occlusion culling setup ────────────────────────────────────────
+    const bool occlusionEnabled = m_PipelineSettings.OcclusionCullingEnabled;
+    if (occlusionEnabled)
+        OcclusionCulling::BeginFrame();
+
     // Helper: draw a single entity (non-instanced path)
     auto drawEntity = [&](entt::entity entityID, MeshRendererComponent& mr, const glm::mat4& model) {
         std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
@@ -852,6 +858,19 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                 stats.CulledObjects++;
                 continue;
             }
+
+            // ── Occlusion cull (uses previous frame results) ────────
+            if (occlusionEnabled) {
+                uint32_t eid = static_cast<uint32_t>(entityID);
+                // Issue a query for this entity (renders depth-only AABB)
+                OcclusionCulling::QueryEntity(eid, worldMin, worldMax, viewProjection);
+                // Check previous frame's result
+                if (OcclusionCulling::IsOccluded(eid)) {
+                    stats.OccludedObjects++;
+                    continue;
+                }
+            }
+
             stats.VisibleObjects++;
         }
 
@@ -945,6 +964,10 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         // Restore default depth write after transparent pass
         RenderCommand::SetDepthWrite(true);
     }
+
+    // ── Finalize occlusion culling ─────────────────────────────────────
+    if (occlusionEnabled)
+        OcclusionCulling::EndFrame();
 }
 
 // ── Terrain Rendering ───────────────────────────────────────────────
