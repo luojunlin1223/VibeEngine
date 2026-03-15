@@ -25,6 +25,11 @@ namespace VE {
 class Entity;
 
 struct RenderPipelineSettings {
+    // HDR Pipeline
+    bool HDREnabled = true;
+    int  ToneMapMode = 1; // 0=Reinhard, 1=ACES Filmic, 2=Uncharted2
+    float Exposure = 1.0f;
+
     // Sky
     bool SkyEnabled = true;
     std::array<float, 3> SkyTopColor    = { 0.4f, 0.7f, 1.0f };
