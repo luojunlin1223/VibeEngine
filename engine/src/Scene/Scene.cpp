@@ -1064,6 +1064,99 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
     }
 }
 
+// ── Decal Rendering ─────────────────────────────────────────────────
+
+void Scene::OnRenderDecals(const glm::mat4& viewProjection, const glm::mat4& viewMatrix,
+                           const glm::mat4& projMatrix, uint32_t depthTexture,
+                           uint32_t screenWidth, uint32_t screenHeight) {
+    auto view = m_Registry.view<TransformComponent, DecalComponent>();
+
+    // Collect decals and sort by SortOrder
+    struct DecalEntry {
+        entt::entity Entity;
+        int SortOrder;
+    };
+    std::vector<DecalEntry> decals;
+    decals.reserve(view.size_hint());
+    for (auto entity : view) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
+        auto& dc = view.get<DecalComponent>(entity);
+        decals.push_back({ entity, dc.SortOrder });
+    }
+    if (decals.empty()) return;
+
+    std::sort(decals.begin(), decals.end(),
+        [](const DecalEntry& a, const DecalEntry& b) { return a.SortOrder < b.SortOrder; });
+
+    // Get decal shader
+    auto decalShader = ShaderLibrary::Get("Decal");
+    if (!decalShader) return;
+
+    // Get cube mesh for decal volume
+    auto cubeMesh = MeshLibrary::GetCube();
+    if (!cubeMesh) return;
+
+    // Compute inverse VP
+    glm::mat4 invVP = glm::inverse(viewProjection);
+
+    // Setup GL state for decals
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);   // don't depth-test (we reconstruct from depth texture)
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);       // render back faces
+    glDepthMask(GL_FALSE);      // don't write depth
+
+    // Bind depth texture to unit 7
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+    decalShader->Bind();
+    decalShader->SetInt("u_DepthTexture", 7);
+    decalShader->SetMat4("u_InvVP", invVP);
+    decalShader->SetVec4("u_ScreenSize", glm::vec4((float)screenWidth, (float)screenHeight, 0.0f, 0.0f));
+
+    for (auto& entry : decals) {
+        auto& tc = m_Registry.get<TransformComponent>(entry.Entity);
+        auto& dc = m_Registry.get<DecalComponent>(entry.Entity);
+
+        // Build model matrix with decal size baked in
+        glm::mat4 worldTransform = GetWorldTransform(entry.Entity);
+        glm::mat4 sizeScale = glm::scale(glm::mat4(1.0f),
+            glm::vec3(dc.Size[0], dc.Size[1], dc.Size[2]));
+        glm::mat4 model = worldTransform * sizeScale;
+        glm::mat4 mvp = viewProjection * model;
+        glm::mat4 invModel = glm::inverse(model);
+
+        decalShader->SetMat4("u_MVP", mvp);
+        decalShader->SetMat4("u_Model", model);
+        decalShader->SetMat4("u_InvModel", invModel);
+        decalShader->SetVec4("u_EntityColor",
+            glm::vec4(dc.Color[0], dc.Color[1], dc.Color[2], dc.Color[3]));
+        decalShader->SetFloat("u_NormalBlend", dc.NormalBlend);
+        decalShader->SetFloat("u_FadeDistance", dc.FadeDistance);
+
+        // Bind decal texture
+        if (dc._Texture) {
+            glActiveTexture(GL_TEXTURE0);
+            dc._Texture->Bind(0);
+            decalShader->SetInt("u_HasMainTex", 1);
+            decalShader->SetInt("u_UseTexture", 0);
+        } else {
+            decalShader->SetInt("u_HasMainTex", 0);
+            decalShader->SetInt("u_UseTexture", 0);
+        }
+
+        RenderCommand::DrawIndexed(cubeMesh);
+    }
+
+    // Restore GL state
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glCullFace(GL_BACK);
+    glDisable(GL_BLEND);
+}
+
 // ── Sprite Rendering ────────────────────────────────────────────────
 
 void Scene::OnRenderSprites(const glm::mat4& viewProjection) {

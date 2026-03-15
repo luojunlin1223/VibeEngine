@@ -590,6 +590,17 @@ void MeshLibrary::Init() {
             waterMat->PopulateFromShader();
             MaterialLibrary::Register(waterMat);
         }
+
+        // Decal material
+        auto decalShader = Shader::CreateFromFile("shaders/Decal.shader");
+        if (decalShader) {
+            decalShader->SetName("Decal");
+            ShaderLibrary::Register("Decal", decalShader);
+            auto decalMat = Material::Create("Decal", decalShader);
+            decalMat->SetLit(false);
+            decalMat->PopulateFromShader();
+            MaterialLibrary::Register(decalMat);
+        }
     }
 
     VE_ENGINE_INFO("MeshLibrary initialized (Triangle, Quad, Cube, Sphere)");
