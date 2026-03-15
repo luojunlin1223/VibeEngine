@@ -224,6 +224,14 @@ protected:
                 break;
             }
         }
+        // Motion Blur
+        if (ps.MotionBlurEnabled) {
+            s.MotionBlur.Enabled    = true;
+            s.MotionBlur.Strength   = ps.MotionBlurStrength;
+            s.MotionBlur.NumSamples = ps.MotionBlurSamples;
+            s.MotionBlur.InvViewProj  = glm::inverse(m_FrameVP);
+            s.MotionBlur.PrevViewProj = m_PrevFrameVP;
+        }
         // Anti-aliasing
         if (ps.AAMode == 4) // FXAA
             s.FXAA = { true, ps.FXAAEdgeThreshold, ps.FXAAEdgeThresholdMin, ps.FXAASubpixelQuality };
@@ -252,6 +260,7 @@ protected:
             m_GamePostProcessing.Shutdown();
         }
 
+        m_PrevFrameVP = m_FrameVP;
         m_FrameVP = m_Camera.GetViewProjection();
         glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
             ? m_Camera.GetPosition3D()
@@ -351,8 +360,10 @@ protected:
                 auto ppSettings = BuildPostProcessSettings();
                 uint32_t depthTex = static_cast<uint32_t>(m_Framebuffer->GetDepthAttachmentID());
 
-                // Pass depth for fog
+                // Pass depth for fog and motion blur
                 ppSettings.DepthTexture = depthTex;
+                if (ppSettings.MotionBlur.Enabled)
+                    ppSettings.MotionBlur.DepthTexture = depthTex;
 
                 // Compute SSAO if enabled
                 auto& ps = m_Scene->GetPipelineSettings();
@@ -475,6 +486,8 @@ protected:
                     auto ppSettings = BuildPostProcessSettings();
                     uint32_t gDepthTex = static_cast<uint32_t>(m_GameFramebuffer->GetDepthAttachmentID());
                     ppSettings.DepthTexture = gDepthTex;
+                    if (ppSettings.MotionBlur.Enabled)
+                        ppSettings.MotionBlur.DepthTexture = gDepthTex;
 
                     auto& gps = m_Scene->GetPipelineSettings();
                     if (gps.SSAOEnabled) {
@@ -4416,6 +4429,15 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("Motion Blur")) {
+            ImGui::Checkbox("Enable Motion Blur", &ps.MotionBlurEnabled);
+            if (ps.MotionBlurEnabled) {
+                ImGui::SliderFloat("Blur Strength", &ps.MotionBlurStrength, 0.0f, 1.0f, "%.2f");
+                ImGui::SliderInt("Blur Samples", &ps.MotionBlurSamples, 4, 16);
+                ImGui::TextDisabled("Camera-based motion blur from depth reprojection");
+            }
+        }
+
         if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable SSAO", &ps.SSAOEnabled);
             if (ps.SSAOEnabled) {
@@ -5201,6 +5223,7 @@ private:
     VE::Entity m_SelectedEntity;
     VE::EditorCamera m_Camera;
     glm::mat4 m_FrameVP = glm::mat4(1.0f);
+    glm::mat4 m_PrevFrameVP = glm::mat4(1.0f);
     std::string m_CurrentScenePath;
     std::shared_ptr<VE::Framebuffer> m_Framebuffer;
     uint32_t m_CurrentMSAASamples = 1; // track to detect changes

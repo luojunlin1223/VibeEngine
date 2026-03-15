@@ -93,6 +93,11 @@ struct RenderPipelineSettings {
     float VolFogHeightFalloff = 0.05f;
     float VolFogBaseHeight    = 0.0f;
 
+    // Motion Blur
+    bool  MotionBlurEnabled  = false;
+    float MotionBlurStrength = 0.5f;
+    int   MotionBlurSamples  = 8;
+
     // SSAO
     bool SSAOEnabled = false;
     float SSAORadius    = 0.5f;
