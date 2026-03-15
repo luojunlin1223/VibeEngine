@@ -23,6 +23,7 @@
 #include "Renderer/PostProcessing.h"
 #include "Renderer/GizmoRenderer.h"
 #include "Renderer/SpriteBatchRenderer.h"
+#include "Renderer/ParticleSystem.h"
 #include "Renderer/RenderGraph.h"
 #include "Renderer/InstancedRenderer.h"
 #include "Renderer/Frustum.h"

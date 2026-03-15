@@ -260,6 +260,8 @@ struct Particle {
     bool Active = false;
 };
 
+enum class EmitterShape { Point = 0, Sphere = 1, Cone = 2 };
+
 struct ParticleSystemComponent {
     // Serialized config
     float EmissionRate = 10.0f;          // particles/sec
@@ -275,10 +277,20 @@ struct ParticleSystemComponent {
     std::string TexturePath;
     std::shared_ptr<Texture2D> Texture;
     bool PlayOnStart = true;
+    bool Looping = true;                 // restart emission after all particles die
+
+    // Emitter shape configuration
+    EmitterShape Shape = EmitterShape::Point;
+    float ShapeRadius = 1.0f;            // radius for Sphere/Cone shapes
+    float ConeAngle = 25.0f;             // half-angle in degrees for Cone shape
+    float SpeedMin = 1.0f;               // initial speed range (used with shaped emitters)
+    float SpeedMax = 3.0f;
+
     // Runtime only (not serialized)
     std::vector<Particle> _Particles;
     float _EmissionAccumulator = 0.0f;
     bool _Playing = false;
+    bool _EmissionStopped = false;       // true when non-looping emitter has emitted all cycles
 
     ParticleSystemComponent() = default;
 };

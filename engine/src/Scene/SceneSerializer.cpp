@@ -254,6 +254,12 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         if (!ps.TexturePath.empty())
             out << YAML::Key << "TexturePath" << YAML::Value << ps.TexturePath;
         out << YAML::Key << "PlayOnStart" << YAML::Value << ps.PlayOnStart;
+        out << YAML::Key << "Looping" << YAML::Value << ps.Looping;
+        out << YAML::Key << "EmitterShape" << YAML::Value << static_cast<int>(ps.Shape);
+        out << YAML::Key << "ShapeRadius" << YAML::Value << ps.ShapeRadius;
+        out << YAML::Key << "ConeAngle" << YAML::Value << ps.ConeAngle;
+        out << YAML::Key << "SpeedMin" << YAML::Value << ps.SpeedMin;
+        out << YAML::Key << "SpeedMax" << YAML::Value << ps.SpeedMax;
         out << YAML::EndMap;
     }
 
@@ -959,6 +965,12 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     ps.Texture = Texture2D::Create(ps.TexturePath);
             }
             if (psNode["PlayOnStart"]) ps.PlayOnStart = psNode["PlayOnStart"].as<bool>();
+            if (psNode["Looping"])     ps.Looping     = psNode["Looping"].as<bool>();
+            if (psNode["EmitterShape"]) ps.Shape = static_cast<EmitterShape>(psNode["EmitterShape"].as<int>());
+            if (psNode["ShapeRadius"]) ps.ShapeRadius = psNode["ShapeRadius"].as<float>();
+            if (psNode["ConeAngle"])   ps.ConeAngle   = psNode["ConeAngle"].as<float>();
+            if (psNode["SpeedMin"])    ps.SpeedMin    = psNode["SpeedMin"].as<float>();
+            if (psNode["SpeedMax"])    ps.SpeedMax    = psNode["SpeedMax"].as<float>();
         }
 
         if (auto acNode = entityNode["AnimatorComponent"]) {

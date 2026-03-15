@@ -31,6 +31,7 @@ public:
 
         VE::MeshLibrary::Init();
         VE::SpriteBatchRenderer::Init();
+        VE::ParticleRenderer::Init();
         VE::InstancedRenderer::Init();
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
@@ -73,6 +74,7 @@ public:
         SaveEditorSettings();
         VE::UIRenderer::Shutdown();
         VE::InstancedRenderer::Shutdown();
+        VE::ParticleRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
         VE::ScriptEngine::Shutdown();
         VE::AudioEngine::Shutdown();
@@ -1916,6 +1918,13 @@ private:
                         e.AddComponent<VE::CameraComponent>();
                         m_SelectedEntity = e;
                     });
+                ImGui::Separator();
+                if (ImGui::MenuItem("Particle Emitter"))
+                    m_CommandHistory.Execute("Create Particle Emitter", [this]() {
+                        auto e = m_Scene->CreateEntity("Particle Emitter");
+                        e.AddComponent<VE::ParticleSystemComponent>();
+                        m_SelectedEntity = e;
+                    });
                 ImGui::EndMenu();
             }
             ImGui::EndPopup();
@@ -3404,13 +3413,30 @@ private:
                 ImGui::DragFloat("Lifetime", &ps.ParticleLifetime, 0.1f, 0.01f, 60.0f);
                 ImGui::DragFloat("Lifetime Variance", &ps.LifetimeVariance, 0.05f, 0.0f, 30.0f);
                 ImGui::DragInt("Max Particles", &ps.MaxParticles, 10, 1, 100000);
-                ImGui::DragFloat3("Velocity Min", ps.VelocityMin.data(), 0.1f);
-                ImGui::DragFloat3("Velocity Max", ps.VelocityMax.data(), 0.1f);
+
+                // Emitter shape
+                const char* shapeNames[] = { "Point", "Sphere", "Cone" };
+                int shapeIdx = static_cast<int>(ps.Shape);
+                if (ImGui::Combo("Emitter Shape", &shapeIdx, shapeNames, 3))
+                    ps.Shape = static_cast<VE::EmitterShape>(shapeIdx);
+
+                if (ps.Shape == VE::EmitterShape::Point) {
+                    ImGui::DragFloat3("Velocity Min", ps.VelocityMin.data(), 0.1f);
+                    ImGui::DragFloat3("Velocity Max", ps.VelocityMax.data(), 0.1f);
+                } else {
+                    ImGui::DragFloat("Speed Min", &ps.SpeedMin, 0.1f, 0.0f, 100.0f);
+                    ImGui::DragFloat("Speed Max", &ps.SpeedMax, 0.1f, 0.0f, 100.0f);
+                    ImGui::DragFloat("Shape Radius", &ps.ShapeRadius, 0.05f, 0.0f, 50.0f);
+                    if (ps.Shape == VE::EmitterShape::Cone)
+                        ImGui::DragFloat("Cone Angle", &ps.ConeAngle, 0.5f, 0.0f, 90.0f);
+                }
+
                 ImGui::DragFloat3("Gravity", ps.Gravity.data(), 0.1f);
                 ImGui::ColorEdit4("Start Color", ps.StartColor.data());
                 ImGui::ColorEdit4("End Color", ps.EndColor.data());
                 ImGui::DragFloat("Start Size", &ps.StartSize, 0.01f, 0.0f, 10.0f);
                 ImGui::DragFloat("End Size", &ps.EndSize, 0.01f, 0.0f, 10.0f);
+                ImGui::Checkbox("Looping##Particles", &ps.Looping);
                 ImGui::Checkbox("Play On Start##Particles", &ps.PlayOnStart);
 
                 // Texture field with drag-drop
