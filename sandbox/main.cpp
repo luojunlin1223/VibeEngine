@@ -2604,6 +2604,33 @@ private:
                 VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
             }
 
+            // Draw IK target gizmos for selected entity
+            if (m_SelectedEntity.IsValid() && m_SelectedEntity.HasComponent<VE::IKComponent>()) {
+                auto& ik = m_SelectedEntity.GetComponent<VE::IKComponent>();
+                auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
+                glm::vec3 entityPos(tc.Position[0], tc.Position[1], tc.Position[2]);
+
+                for (int i = 0; i < static_cast<int>(ik.Targets.size()); i++) {
+                    auto& t = ik.Targets[i];
+                    if (!t.Enabled) continue;
+
+                    glm::vec3 tgtPos = t.TargetPosition;
+
+                    // Draw line from entity position to IK target
+                    glm::vec2 p0 = VE::GizmoRenderer::ProjectWorldToScreen(entityPos);
+                    glm::vec2 p1 = VE::GizmoRenderer::ProjectWorldToScreen(tgtPos);
+                    ImU32 col = IM_COL32(255, 165, 0, 200); // orange
+                    ImGui::GetWindowDrawList()->AddLine(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), col, 1.5f);
+
+                    // Draw dot at target position
+                    ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(p1.x, p1.y), 5.0f, col);
+
+                    // Draw dot at pole vector position
+                    glm::vec2 pp = VE::GizmoRenderer::ProjectWorldToScreen(t.PoleVector);
+                    ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(pp.x, pp.y), 3.0f, IM_COL32(0, 200, 255, 180));
+                }
+            }
+
             VE::GizmoRenderer::EndScene();
         }
 
@@ -4756,6 +4783,91 @@ private:
             ImGui::Separator();
         }
 
+        // IKComponent inspector
+        if (m_SelectedEntity.HasComponent<VE::IKComponent>()) {
+            auto& ik = m_SelectedEntity.GetComponent<VE::IKComponent>();
+            bool removeIK = false;
+            bool openIK = ImGui::CollapsingHeader("Inverse Kinematics", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::IKComponent>("##IKCtx", "IK", removeIK);
+            if (openIK) {
+                // Show bone list from animator if available
+                int boneCount = 0;
+                VE::Skeleton* skel = nullptr;
+                if (m_SelectedEntity.HasComponent<VE::AnimatorComponent>()) {
+                    auto& ac = m_SelectedEntity.GetComponent<VE::AnimatorComponent>();
+                    if (ac._Animator && ac._Animator->GetMesh() && ac._Animator->GetMesh()->SkeletonRef) {
+                        skel = ac._Animator->GetMesh()->SkeletonRef.get();
+                        boneCount = skel->GetBoneCount();
+                    }
+                }
+
+                if (boneCount == 0) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f),
+                        "Add AnimatorComponent with a skinned mesh to use IK");
+                }
+
+                // Add/remove target buttons
+                if (ImGui::Button("Add IK Target")) {
+                    ik.Targets.push_back({});
+                }
+
+                int removeIdx = -1;
+                for (int i = 0; i < static_cast<int>(ik.Targets.size()); i++) {
+                    ImGui::PushID(i);
+                    auto& t = ik.Targets[i];
+
+                    char label[64];
+                    snprintf(label, sizeof(label), "Target %d", i);
+                    if (ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Checkbox("Enabled", &t.Enabled);
+
+                        // Bone selection — combo box if skeleton available
+                        if (skel && boneCount > 0) {
+                            const char* boneName = (t.EndBoneIndex >= 0 && t.EndBoneIndex < boneCount)
+                                ? skel->Bones[t.EndBoneIndex].Name.c_str() : "None";
+                            if (ImGui::BeginCombo("End Bone", boneName)) {
+                                for (int b = 0; b < boneCount; b++) {
+                                    bool selected = (b == t.EndBoneIndex);
+                                    if (ImGui::Selectable(skel->Bones[b].Name.c_str(), selected))
+                                        t.EndBoneIndex = b;
+                                    if (selected) ImGui::SetItemDefaultFocus();
+                                }
+                                ImGui::EndCombo();
+                            }
+                        } else {
+                            ImGui::DragInt("End Bone Index", &t.EndBoneIndex, 1.0f, -1, 255);
+                        }
+
+                        ImGui::DragInt("Chain Length", &t.ChainLength, 1.0f, 1, 10);
+                        ImGui::DragFloat3("Target Position", &t.TargetPosition.x, 0.05f);
+                        ImGui::DragFloat3("Pole Vector", &t.PoleVector.x, 0.05f);
+                        ImGui::SliderFloat("Weight", &t.Weight, 0.0f, 1.0f);
+
+                        // Target entity UUID (show as drag-int for now)
+                        uint64_t uuid = t.TargetEntityUUID;
+                        int uuidInt = static_cast<int>(uuid);
+                        if (ImGui::DragInt("Target Entity UUID", &uuidInt, 1.0f, 0, 999999)) {
+                            t.TargetEntityUUID = static_cast<uint64_t>(uuidInt);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Clear")) t.TargetEntityUUID = 0;
+
+                        if (ImGui::SmallButton("Remove Target"))
+                            removeIdx = i;
+
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+
+                if (removeIdx >= 0 && removeIdx < static_cast<int>(ik.Targets.size()))
+                    ik.Targets.erase(ik.Targets.begin() + removeIdx);
+            }
+            if (removeIK)
+                m_SelectedEntity.RemoveComponent<VE::IKComponent>();
+            ImGui::Separator();
+        }
+
         // AudioSourceComponent inspector
         if (m_SelectedEntity.HasComponent<VE::AudioSourceComponent>()) {
             auto& as = m_SelectedEntity.GetComponent<VE::AudioSourceComponent>();
@@ -5593,6 +5705,9 @@ private:
 
             ADD_COMPONENT_ITEM("Animator", VE::AnimatorComponent,
                 m_SelectedEntity.AddComponent<VE::AnimatorComponent>())
+
+            ADD_COMPONENT_ITEM("Inverse Kinematics", VE::IKComponent,
+                m_SelectedEntity.AddComponent<VE::IKComponent>())
 
             ADD_COMPONENT_ITEM("Camera", VE::CameraComponent,
                 m_SelectedEntity.AddComponent<VE::CameraComponent>())

@@ -30,6 +30,20 @@ public:
     void Update(float deltaTime);
     void ApplySkinning();
 
+    // IK support: sample pose without skinning so IK can modify bones first.
+    // UpdatePose() advances time + samples bones (no skinning).
+    // Call FinalizeBoneMatrices() then ApplySkinning() after IK adjustments.
+    void UpdatePose(float deltaTime);
+    void FinalizeBoneMatrices();
+    bool IsPoseReady() const { return m_PoseReady; }
+
+    // Access bone transforms for IK modification
+    std::vector<glm::mat4>& GetLocalTransforms() { return m_LocalTransforms; }
+    std::vector<glm::mat4>& GetGlobalTransforms() { return m_GlobalTransforms; }
+    const std::vector<glm::mat4>& GetBoneMatrices() const { return m_BoneMatrices; }
+    std::vector<glm::mat4>& GetBoneMatricesRef() { return m_BoneMatrices; }
+    std::shared_ptr<MeshAsset> GetMesh() const { return m_Mesh; }
+
     std::shared_ptr<VertexArray> GetSkinnedVAO() const { return m_SkinnedVAO; }
     bool IsPlaying() const { return m_Playing; }
     int GetClipCount() const;
@@ -54,6 +68,9 @@ private:
 
     std::vector<glm::mat4> m_BoneMatrices;
     std::vector<glm::mat4> m_BoneMatricesB; // for blending
+    std::vector<glm::mat4> m_LocalTransforms;  // per-bone local transforms (for IK)
+    std::vector<glm::mat4> m_GlobalTransforms; // per-bone global transforms (for IK)
+    bool m_PoseReady = false; // true after UpdatePose, cleared after ApplySkinning
 
     // Playback state
     int m_ClipIndex = 0;

@@ -578,6 +578,35 @@ static bool Glue_Video_IsPlaying(uint64_t entityID) {
     return vc && vc->_Player && vc->_Player->IsPlaying();
 }
 
+// ── IK ──────────────────────────────────────────────────────────────
+
+static void Glue_IK_SetTarget(uint64_t entityID, int targetIndex, float x, float y, float z) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ik = scene->GetRegistry().try_get<IKComponent>(e);
+    if (!ik || targetIndex < 0 || targetIndex >= static_cast<int>(ik->Targets.size())) return;
+    ik->Targets[targetIndex].TargetPosition = glm::vec3(x, y, z);
+}
+
+static void Glue_IK_SetWeight(uint64_t entityID, int targetIndex, float weight) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ik = scene->GetRegistry().try_get<IKComponent>(e);
+    if (!ik || targetIndex < 0 || targetIndex >= static_cast<int>(ik->Targets.size())) return;
+    ik->Targets[targetIndex].Weight = glm::clamp(weight, 0.0f, 1.0f);
+}
+
+static void Glue_IK_SetEnabled(uint64_t entityID, int targetIndex, bool enabled) {
+    Scene* scene = ScriptEngine::GetActiveScene();
+    auto e = FindEntityByUUID(scene, entityID);
+    if (e == entt::null) return;
+    auto* ik = scene->GetRegistry().try_get<IKComponent>(e);
+    if (!ik || targetIndex < 0 || targetIndex >= static_cast<int>(ik->Targets.size())) return;
+    ik->Targets[targetIndex].Enabled = enabled;
+}
+
 // ── Init ────────────────────────────────────────────────────────────
 
 void InitScriptGlue(ScriptAPI& api) {
@@ -672,6 +701,11 @@ void InitScriptGlue(ScriptAPI& api) {
     api.Video_Stop               = Glue_Video_Stop;
     api.Video_SetTime            = Glue_Video_SetTime;
     api.Video_IsPlaying          = Glue_Video_IsPlaying;
+
+    // IK
+    api.IK_SetTarget             = Glue_IK_SetTarget;
+    api.IK_SetWeight             = Glue_IK_SetWeight;
+    api.IK_SetEnabled            = Glue_IK_SetEnabled;
 }
 
 } // namespace VE

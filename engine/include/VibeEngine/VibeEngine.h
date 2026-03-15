@@ -58,6 +58,7 @@
 #include "Animation/Skeleton.h"
 #include "Animation/AnimationClip.h"
 #include "Animation/Animator.h"
+#include "Animation/IKSolver.h"
 
 #include "Scripting/NativeScript.h"
 #include "Scripting/ScriptEngine.h"

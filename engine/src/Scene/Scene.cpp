@@ -10,6 +10,8 @@
 #include "VibeEngine/Scripting/ScriptEngine.h"
 #include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Animation/Animator.h"
+#include "VibeEngine/Animation/Skeleton.h"
+#include "VibeEngine/Animation/IKSolver.h"
 #include "VibeEngine/Audio/AudioEngine.h"
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Renderer/ParticleSystem.h"
@@ -281,14 +283,76 @@ void Scene::OnUpdate(float deltaTime) {
         }
     }
 
-    // Update animations after scripts
+    // Update animations after scripts (split into pose + IK + skinning)
     {
         auto animView = m_Registry.view<AnimatorComponent>();
         for (auto entity : animView) {
             if (!IsEntityActiveInHierarchy(entity)) continue;
             auto& ac = animView.get<AnimatorComponent>(entity);
-            if (ac._Animator)
+            if (!ac._Animator) continue;
+
+            // Check if this entity has IK targets
+            auto* ikComp = m_Registry.try_get<IKComponent>(entity);
+            bool hasIK = ikComp && !ikComp->Targets.empty();
+
+            if (hasIK) {
+                // Split path: sample pose, apply IK, then skin
+                ac._Animator->UpdatePose(deltaTime);
+
+                if (ac._Animator->IsPoseReady() && ac._Animator->GetMesh() &&
+                    ac._Animator->GetMesh()->SkeletonRef) {
+                    auto& skeleton = *ac._Animator->GetMesh()->SkeletonRef;
+                    auto& localTf = ac._Animator->GetLocalTransforms();
+                    auto& globalTf = ac._Animator->GetGlobalTransforms();
+
+                    // Compute entity world transform for world-to-bone-space conversion
+                    glm::mat4 entityTransform = GetWorldTransform(entity);
+
+                    for (auto& target : ikComp->Targets) {
+                        if (!target.Enabled || target.EndBoneIndex < 0) continue;
+                        if (target.EndBoneIndex >= skeleton.GetBoneCount()) continue;
+
+                        // Resolve target position from entity UUID if set
+                        glm::vec3 targetPos = target.TargetPosition;
+                        if (target.TargetEntityUUID != 0) {
+                            auto view = m_Registry.view<IDComponent, TransformComponent>();
+                            for (auto e : view) {
+                                auto& id = view.get<IDComponent>(e);
+                                if (static_cast<uint64_t>(id.ID) == target.TargetEntityUUID) {
+                                    auto& tf = view.get<TransformComponent>(e);
+                                    targetPos = glm::vec3(tf.Position[0], tf.Position[1], tf.Position[2]);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (target.ChainLength == 2) {
+                            // Two-bone IK (analytical, faster)
+                            auto chain = IKSolver::BuildChain(skeleton, target.EndBoneIndex, target.ChainLength);
+                            if (chain.BoneIndices.size() == 3) {
+                                IKSolver::SolveTwoBone(
+                                    skeleton, localTf, globalTf,
+                                    chain.BoneIndices[0], chain.BoneIndices[1], chain.BoneIndices[2],
+                                    targetPos, target.PoleVector, target.Weight, entityTransform);
+                            }
+                        } else {
+                            // FABRIK (general purpose)
+                            auto chain = IKSolver::BuildChain(skeleton, target.EndBoneIndex, target.ChainLength);
+                            IKSolver::SolveFABRIK(
+                                skeleton, localTf, globalTf, chain,
+                                targetPos, target.PoleVector, target.Weight,
+                                10, 0.001f, entityTransform);
+                        }
+                    }
+
+                    ac._Animator->FinalizeBoneMatrices();
+                }
+
+                ac._Animator->ApplySkinning();
+            } else {
+                // No IK — use original combined update
                 ac._Animator->Update(deltaTime);
+            }
         }
     }
 

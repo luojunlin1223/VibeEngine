@@ -144,6 +144,11 @@ struct ScriptAPI {
     void (*Video_Stop)(uint64_t entityID)             = nullptr;
     void (*Video_SetTime)(uint64_t entityID, double time) = nullptr;
     bool (*Video_IsPlaying)(uint64_t entityID)        = nullptr;
+
+    // Inverse Kinematics
+    void (*IK_SetTarget)(uint64_t entityID, int targetIndex, float x, float y, float z) = nullptr;
+    void (*IK_SetWeight)(uint64_t entityID, int targetIndex, float weight) = nullptr;
+    void (*IK_SetEnabled)(uint64_t entityID, int targetIndex, bool enabled) = nullptr;
 };
 
 // ── Property reflection ─────────────────────────────────────────────

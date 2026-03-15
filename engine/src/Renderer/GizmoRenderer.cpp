@@ -112,6 +112,11 @@ void GizmoRenderer::EndScene() {
     s_DrawList = nullptr;
 }
 
+glm::vec2 GizmoRenderer::ProjectWorldToScreen(const glm::vec3& worldPos) {
+    ImVec2 s = WorldToScreen(worldPos);
+    return { s.x, s.y };
+}
+
 glm::vec2 GizmoRenderer::ScreenToWorld(float screenX, float screenY) {
     float ndcX = ((screenX - s_VpX) / s_VpW) * 2.0f - 1.0f;
     float ndcY = 1.0f - ((screenY - s_VpY) / s_VpH) * 2.0f;

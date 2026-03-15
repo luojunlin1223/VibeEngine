@@ -54,6 +54,10 @@ public:
     // Screen ↔ World conversion
     static glm::vec2 ScreenToWorld(float screenX, float screenY);
 
+    // Project a world-space point to screen-space (ImGui coordinates).
+    // Returns {-1,-1} if the point is behind the camera.
+    static glm::vec2 ProjectWorldToScreen(const glm::vec3& worldPos);
+
     // Hit-test gizmo axes in screen space (works for 2D and 3D).
     // pixelThreshold is the hit distance in pixels.
     static GizmoAxis HitTestTranslationGizmo(const glm::vec3& entityPos,

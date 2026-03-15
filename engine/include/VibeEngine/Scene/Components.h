@@ -500,4 +500,24 @@ struct LightmapComponent {
     LightmapComponent() = default;
 };
 
+// ── IK Component ─────────────────────────────────────────────────────
+
+struct IKComponent {
+    struct IKTarget {
+        int EndBoneIndex = -1;          // bone to reach target (end effector)
+        int ChainLength  = 2;           // number of bones in chain (2 = two-bone IK)
+        glm::vec3 TargetPosition = glm::vec3(0.0f); // world-space target
+        glm::vec3 PoleVector = glm::vec3(0.0f, 0.0f, 1.0f); // bend direction hint
+        float Weight = 1.0f;            // 0-1 blend with animation pose
+        bool Enabled = true;
+
+        // Optional: target entity (follow another entity's position)
+        uint64_t TargetEntityUUID = 0;  // 0 = use TargetPosition
+    };
+
+    std::vector<IKTarget> Targets;
+
+    IKComponent() = default;
+};
+
 } // namespace VE

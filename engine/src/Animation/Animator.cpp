@@ -16,9 +16,13 @@ void Animator::SetTarget(const std::shared_ptr<MeshAsset>& mesh) {
     m_Mesh = mesh;
     if (!mesh || !mesh->IsSkinned()) return;
 
+    int boneCount = mesh->SkeletonRef->GetBoneCount();
+
     // Clone bind-pose vertices as our working buffer
     m_SkinnedVertices = mesh->BindPoseVertices;
-    m_BoneMatrices.resize(mesh->SkeletonRef->GetBoneCount(), glm::mat4(1.0f));
+    m_BoneMatrices.resize(boneCount, glm::mat4(1.0f));
+    m_LocalTransforms.resize(boneCount, glm::mat4(1.0f));
+    m_GlobalTransforms.resize(boneCount, glm::mat4(1.0f));
 
     // Create a dynamic VAO for skinned output
     m_SkinnedVAO = VertexArray::Create();
@@ -148,6 +152,79 @@ void Animator::Update(float deltaTime) {
     ApplySkinning();
 }
 
+void Animator::UpdatePose(float deltaTime) {
+    if (!m_Playing || !m_Mesh || !m_Mesh->IsSkinned()) return;
+    auto& clips = m_OverrideClips.empty() ? m_Mesh->Clips : m_OverrideClips;
+
+    // State machine or legacy: advance time and sample pose (no skinning)
+    if (m_UseStateMachine && !m_StateMachine.GetStates().empty()) {
+        float clipDur = GetCurrentClipDuration();
+        auto eval = m_StateMachine.Evaluate(deltaTime, m_CurrentTime, clipDur);
+
+        if (eval.StateChanged && eval.ClipB < 0) {
+            m_ClipIndex = eval.ClipA;
+            m_Speed = eval.SpeedA;
+            m_Loop = eval.LoopA;
+            m_CurrentTime = 0.0f;
+            m_BlendTimeB = 0.0f;
+        }
+
+        if (!m_StateMachine.IsTransitioning()) {
+            m_ClipIndex = eval.ClipA;
+            m_Speed = eval.SpeedA;
+            m_Loop = eval.LoopA;
+        }
+
+        if (m_ClipIndex < 0 || m_ClipIndex >= static_cast<int>(clips.size())) return;
+        auto& clip = clips[m_ClipIndex];
+
+        m_CurrentTime += deltaTime * m_Speed;
+        if (m_Loop && clip.Duration > 0.0f)
+            m_CurrentTime = std::fmod(m_CurrentTime, clip.Duration);
+        else if (!m_Loop && m_CurrentTime >= clip.Duration)
+            m_CurrentTime = clip.Duration;
+
+        if (eval.ClipB >= 0 && eval.ClipB < static_cast<int>(clips.size()) && eval.BlendT > 0.0f) {
+            m_BlendTimeB += deltaTime * eval.SpeedB;
+            auto& clipB = clips[eval.ClipB];
+            if (eval.LoopB && clipB.Duration > 0.0f)
+                m_BlendTimeB = std::fmod(m_BlendTimeB, clipB.Duration);
+            SamplePoseBlended(m_CurrentTime, m_ClipIndex, m_BlendTimeB, eval.ClipB, eval.BlendT);
+        } else {
+            SamplePose(m_CurrentTime);
+        }
+    } else {
+        if (m_ClipIndex < 0 || m_ClipIndex >= static_cast<int>(clips.size())) return;
+        auto& clip = clips[m_ClipIndex];
+        m_CurrentTime += deltaTime * m_Speed;
+
+        if (m_Loop) {
+            if (clip.Duration > 0.0f)
+                m_CurrentTime = std::fmod(m_CurrentTime, clip.Duration);
+        } else {
+            if (m_CurrentTime >= clip.Duration) {
+                m_CurrentTime = clip.Duration;
+                m_Playing = false;
+            }
+        }
+        SamplePose(m_CurrentTime);
+    }
+
+    m_PoseReady = true;
+    // Note: caller must invoke FinalizeBoneMatrices() + ApplySkinning() after IK
+}
+
+void Animator::FinalizeBoneMatrices() {
+    if (!m_Mesh || !m_Mesh->SkeletonRef) return;
+    auto& skeleton = *m_Mesh->SkeletonRef;
+    int boneCount = skeleton.GetBoneCount();
+
+    for (int i = 0; i < boneCount; i++) {
+        m_BoneMatrices[i] = m_GlobalTransforms[i] * skeleton.Bones[i].InverseBindMatrix;
+    }
+    m_PoseReady = false;
+}
+
 static BoneKeyframe LerpKeyframes(const BoneKeyframe& a, const BoneKeyframe& b, float t) {
     BoneKeyframe result;
     result.Time = glm::mix(a.Time, b.Time, t);
@@ -181,8 +258,13 @@ void Animator::SamplePose(float time) {
     auto& clip = clips[m_ClipIndex];
     int boneCount = skeleton.GetBoneCount();
 
+    // Ensure buffers are sized
+    if (static_cast<int>(m_LocalTransforms.size()) != boneCount)
+        m_LocalTransforms.resize(boneCount, glm::mat4(1.0f));
+    if (static_cast<int>(m_GlobalTransforms.size()) != boneCount)
+        m_GlobalTransforms.resize(boneCount, glm::mat4(1.0f));
+
     // Compute local transforms from animation (or bind pose fallback)
-    std::vector<glm::mat4> localTransforms(boneCount);
     for (int i = 0; i < boneCount; i++) {
         const BoneTrack* track = clip.FindTrack(i);
         if (track && !track->Keyframes.empty()) {
@@ -190,24 +272,23 @@ void Animator::SamplePose(float time) {
             glm::mat4 T = glm::translate(glm::mat4(1.0f), kf.Position);
             glm::mat4 R = glm::toMat4(kf.Rotation);
             glm::mat4 S = glm::scale(glm::mat4(1.0f), kf.Scale);
-            localTransforms[i] = T * R * S;
+            m_LocalTransforms[i] = T * R * S;
         } else {
-            localTransforms[i] = skeleton.Bones[i].LocalBindTransform;
+            m_LocalTransforms[i] = skeleton.Bones[i].LocalBindTransform;
         }
     }
 
     // Forward kinematics: compute global transforms
-    std::vector<glm::mat4> globalTransforms(boneCount);
     for (int i = 0; i < boneCount; i++) {
         if (skeleton.Bones[i].ParentIndex >= 0)
-            globalTransforms[i] = globalTransforms[skeleton.Bones[i].ParentIndex] * localTransforms[i];
+            m_GlobalTransforms[i] = m_GlobalTransforms[skeleton.Bones[i].ParentIndex] * m_LocalTransforms[i];
         else
-            globalTransforms[i] = localTransforms[i];
+            m_GlobalTransforms[i] = m_LocalTransforms[i];
     }
 
     // Final bone matrices: global * inverseBindMatrix
     for (int i = 0; i < boneCount; i++) {
-        m_BoneMatrices[i] = globalTransforms[i] * skeleton.Bones[i].InverseBindMatrix;
+        m_BoneMatrices[i] = m_GlobalTransforms[i] * skeleton.Bones[i].InverseBindMatrix;
     }
 }
 
@@ -222,57 +303,56 @@ void Animator::SamplePoseBlended(float timeA, int clipIdxA, float timeB, int cli
     auto& clipB = clips[clipIdxB];
     int boneCount = skeleton.GetBoneCount();
 
-    if ((int)m_BoneMatricesB.size() != boneCount)
-        m_BoneMatricesB.resize(boneCount, glm::mat4(1.0f));
+    // Ensure buffers are sized
+    if (static_cast<int>(m_LocalTransforms.size()) != boneCount)
+        m_LocalTransforms.resize(boneCount, glm::mat4(1.0f));
+    if (static_cast<int>(m_GlobalTransforms.size()) != boneCount)
+        m_GlobalTransforms.resize(boneCount, glm::mat4(1.0f));
 
-    // Sample pose A → m_BoneMatrices
-    {
-        std::vector<glm::mat4> local(boneCount), global(boneCount);
-        for (int i = 0; i < boneCount; i++) {
-            const BoneTrack* track = clipA.FindTrack(i);
-            if (track && !track->Keyframes.empty()) {
-                BoneKeyframe kf = SampleTrack(*track, timeA);
-                local[i] = glm::translate(glm::mat4(1.0f), kf.Position) *
-                           glm::toMat4(kf.Rotation) *
-                           glm::scale(glm::mat4(1.0f), kf.Scale);
-            } else {
-                local[i] = skeleton.Bones[i].LocalBindTransform;
-            }
+    // Sample local transforms for pose A into m_LocalTransforms
+    for (int i = 0; i < boneCount; i++) {
+        const BoneTrack* track = clipA.FindTrack(i);
+        if (track && !track->Keyframes.empty()) {
+            BoneKeyframe kf = SampleTrack(*track, timeA);
+            m_LocalTransforms[i] = glm::translate(glm::mat4(1.0f), kf.Position) *
+                       glm::toMat4(kf.Rotation) *
+                       glm::scale(glm::mat4(1.0f), kf.Scale);
+        } else {
+            m_LocalTransforms[i] = skeleton.Bones[i].LocalBindTransform;
         }
-        for (int i = 0; i < boneCount; i++) {
-            global[i] = (skeleton.Bones[i].ParentIndex >= 0)
-                ? global[skeleton.Bones[i].ParentIndex] * local[i] : local[i];
-        }
-        for (int i = 0; i < boneCount; i++)
-            m_BoneMatrices[i] = global[i] * skeleton.Bones[i].InverseBindMatrix;
     }
 
-    // Sample pose B → m_BoneMatricesB
-    {
-        std::vector<glm::mat4> local(boneCount), global(boneCount);
-        for (int i = 0; i < boneCount; i++) {
-            const BoneTrack* track = clipB.FindTrack(i);
-            if (track && !track->Keyframes.empty()) {
-                BoneKeyframe kf = SampleTrack(*track, timeB);
-                local[i] = glm::translate(glm::mat4(1.0f), kf.Position) *
-                           glm::toMat4(kf.Rotation) *
-                           glm::scale(glm::mat4(1.0f), kf.Scale);
-            } else {
-                local[i] = skeleton.Bones[i].LocalBindTransform;
-            }
+    // Sample local transforms for pose B (temp buffer)
+    std::vector<glm::mat4> localB(boneCount);
+    for (int i = 0; i < boneCount; i++) {
+        const BoneTrack* track = clipB.FindTrack(i);
+        if (track && !track->Keyframes.empty()) {
+            BoneKeyframe kf = SampleTrack(*track, timeB);
+            localB[i] = glm::translate(glm::mat4(1.0f), kf.Position) *
+                       glm::toMat4(kf.Rotation) *
+                       glm::scale(glm::mat4(1.0f), kf.Scale);
+        } else {
+            localB[i] = skeleton.Bones[i].LocalBindTransform;
         }
-        for (int i = 0; i < boneCount; i++) {
-            global[i] = (skeleton.Bones[i].ParentIndex >= 0)
-                ? global[skeleton.Bones[i].ParentIndex] * local[i] : local[i];
-        }
-        for (int i = 0; i < boneCount; i++)
-            m_BoneMatricesB[i] = global[i] * skeleton.Bones[i].InverseBindMatrix;
     }
 
-    // Blend: lerp bone matrices
+    // Blend local transforms (column-wise lerp)
     for (int i = 0; i < boneCount; i++) {
         for (int c = 0; c < 4; c++)
-            m_BoneMatrices[i][c] = glm::mix(m_BoneMatrices[i][c], m_BoneMatricesB[i][c], blend);
+            m_LocalTransforms[i][c] = glm::mix(m_LocalTransforms[i][c], localB[i][c], blend);
+    }
+
+    // Forward kinematics on blended locals → globals
+    for (int i = 0; i < boneCount; i++) {
+        if (skeleton.Bones[i].ParentIndex >= 0)
+            m_GlobalTransforms[i] = m_GlobalTransforms[skeleton.Bones[i].ParentIndex] * m_LocalTransforms[i];
+        else
+            m_GlobalTransforms[i] = m_LocalTransforms[i];
+    }
+
+    // Final bone matrices: global * inverseBindMatrix
+    for (int i = 0; i < boneCount; i++) {
+        m_BoneMatrices[i] = m_GlobalTransforms[i] * skeleton.Bones[i].InverseBindMatrix;
     }
 }
 

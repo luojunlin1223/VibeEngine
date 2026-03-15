@@ -374,6 +374,28 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // IKComponent
+    if (entity.HasComponent<IKComponent>()) {
+        auto& ik = entity.GetComponent<IKComponent>();
+        out << YAML::Key << "IKComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Targets" << YAML::Value << YAML::BeginSeq;
+        for (auto& t : ik.Targets) {
+            out << YAML::BeginMap;
+            out << YAML::Key << "EndBoneIndex" << YAML::Value << t.EndBoneIndex;
+            out << YAML::Key << "ChainLength" << YAML::Value << t.ChainLength;
+            out << YAML::Key << "TargetPosition" << YAML::Value
+                << YAML::BeginSeq << t.TargetPosition.x << t.TargetPosition.y << t.TargetPosition.z << YAML::EndSeq;
+            out << YAML::Key << "PoleVector" << YAML::Value
+                << YAML::BeginSeq << t.PoleVector.x << t.PoleVector.y << t.PoleVector.z << YAML::EndSeq;
+            out << YAML::Key << "Weight" << YAML::Value << t.Weight;
+            out << YAML::Key << "Enabled" << YAML::Value << t.Enabled;
+            out << YAML::Key << "TargetEntityUUID" << YAML::Value << t.TargetEntityUUID;
+            out << YAML::EndMap;
+        }
+        out << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+
     // NavAgentComponent
     if (entity.HasComponent<NavAgentComponent>()) {
         auto& nav = entity.GetComponent<NavAgentComponent>();
@@ -1207,6 +1229,37 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 }
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize AnimatorComponent: {}", e.what());
+            }
+        }
+
+        if (auto ikNode = entityNode["IKComponent"]) {
+            try {
+                auto& ik = entity.AddComponent<IKComponent>();
+                if (auto targetsNode = ikNode["Targets"]) {
+                    for (auto tn : targetsNode) {
+                        IKComponent::IKTarget t;
+                        if (tn["EndBoneIndex"])    t.EndBoneIndex = tn["EndBoneIndex"].as<int>(-1);
+                        if (tn["ChainLength"])     t.ChainLength  = tn["ChainLength"].as<int>(2);
+                        if (auto pos = tn["TargetPosition"]) {
+                            auto it = pos.begin();
+                            t.TargetPosition.x = it->as<float>(); ++it;
+                            t.TargetPosition.y = it->as<float>(); ++it;
+                            t.TargetPosition.z = it->as<float>();
+                        }
+                        if (auto pv = tn["PoleVector"]) {
+                            auto it = pv.begin();
+                            t.PoleVector.x = it->as<float>(); ++it;
+                            t.PoleVector.y = it->as<float>(); ++it;
+                            t.PoleVector.z = it->as<float>();
+                        }
+                        if (tn["Weight"])            t.Weight = tn["Weight"].as<float>(1.0f);
+                        if (tn["Enabled"])           t.Enabled = tn["Enabled"].as<bool>(true);
+                        if (tn["TargetEntityUUID"])   t.TargetEntityUUID = tn["TargetEntityUUID"].as<uint64_t>(0);
+                        ik.Targets.push_back(t);
+                    }
+                }
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize IKComponent: {}", e.what());
             }
         }
 
