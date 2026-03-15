@@ -1,0 +1,18 @@
+name: Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022"
+
+      - name: Build Tests
+        run: cmake --build build --config Debug --target VibeTests
+
+      - name: Run Tests
+        run: ./build/bin/Debug/VibeTests.exe
+        shell: bash
