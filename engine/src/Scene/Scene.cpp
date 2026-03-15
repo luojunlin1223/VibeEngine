@@ -9,6 +9,7 @@
 #include "VibeEngine/Animation/Animator.h"
 #include "VibeEngine/Audio/AudioEngine.h"
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
+#include "VibeEngine/Renderer/ParticleSystem.h"
 #include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Renderer/Frustum.h"
 #include "VibeEngine/Renderer/LODSystem.h"
@@ -1142,6 +1143,7 @@ void Scene::StartParticles() {
             p.Active = false;
         ps._EmissionAccumulator = 0.0f;
         ps._Playing = ps.PlayOnStart;
+        ps._EmissionStopped = false;
     }
     VE_ENGINE_INFO("Particles started");
 }
@@ -1153,8 +1155,26 @@ void Scene::StopParticles() {
         ps._Particles.clear();
         ps._EmissionAccumulator = 0.0f;
         ps._Playing = false;
+        ps._EmissionStopped = false;
     }
     VE_ENGINE_INFO("Particles stopped");
+}
+
+// Helper: generate a random direction on the unit sphere
+static glm::vec3 RandomOnSphere() {
+    float theta = RandomFloat(0.0f, 2.0f * 3.14159265f);
+    float phi = std::acos(RandomFloat(-1.0f, 1.0f));
+    float sp = std::sin(phi);
+    return glm::vec3(sp * std::cos(theta), sp * std::sin(theta), std::cos(phi));
+}
+
+// Helper: generate a random direction within a cone (half-angle in radians) pointing up (+Y)
+static glm::vec3 RandomInCone(float halfAngleRad) {
+    float theta = RandomFloat(0.0f, 2.0f * 3.14159265f);
+    float cosAngle = std::cos(halfAngleRad);
+    float z = RandomFloat(cosAngle, 1.0f);
+    float r = std::sqrt(1.0f - z * z);
+    return glm::vec3(r * std::cos(theta), z, r * std::sin(theta));
 }
 
 void Scene::OnUpdateParticles(float dt) {
@@ -1176,6 +1196,7 @@ void Scene::OnUpdateParticles(float dt) {
         glm::vec3 emitterPos(tc.Position[0], tc.Position[1], tc.Position[2]);
 
         // 1) Age existing particles, apply gravity, lerp color/size
+        bool anyActive = false;
         for (auto& p : ps._Particles) {
             if (!p.Active) continue;
             p.Lifetime += dt;
@@ -1183,6 +1204,7 @@ void Scene::OnUpdateParticles(float dt) {
                 p.Active = false;
                 continue;
             }
+            anyActive = true;
             p.Velocity += gravity * dt;
             p.Position += p.Velocity * dt;
 
@@ -1193,24 +1215,73 @@ void Scene::OnUpdateParticles(float dt) {
             p.Size = glm::mix(ps.StartSize, ps.EndSize, t);
         }
 
+        // Non-looping: stop emitting once we have cycled; stop playing when all dead
+        if (!ps.Looping && ps._EmissionStopped) {
+            if (!anyActive)
+                ps._Playing = false;
+            continue;
+        }
+
         // 2) Emit new particles via accumulator
         ps._EmissionAccumulator += ps.EmissionRate * dt;
         while (ps._EmissionAccumulator >= 1.0f) {
             ps._EmissionAccumulator -= 1.0f;
             // Find inactive slot
+            bool emitted = false;
             for (auto& p : ps._Particles) {
                 if (p.Active) continue;
+
                 p.Active = true;
-                p.Position = emitterPos;
-                p.Velocity = glm::vec3(
-                    RandomFloat(ps.VelocityMin[0], ps.VelocityMax[0]),
-                    RandomFloat(ps.VelocityMin[1], ps.VelocityMax[1]),
-                    RandomFloat(ps.VelocityMin[2], ps.VelocityMax[2]));
+                p.Lifetime = 0.0f;
                 p.MaxLife = ps.ParticleLifetime + RandomFloat(-ps.LifetimeVariance, ps.LifetimeVariance);
                 if (p.MaxLife < 0.01f) p.MaxLife = 0.01f;
-                p.Lifetime = 0.0f;
                 p.Size = ps.StartSize;
                 p.Color = glm::vec4(ps.StartColor[0], ps.StartColor[1], ps.StartColor[2], ps.StartColor[3]);
+
+                // Spawn position and velocity based on emitter shape
+                switch (ps.Shape) {
+                    case EmitterShape::Point:
+                        p.Position = emitterPos;
+                        p.Velocity = glm::vec3(
+                            RandomFloat(ps.VelocityMin[0], ps.VelocityMax[0]),
+                            RandomFloat(ps.VelocityMin[1], ps.VelocityMax[1]),
+                            RandomFloat(ps.VelocityMin[2], ps.VelocityMax[2]));
+                        break;
+
+                    case EmitterShape::Sphere: {
+                        // Spawn at random point on sphere surface, velocity outward
+                        glm::vec3 dir = RandomOnSphere();
+                        float radius = RandomFloat(0.0f, ps.ShapeRadius);
+                        p.Position = emitterPos + dir * radius;
+                        float speed = RandomFloat(ps.SpeedMin, ps.SpeedMax);
+                        p.Velocity = dir * speed;
+                        break;
+                    }
+
+                    case EmitterShape::Cone: {
+                        // Spawn at emitter, velocity within cone pointing up (+Y)
+                        float halfAngle = glm::radians(ps.ConeAngle);
+                        glm::vec3 dir = RandomInCone(halfAngle);
+                        // Offset spawn position slightly within cone base radius
+                        float baseRadius = ps.ShapeRadius * RandomFloat(0.0f, 1.0f);
+                        glm::vec3 offset(
+                            baseRadius * std::cos(RandomFloat(0.0f, 6.28318f)),
+                            0.0f,
+                            baseRadius * std::sin(RandomFloat(0.0f, 6.28318f)));
+                        p.Position = emitterPos + offset;
+                        float speed = RandomFloat(ps.SpeedMin, ps.SpeedMax);
+                        p.Velocity = dir * speed;
+                        break;
+                    }
+                }
+
+                emitted = true;
+                break;
+            }
+
+            // If pool is full and not looping, mark emission as done
+            if (!emitted && !ps.Looping) {
+                ps._EmissionStopped = true;
                 break;
             }
         }
@@ -1232,44 +1303,18 @@ void Scene::OnRenderParticles(const glm::mat4& viewProjection, const glm::vec3& 
     }
     if (!anyActive) return;
 
-    SpriteBatchRenderer::BeginBatch(viewProjection);
+    ParticleRenderer::BeginBatch(viewProjection);
 
     for (auto entity : view) {
+        if (!IsEntityActiveInHierarchy(entity)) continue;
         auto& ps = view.get<ParticleSystemComponent>(entity);
         if (!ps._Playing) continue;
 
-        for (auto& p : ps._Particles) {
-            if (!p.Active) continue;
-
-            // Billboard: face camera
-            glm::vec3 toCamera = cameraPos - p.Position;
-            float dist = glm::length(toCamera);
-            if (dist < 0.0001f)
-                toCamera = glm::vec3(0.0f, 0.0f, 1.0f);
-            else
-                toCamera /= dist;
-
-            glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
-            // Fallback when particle is directly above/below camera
-            if (std::abs(glm::dot(toCamera, worldUp)) > 0.999f)
-                worldUp = glm::vec3(0.0f, 0.0f, 1.0f);
-
-            glm::vec3 right = glm::normalize(glm::cross(worldUp, toCamera));
-            glm::vec3 up    = glm::cross(toCamera, right);
-
-            float s = p.Size;
-            glm::mat4 transform(1.0f);
-            transform[0] = glm::vec4(right * s, 0.0f);
-            transform[1] = glm::vec4(up * s, 0.0f);
-            transform[2] = glm::vec4(toCamera * s, 0.0f);
-            transform[3] = glm::vec4(p.Position, 1.0f);
-
-            std::array<float, 4> uvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
-            SpriteBatchRenderer::DrawSprite(transform, p.Color, ps.Texture, uvRect);
-        }
+        // DrawParticles handles back-to-front sorting and billboard rendering
+        ParticleRenderer::DrawParticles(ps._Particles, cameraPos, ps.Texture);
     }
 
-    SpriteBatchRenderer::EndBatch();
+    ParticleRenderer::EndBatch();
 }
 
 // ── Runtime UI Rendering ──────────────────────────────────────────────
