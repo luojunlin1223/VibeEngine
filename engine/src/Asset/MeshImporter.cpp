@@ -12,16 +12,28 @@ namespace VE {
 std::unordered_map<std::string, std::shared_ptr<MeshAsset>> MeshImporter::s_Cache;
 
 std::shared_ptr<MeshAsset> MeshImporter::LoadFBX(const std::string& absolutePath) {
+    if (!std::filesystem::exists(absolutePath)) {
+        VE_ENGINE_ERROR("MeshImporter::LoadFBX: file not found: {0}", absolutePath);
+        return nullptr;
+    }
     // Load settings from .meta if it exists, otherwise use defaults
     FBXImportSettings settings = FBXImporter::LoadSettings(absolutePath + ".meta");
     return FBXImporter::Import(absolutePath, settings);
 }
 
 std::shared_ptr<MeshAsset> MeshImporter::LoadFBX(const std::string& absolutePath, FBXImportSettings& settings) {
+    if (!std::filesystem::exists(absolutePath)) {
+        VE_ENGINE_ERROR("MeshImporter::LoadFBX: file not found: {0}", absolutePath);
+        return nullptr;
+    }
     return FBXImporter::Import(absolutePath, settings);
 }
 
 std::shared_ptr<MeshAsset> MeshImporter::LoadGLTF(const std::string& absolutePath) {
+    if (!std::filesystem::exists(absolutePath)) {
+        VE_ENGINE_ERROR("MeshImporter::LoadGLTF: file not found: {0}", absolutePath);
+        return nullptr;
+    }
     return GLTFImporter::Import(absolutePath);
 }
 

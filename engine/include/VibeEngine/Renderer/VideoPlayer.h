@@ -72,7 +72,7 @@ private:
     uint32_t m_Width      = 0;
     uint32_t m_Height     = 0;
 
-    uint8_t* m_RGBBuffer  = nullptr; // CPU-side RGB buffer (width * height * 3)
+    std::unique_ptr<uint8_t[]> m_RGBBuffer; // CPU-side RGB buffer (width * height * 3)
 
     bool   m_Playing = false;
     bool   m_Loop    = false;

@@ -58,8 +58,8 @@ bool VideoPlayer::Open(const std::string& path) {
     plm_set_video_decode_callback(plm, OnVideoDecoded, this);
 
     // Allocate CPU-side RGB buffer for YCrCb -> RGB conversion
-    m_RGBBuffer = new uint8_t[m_Width * m_Height * 3];
-    std::memset(m_RGBBuffer, 0, m_Width * m_Height * 3);
+    m_RGBBuffer = std::make_unique<uint8_t[]>(m_Width * m_Height * 3);
+    std::memset(m_RGBBuffer.get(), 0, m_Width * m_Height * 3);
 
     // Create the GPU texture
     CreateTexture();
@@ -79,8 +79,7 @@ void VideoPlayer::Close() {
 
     DestroyTexture();
 
-    delete[] m_RGBBuffer;
-    m_RGBBuffer = nullptr;
+    m_RGBBuffer.reset();
 
     m_Width  = 0;
     m_Height = 0;
@@ -172,14 +171,14 @@ void VideoPlayer::UploadFrame(void* framePtr) {
     if (!frame || !m_RGBBuffer || !m_TextureID) return;
 
     // Convert YCrCb to RGB into the CPU buffer
-    plm_frame_to_rgb(frame, m_RGBBuffer, static_cast<int>(m_Width * 3));
+    plm_frame_to_rgb(frame, m_RGBBuffer.get(), static_cast<int>(m_Width * 3));
 
     // Upload to GPU texture
     glBindTexture(GL_TEXTURE_2D, m_TextureID);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
                     static_cast<GLsizei>(m_Width),
                     static_cast<GLsizei>(m_Height),
-                    GL_RGB, GL_UNSIGNED_BYTE, m_RGBBuffer);
+                    GL_RGB, GL_UNSIGNED_BYTE, m_RGBBuffer.get());
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 

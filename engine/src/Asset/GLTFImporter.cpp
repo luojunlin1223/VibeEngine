@@ -112,6 +112,11 @@ static void ComputeFaceNormals(std::vector<float>& vertices,
 // ── Main import ──────────────────────────────────────────────────────────
 
 std::shared_ptr<MeshAsset> GLTFImporter::Import(const std::string& absPath) {
+    if (!std::filesystem::exists(absPath)) {
+        VE_ENGINE_ERROR("GLTFImporter: file not found: {0}", absPath);
+        return nullptr;
+    }
+
     cgltf_options options = {};
     cgltf_data* data = nullptr;
 

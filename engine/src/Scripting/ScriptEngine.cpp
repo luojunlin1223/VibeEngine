@@ -59,6 +59,9 @@ struct ScriptEngineData {
     // Reload flag
     bool ReloadedThisFrame = false;
 
+    // Mutex protecting DLL load/unload/reload operations
+    std::mutex ReloadMutex;
+
     // Property metadata cache (populated at DLL load)
     std::unordered_map<std::string, std::vector<ScriptEngine::CachedProperty>> PropertyCache;
 
@@ -247,9 +250,12 @@ void ScriptEngine::DestroyInstance(NativeScript* instance) {
 }
 
 void ScriptEngine::CheckForReload() {
+    if (!s_Data)
+        return;
+
     s_Data->ReloadedThisFrame = false;
 
-    if (!s_Data || !s_Data->DLLHandle || s_Data->DLLPath.empty())
+    if (!s_Data->DLLHandle || s_Data->DLLPath.empty())
         return;
 
     auto srcPath = std::filesystem::path(s_Data->DLLPath);
@@ -259,6 +265,7 @@ void ScriptEngine::CheckForReload() {
     auto currentTime = std::filesystem::last_write_time(srcPath);
     if (currentTime != s_Data->LastWriteTime) {
         VE_ENGINE_INFO("Script DLL changed, hot-reloading...");
+        std::lock_guard<std::mutex> lock(s_Data->ReloadMutex);
         if (s_Data->ActiveScene)
             ReloadScripts(*s_Data->ActiveScene);
         s_Data->ReloadedThisFrame = true;
@@ -266,6 +273,7 @@ void ScriptEngine::CheckForReload() {
 }
 
 void ScriptEngine::ReloadScripts(Scene& scene) {
+    // NOTE: Caller must hold s_Data->ReloadMutex (CheckForReload does this).
     // 1. Destroy all existing script instances
     auto view = scene.GetRegistry().view<ScriptComponent>();
     for (auto entity : view) {

@@ -392,6 +392,7 @@ void Scene::StartAnimations() {
 
         // Configure state machine if enabled
         if (ac.UseStateMachine && !ac.States.empty()) {
+            if (ac.States.empty() || ac.DefaultState >= (int)ac.States.size()) continue;
             auto& sm = ac._Animator->GetStateMachine();
             for (auto& s : ac.States) sm.AddState(s);
             for (auto& t : ac.Transitions) sm.AddTransition(t);
@@ -782,11 +783,11 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     // Gather point lights (max 8)
     static constexpr int MAX_POINT_LIGHTS = 8;
     int numPointLights = 0;
-    glm::vec3 pointPositions[MAX_POINT_LIGHTS];
-    glm::vec3 pointColors[MAX_POINT_LIGHTS];
-    float     pointIntensities[MAX_POINT_LIGHTS];
-    float     pointRanges[MAX_POINT_LIGHTS];
-    int       pointShadowIndex[MAX_POINT_LIGHTS]; // -1 = no shadow, 0..1 = shadow map index
+    glm::vec3 pointPositions[MAX_POINT_LIGHTS] = {};
+    glm::vec3 pointColors[MAX_POINT_LIGHTS] = {};
+    float     pointIntensities[MAX_POINT_LIGHTS] = {};
+    float     pointRanges[MAX_POINT_LIGHTS] = {};
+    int       pointShadowIndex[MAX_POINT_LIGHTS] = {}; // -1 = no shadow, 0..1 = shadow map index
     {
         int shadowIdx = 0;
         auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
@@ -810,14 +811,14 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     // Gather spot lights (max 4)
     static constexpr int MAX_SPOT_LIGHTS = 4;
     int numSpotLights = 0;
-    glm::vec3 spotPositions[MAX_SPOT_LIGHTS];
-    glm::vec3 spotDirections[MAX_SPOT_LIGHTS];
-    glm::vec3 spotColors[MAX_SPOT_LIGHTS];
-    float     spotIntensities[MAX_SPOT_LIGHTS];
-    float     spotRanges[MAX_SPOT_LIGHTS];
-    float     spotInnerCos[MAX_SPOT_LIGHTS];
-    float     spotOuterCos[MAX_SPOT_LIGHTS];
-    int       spotShadowIndex[MAX_SPOT_LIGHTS]; // -1 = no shadow, 0..1 = shadow map index
+    glm::vec3 spotPositions[MAX_SPOT_LIGHTS] = {};
+    glm::vec3 spotDirections[MAX_SPOT_LIGHTS] = {};
+    glm::vec3 spotColors[MAX_SPOT_LIGHTS] = {};
+    float     spotIntensities[MAX_SPOT_LIGHTS] = {};
+    float     spotRanges[MAX_SPOT_LIGHTS] = {};
+    float     spotInnerCos[MAX_SPOT_LIGHTS] = {};
+    float     spotOuterCos[MAX_SPOT_LIGHTS] = {};
+    int       spotShadowIndex[MAX_SPOT_LIGHTS] = {}; // -1 = no shadow, 0..1 = shadow map index
     {
         int shadowIdx = 0;
         auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
@@ -898,6 +899,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         // Spot light shadow maps (texture units 9, 10)
         shader->SetInt("u_NumSpotShadows", m_NumSpotShadows);
         for (int i = 0; i < m_NumSpotShadows; ++i) {
+            if (!m_SpotShadowMaps[i]) continue;
             int texUnit = 9 + i; // units 9, 10
             m_SpotShadowMaps[i]->BindForReading(texUnit);
             shader->SetInt("u_SpotShadowMaps[" + std::to_string(i) + "]", texUnit);
@@ -908,6 +910,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         // Point light shadow maps (texture units 11, 12)
         shader->SetInt("u_NumPointShadows", m_NumPointShadows);
         for (int i = 0; i < m_NumPointShadows; ++i) {
+            if (!m_PointShadowMaps[i]) continue;
             int texUnit = 11 + i; // units 11, 12
             m_PointShadowMaps[i]->BindForReading(texUnit);
             shader->SetInt("u_PointShadowCubeMaps[" + std::to_string(i) + "]", texUnit);
@@ -915,17 +918,6 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                              m_PointShadowMaps[i]->GetFarPlane());
         }
 
-        shader->SetInt("u_NumSpotLights", numSpotLights);
-        for (int i = 0; i < numSpotLights; ++i) {
-            std::string idx = std::to_string(i);
-            shader->SetVec3("u_SpotLightPositions[" + idx + "]",    spotPositions[i]);
-            shader->SetVec3("u_SpotLightDirections[" + idx + "]",   spotDirections[i]);
-            shader->SetVec3("u_SpotLightColors[" + idx + "]",       spotColors[i]);
-            shader->SetFloat("u_SpotLightIntensities[" + idx + "]", spotIntensities[i]);
-            shader->SetFloat("u_SpotLightRanges[" + idx + "]",      spotRanges[i]);
-            shader->SetFloat("u_SpotLightInnerCos[" + idx + "]",    spotInnerCos[i]);
-            shader->SetFloat("u_SpotLightOuterCos[" + idx + "]",    spotOuterCos[i]);
-        }
     };
 
     auto setPBRDefaults = [](const std::shared_ptr<Shader>& shader, const std::shared_ptr<Material>& mat) {
@@ -1185,8 +1177,9 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             });
 
         for (auto& ve : transparentEntities) {
-            auto& mr = m_Registry.get<MeshRendererComponent>(ve.ID);
-            drawEntity(ve.ID, mr, ve.Model);
+            auto* mr = m_Registry.try_get<MeshRendererComponent>(ve.ID);
+            if (!mr) continue;
+            drawEntity(ve.ID, *mr, ve.Model);
         }
 
         // Restore default depth write after transparent pass

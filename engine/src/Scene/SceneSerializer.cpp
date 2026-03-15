@@ -98,21 +98,6 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
-    // SpotLightComponent
-    if (entity.HasComponent<SpotLightComponent>()) {
-        auto& sl = entity.GetComponent<SpotLightComponent>();
-        out << YAML::Key << "SpotLightComponent" << YAML::Value << YAML::BeginMap;
-        out << YAML::Key << "Direction" << YAML::Value << YAML::Flow
-            << YAML::BeginSeq << sl.Direction[0] << sl.Direction[1] << sl.Direction[2] << YAML::EndSeq;
-        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
-            << YAML::BeginSeq << sl.Color[0] << sl.Color[1] << sl.Color[2] << YAML::EndSeq;
-        out << YAML::Key << "Intensity" << YAML::Value << sl.Intensity;
-        out << YAML::Key << "Range" << YAML::Value << sl.Range;
-        out << YAML::Key << "InnerAngle" << YAML::Value << sl.InnerAngle;
-        out << YAML::Key << "OuterAngle" << YAML::Value << sl.OuterAngle;
-        out << YAML::EndMap;
-    }
-
     // RigidbodyComponent
     if (entity.HasComponent<RigidbodyComponent>()) {
         auto& rb = entity.GetComponent<RigidbodyComponent>();
@@ -836,113 +821,143 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         tc.Active = active;
 
         if (auto tcNode = entityNode["TransformComponent"]) {
-            auto& tc = entity.GetComponent<TransformComponent>();
-            auto pos = tcNode["Position"];
-            tc.Position = { pos[0].as<float>(), pos[1].as<float>(), pos[2].as<float>() };
-            auto rot = tcNode["Rotation"];
-            tc.Rotation = { rot[0].as<float>(), rot[1].as<float>(), rot[2].as<float>() };
-            auto scl = tcNode["Scale"];
-            tc.Scale = { scl[0].as<float>(), scl[1].as<float>(), scl[2].as<float>() };
+            try {
+                auto& tc = entity.GetComponent<TransformComponent>();
+                auto pos = tcNode["Position"];
+                tc.Position = { pos[0].as<float>(), pos[1].as<float>(), pos[2].as<float>() };
+                auto rot = tcNode["Rotation"];
+                tc.Rotation = { rot[0].as<float>(), rot[1].as<float>(), rot[2].as<float>() };
+                auto scl = tcNode["Scale"];
+                tc.Scale = { scl[0].as<float>(), scl[1].as<float>(), scl[2].as<float>() };
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize TransformComponent: {}", e.what());
+            }
         }
 
         if (auto dlNode = entityNode["DirectionalLightComponent"]) {
-            auto& dl = entity.AddComponent<DirectionalLightComponent>();
-            auto dir = dlNode["Direction"];
-            dl.Direction = { dir[0].as<float>(), dir[1].as<float>(), dir[2].as<float>() };
-            auto col = dlNode["Color"];
-            dl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
-            dl.Intensity = dlNode["Intensity"].as<float>();
+            try {
+                auto& dl = entity.AddComponent<DirectionalLightComponent>();
+                auto dir = dlNode["Direction"];
+                dl.Direction = { dir[0].as<float>(), dir[1].as<float>(), dir[2].as<float>() };
+                auto col = dlNode["Color"];
+                dl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
+                dl.Intensity = dlNode["Intensity"].as<float>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize DirectionalLightComponent: {}", e.what());
+            }
         }
 
         if (auto plNode = entityNode["PointLightComponent"]) {
-            auto& pl = entity.AddComponent<PointLightComponent>();
-            auto col = plNode["Color"];
-            pl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
-            pl.Intensity = plNode["Intensity"].as<float>();
-            pl.Range = plNode["Range"].as<float>();
-            if (plNode["CastShadows"]) pl.CastShadows = plNode["CastShadows"].as<bool>();
+            try {
+                auto& pl = entity.AddComponent<PointLightComponent>();
+                auto col = plNode["Color"];
+                pl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
+                pl.Intensity = plNode["Intensity"].as<float>();
+                pl.Range = plNode["Range"].as<float>();
+                if (plNode["CastShadows"]) pl.CastShadows = plNode["CastShadows"].as<bool>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize PointLightComponent: {}", e.what());
+            }
         }
 
         if (auto slNode = entityNode["SpotLightComponent"]) {
-            auto& sl = entity.AddComponent<SpotLightComponent>();
-            if (auto d = slNode["Direction"]) sl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
-            if (auto c = slNode["Color"]) sl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
-            if (slNode["Intensity"]) sl.Intensity = slNode["Intensity"].as<float>();
-            if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
-            if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
-            if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
-            if (slNode["CastShadows"]) sl.CastShadows = slNode["CastShadows"].as<bool>();
-        }
-
-        if (auto slNode = entityNode["SpotLightComponent"]) {
-            auto& sl = entity.AddComponent<SpotLightComponent>();
-            if (auto d = slNode["Direction"]) sl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
-            if (auto c = slNode["Color"]) sl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
-            if (slNode["Intensity"]) sl.Intensity = slNode["Intensity"].as<float>();
-            if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
-            if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
-            if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
+            try {
+                auto& sl = entity.AddComponent<SpotLightComponent>();
+                if (auto d = slNode["Direction"]) sl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
+                if (auto c = slNode["Color"]) sl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+                if (slNode["Intensity"]) sl.Intensity = slNode["Intensity"].as<float>();
+                if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
+                if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
+                if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
+                if (slNode["CastShadows"]) sl.CastShadows = slNode["CastShadows"].as<bool>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize SpotLightComponent: {}", e.what());
+            }
         }
 
         if (auto rbNode = entityNode["RigidbodyComponent"]) {
-            auto& rb = entity.AddComponent<RigidbodyComponent>();
-            std::string bt = rbNode["BodyType"].as<std::string>();
-            if (bt == "Static") rb.Type = BodyType::Static;
-            else if (bt == "Kinematic") rb.Type = BodyType::Kinematic;
-            else rb.Type = BodyType::Dynamic;
-            rb.Mass           = rbNode["Mass"].as<float>();
-            rb.LinearDamping  = rbNode["LinearDamping"].as<float>();
-            rb.AngularDamping = rbNode["AngularDamping"].as<float>();
-            rb.Restitution    = rbNode["Restitution"].as<float>();
-            rb.Friction       = rbNode["Friction"].as<float>();
-            rb.UseGravity     = rbNode["UseGravity"].as<bool>();
+            try {
+                auto& rb = entity.AddComponent<RigidbodyComponent>();
+                std::string bt = rbNode["BodyType"].as<std::string>();
+                if (bt == "Static") rb.Type = BodyType::Static;
+                else if (bt == "Kinematic") rb.Type = BodyType::Kinematic;
+                else rb.Type = BodyType::Dynamic;
+                rb.Mass           = rbNode["Mass"].as<float>();
+                rb.LinearDamping  = rbNode["LinearDamping"].as<float>();
+                rb.AngularDamping = rbNode["AngularDamping"].as<float>();
+                rb.Restitution    = rbNode["Restitution"].as<float>();
+                rb.Friction       = rbNode["Friction"].as<float>();
+                rb.UseGravity     = rbNode["UseGravity"].as<bool>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize RigidbodyComponent: {}", e.what());
+            }
         }
 
         // New separate collider components
         if (auto n = entityNode["BoxColliderComponent"]) {
-            auto& col = entity.AddComponent<BoxColliderComponent>();
-            auto sz = n["Size"];
-            col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
-            auto off = n["Offset"];
-            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            try {
+                auto& col = entity.AddComponent<BoxColliderComponent>();
+                auto sz = n["Size"];
+                col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
+                auto off = n["Offset"];
+                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize BoxColliderComponent: {}", e.what());
+            }
         }
         if (auto n = entityNode["SphereColliderComponent"]) {
-            auto& col = entity.AddComponent<SphereColliderComponent>();
-            col.Radius = n["Radius"].as<float>();
-            auto off = n["Offset"];
-            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            try {
+                auto& col = entity.AddComponent<SphereColliderComponent>();
+                col.Radius = n["Radius"].as<float>();
+                auto off = n["Offset"];
+                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize SphereColliderComponent: {}", e.what());
+            }
         }
         if (auto n = entityNode["CapsuleColliderComponent"]) {
-            auto& col = entity.AddComponent<CapsuleColliderComponent>();
-            col.Radius = n["Radius"].as<float>();
-            col.Height = n["Height"].as<float>();
-            auto off = n["Offset"];
-            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            try {
+                auto& col = entity.AddComponent<CapsuleColliderComponent>();
+                col.Radius = n["Radius"].as<float>();
+                col.Height = n["Height"].as<float>();
+                auto off = n["Offset"];
+                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize CapsuleColliderComponent: {}", e.what());
+            }
         }
         if (auto n = entityNode["MeshColliderComponent"]) {
-            auto& col = entity.AddComponent<MeshColliderComponent>();
-            col.Convex = n["Convex"].as<bool>(true);
-            auto off = n["Offset"];
-            col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            try {
+                auto& col = entity.AddComponent<MeshColliderComponent>();
+                col.Convex = n["Convex"].as<bool>(true);
+                auto off = n["Offset"];
+                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize MeshColliderComponent: {}", e.what());
+            }
         }
-        // Backward compat: old ColliderComponent → convert to new type
+        // Backward compat: old ColliderComponent -> convert to new type
         if (auto colNode = entityNode["ColliderComponent"]) {
-            std::string sh = colNode["Shape"].as<std::string>("Box");
-            auto sz = colNode["Size"];
-            auto off = colNode["Offset"];
-            if (sh == "Box") {
-                auto& col = entity.AddComponent<BoxColliderComponent>();
-                col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
-                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
-            } else if (sh == "Sphere") {
-                auto& col = entity.AddComponent<SphereColliderComponent>();
-                col.Radius = sz[0].as<float>() * 0.5f;
-                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
-            } else {
-                auto& col = entity.AddComponent<CapsuleColliderComponent>();
-                col.Radius = sz[0].as<float>() * 0.5f;
-                col.Height = sz[1].as<float>();
-                col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+            try {
+                std::string sh = colNode["Shape"].as<std::string>("Box");
+                auto sz = colNode["Size"];
+                auto off = colNode["Offset"];
+                if (sh == "Box") {
+                    auto& col = entity.AddComponent<BoxColliderComponent>();
+                    col.Size = { sz[0].as<float>(), sz[1].as<float>(), sz[2].as<float>() };
+                    col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+                } else if (sh == "Sphere") {
+                    auto& col = entity.AddComponent<SphereColliderComponent>();
+                    col.Radius = sz[0].as<float>() * 0.5f;
+                    col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+                } else {
+                    auto& col = entity.AddComponent<CapsuleColliderComponent>();
+                    col.Radius = sz[0].as<float>() * 0.5f;
+                    col.Height = sz[1].as<float>();
+                    col.Offset = { off[0].as<float>(), off[1].as<float>(), off[2].as<float>() };
+                }
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize ColliderComponent: {}", e.what());
             }
         }
 
@@ -1011,19 +1026,23 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         }
 
         if (auto srNode = entityNode["SpriteRendererComponent"]) {
-            auto& sr = entity.AddComponent<SpriteRendererComponent>();
-            if (auto c = srNode["Color"]) {
-                sr.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            try {
+                auto& sr = entity.AddComponent<SpriteRendererComponent>();
+                if (auto c = srNode["Color"]) {
+                    sr.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                }
+                if (srNode["TexturePath"]) {
+                    sr.TexturePath = srNode["TexturePath"].as<std::string>();
+                    if (!sr.TexturePath.empty())
+                        sr.Texture = Texture2D::Create(sr.TexturePath);
+                }
+                if (auto uv = srNode["UVRect"]) {
+                    sr.UVRect = { uv[0].as<float>(), uv[1].as<float>(), uv[2].as<float>(), uv[3].as<float>() };
+                }
+                if (srNode["SortingOrder"]) sr.SortingOrder = srNode["SortingOrder"].as<int>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize SpriteRendererComponent: {}", e.what());
             }
-            if (srNode["TexturePath"]) {
-                sr.TexturePath = srNode["TexturePath"].as<std::string>();
-                if (!sr.TexturePath.empty())
-                    sr.Texture = Texture2D::Create(sr.TexturePath);
-            }
-            if (auto uv = srNode["UVRect"]) {
-                sr.UVRect = { uv[0].as<float>(), uv[1].as<float>(), uv[2].as<float>(), uv[3].as<float>() };
-            }
-            if (srNode["SortingOrder"]) sr.SortingOrder = srNode["SortingOrder"].as<int>();
         }
 
         if (auto saNode = entityNode["SpriteAnimatorComponent"]) {
@@ -1038,121 +1057,138 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         }
 
         if (auto psNode = entityNode["ParticleSystemComponent"]) {
-            auto& ps = entity.AddComponent<ParticleSystemComponent>();
-            if (psNode["EmissionRate"])     ps.EmissionRate     = psNode["EmissionRate"].as<float>();
-            if (psNode["ParticleLifetime"]) ps.ParticleLifetime = psNode["ParticleLifetime"].as<float>();
-            if (psNode["LifetimeVariance"]) ps.LifetimeVariance = psNode["LifetimeVariance"].as<float>();
-            if (psNode["MaxParticles"])     ps.MaxParticles     = psNode["MaxParticles"].as<int>();
-            if (auto v = psNode["VelocityMin"])
-                ps.VelocityMin = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
-            if (auto v = psNode["VelocityMax"])
-                ps.VelocityMax = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
-            if (auto v = psNode["Gravity"])
-                ps.Gravity = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
-            if (auto c = psNode["StartColor"])
-                ps.StartColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (auto c = psNode["EndColor"])
-                ps.EndColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (psNode["StartSize"])  ps.StartSize  = psNode["StartSize"].as<float>();
-            if (psNode["EndSize"])    ps.EndSize    = psNode["EndSize"].as<float>();
-            if (psNode["TexturePath"]) {
-                ps.TexturePath = psNode["TexturePath"].as<std::string>();
-                if (!ps.TexturePath.empty())
-                    ps.Texture = Texture2D::Create(ps.TexturePath);
+            try {
+                auto& ps = entity.AddComponent<ParticleSystemComponent>();
+                if (psNode["EmissionRate"])     ps.EmissionRate     = psNode["EmissionRate"].as<float>();
+                if (psNode["ParticleLifetime"]) ps.ParticleLifetime = psNode["ParticleLifetime"].as<float>();
+                if (psNode["LifetimeVariance"]) ps.LifetimeVariance = psNode["LifetimeVariance"].as<float>();
+                if (psNode["MaxParticles"])     ps.MaxParticles     = psNode["MaxParticles"].as<int>();
+                if (auto v = psNode["VelocityMin"])
+                    ps.VelocityMin = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+                if (auto v = psNode["VelocityMax"])
+                    ps.VelocityMax = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+                if (auto v = psNode["Gravity"])
+                    ps.Gravity = { v[0].as<float>(), v[1].as<float>(), v[2].as<float>() };
+                if (auto c = psNode["StartColor"])
+                    ps.StartColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (auto c = psNode["EndColor"])
+                    ps.EndColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (psNode["StartSize"])  ps.StartSize  = psNode["StartSize"].as<float>();
+                if (psNode["EndSize"])    ps.EndSize    = psNode["EndSize"].as<float>();
+                if (psNode["TexturePath"]) {
+                    ps.TexturePath = psNode["TexturePath"].as<std::string>();
+                    if (!ps.TexturePath.empty())
+                        ps.Texture = Texture2D::Create(ps.TexturePath);
+                }
+                if (psNode["PlayOnStart"]) ps.PlayOnStart = psNode["PlayOnStart"].as<bool>();
+                if (psNode["Looping"])     ps.Looping     = psNode["Looping"].as<bool>();
+                if (psNode["EmitterShape"]) ps.Shape = static_cast<EmitterShape>(psNode["EmitterShape"].as<int>());
+                if (psNode["ShapeRadius"]) ps.ShapeRadius = psNode["ShapeRadius"].as<float>();
+                if (psNode["ConeAngle"])   ps.ConeAngle   = psNode["ConeAngle"].as<float>();
+                if (psNode["SpeedMin"])    ps.SpeedMin    = psNode["SpeedMin"].as<float>();
+                if (psNode["SpeedMax"])    ps.SpeedMax    = psNode["SpeedMax"].as<float>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize ParticleSystemComponent: {}", e.what());
             }
-            if (psNode["PlayOnStart"]) ps.PlayOnStart = psNode["PlayOnStart"].as<bool>();
-            if (psNode["Looping"])     ps.Looping     = psNode["Looping"].as<bool>();
-            if (psNode["EmitterShape"]) ps.Shape = static_cast<EmitterShape>(psNode["EmitterShape"].as<int>());
-            if (psNode["ShapeRadius"]) ps.ShapeRadius = psNode["ShapeRadius"].as<float>();
-            if (psNode["ConeAngle"])   ps.ConeAngle   = psNode["ConeAngle"].as<float>();
-            if (psNode["SpeedMin"])    ps.SpeedMin    = psNode["SpeedMin"].as<float>();
-            if (psNode["SpeedMax"])    ps.SpeedMax    = psNode["SpeedMax"].as<float>();
         }
 
         if (auto acNode = entityNode["AnimatorComponent"]) {
-            auto& ac = entity.AddComponent<AnimatorComponent>();
-            if (acNode["AnimationSource"]) ac.AnimationSourcePath = acNode["AnimationSource"].as<std::string>();
-            if (acNode["ClipIndex"])   ac.ClipIndex   = acNode["ClipIndex"].as<int>();
-            if (acNode["PlayOnStart"]) ac.PlayOnStart = acNode["PlayOnStart"].as<bool>();
-            if (acNode["Loop"])        ac.Loop        = acNode["Loop"].as<bool>();
-            if (acNode["Speed"])       ac.Speed       = acNode["Speed"].as<float>();
+            try {
+                auto& ac = entity.AddComponent<AnimatorComponent>();
+                if (acNode["AnimationSource"]) ac.AnimationSourcePath = acNode["AnimationSource"].as<std::string>();
+                if (acNode["ClipIndex"])   ac.ClipIndex   = acNode["ClipIndex"].as<int>();
+                if (acNode["PlayOnStart"]) ac.PlayOnStart = acNode["PlayOnStart"].as<bool>();
+                if (acNode["Loop"])        ac.Loop        = acNode["Loop"].as<bool>();
+                if (acNode["Speed"])       ac.Speed       = acNode["Speed"].as<float>();
 
-            if (acNode["UseStateMachine"]) ac.UseStateMachine = acNode["UseStateMachine"].as<bool>();
-            if (acNode["DefaultState"])    ac.DefaultState    = acNode["DefaultState"].as<int>();
+                if (acNode["UseStateMachine"]) ac.UseStateMachine = acNode["UseStateMachine"].as<bool>();
+                if (acNode["DefaultState"])    ac.DefaultState    = acNode["DefaultState"].as<int>();
 
-            if (auto statesNode = acNode["States"]) {
-                for (auto sn : statesNode) {
-                    AnimState s;
-                    s.Name = sn["Name"].as<std::string>("State");
-                    s.ClipIndex = sn["Clip"].as<int>(0);
-                    s.Speed = sn["Speed"].as<float>(1.0f);
-                    s.Loop = sn["Loop"].as<bool>(true);
-                    ac.States.push_back(s);
+                if (auto statesNode = acNode["States"]) {
+                    for (auto sn : statesNode) {
+                        AnimState s;
+                        s.Name = sn["Name"].as<std::string>("State");
+                        s.ClipIndex = sn["Clip"].as<int>(0);
+                        s.Speed = sn["Speed"].as<float>(1.0f);
+                        s.Loop = sn["Loop"].as<bool>(true);
+                        ac.States.push_back(s);
+                    }
                 }
-            }
-            if (auto paramsNode = acNode["Parameters"]) {
-                for (auto pn : paramsNode) {
-                    AnimParameter p;
-                    p.Name = pn["Name"].as<std::string>();
-                    p.Type = static_cast<AnimParamType>(pn["Type"].as<int>(0));
-                    p.FloatValue = pn["Float"].as<float>(0.0f);
-                    p.IntValue = pn["Int"].as<int>(0);
-                    p.BoolValue = pn["Bool"].as<bool>(false);
-                    ac.Parameters.push_back(p);
+                if (auto paramsNode = acNode["Parameters"]) {
+                    for (auto pn : paramsNode) {
+                        AnimParameter p;
+                        p.Name = pn["Name"].as<std::string>();
+                        p.Type = static_cast<AnimParamType>(pn["Type"].as<int>(0));
+                        p.FloatValue = pn["Float"].as<float>(0.0f);
+                        p.IntValue = pn["Int"].as<int>(0);
+                        p.BoolValue = pn["Bool"].as<bool>(false);
+                        ac.Parameters.push_back(p);
+                    }
                 }
-            }
-            if (auto transNode = acNode["Transitions"]) {
-                for (auto tn : transNode) {
-                    AnimTransition t;
-                    t.FromState = tn["From"].as<int>(-1);
-                    t.ToState = tn["To"].as<int>(0);
-                    t.Duration = tn["Duration"].as<float>(0.2f);
-                    t.HasExitTime = tn["HasExitTime"].as<bool>(false);
-                    t.ExitTime = tn["ExitTime"].as<float>(1.0f);
-                    if (auto condsNode = tn["Conditions"]) {
-                        for (auto cn : condsNode) {
-                            AnimCondition c;
-                            c.ParamName = cn["Param"].as<std::string>();
-                            c.Op = static_cast<AnimConditionOp>(cn["Op"].as<int>(0));
-                            c.Threshold = cn["Threshold"].as<float>(0.0f);
-                            t.Conditions.push_back(c);
+                if (auto transNode = acNode["Transitions"]) {
+                    for (auto tn : transNode) {
+                        AnimTransition t;
+                        t.FromState = tn["From"].as<int>(-1);
+                        t.ToState = tn["To"].as<int>(0);
+                        t.Duration = tn["Duration"].as<float>(0.2f);
+                        t.HasExitTime = tn["HasExitTime"].as<bool>(false);
+                        t.ExitTime = tn["ExitTime"].as<float>(1.0f);
+                        if (auto condsNode = tn["Conditions"]) {
+                            for (auto cn : condsNode) {
+                                AnimCondition c;
+                                c.ParamName = cn["Param"].as<std::string>();
+                                c.Op = static_cast<AnimConditionOp>(cn["Op"].as<int>(0));
+                                c.Threshold = cn["Threshold"].as<float>(0.0f);
+                                t.Conditions.push_back(c);
+                            }
                         }
+                        ac.Transitions.push_back(t);
                     }
-                    ac.Transitions.push_back(t);
                 }
-            }
-        }
-
-        if (auto lodNode = entityNode["LODGroupComponent"]) {
-            auto& lod = entity.AddComponent<LODGroupComponent>();
-            if (lodNode["CullDistance"])
-                lod.CullDistance = lodNode["CullDistance"].as<float>();
-            if (auto levelsNode = lodNode["Levels"]) {
-                for (auto levelNode : levelsNode) {
-                    LODLevel level;
-                    level.MeshType = levelNode["MeshType"].as<int>(-1);
-                    if (level.MeshType >= 0 && level.MeshType < MeshLibrary::GetMeshCount()) {
-                        level.Mesh = MeshLibrary::GetMeshByIndex(level.MeshType);
-                    } else if (levelNode["MeshSource"]) {
-                        level.MeshSourcePath = levelNode["MeshSource"].as<std::string>();
-                        auto meshAsset = MeshImporter::GetOrLoad(level.MeshSourcePath);
-                        if (meshAsset && meshAsset->VAO)
-                            level.Mesh = meshAsset->VAO;
-                    }
-                    level.MaxDistance = levelNode["MaxDistance"].as<float>(50.0f);
-                    lod.Levels.push_back(level);
-                }
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize AnimatorComponent: {}", e.what());
             }
         }
 
         if (auto navNode = entityNode["NavAgentComponent"]) {
-            auto& nav = entity.AddComponent<NavAgentComponent>();
-            if (navNode["Speed"])        nav.Speed        = navNode["Speed"].as<float>();
-            if (navNode["StoppingDist"]) nav.StoppingDist = navNode["StoppingDist"].as<float>();
-            if (navNode["AgentRadius"])  nav.AgentRadius  = navNode["AgentRadius"].as<float>();
+            try {
+                auto& nav = entity.AddComponent<NavAgentComponent>();
+                if (navNode["Speed"])        nav.Speed        = navNode["Speed"].as<float>();
+                if (navNode["StoppingDist"]) nav.StoppingDist = navNode["StoppingDist"].as<float>();
+                if (navNode["AgentRadius"])  nav.AgentRadius  = navNode["AgentRadius"].as<float>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize NavAgentComponent: {}", e.what());
+            }
+        }
+
+        if (auto lodNode = entityNode["LODGroupComponent"]) {
+            try {
+                auto& lod = entity.AddComponent<LODGroupComponent>();
+                if (lodNode["CullDistance"])
+                    lod.CullDistance = lodNode["CullDistance"].as<float>();
+                if (auto levelsNode = lodNode["Levels"]) {
+                    for (auto levelNode : levelsNode) {
+                        LODLevel level;
+                        level.MeshType = levelNode["MeshType"].as<int>(-1);
+                        if (level.MeshType >= 0 && level.MeshType < MeshLibrary::GetMeshCount()) {
+                            level.Mesh = MeshLibrary::GetMeshByIndex(level.MeshType);
+                        } else if (levelNode["MeshSource"]) {
+                            level.MeshSourcePath = levelNode["MeshSource"].as<std::string>();
+                            auto meshAsset = MeshImporter::GetOrLoad(level.MeshSourcePath);
+                            if (meshAsset && meshAsset->VAO)
+                                level.Mesh = meshAsset->VAO;
+                        }
+                        level.MaxDistance = levelNode["MaxDistance"].as<float>(50.0f);
+                        lod.Levels.push_back(level);
+                    }
+                }
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize LODGroupComponent: {}", e.what());
+            }
         }
 
         if (auto mrNode = entityNode["MeshRendererComponent"]) {
+          try {
             auto& mr = entity.AddComponent<MeshRendererComponent>();
             int meshIndex = mrNode["MeshType"].as<int>();
             if (meshIndex >= 0 && meshIndex < MeshLibrary::GetMeshCount()) {
@@ -1250,41 +1286,48 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     mr.MaterialOverrides.push_back(std::move(ov));
                 }
             }
-            // Backward compat: old TexturePath field → set as material texture
+            // Backward compat: old TexturePath field -> set as material texture
             if (auto texNode = mrNode["TexturePath"]) {
                 std::string texPath = texNode.as<std::string>();
                 if (!texPath.empty() && mr.Mat)
                     mr.Mat->SetTexture("u_Texture", texPath);
             }
+          } catch (const std::exception& e) {
+            VE_ENGINE_WARN("Failed to deserialize MeshRendererComponent: {}", e.what());
+          }
         }
 
         // TerrainComponent
         if (auto tNode = entityNode["TerrainComponent"]) {
-            auto& t = entity.AddComponent<TerrainComponent>();
-            if (tNode["Resolution"])   t.Resolution   = tNode["Resolution"].as<int>();
-            if (tNode["WorldSizeX"])   t.WorldSizeX   = tNode["WorldSizeX"].as<float>();
-            if (tNode["WorldSizeZ"])   t.WorldSizeZ   = tNode["WorldSizeZ"].as<float>();
-            if (tNode["HeightScale"])  t.HeightScale  = tNode["HeightScale"].as<float>();
-            if (tNode["HeightmapPath"]) t.HeightmapPath = tNode["HeightmapPath"].as<std::string>();
-            if (tNode["Octaves"])      t.Octaves      = tNode["Octaves"].as<int>();
-            if (tNode["Persistence"])  t.Persistence  = tNode["Persistence"].as<float>();
-            if (tNode["Lacunarity"])   t.Lacunarity   = tNode["Lacunarity"].as<float>();
-            if (tNode["NoiseScale"])   t.NoiseScale   = tNode["NoiseScale"].as<float>();
-            if (tNode["Seed"])         t.Seed         = tNode["Seed"].as<int>();
-            if (auto lt = tNode["LayerTextures"]) {
-                for (int i = 0; i < 4 && i < (int)lt.size(); i++)
-                    t.LayerTexturePaths[i] = lt[i].as<std::string>();
+            try {
+                auto& t = entity.AddComponent<TerrainComponent>();
+                if (tNode["Resolution"])   t.Resolution   = tNode["Resolution"].as<int>();
+                if (tNode["WorldSizeX"])   t.WorldSizeX   = tNode["WorldSizeX"].as<float>();
+                if (tNode["WorldSizeZ"])   t.WorldSizeZ   = tNode["WorldSizeZ"].as<float>();
+                if (tNode["HeightScale"])  t.HeightScale  = tNode["HeightScale"].as<float>();
+                if (tNode["HeightmapPath"]) t.HeightmapPath = tNode["HeightmapPath"].as<std::string>();
+                if (tNode["Octaves"])      t.Octaves      = tNode["Octaves"].as<int>();
+                if (tNode["Persistence"])  t.Persistence  = tNode["Persistence"].as<float>();
+                if (tNode["Lacunarity"])   t.Lacunarity   = tNode["Lacunarity"].as<float>();
+                if (tNode["NoiseScale"])   t.NoiseScale   = tNode["NoiseScale"].as<float>();
+                if (tNode["Seed"])         t.Seed         = tNode["Seed"].as<int>();
+                if (auto lt = tNode["LayerTextures"]) {
+                    for (int i = 0; i < 4 && i < (int)lt.size(); i++)
+                        t.LayerTexturePaths[i] = lt[i].as<std::string>();
+                }
+                if (auto tl = tNode["LayerTiling"]) {
+                    for (int i = 0; i < 4 && i < (int)tl.size(); i++)
+                        t.LayerTiling[i] = tl[i].as<float>();
+                }
+                if (auto bh = tNode["BlendHeights"]) {
+                    for (int i = 0; i < 3 && i < (int)bh.size(); i++)
+                        t.BlendHeights[i] = bh[i].as<float>();
+                }
+                if (tNode["Roughness"]) t.Roughness = tNode["Roughness"].as<float>();
+                t._NeedsRebuild = true;
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize TerrainComponent: {}", e.what());
             }
-            if (auto tl = tNode["LayerTiling"]) {
-                for (int i = 0; i < 4 && i < (int)tl.size(); i++)
-                    t.LayerTiling[i] = tl[i].as<float>();
-            }
-            if (auto bh = tNode["BlendHeights"]) {
-                for (int i = 0; i < 3 && i < (int)bh.size(); i++)
-                    t.BlendHeights[i] = bh[i].as<float>();
-            }
-            if (tNode["Roughness"]) t.Roughness = tNode["Roughness"].as<float>();
-            t._NeedsRebuild = true;
         }
 
         // UI Components
@@ -1295,64 +1338,84 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         }
 
         if (auto rtNode = entityNode["UIRectTransformComponent"]) {
-            auto& rt = entity.AddComponent<UIRectTransformComponent>();
-            if (rtNode["Anchor"]) rt.Anchor = static_cast<UIAnchorType>(rtNode["Anchor"].as<int>());
-            if (auto ap = rtNode["AnchoredPosition"])
-                rt.AnchoredPosition = { ap[0].as<float>(), ap[1].as<float>() };
-            if (auto sz = rtNode["Size"])
-                rt.Size = { sz[0].as<float>(), sz[1].as<float>() };
-            if (auto pv = rtNode["Pivot"])
-                rt.Pivot = { pv[0].as<float>(), pv[1].as<float>() };
+            try {
+                auto& rt = entity.AddComponent<UIRectTransformComponent>();
+                if (rtNode["Anchor"]) rt.Anchor = static_cast<UIAnchorType>(rtNode["Anchor"].as<int>());
+                if (auto ap = rtNode["AnchoredPosition"])
+                    rt.AnchoredPosition = { ap[0].as<float>(), ap[1].as<float>() };
+                if (auto sz = rtNode["Size"])
+                    rt.Size = { sz[0].as<float>(), sz[1].as<float>() };
+                if (auto pv = rtNode["Pivot"])
+                    rt.Pivot = { pv[0].as<float>(), pv[1].as<float>() };
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize UIRectTransformComponent: {}", e.what());
+            }
         }
 
         if (auto txtNode = entityNode["UITextComponent"]) {
-            auto& txt = entity.AddComponent<UITextComponent>();
-            if (txtNode["Text"])     txt.Text     = txtNode["Text"].as<std::string>();
-            if (txtNode["FontSize"]) txt.FontSize = txtNode["FontSize"].as<float>();
-            if (auto c = txtNode["Color"])
-                txt.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (txtNode["FontPath"]) txt.FontPath = txtNode["FontPath"].as<std::string>();
+            try {
+                auto& txt = entity.AddComponent<UITextComponent>();
+                if (txtNode["Text"])     txt.Text     = txtNode["Text"].as<std::string>();
+                if (txtNode["FontSize"]) txt.FontSize = txtNode["FontSize"].as<float>();
+                if (auto c = txtNode["Color"])
+                    txt.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (txtNode["FontPath"]) txt.FontPath = txtNode["FontPath"].as<std::string>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize UITextComponent: {}", e.what());
+            }
         }
 
         if (auto imgNode = entityNode["UIImageComponent"]) {
-            auto& img = entity.AddComponent<UIImageComponent>();
-            if (auto c = imgNode["Color"])
-                img.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (imgNode["TexturePath"]) {
-                img.TexturePath = imgNode["TexturePath"].as<std::string>();
-                if (!img.TexturePath.empty())
-                    img._Texture = Texture2D::Create(img.TexturePath);
+            try {
+                auto& img = entity.AddComponent<UIImageComponent>();
+                if (auto c = imgNode["Color"])
+                    img.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (imgNode["TexturePath"]) {
+                    img.TexturePath = imgNode["TexturePath"].as<std::string>();
+                    if (!img.TexturePath.empty())
+                        img._Texture = Texture2D::Create(img.TexturePath);
+                }
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize UIImageComponent: {}", e.what());
             }
         }
 
         if (auto btnNode = entityNode["UIButtonComponent"]) {
-            auto& btn = entity.AddComponent<UIButtonComponent>();
-            if (btnNode["Label"])    btn.Label    = btnNode["Label"].as<std::string>();
-            if (btnNode["FontSize"]) btn.FontSize = btnNode["FontSize"].as<float>();
-            if (auto c = btnNode["LabelColor"])
-                btn.LabelColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (auto c = btnNode["NormalColor"])
-                btn.NormalColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (auto c = btnNode["HoverColor"])
-                btn.HoverColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (auto c = btnNode["PressedColor"])
-                btn.PressedColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            try {
+                auto& btn = entity.AddComponent<UIButtonComponent>();
+                if (btnNode["Label"])    btn.Label    = btnNode["Label"].as<std::string>();
+                if (btnNode["FontSize"]) btn.FontSize = btnNode["FontSize"].as<float>();
+                if (auto c = btnNode["LabelColor"])
+                    btn.LabelColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (auto c = btnNode["NormalColor"])
+                    btn.NormalColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (auto c = btnNode["HoverColor"])
+                    btn.HoverColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (auto c = btnNode["PressedColor"])
+                    btn.PressedColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize UIButtonComponent: {}", e.what());
+            }
         }
 
         if (auto dcNode = entityNode["DecalComponent"]) {
-            auto& dc = entity.AddComponent<DecalComponent>();
-            if (dcNode["TexturePath"]) {
-                dc.TexturePath = dcNode["TexturePath"].as<std::string>();
-                if (!dc.TexturePath.empty())
-                    dc._Texture = Texture2D::Create(dc.TexturePath);
+            try {
+                auto& dc = entity.AddComponent<DecalComponent>();
+                if (dcNode["TexturePath"]) {
+                    dc.TexturePath = dcNode["TexturePath"].as<std::string>();
+                    if (!dc.TexturePath.empty())
+                        dc._Texture = Texture2D::Create(dc.TexturePath);
+                }
+                if (auto c = dcNode["Color"])
+                    dc.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
+                if (auto s = dcNode["Size"])
+                    dc.Size = { s[0].as<float>(), s[1].as<float>(), s[2].as<float>() };
+                if (dcNode["NormalBlend"])  dc.NormalBlend  = dcNode["NormalBlend"].as<float>();
+                if (dcNode["FadeDistance"]) dc.FadeDistance = dcNode["FadeDistance"].as<float>();
+                if (dcNode["SortOrder"])    dc.SortOrder    = dcNode["SortOrder"].as<int>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize DecalComponent: {}", e.what());
             }
-            if (auto c = dcNode["Color"])
-                dc.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>(), c[3].as<float>() };
-            if (auto s = dcNode["Size"])
-                dc.Size = { s[0].as<float>(), s[1].as<float>(), s[2].as<float>() };
-            if (dcNode["NormalBlend"])  dc.NormalBlend  = dcNode["NormalBlend"].as<float>();
-            if (dcNode["FadeDistance"]) dc.FadeDistance = dcNode["FadeDistance"].as<float>();
-            if (dcNode["SortOrder"])    dc.SortOrder    = dcNode["SortOrder"].as<int>();
         }
     }
 

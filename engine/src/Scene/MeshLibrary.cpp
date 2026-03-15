@@ -557,28 +557,45 @@ void MeshLibrary::Init() {
         s_LitShader     = tryLoadShader("Lit.shader",   s_LitVertexSrc,     s_LitFragmentSrc);
         s_SkyShader     = tryLoadShader("Sky.shader",   s_SkyVertexSrc,     s_SkyFragmentSrc);
 
-        // Register built-in shaders in ShaderLibrary
-        ShaderLibrary::Register("Default", s_DefaultShader);
-        ShaderLibrary::Register("Lit",     s_LitShader);
-        ShaderLibrary::Register("Sky",     s_SkyShader);
+        // Register built-in shaders in ShaderLibrary (skip if null)
+        if (s_DefaultShader)
+            ShaderLibrary::Register("Default", s_DefaultShader);
+        else
+            VE_ENGINE_ERROR("MeshLibrary: Default shader failed to compile!");
+
+        if (s_LitShader)
+            ShaderLibrary::Register("Lit",     s_LitShader);
+        else
+            VE_ENGINE_ERROR("MeshLibrary: Lit shader failed to compile!");
+
+        if (s_SkyShader)
+            ShaderLibrary::Register("Sky",     s_SkyShader);
+        else
+            VE_ENGINE_ERROR("MeshLibrary: Sky shader failed to compile!");
     }
 
     // ── Built-in Materials ──────────────────────────────────────────
     {
-        auto defaultMat = Material::Create("Default", s_DefaultShader);
-        defaultMat->SetLit(false);
-        defaultMat->PopulateFromShader();
-        MaterialLibrary::Register(defaultMat);
+        if (s_DefaultShader) {
+            auto defaultMat = Material::Create("Default", s_DefaultShader);
+            defaultMat->SetLit(false);
+            defaultMat->PopulateFromShader();
+            MaterialLibrary::Register(defaultMat);
+        }
 
-        auto litMat = Material::Create("Lit", s_LitShader);
-        litMat->SetLit(true);
-        litMat->PopulateFromShader(); // auto-fill from ShaderLab Properties
-        MaterialLibrary::Register(litMat);
+        if (s_LitShader) {
+            auto litMat = Material::Create("Lit", s_LitShader);
+            litMat->SetLit(true);
+            litMat->PopulateFromShader(); // auto-fill from ShaderLab Properties
+            MaterialLibrary::Register(litMat);
+        }
 
-        auto skyMat = Material::Create("Sky", s_SkyShader);
-        skyMat->SetLit(false);
-        skyMat->PopulateFromShader();
-        MaterialLibrary::Register(skyMat);
+        if (s_SkyShader) {
+            auto skyMat = Material::Create("Sky", s_SkyShader);
+            skyMat->SetLit(false);
+            skyMat->PopulateFromShader();
+            MaterialLibrary::Register(skyMat);
+        }
 
         // PBR material
         auto pbrShader = Shader::CreateFromFile("shaders/PBR.shader");
