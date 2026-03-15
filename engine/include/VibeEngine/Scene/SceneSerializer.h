@@ -30,6 +30,12 @@ public:
     // Instantiate a .vprefab into scene, returns root entity
     static Entity InstantiatePrefab(const std::string& filepath, Scene& scene);
 
+    // ── Clipboard / copy-paste ──────────────────────────────────────
+    // Serialize entity (+ children) to YAML string for clipboard
+    static std::string SerializeEntityToString(Entity rootEntity, Scene& scene);
+    // Instantiate entity (+ children) from clipboard YAML string, returns root entity
+    static Entity InstantiateFromString(const std::string& yamlData, Scene& scene);
+
 private:
     std::shared_ptr<Scene> m_Scene;
 };
