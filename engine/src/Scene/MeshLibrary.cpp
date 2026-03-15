@@ -580,6 +580,17 @@ void MeshLibrary::Init() {
         skyMat->PopulateFromShader();
         MaterialLibrary::Register(skyMat);
 
+        // PBR material
+        auto pbrShader = Shader::CreateFromFile("shaders/PBR.shader");
+        if (pbrShader) {
+            pbrShader->SetName("PBR");
+            ShaderLibrary::Register("PBR", pbrShader);
+            auto pbrMat = Material::Create("PBR", pbrShader);
+            pbrMat->SetLit(true);
+            pbrMat->PopulateFromShader();
+            MaterialLibrary::Register(pbrMat);
+        }
+
         // Water material
         auto waterShader = Shader::CreateFromFile("shaders/Water.shader");
         if (waterShader) {

@@ -702,6 +702,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     auto setPBRDefaults = [](const std::shared_ptr<Shader>& shader, const std::shared_ptr<Material>& mat) {
         bool hasMetallic = false, hasRoughness = false, hasAO = false;
         bool hasBumpScale = false, hasOccStr = false, hasEmission = false, hasCutoff = false;
+        bool hasEmissionIntensity = false, hasReflectance = false;
         for (auto& prop : mat->GetProperties()) {
             if (prop.Name == "u_Metallic") hasMetallic = true;
             if (prop.Name == "u_Roughness") hasRoughness = true;
@@ -710,6 +711,8 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             if (prop.Name == "u_OcclusionStrength") hasOccStr = true;
             if (prop.Name == "u_EmissionColor") hasEmission = true;
             if (prop.Name == "u_Cutoff") hasCutoff = true;
+            if (prop.Name == "u_EmissionIntensity") hasEmissionIntensity = true;
+            if (prop.Name == "u_Reflectance") hasReflectance = true;
         }
         if (!hasMetallic)  shader->SetFloat("u_Metallic", 0.0f);
         if (!hasRoughness) shader->SetFloat("u_Roughness", 0.5f);
@@ -718,6 +721,8 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         if (!hasOccStr)    shader->SetFloat("u_OcclusionStrength", 1.0f);
         if (!hasEmission)  shader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         if (!hasCutoff)    shader->SetFloat("u_Cutoff", 0.0f);
+        if (!hasEmissionIntensity) shader->SetFloat("u_EmissionIntensity", 1.0f);
+        if (!hasReflectance) shader->SetFloat("u_Reflectance", 0.5f);
     };
 
     // ── Frustum culling setup ─────────────────────────────────────────
@@ -926,6 +931,8 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         litInstShader->SetFloat("u_OcclusionStrength", 1.0f);
         litInstShader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         litInstShader->SetFloat("u_Cutoff", 0.0f);
+        litInstShader->SetFloat("u_EmissionIntensity", 1.0f);
+        litInstShader->SetFloat("u_Reflectance", 0.5f);
     }
 
     InstancedRenderer::EndScene();
