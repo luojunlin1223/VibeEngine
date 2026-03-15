@@ -20,6 +20,7 @@ void SetScriptCameraMatrices(const glm::mat4& view, const glm::mat4& proj,
                               float viewportW, float viewportH);
 
 class Scene;
+class SceneManager;
 class NativeScript;
 
 class ScriptEngine {
@@ -43,6 +44,10 @@ public:
     // Scene context
     static void SetActiveScene(Scene* scene);
     static Scene* GetActiveScene();
+
+    // Scene manager context (for multi-scene script API)
+    static void SetSceneManager(SceneManager* mgr);
+    static SceneManager* GetSceneManager();
 
     // Info
     static std::string GetDLLPath();

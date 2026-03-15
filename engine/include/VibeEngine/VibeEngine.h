@@ -40,6 +40,7 @@
 #include "Scene/Scene.h"
 #include "Scene/MeshLibrary.h"
 #include "Scene/SceneSerializer.h"
+#include "Scene/SceneManager.h"
 
 #include "Asset/AssetDatabase.h"
 #include "Asset/ThumbnailCache.h"

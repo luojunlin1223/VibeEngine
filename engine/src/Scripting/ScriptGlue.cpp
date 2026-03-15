@@ -17,6 +17,7 @@
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Renderer/Material.h"
 #include "VibeEngine/Scene/SceneSerializer.h"
+#include "VibeEngine/Scene/SceneManager.h"
 #include "VibeEngine/Navigation/NavGrid.h"
 #include "VibeEngine/Animation/Animator.h"
 #include <glm/glm.hpp>
@@ -488,6 +489,51 @@ static void Glue_Scene_LoadScene(const char* path) {
         scene->RequestLoadScene(path);
 }
 
+// ── Scene Manager ───────────────────────────────────────────────────
+
+static int Glue_SceneManager_LoadScene(const char* path, bool additive) {
+    auto* mgr = ScriptEngine::GetSceneManager();
+    if (!mgr || !path) return -1;
+    return mgr->LoadScene(path, additive ? SceneLoadMode::Additive : SceneLoadMode::Single);
+}
+
+static bool Glue_SceneManager_UnloadScene(int index) {
+    auto* mgr = ScriptEngine::GetSceneManager();
+    if (!mgr) return false;
+    return mgr->UnloadScene(index);
+}
+
+// Static buffer for returning scene name string to scripts
+static std::string s_ActiveSceneNameBuffer;
+
+static const char* Glue_SceneManager_GetActiveSceneName() {
+    auto* mgr = ScriptEngine::GetSceneManager();
+    if (!mgr) return "";
+    s_ActiveSceneNameBuffer = mgr->GetActiveSceneName();
+    return s_ActiveSceneNameBuffer.c_str();
+}
+
+static void Glue_SceneManager_SetActiveScene(int index) {
+    auto* mgr = ScriptEngine::GetSceneManager();
+    if (mgr) mgr->SetActiveScene(index);
+}
+
+static int Glue_SceneManager_GetSceneCount() {
+    auto* mgr = ScriptEngine::GetSceneManager();
+    return mgr ? mgr->GetSceneCount() : 0;
+}
+
+static void Glue_SceneManager_TransitionToScene(const char* path, int transitionType, float duration) {
+    auto* mgr = ScriptEngine::GetSceneManager();
+    if (!mgr || !path) return;
+    mgr->TransitionToScene(path, static_cast<TransitionType>(transitionType), duration);
+}
+
+static bool Glue_SceneManager_IsTransitioning() {
+    auto* mgr = ScriptEngine::GetSceneManager();
+    return mgr ? mgr->IsTransitioning() : false;
+}
+
 // ── Audio ───────────────────────────────────────────────────────────
 
 static uint32_t Glue_Audio_Play(const char* clipPath, float volume, float pitch, bool loop) {
@@ -570,6 +616,15 @@ void InitScriptGlue(ScriptAPI& api) {
 
     // Scene
     api.Scene_LoadScene          = Glue_Scene_LoadScene;
+
+    // Scene Manager
+    api.SceneManager_LoadScene         = Glue_SceneManager_LoadScene;
+    api.SceneManager_UnloadScene       = Glue_SceneManager_UnloadScene;
+    api.SceneManager_GetActiveSceneName = Glue_SceneManager_GetActiveSceneName;
+    api.SceneManager_SetActiveScene    = Glue_SceneManager_SetActiveScene;
+    api.SceneManager_GetSceneCount     = Glue_SceneManager_GetSceneCount;
+    api.SceneManager_TransitionToScene = Glue_SceneManager_TransitionToScene;
+    api.SceneManager_IsTransitioning   = Glue_SceneManager_IsTransitioning;
 
     // Audio
     api.Audio_Play               = Glue_Audio_Play;

@@ -34,6 +34,8 @@ public:
         VE::InstancedRenderer::Init();
         VE::UIRenderer::Init();
         m_Scene = std::make_shared<VE::Scene>();
+        m_SceneManager.AddScene(m_Scene, "Untitled");
+        VE::ScriptEngine::SetSceneManager(&m_SceneManager);
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
         ScanAndRegisterAssets();
@@ -642,6 +644,8 @@ protected:
         DrawGameViewPanel();
         DrawInputSettingsPanel();
         DrawBuildPanel();
+        DrawSceneManagerPanel();
+        DrawTransitionOverlay();
 
     }
 
@@ -881,6 +885,11 @@ private:
         m_SelectedEntity = {};
         m_CurrentScenePath.clear();
         m_CommandHistory.Clear();
+
+        // Sync SceneManager
+        m_SceneManager.UnloadAllScenes();
+        m_SceneManager.AddScene(m_Scene, "Untitled");
+
         VE_INFO("New scene created");
     }
 
@@ -908,7 +917,163 @@ private:
             if (serializer.Deserialize(path))
                 m_CurrentScenePath = path;
             m_CommandHistory.Clear();
+
+            // Sync SceneManager: replace all with this single scene
+            m_SceneManager.UnloadAllScenes();
+            m_SceneManager.AddScene(m_Scene,
+                std::filesystem::path(path).stem().string(), path);
         }
+    }
+
+    void LoadSceneAdditive() {
+        std::string path = VE::FileDialog::OpenFile(s_SceneFilter, GetWindow().GetNativeWindow());
+        if (!path.empty()) {
+            int idx = m_SceneManager.LoadScene(path, VE::SceneLoadMode::Additive);
+            if (idx >= 0) {
+                VE_INFO("Additively loaded scene '{0}' (index {1})",
+                    m_SceneManager.GetSceneInfo(idx).Name, idx);
+            }
+        }
+    }
+
+    // ── Scene Manager Panel ──────────────────────────────────────────
+
+    void DrawSceneManagerPanel() {
+        if (!m_ShowSceneManager) return;
+        ImGui::Begin("Scene Manager", &m_ShowSceneManager);
+
+        int sceneCount = m_SceneManager.GetSceneCount();
+        ImGui::Text("Loaded Scenes: %d", sceneCount);
+        ImGui::Separator();
+
+        int activeIdx = m_SceneManager.GetActiveSceneIndex();
+        int removeIdx = -1;
+
+        for (int i = 0; i < sceneCount; i++) {
+            auto& info = m_SceneManager.GetSceneInfo(i);
+            ImGui::PushID(i);
+
+            // Active indicator
+            bool isActive = (i == activeIdx);
+            if (isActive) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));
+                ImGui::Bullet();
+                ImGui::PopStyleColor();
+                ImGui::SameLine();
+            }
+
+            // Scene name
+            ImGui::Text("%s", info.Name.c_str());
+            ImGui::SameLine();
+
+            // File path hint
+            if (!info.FilePath.empty()) {
+                ImGui::TextDisabled("(%s)", info.FilePath.c_str());
+                ImGui::SameLine();
+            }
+
+            // Set Active button
+            if (!isActive) {
+                if (ImGui::SmallButton("Set Active")) {
+                    m_SceneManager.SetActiveScene(i);
+                    m_Scene = m_SceneManager.GetActiveScene();
+                    m_SelectedEntity = {};
+                    m_CommandHistory.Clear();
+                }
+                ImGui::SameLine();
+            }
+
+            // Physics toggle
+            ImGui::Checkbox("Physics", &info.PhysicsEnabled);
+            ImGui::SameLine();
+
+            // Unload button (disabled if only one scene)
+            if (sceneCount > 1) {
+                if (ImGui::SmallButton("Unload"))
+                    removeIdx = i;
+            }
+
+            ImGui::PopID();
+        }
+
+        // Process deferred removal
+        if (removeIdx >= 0) {
+            m_SceneManager.UnloadScene(removeIdx);
+            // If active scene changed, update m_Scene
+            m_Scene = m_SceneManager.GetActiveScene();
+            if (!m_Scene) {
+                m_Scene = std::make_shared<VE::Scene>();
+                m_SceneManager.AddScene(m_Scene, "Untitled");
+            }
+            m_SelectedEntity = {};
+            m_CommandHistory.Clear();
+        }
+
+        ImGui::Separator();
+
+        // Transition controls
+        ImGui::Text("Scene Transitions");
+        static char transPath[256] = "";
+        ImGui::InputText("Target Scene", transPath, sizeof(transPath));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Browse##TransTarget")) {
+            std::string path = VE::FileDialog::OpenFile(s_SceneFilter, GetWindow().GetNativeWindow());
+            if (!path.empty())
+                strncpy(transPath, path.c_str(), sizeof(transPath) - 1);
+        }
+
+        static int transType = 1; // Fade
+        ImGui::Combo("Transition", &transType, "None\0Fade\0CrossFade\0");
+        static float transDuration = 1.0f;
+        ImGui::SliderFloat("Duration (s)", &transDuration, 0.1f, 5.0f);
+
+        if (ImGui::Button("Transition")) {
+            if (strlen(transPath) > 0) {
+                m_SceneManager.TransitionToScene(transPath,
+                    static_cast<VE::TransitionType>(transType), transDuration);
+            }
+        }
+
+        if (m_SceneManager.IsTransitioning()) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Transitioning...");
+        }
+
+        ImGui::End();
+    }
+
+    // Draw a fullscreen black overlay during scene transitions
+    void DrawTransitionOverlay() {
+        if (!m_SceneManager.IsTransitioning()) return;
+
+        m_SceneManager.UpdateTransition(m_DeltaTime);
+        float alpha = m_SceneManager.GetTransitionOverlayAlpha();
+        if (alpha <= 0.0f) return;
+
+        // After transition load phase, sync m_Scene to the new active scene
+        if (m_SceneManager.GetTransitionPhase() == VE::TransitionPhase::FadeIn) {
+            auto newActive = m_SceneManager.GetActiveScene();
+            if (newActive && newActive != m_Scene) {
+                m_Scene = newActive;
+                m_CurrentScenePath = m_SceneManager.GetSceneInfo(
+                    m_SceneManager.GetActiveSceneIndex()).FilePath;
+                m_SelectedEntity = {};
+                m_CommandHistory.Clear();
+            }
+        }
+
+        // Draw fullscreen black overlay via ImGui
+        ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->Pos);
+        ImGui::SetNextWindowSize(vp->Size);
+        ImGui::SetNextWindowBgAlpha(alpha);
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+            | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBringToFrontOnFocus
+            | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+        ImGui::Begin("##TransitionOverlay", nullptr, flags);
+        ImGui::End();
+        ImGui::PopStyleColor();
     }
 
     // ── Build Panel ──────────────────────────────────────────────────
@@ -1178,6 +1343,7 @@ private:
         out << YAML::Key << "ShowScripting" << YAML::Value << m_ShowScripting;
         out << YAML::Key << "ShowContentBrowser" << YAML::Value << m_ShowContentBrowser;
         out << YAML::Key << "ShowHierarchy" << YAML::Value << m_ShowHierarchy;
+        out << YAML::Key << "ShowSceneManager" << YAML::Value << m_ShowSceneManager;
 
         out << YAML::EndMap;
 
@@ -1202,8 +1368,13 @@ private:
                 if (!scenePath.empty() && std::filesystem::exists(scenePath)) {
                     m_Scene = std::make_shared<VE::Scene>();
                     VE::SceneSerializer serializer(m_Scene);
-                    if (serializer.Deserialize(scenePath))
+                    if (serializer.Deserialize(scenePath)) {
                         m_CurrentScenePath = scenePath;
+                        // Sync SceneManager
+                        m_SceneManager.UnloadAllScenes();
+                        m_SceneManager.AddScene(m_Scene,
+                            std::filesystem::path(scenePath).stem().string(), scenePath);
+                    }
                 }
             }
 
@@ -1249,6 +1420,8 @@ private:
                 m_ShowContentBrowser = root["ShowContentBrowser"].as<bool>(true);
             if (root["ShowHierarchy"])
                 m_ShowHierarchy = root["ShowHierarchy"].as<bool>(true);
+            if (root["ShowSceneManager"])
+                m_ShowSceneManager = root["ShowSceneManager"].as<bool>(false);
 
             VE_INFO("Editor settings restored");
         } catch (const std::exception& e) {
@@ -1387,6 +1560,7 @@ private:
             if (ImGui::BeginMenu("File")) {
                 if (ImGui::MenuItem("New Scene", "Ctrl+N")) NewScene();
                 if (ImGui::MenuItem("Open Scene", "Ctrl+O")) LoadScene();
+                if (ImGui::MenuItem("Load Additive Scene...")) LoadSceneAdditive();
                 ImGui::Separator();
                 if (ImGui::MenuItem("Save Scene", "Ctrl+S")) SaveScene();
                 if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) SaveSceneAs();
@@ -1492,6 +1666,7 @@ private:
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
                 ImGui::MenuItem("Input Settings", nullptr, &m_ShowInputSettings);
+                ImGui::MenuItem("Scene Manager", nullptr, &m_ShowSceneManager);
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -1662,17 +1837,21 @@ private:
             VE::ScriptEngine::BuildScriptProjectSync();
         }
 
-        // Save scene snapshot
+        // Save scene snapshots (all loaded scenes via SceneManager)
+        m_SceneManagerSnapshots = m_SceneManager.SnapshotAll();
+
+        // Also keep legacy single-scene snapshot for backward compat
         VE::SceneSerializer serializer(m_Scene);
         m_SceneSnapshot = serializer.SerializeToString();
 
-        m_Scene->StartPhysics();
+        // Start all subsystems on all loaded scenes
+        m_SceneManager.StartAllPhysics();
         VE::ScriptEngine::SetActiveScene(m_Scene.get());
-        m_Scene->StartScripts();
-        m_Scene->StartAnimations();
-        m_Scene->StartSpriteAnimations();
-        m_Scene->StartAudio();
-        m_Scene->StartParticles();
+        m_SceneManager.StartAllScripts();
+        m_SceneManager.StartAllAnimations();
+        m_SceneManager.StartAllSpriteAnimations();
+        m_SceneManager.StartAllAudio();
+        m_SceneManager.StartAllParticles();
         m_PlayMode = true;
         m_CommandHistory.Clear();
         VE_INFO("Entered Play mode");
@@ -1683,18 +1862,29 @@ private:
         m_Paused = false;
         m_StepOneFrame = false;
 
-        m_Scene->StopParticles();
-        m_Scene->StopAudio();
-        m_Scene->StopSpriteAnimations();
-        m_Scene->StopAnimations();
-        m_Scene->StopScripts();
-        m_Scene->StopPhysics();
+        // Stop all subsystems on all loaded scenes
+        m_SceneManager.StopAllParticles();
+        m_SceneManager.StopAllAudio();
+        m_SceneManager.StopAllSpriteAnimations();
+        m_SceneManager.StopAllAnimations();
+        m_SceneManager.StopAllScripts();
+        m_SceneManager.StopAllPhysics();
 
-        // Restore scene from snapshot
-        m_Scene = std::make_shared<VE::Scene>();
+        // Restore all scenes from snapshots
+        if (!m_SceneManagerSnapshots.empty()) {
+            m_SceneManager.RestoreAll(m_SceneManagerSnapshots);
+            m_Scene = m_SceneManager.GetActiveScene();
+            m_SceneManagerSnapshots.clear();
+        } else {
+            // Legacy fallback: restore single scene
+            m_Scene = std::make_shared<VE::Scene>();
+            VE::SceneSerializer serializer(m_Scene);
+            serializer.DeserializeFromString(m_SceneSnapshot);
+            m_SceneManager.UnloadAllScenes();
+            m_SceneManager.AddScene(m_Scene, "Untitled");
+        }
+
         m_SelectedEntity = {};
-        VE::SceneSerializer serializer(m_Scene);
-        serializer.DeserializeFromString(m_SceneSnapshot);
         m_SceneSnapshot.clear();
 
         m_PlayMode = false;
@@ -5226,6 +5416,10 @@ private:
     bool m_ShowProjectSettings = false;
     bool m_ShowInputSettings = false;
     bool m_ShowBuildPanel = false;
+    bool m_ShowSceneManager = false;
+
+    // Scene Manager
+    VE::SceneManager m_SceneManager;
 
     // Build settings
     VE::BuildSettings m_BuildSettings;
@@ -5253,6 +5447,7 @@ private:
     bool m_Paused = false;
     bool m_StepOneFrame = false;
     std::string m_SceneSnapshot;
+    std::vector<VE::SceneManager::SceneSnapshot> m_SceneManagerSnapshots;
 
     // Scripting
     std::string m_ScriptDLLPath;
