@@ -9,6 +9,7 @@
 #include "Scene.h"
 #include <entt/entt.hpp>
 #include <cstdint>
+#include <vector>
 
 namespace VE {
 
@@ -58,6 +59,26 @@ public:
     bool operator!=(const Entity& other) const { return !(*this == other); }
 
     entt::entity GetHandle() const { return m_Handle; }
+    Scene* GetScene() const { return m_Scene; }
+
+    // ── Hierarchy helpers (require Components.h to be included at call site) ──
+
+    void SetParent(Entity parent) {
+        if (m_Scene) m_Scene->SetParent(m_Handle, parent.m_Handle);
+    }
+
+    void RemoveParent() {
+        if (m_Scene) m_Scene->RemoveParent(m_Handle);
+    }
+
+    Entity GetParent() const;
+
+    std::vector<Entity> GetChildren() const;
+
+    glm::mat4 GetWorldTransform() const {
+        if (m_Scene) return m_Scene->GetWorldTransform(m_Handle);
+        return glm::mat4(1.0f);
+    }
 
 private:
     entt::entity m_Handle = entt::null;

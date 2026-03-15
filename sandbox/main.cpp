@@ -565,13 +565,25 @@ protected:
         if (m_DraggingAxis != VE::GizmoAxis::None) {
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                 auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
-                glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-                glm::mat3 rot = GetEntityRotation(tc);
+
+                // Project mouse in world space using the stored world position/rotation
                 float val = VE::GizmoRenderer::ProjectMouseOntoAxis(
-                    m_DraggingAxis, pos, io.MousePos.x, io.MousePos.y, rot);
-                int comp = (m_DraggingAxis == VE::GizmoAxis::X) ? 0
-                         : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
-                tc.Position[comp] = m_DragStartPos[comp] + (val - m_DragOriginVal);
+                    m_DraggingAxis, m_DragWorldStartPos, io.MousePos.x, io.MousePos.y, m_DragWorldRot);
+                float worldDelta = val - m_DragOriginVal;
+
+                // Build world-space delta vector along the dragged axis
+                glm::vec3 worldAxis(0.0f);
+                int axisIdx = (m_DraggingAxis == VE::GizmoAxis::X) ? 0
+                            : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
+                worldAxis[axisIdx] = 1.0f;
+                worldAxis = m_DragWorldRot * worldAxis;
+                glm::vec3 worldDeltaVec = worldAxis * worldDelta;
+
+                // Convert world delta to parent-local delta
+                glm::vec3 localDelta = glm::vec3(m_DragParentInverse * glm::vec4(worldDeltaVec, 0.0f));
+                tc.Position[0] = m_DragStartPos[0] + localDelta.x;
+                tc.Position[1] = m_DragStartPos[1] + localDelta.y;
+                tc.Position[2] = m_DragStartPos[2] + localDelta.z;
             } else {
                 if (!m_PlayMode) m_CommandHistory.EndPropertyEdit();
                 m_DraggingAxis = VE::GizmoAxis::None;
@@ -589,9 +601,13 @@ protected:
 
             // Focus camera on selected entity (F key) — zoom in and align to object's +Z
             if (ImGui::IsKeyPressed(ImGuiKey_F) && m_SelectedEntity && m_SelectedEntity.HasComponent<VE::TransformComponent>()) {
-                auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
-                glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-                float objectSize = std::max({tc.Scale[0], tc.Scale[1], tc.Scale[2]});
+                glm::mat4 worldMat = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
+                glm::vec3 pos = glm::vec3(worldMat[3]);
+                // Extract world scale for sizing
+                float scaleX = glm::length(glm::vec3(worldMat[0]));
+                float scaleY = glm::length(glm::vec3(worldMat[1]));
+                float scaleZ = glm::length(glm::vec3(worldMat[2]));
+                float objectSize = std::max({scaleX, scaleY, scaleZ});
                 if (m_Camera.GetMode() == VE::CameraMode::Perspective3D) {
                     m_Camera.SetFocalPoint(pos);
                     m_Camera.SetDistance(objectSize * 3.0f);
@@ -612,22 +628,40 @@ protected:
                         canDrag = false;
                 }
                 if (canDrag) {
-                    auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
-                    glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-                    glm::mat3 rot = GetEntityRotation(tc);
+                    // Use world transform for gizmo hit testing (supports parented entities)
+                    glm::mat4 worldMat = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
+                    glm::vec3 worldPos = glm::vec3(worldMat[3]);
+                    glm::mat3 worldRot = glm::mat3(worldMat);
+                    worldRot[0] = glm::normalize(worldRot[0]);
+                    worldRot[1] = glm::normalize(worldRot[1]);
+                    worldRot[2] = glm::normalize(worldRot[2]);
                     axis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                        pos, io.MousePos.x, io.MousePos.y, 12.0f, rot);
+                        worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
                 }
 
                 if (axis != VE::GizmoAxis::None) {
                     if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit("Move Entity");
                     m_DraggingAxis = axis;
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
-                    glm::vec3 pos(tc.Position[0], tc.Position[1], tc.Position[2]);
-                    glm::mat3 rot = GetEntityRotation(tc);
                     m_DragStartPos = { tc.Position[0], tc.Position[1], tc.Position[2] };
+
+                    // Compute world-space info for drag projection
+                    glm::mat4 worldMat = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
+                    m_DragWorldStartPos = glm::vec3(worldMat[3]);
+                    m_DragWorldRot = glm::mat3(worldMat);
+                    m_DragWorldRot[0] = glm::normalize(m_DragWorldRot[0]);
+                    m_DragWorldRot[1] = glm::normalize(m_DragWorldRot[1]);
+                    m_DragWorldRot[2] = glm::normalize(m_DragWorldRot[2]);
+
+                    // Compute inverse of parent's world transform for local conversion
+                    auto& rel = m_SelectedEntity.GetComponent<VE::RelationshipComponent>();
+                    if (rel.Parent != entt::null)
+                        m_DragParentInverse = glm::inverse(m_Scene->GetWorldTransform(rel.Parent));
+                    else
+                        m_DragParentInverse = glm::mat4(1.0f);
+
                     m_DragOriginVal = VE::GizmoRenderer::ProjectMouseOntoAxis(
-                        axis, pos, io.MousePos.x, io.MousePos.y, rot);
+                        axis, m_DragWorldStartPos, io.MousePos.x, io.MousePos.y, m_DragWorldRot);
                 } else {
                     m_SelectedEntity = HitTestEntities(io.MousePos.x, io.MousePos.y);
                 }
@@ -1971,6 +2005,14 @@ private:
 
         // Right-click context menu on entity node
         if (ImGui::BeginPopupContextItem()) {
+            if (rel.Parent != entt::null) {
+                if (ImGui::MenuItem("Unparent")) {
+                    m_CommandHistory.Execute("Unparent Entity", [this, entityID]() {
+                        m_Scene->RemoveParent(entityID);
+                    });
+                }
+                ImGui::Separator();
+            }
             if (ImGui::MenuItem("Delete")) {
                 m_CommandHistory.Execute("Delete Entity", [this, entityID]() {
                     m_Scene->DestroyEntity(VE::Entity(entityID, &*m_Scene));
@@ -5494,7 +5536,10 @@ private:
 
     // Gizmo drag state
     VE::GizmoAxis m_DraggingAxis = VE::GizmoAxis::None;
-    glm::vec3 m_DragStartPos = { 0.0f, 0.0f, 0.0f };
+    glm::vec3 m_DragStartPos = { 0.0f, 0.0f, 0.0f };       // local position at drag start
+    glm::vec3 m_DragWorldStartPos = { 0.0f, 0.0f, 0.0f };   // world position at drag start
+    glm::mat3 m_DragWorldRot = glm::mat3(1.0f);              // world rotation at drag start
+    glm::mat4 m_DragParentInverse = glm::mat4(1.0f);         // inverse of parent's world transform
     float m_DragOriginVal = 0.0f;
 
     std::unordered_map<uint32_t, int> m_EntityMeshIndex;
