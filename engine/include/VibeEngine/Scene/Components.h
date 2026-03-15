@@ -12,6 +12,7 @@
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Renderer/VideoPlayer.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/UI/FontAtlas.h"
 #include "VibeEngine/Terrain/Terrain.h"

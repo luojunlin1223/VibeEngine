@@ -31,6 +31,7 @@
 #include "Renderer/SSAO.h"
 #include "Renderer/SSR.h"
 #include "Renderer/LODSystem.h"
+#include "Renderer/VideoPlayer.h"
 
 #include "Navigation/NavGrid.h"
 

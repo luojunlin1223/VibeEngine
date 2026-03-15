@@ -11,7 +11,7 @@
 namespace VE {
 
 enum class AssetType {
-    Unknown, Folder, Texture2D, Scene, Mesh, Shader, MaterialAsset, Audio, Prefab
+    Unknown, Folder, Texture2D, Scene, Mesh, Shader, MaterialAsset, Audio, Prefab, Video
 };
 
 struct AssetMeta {
