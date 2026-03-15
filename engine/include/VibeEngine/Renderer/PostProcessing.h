@@ -77,6 +77,15 @@ struct TonemappingSettings {
 
 enum class AAMethod { None = 0, FXAA, TAA };
 
+struct MotionBlurSettings {
+    bool Enabled = false;
+    float Strength   = 0.5f;
+    int   NumSamples = 8;
+    glm::mat4 InvViewProj  = glm::mat4(1.0f); // current frame
+    glm::mat4 PrevViewProj = glm::mat4(1.0f); // previous frame
+    uint32_t  DepthTexture = 0;
+};
+
 struct FXAASettings {
     bool Enabled = false;
     float EdgeThreshold    = 0.0833f;
@@ -129,6 +138,7 @@ struct PostProcessSettings {
     SMHSettings         SMH;
     ColorCurvesSettings Curves;
     TonemappingSettings Tonemap;
+    MotionBlurSettings  MotionBlur;
     FXAASettings        FXAA;
     TAASettings         TAA;
     FogSettings         Fog;
@@ -175,6 +185,7 @@ private:
     uint32_t m_CompositeShader = 0;
     uint32_t m_FXAAShader = 0;
     uint32_t m_TAAShader = 0;
+    uint32_t m_MotionBlurShader = 0;
     uint32_t m_VolFogShader = 0;
     uint32_t m_DoFShader = 0;
 

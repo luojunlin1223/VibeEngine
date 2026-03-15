@@ -646,6 +646,9 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "VolFogMaxDistance" << YAML::Value << ps.VolFogMaxDistance;
     out << YAML::Key << "VolFogHeightFalloff" << YAML::Value << ps.VolFogHeightFalloff;
     out << YAML::Key << "VolFogBaseHeight" << YAML::Value << ps.VolFogBaseHeight;
+    out << YAML::Key << "MotionBlurEnabled" << YAML::Value << ps.MotionBlurEnabled;
+    out << YAML::Key << "MotionBlurStrength" << YAML::Value << ps.MotionBlurStrength;
+    out << YAML::Key << "MotionBlurSamples" << YAML::Value << ps.MotionBlurSamples;
     out << YAML::Key << "SSAOEnabled" << YAML::Value << ps.SSAOEnabled;
     out << YAML::Key << "SSAORadius" << YAML::Value << ps.SSAORadius;
     out << YAML::Key << "SSAOBias" << YAML::Value << ps.SSAOBias;
@@ -765,6 +768,9 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["VolFogMaxDistance"]) ps.VolFogMaxDistance = psNode["VolFogMaxDistance"].as<float>();
         if (psNode["VolFogHeightFalloff"]) ps.VolFogHeightFalloff = psNode["VolFogHeightFalloff"].as<float>();
         if (psNode["VolFogBaseHeight"]) ps.VolFogBaseHeight = psNode["VolFogBaseHeight"].as<float>();
+        if (psNode["MotionBlurEnabled"]) ps.MotionBlurEnabled = psNode["MotionBlurEnabled"].as<bool>();
+        if (psNode["MotionBlurStrength"]) ps.MotionBlurStrength = psNode["MotionBlurStrength"].as<float>();
+        if (psNode["MotionBlurSamples"]) ps.MotionBlurSamples = psNode["MotionBlurSamples"].as<int>();
         if (psNode["SSAOEnabled"]) ps.SSAOEnabled = psNode["SSAOEnabled"].as<bool>();
         if (psNode["SSAORadius"]) ps.SSAORadius = psNode["SSAORadius"].as<float>();
         if (psNode["SSAOBias"]) ps.SSAOBias = psNode["SSAOBias"].as<float>();

@@ -735,6 +735,7 @@ void PostProcessing::Shutdown() {
     if (m_CompositeShader) { glDeleteProgram(m_CompositeShader); m_CompositeShader = 0; }
     if (m_FXAAShader) { glDeleteProgram(m_FXAAShader); m_FXAAShader = 0; }
     if (m_TAAShader) { glDeleteProgram(m_TAAShader); m_TAAShader = 0; }
+    if (m_MotionBlurShader) { glDeleteProgram(m_MotionBlurShader); m_MotionBlurShader = 0; }
     if (m_VolFogShader) { glDeleteProgram(m_VolFogShader); m_VolFogShader = 0; }
     if (m_DoFShader) { glDeleteProgram(m_DoFShader); m_DoFShader = 0; }
 
@@ -758,6 +759,7 @@ void PostProcessing::CompileShaders() {
     m_CompositeShader = LinkProgram(s_QuadVertexSrc, s_CompositeFragSrc);
     m_FXAAShader = LinkProgram(s_QuadVertexSrc, s_FXAAFragSrc);
     m_TAAShader = LinkProgram(s_QuadVertexSrc, s_TAAFragSrc);
+    m_MotionBlurShader = LinkProgram(s_QuadVertexSrc, s_MotionBlurFragSrc);
     m_VolFogShader = LinkProgram(s_QuadVertexSrc, s_VolFogFragSrc);
     m_DoFShader = LinkProgram(s_QuadVertexSrc, s_DoFFragSrc);
 }
@@ -1095,6 +1097,34 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
                      || settings.SSAOTexture || settings.SSRTexture
                      || settings.Fog.Enabled;
     uint32_t currentOutput = compositeRan ? m_CompositeTexture : sceneColorTexture;
+
+    // ── Motion blur pass ──────────────────────────────────────────────
+    if (settings.MotionBlur.Enabled && settings.MotionBlur.DepthTexture) {
+        glBindFramebuffer(GL_FRAMEBUFFER, m_MotionBlurFBO);
+        glViewport(0, 0, m_Width, m_Height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(m_MotionBlurShader);
+
+        glUniform1i(glGetUniformLocation(m_MotionBlurShader, "u_Scene"), 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, currentOutput);
+
+        glUniform1i(glGetUniformLocation(m_MotionBlurShader, "u_DepthTex"), 1);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, settings.MotionBlur.DepthTexture);
+
+        glUniformMatrix4fv(glGetUniformLocation(m_MotionBlurShader, "u_InvViewProj"),
+                           1, GL_FALSE, &settings.MotionBlur.InvViewProj[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(m_MotionBlurShader, "u_PrevViewProj"),
+                           1, GL_FALSE, &settings.MotionBlur.PrevViewProj[0][0]);
+        glUniform1f(glGetUniformLocation(m_MotionBlurShader, "u_BlurStrength"),
+                    settings.MotionBlur.Strength);
+        glUniform1i(glGetUniformLocation(m_MotionBlurShader, "u_NumSamples"),
+                    settings.MotionBlur.NumSamples);
+
+        RenderFullscreenQuad();
+        currentOutput = m_MotionBlurTexture;
+    }
 
     // ── FXAA pass ────────────────────────────────────────────────────
     if (settings.FXAA.Enabled) {
