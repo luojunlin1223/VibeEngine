@@ -7,7 +7,8 @@ namespace VE {
 
 // ── VertexBuffer ────────────────────────────────────────────────────
 
-OpenGLVertexBuffer::OpenGLVertexBuffer(const float* vertices, uint32_t size) {
+OpenGLVertexBuffer::OpenGLVertexBuffer(const float* vertices, uint32_t size)
+    : m_Size(size) {
     glGenBuffers(1, &m_RendererID);
     glBindBuffer(GL_ARRAY_BUFFER, m_RendererID);
     glBufferData(GL_ARRAY_BUFFER, size, vertices, vertices ? GL_STATIC_DRAW : GL_DYNAMIC_DRAW);
@@ -30,6 +31,7 @@ void OpenGLVertexBuffer::Unbind() const {
 void OpenGLVertexBuffer::SetData(const void* data, uint32_t size) {
     glBindBuffer(GL_ARRAY_BUFFER, m_RendererID);
     glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
+    m_Size = size;
 }
 
 // ── IndexBuffer ─────────────────────────────────────────────────────

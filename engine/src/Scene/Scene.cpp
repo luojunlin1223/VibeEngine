@@ -17,6 +17,7 @@
 #include "VibeEngine/Renderer/Frustum.h"
 #include "VibeEngine/Renderer/OcclusionCulling.h"
 #include "VibeEngine/Renderer/LODSystem.h"
+#include "VibeEngine/Renderer/LightProbe.h"
 #include "VibeEngine/UI/UIRenderer.h"
 #include "VibeEngine/UI/FontAtlas.h"
 #include "VibeEngine/Terrain/Terrain.h"
@@ -953,7 +954,8 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
     }
 
     // Helper: set lighting uniforms on a shader (used for both individual and instanced paths)
-    auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader, bool isLit) {
+    auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader, bool isLit,
+                                    const glm::vec3& entityWorldPos = glm::vec3(0.0f)) {
         if (!isLit) return;
         shader->SetVec3("u_LightDir", lightDir);
         shader->SetVec3("u_LightColor", lightColor);
@@ -1099,6 +1101,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetInt("u_UseTexture", 0);
 
         // Always set lighting uniforms for lit materials
+        glm::vec3 entityWorldPos = glm::vec3(model[3]);
         if (mr.Mat->IsLit()) {
             setLightingUniforms(shader, true);
             if (mr.Mat != lastPBRMat) {
@@ -1106,6 +1109,25 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                 lastPBRMat = mr.Mat;
             }
         }
+
+        // Lightmap: bind baked lightmap texture if entity has one
+        if (m_Registry.all_of<LightmapComponent>(entityID)) {
+            auto& lmc = m_Registry.get<LightmapComponent>(entityID);
+            if (lmc.LightmapTexture) {
+                shader->SetInt("u_HasLightmap", 1);
+                lmc.LightmapTexture->Bind(9); // texture slot 9
+                shader->SetInt("u_Lightmap", 9);
+                shader->SetFloat("u_LightmapScaleX", lmc.UVScaleX);
+                shader->SetFloat("u_LightmapScaleY", lmc.UVScaleY);
+                shader->SetFloat("u_LightmapOffsetX", lmc.UVOffsetX);
+                shader->SetFloat("u_LightmapOffsetY", lmc.UVOffsetY);
+            } else {
+                shader->SetInt("u_HasLightmap", 0);
+            }
+        } else {
+            shader->SetInt("u_HasLightmap", 0);
+        }
+
         // Always set entity color (even if overrides exist)
         shader->SetVec4("u_EntityColor", entityColor);
 

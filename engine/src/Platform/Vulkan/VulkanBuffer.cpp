@@ -41,7 +41,8 @@ static void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
 
 // ── VulkanVertexBuffer ──────────────────────────────────────────────
 
-VulkanVertexBuffer::VulkanVertexBuffer(const float* vertices, uint32_t size) {
+VulkanVertexBuffer::VulkanVertexBuffer(const float* vertices, uint32_t size)
+    : m_Size(size) {
     CreateBuffer(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, m_Buffer, m_Memory);
 
     void* data;

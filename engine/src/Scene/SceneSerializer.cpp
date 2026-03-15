@@ -110,6 +110,28 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // LightProbeComponent
+    if (entity.HasComponent<LightProbeComponent>()) {
+        auto& lpc = entity.GetComponent<LightProbeComponent>();
+        out << YAML::Key << "LightProbeComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Radius" << YAML::Value << lpc.Radius;
+        out << YAML::Key << "Resolution" << YAML::Value << lpc.Resolution;
+        out << YAML::EndMap;
+    }
+
+    // LightmapComponent
+    if (entity.HasComponent<LightmapComponent>()) {
+        auto& lmc = entity.GetComponent<LightmapComponent>();
+        out << YAML::Key << "LightmapComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "IsStatic" << YAML::Value << lmc.IsStatic;
+        out << YAML::Key << "Resolution" << YAML::Value << lmc.Resolution;
+        out << YAML::Key << "UVScaleX" << YAML::Value << lmc.UVScaleX;
+        out << YAML::Key << "UVScaleY" << YAML::Value << lmc.UVScaleY;
+        out << YAML::Key << "UVOffsetX" << YAML::Value << lmc.UVOffsetX;
+        out << YAML::Key << "UVOffsetY" << YAML::Value << lmc.UVOffsetY;
+        out << YAML::EndMap;
+    }
+
     // RigidbodyComponent
     if (entity.HasComponent<RigidbodyComponent>()) {
         auto& rb = entity.GetComponent<RigidbodyComponent>();
@@ -895,6 +917,22 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             if (auto bs = rpNode["BoxSize"])
                 rp.BoxSize = { bs[0].as<float>(), bs[1].as<float>(), bs[2].as<float>() };
             if (rpNode["BakeOnLoad"]) rp.BakeOnLoad = rpNode["BakeOnLoad"].as<bool>();
+        }
+
+        if (auto lpcNode = entityNode["LightProbeComponent"]) {
+            auto& lpc = entity.AddComponent<LightProbeComponent>();
+            lpc.Radius = lpcNode["Radius"].as<float>(20.0f);
+            lpc.Resolution = lpcNode["Resolution"].as<int>(64);
+        }
+
+        if (auto lmcNode = entityNode["LightmapComponent"]) {
+            auto& lmc = entity.AddComponent<LightmapComponent>();
+            lmc.IsStatic = lmcNode["IsStatic"].as<bool>(true);
+            lmc.Resolution = lmcNode["Resolution"].as<int>(128);
+            lmc.UVScaleX = lmcNode["UVScaleX"].as<float>(1.0f);
+            lmc.UVScaleY = lmcNode["UVScaleY"].as<float>(1.0f);
+            lmc.UVOffsetX = lmcNode["UVOffsetX"].as<float>(0.0f);
+            lmc.UVOffsetY = lmcNode["UVOffsetY"].as<float>(0.0f);
         }
 
         if (auto rbNode = entityNode["RigidbodyComponent"]) {
@@ -1756,6 +1794,24 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
             if (auto bs = rpNode["BoxSize"])
                 rp.BoxSize = { bs[0].as<float>(), bs[1].as<float>(), bs[2].as<float>() };
             if (rpNode["BakeOnLoad"]) rp.BakeOnLoad = rpNode["BakeOnLoad"].as<bool>();
+        }
+
+        // LightProbeComponent
+        if (auto lpcNode = entityNode["LightProbeComponent"]) {
+            auto& lpc = entity.AddComponent<LightProbeComponent>();
+            if (lpcNode["Radius"]) lpc.Radius = lpcNode["Radius"].as<float>();
+            if (lpcNode["Resolution"]) lpc.Resolution = lpcNode["Resolution"].as<int>();
+        }
+
+        // LightmapComponent
+        if (auto lmcNode = entityNode["LightmapComponent"]) {
+            auto& lmc = entity.AddComponent<LightmapComponent>();
+            if (lmcNode["IsStatic"]) lmc.IsStatic = lmcNode["IsStatic"].as<bool>();
+            if (lmcNode["Resolution"]) lmc.Resolution = lmcNode["Resolution"].as<int>();
+            if (lmcNode["UVScaleX"]) lmc.UVScaleX = lmcNode["UVScaleX"].as<float>();
+            if (lmcNode["UVScaleY"]) lmc.UVScaleY = lmcNode["UVScaleY"].as<float>();
+            if (lmcNode["UVOffsetX"]) lmc.UVOffsetX = lmcNode["UVOffsetX"].as<float>();
+            if (lmcNode["UVOffsetY"]) lmc.UVOffsetY = lmcNode["UVOffsetY"].as<float>();
         }
 
         // CameraComponent
