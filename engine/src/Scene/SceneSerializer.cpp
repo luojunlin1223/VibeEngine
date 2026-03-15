@@ -81,6 +81,21 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // SpotLightComponent
+    if (entity.HasComponent<SpotLightComponent>()) {
+        auto& sl = entity.GetComponent<SpotLightComponent>();
+        out << YAML::Key << "SpotLightComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Direction" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << sl.Direction[0] << sl.Direction[1] << sl.Direction[2] << YAML::EndSeq;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << sl.Color[0] << sl.Color[1] << sl.Color[2] << YAML::EndSeq;
+        out << YAML::Key << "Intensity" << YAML::Value << sl.Intensity;
+        out << YAML::Key << "Range" << YAML::Value << sl.Range;
+        out << YAML::Key << "InnerAngle" << YAML::Value << sl.InnerAngle;
+        out << YAML::Key << "OuterAngle" << YAML::Value << sl.OuterAngle;
+        out << YAML::EndMap;
+    }
+
     // RigidbodyComponent
     if (entity.HasComponent<RigidbodyComponent>()) {
         auto& rb = entity.GetComponent<RigidbodyComponent>();
@@ -763,6 +778,16 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             pl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
             pl.Intensity = plNode["Intensity"].as<float>();
             pl.Range = plNode["Range"].as<float>();
+        }
+
+        if (auto slNode = entityNode["SpotLightComponent"]) {
+            auto& sl = entity.AddComponent<SpotLightComponent>();
+            if (auto d = slNode["Direction"]) sl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
+            if (auto c = slNode["Color"]) sl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+            if (slNode["Intensity"]) sl.Intensity = slNode["Intensity"].as<float>();
+            if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
+            if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
+            if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
         }
 
         if (auto rbNode = entityNode["RigidbodyComponent"]) {
@@ -1463,6 +1488,17 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
             if (auto c = plNode["Color"]) pl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
             if (plNode["Intensity"]) pl.Intensity = plNode["Intensity"].as<float>();
             if (plNode["Range"]) pl.Range = plNode["Range"].as<float>();
+        }
+
+        // SpotLightComponent
+        if (auto slNode = entityNode["SpotLightComponent"]) {
+            auto& sl = entity.AddComponent<SpotLightComponent>();
+            if (auto d = slNode["Direction"]) sl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
+            if (auto c = slNode["Color"]) sl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+            if (slNode["Intensity"]) sl.Intensity = slNode["Intensity"].as<float>();
+            if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
+            if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
+            if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
         }
 
         // CameraComponent

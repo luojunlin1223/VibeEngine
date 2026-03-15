@@ -23,6 +23,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <sstream>
 #include <random>
 
@@ -667,6 +668,36 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
+    // Gather spot lights (max 4)
+    static constexpr int MAX_SPOT_LIGHTS = 4;
+    int numSpotLights = 0;
+    glm::vec3 spotPositions[MAX_SPOT_LIGHTS];
+    glm::vec3 spotDirections[MAX_SPOT_LIGHTS];
+    glm::vec3 spotColors[MAX_SPOT_LIGHTS];
+    float     spotIntensities[MAX_SPOT_LIGHTS];
+    float     spotRanges[MAX_SPOT_LIGHTS];
+    float     spotInnerCos[MAX_SPOT_LIGHTS];
+    float     spotOuterCos[MAX_SPOT_LIGHTS];
+    {
+        auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
+        for (auto slEntity : slView) {
+            if (numSpotLights >= MAX_SPOT_LIGHTS) break;
+            if (!IsEntityActiveInHierarchy(slEntity)) continue;
+            auto [tc, sl] = slView.get<TransformComponent, SpotLightComponent>(slEntity);
+            glm::mat4 worldMat = GetWorldTransform(slEntity);
+            spotPositions[numSpotLights]  = glm::vec3(worldMat[3]);
+            // Transform direction by world rotation (extract upper 3x3)
+            glm::vec3 localDir = glm::normalize(glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
+            spotDirections[numSpotLights] = glm::normalize(glm::mat3(worldMat) * localDir);
+            spotColors[numSpotLights]     = glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]);
+            spotIntensities[numSpotLights] = sl.Intensity;
+            spotRanges[numSpotLights]     = sl.Range;
+            spotInnerCos[numSpotLights]   = std::cos(glm::radians(sl.InnerAngle));
+            spotOuterCos[numSpotLights]   = std::cos(glm::radians(sl.OuterAngle));
+            numSpotLights++;
+        }
+    }
+
     // Helper: set lighting uniforms on a shader (used for both individual and instanced paths)
     auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader, bool isLit) {
         if (!isLit) return;
@@ -702,6 +733,18 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
             shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
             shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
+        }
+
+        shader->SetInt("u_NumSpotLights", numSpotLights);
+        for (int i = 0; i < numSpotLights; ++i) {
+            std::string idx = std::to_string(i);
+            shader->SetVec3("u_SpotLightPositions[" + idx + "]",    spotPositions[i]);
+            shader->SetVec3("u_SpotLightDirections[" + idx + "]",   spotDirections[i]);
+            shader->SetVec3("u_SpotLightColors[" + idx + "]",       spotColors[i]);
+            shader->SetFloat("u_SpotLightIntensities[" + idx + "]", spotIntensities[i]);
+            shader->SetFloat("u_SpotLightRanges[" + idx + "]",      spotRanges[i]);
+            shader->SetFloat("u_SpotLightInnerCos[" + idx + "]",    spotInnerCos[i]);
+            shader->SetFloat("u_SpotLightOuterCos[" + idx + "]",    spotOuterCos[i]);
         }
     };
 
@@ -1044,6 +1087,32 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
             numPL++;
         }
         s_TerrainShader->SetInt("u_NumPointLights", numPL);
+
+        // Spot lights for terrain
+        static constexpr int MAX_SL = 4;
+        int numSL = 0;
+        auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
+        for (auto slE : slView) {
+            if (numSL >= MAX_SL) break;
+            if (!IsEntityActiveInHierarchy(slE)) continue;
+            auto [stc, sl] = slView.get<TransformComponent, SpotLightComponent>(slE);
+            glm::mat4 wm = GetWorldTransform(slE);
+            glm::vec3 slPos = glm::vec3(wm[3]);
+            glm::vec3 localDir = glm::normalize(glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
+            glm::vec3 slDir = glm::normalize(glm::mat3(wm) * localDir);
+            s_TerrainShader->SetVec3("u_SpotLightPositions[" + std::to_string(numSL) + "]", slPos);
+            s_TerrainShader->SetVec3("u_SpotLightDirections[" + std::to_string(numSL) + "]", slDir);
+            s_TerrainShader->SetVec3("u_SpotLightColors[" + std::to_string(numSL) + "]",
+                glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]));
+            s_TerrainShader->SetFloat("u_SpotLightIntensities[" + std::to_string(numSL) + "]", sl.Intensity);
+            s_TerrainShader->SetFloat("u_SpotLightRanges[" + std::to_string(numSL) + "]", sl.Range);
+            s_TerrainShader->SetFloat("u_SpotLightInnerCos[" + std::to_string(numSL) + "]",
+                std::cos(glm::radians(sl.InnerAngle)));
+            s_TerrainShader->SetFloat("u_SpotLightOuterCos[" + std::to_string(numSL) + "]",
+                std::cos(glm::radians(sl.OuterAngle)));
+            numSL++;
+        }
+        s_TerrainShader->SetInt("u_NumSpotLights", numSL);
 
         // Blend heights and tiling
         s_TerrainShader->SetFloat("u_BlendHeight0", terrain.BlendHeights[0]);

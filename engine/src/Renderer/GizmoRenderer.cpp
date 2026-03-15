@@ -366,6 +366,56 @@ void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
     DrawLineWorld(dl, position - glm::vec3(0, 0, crossLen), position + glm::vec3(0, 0, crossLen), wireColor, 1.0f);
 }
 
+void GizmoRenderer::DrawSpotLightGizmo(const glm::vec3& position, const glm::vec3& direction,
+                                        float range, float outerAngle,
+                                        const glm::vec3& color) {
+    ImDrawList* dl = s_DrawList;
+
+    ImU32 wireColor = IM_COL32(
+        (int)(std::min(color.x, 1.0f) * 200 + 55),
+        (int)(std::min(color.y, 1.0f) * 200 + 55),
+        (int)(std::min(color.z, 1.0f) * 200 + 55),
+        180);
+    ImU32 dotColor = IM_COL32(
+        (int)(std::min(color.x, 1.0f) * 255),
+        (int)(std::min(color.y, 1.0f) * 255),
+        (int)(std::min(color.z, 1.0f) * 255),
+        255);
+
+    // Draw center dot
+    ImVec2 center = WorldToScreen(position);
+    dl->AddCircleFilled(center, 5.0f, dotColor);
+
+    // Build a local coordinate frame around the direction
+    glm::vec3 dir = glm::normalize(direction);
+    glm::vec3 up = (std::abs(dir.y) < 0.99f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+    glm::vec3 right = glm::normalize(glm::cross(dir, up));
+    up = glm::normalize(glm::cross(right, dir));
+
+    float coneRadius = range * std::tan(glm::radians(outerAngle));
+    glm::vec3 tipEnd = position + dir * range;
+
+    // Draw direction line
+    DrawLineWorld(dl, position, tipEnd, wireColor, 1.5f);
+
+    // Draw the base circle of the cone
+    constexpr int SEGMENTS = 24;
+    for (int i = 0; i < SEGMENTS; ++i) {
+        float a0 = (float)i / SEGMENTS * 2.0f * 3.14159265f;
+        float a1 = (float)(i + 1) / SEGMENTS * 2.0f * 3.14159265f;
+        glm::vec3 p0 = tipEnd + (right * std::cos(a0) + up * std::sin(a0)) * coneRadius;
+        glm::vec3 p1 = tipEnd + (right * std::cos(a1) + up * std::sin(a1)) * coneRadius;
+        DrawLineWorld(dl, p0, p1, wireColor, 1.0f);
+    }
+
+    // Draw 4 cone edge lines from position to base circle
+    for (int i = 0; i < 4; ++i) {
+        float a = (float)i / 4.0f * 2.0f * 3.14159265f;
+        glm::vec3 p = tipEnd + (right * std::cos(a) + up * std::sin(a)) * coneRadius;
+        DrawLineWorld(dl, position, p, wireColor, 1.0f);
+    }
+}
+
 void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
                                        int projType, float fov, float size,
                                        float nearClip, float farClip, float aspect) {

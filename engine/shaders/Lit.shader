@@ -108,6 +108,17 @@ uniform vec3  u_PointLightColors[MAX_POINT_LIGHTS];
 uniform float u_PointLightIntensities[MAX_POINT_LIGHTS];
 uniform float u_PointLightRanges[MAX_POINT_LIGHTS];
 
+// Spot lights (max 4)
+const int MAX_SPOT_LIGHTS = 4;
+uniform int   u_NumSpotLights;
+uniform vec3  u_SpotLightPositions[MAX_SPOT_LIGHTS];
+uniform vec3  u_SpotLightDirections[MAX_SPOT_LIGHTS];
+uniform vec3  u_SpotLightColors[MAX_SPOT_LIGHTS];
+uniform float u_SpotLightIntensities[MAX_SPOT_LIGHTS];
+uniform float u_SpotLightRanges[MAX_SPOT_LIGHTS];
+uniform float u_SpotLightInnerCos[MAX_SPOT_LIGHTS]; // cos(innerAngle)
+uniform float u_SpotLightOuterCos[MAX_SPOT_LIGHTS]; // cos(outerAngle)
+
 // Shadow uniforms
 uniform int   u_ShadowEnabled;
 uniform sampler2DArrayShadow u_ShadowMap;
@@ -304,6 +315,44 @@ void main() {
         attenuation *= window;
 
         vec3 radiance = u_PointLightColors[i] * u_PointLightIntensities[i] * attenuation;
+
+        float NDF = DistributionGGX(N, H, roughness);
+        float G   = GeometrySmith(N, V, L, roughness);
+        vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+        vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
+        vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+        float NdotL = max(dot(N, L), 0.0);
+
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
+    }
+
+    // ── Spot lights ──────────────────────────────────────────────────
+    for (int i = 0; i < u_NumSpotLights; ++i) {
+        vec3  lightVec  = u_SpotLightPositions[i] - v_FragPos;
+        float dist      = length(lightVec);
+        float range     = u_SpotLightRanges[i];
+
+        if (dist > range) continue;
+
+        vec3  L = lightVec / dist;
+
+        // Spot cone attenuation
+        float theta   = dot(L, normalize(-u_SpotLightDirections[i]));
+        float epsilon = u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i];
+        float spotAtt = clamp((theta - u_SpotLightOuterCos[i]) / max(epsilon, 0.001), 0.0, 1.0);
+
+        if (spotAtt <= 0.0) continue;
+
+        vec3  H = normalize(V + L);
+
+        float attenuation = 1.0 / (dist * dist + 1.0);
+        float window = 1.0 - pow(clamp(dist / range, 0.0, 1.0), 4.0);
+        window = window * window;
+        attenuation *= window * spotAtt;
+
+        vec3 radiance = u_SpotLightColors[i] * u_SpotLightIntensities[i] * attenuation;
 
         float NDF = DistributionGGX(N, H, roughness);
         float G   = GeometrySmith(N, V, L, roughness);

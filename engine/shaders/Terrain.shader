@@ -99,6 +99,16 @@ uniform vec3  u_PointLightColors[8];
 uniform float u_PointLightIntensities[8];
 uniform float u_PointLightRanges[8];
 
+// Spot lights (max 4)
+uniform int   u_NumSpotLights;
+uniform vec3  u_SpotLightPositions[4];
+uniform vec3  u_SpotLightDirections[4];
+uniform vec3  u_SpotLightColors[4];
+uniform float u_SpotLightIntensities[4];
+uniform float u_SpotLightRanges[4];
+uniform float u_SpotLightInnerCos[4];
+uniform float u_SpotLightOuterCos[4];
+
 // Shadow (optional)
 uniform bool u_ShadowEnabled;
 uniform sampler2D u_ShadowMap;
@@ -169,6 +179,22 @@ void main() {
         atten *= atten;
         float plNdotL = max(dot(N, plDir), 0.0);
         diffuse += albedo * plNdotL * u_PointLightColors[i] * u_PointLightIntensities[i] * atten;
+    }
+
+    // Spot lights
+    for (int i = 0; i < u_NumSpotLights; i++) {
+        vec3 slDir = u_SpotLightPositions[i] - v_FragPos;
+        float dist = length(slDir);
+        if (dist > u_SpotLightRanges[i]) continue;
+        slDir /= dist;
+        float theta   = dot(slDir, normalize(-u_SpotLightDirections[i]));
+        float epsilon = u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i];
+        float spotAtt = clamp((theta - u_SpotLightOuterCos[i]) / max(epsilon, 0.001), 0.0, 1.0);
+        if (spotAtt <= 0.0) continue;
+        float atten = 1.0 - smoothstep(0.0, u_SpotLightRanges[i], dist);
+        atten *= atten * spotAtt;
+        float slNdotL = max(dot(N, slDir), 0.0);
+        diffuse += albedo * slNdotL * u_SpotLightColors[i] * u_SpotLightIntensities[i] * atten;
     }
 
     vec3 color = ambient + diffuse + specular;
