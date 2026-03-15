@@ -8,6 +8,7 @@
  *   4. Blur the raw AO to reduce noise
  */
 #include "VibeEngine/Renderer/SSAO.h"
+#include "VibeEngine/Renderer/ShaderSources.h"
 #include "VibeEngine/Core/Log.h"
 #include <glad/gl.h>
 #include <random>
@@ -15,17 +16,31 @@
 
 namespace VE {
 
+// ── Pre-built uniform name strings for SSAO kernel samples ──────────
+
+static const char* s_SampleNames[64] = {
+    "u_Samples[0]",  "u_Samples[1]",  "u_Samples[2]",  "u_Samples[3]",
+    "u_Samples[4]",  "u_Samples[5]",  "u_Samples[6]",  "u_Samples[7]",
+    "u_Samples[8]",  "u_Samples[9]",  "u_Samples[10]", "u_Samples[11]",
+    "u_Samples[12]", "u_Samples[13]", "u_Samples[14]", "u_Samples[15]",
+    "u_Samples[16]", "u_Samples[17]", "u_Samples[18]", "u_Samples[19]",
+    "u_Samples[20]", "u_Samples[21]", "u_Samples[22]", "u_Samples[23]",
+    "u_Samples[24]", "u_Samples[25]", "u_Samples[26]", "u_Samples[27]",
+    "u_Samples[28]", "u_Samples[29]", "u_Samples[30]", "u_Samples[31]",
+    "u_Samples[32]", "u_Samples[33]", "u_Samples[34]", "u_Samples[35]",
+    "u_Samples[36]", "u_Samples[37]", "u_Samples[38]", "u_Samples[39]",
+    "u_Samples[40]", "u_Samples[41]", "u_Samples[42]", "u_Samples[43]",
+    "u_Samples[44]", "u_Samples[45]", "u_Samples[46]", "u_Samples[47]",
+    "u_Samples[48]", "u_Samples[49]", "u_Samples[50]", "u_Samples[51]",
+    "u_Samples[52]", "u_Samples[53]", "u_Samples[54]", "u_Samples[55]",
+    "u_Samples[56]", "u_Samples[57]", "u_Samples[58]", "u_Samples[59]",
+    "u_Samples[60]", "u_Samples[61]", "u_Samples[62]", "u_Samples[63]"
+};
+
 // ── Shader sources ───────────────────────────────────────────────────
 
-static const char* s_QuadVertSrc = R"(
-#version 450 core
-layout(location = 0) out vec2 v_UV;
-void main() {
-    vec2 pos = vec2((gl_VertexID & 1) * 2.0, (gl_VertexID & 2) * 1.0);
-    v_UV = pos;
-    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
-}
-)";
+// Fullscreen quad vertex shader shared via ShaderSources.h
+static const char* s_QuadVertSrc = QuadVertexShaderSrc;
 
 static const char* s_SSAOFragSrc = R"(
 #version 450 core
@@ -206,6 +221,23 @@ void SSAO::Resize(uint32_t width, uint32_t height) {
 void SSAO::CompileShaders() {
     m_SSAOShader = LinkProgram(s_QuadVertSrc, s_SSAOFragSrc);
     m_BlurShader = LinkProgram(s_QuadVertSrc, s_BlurFragSrc);
+    CacheUniformLocations();
+}
+
+void SSAO::CacheUniformLocations() {
+    m_LocDepthMap    = glGetUniformLocation(m_SSAOShader, "u_DepthMap");
+    m_LocNoiseTex    = glGetUniformLocation(m_SSAOShader, "u_NoiseTex");
+    m_LocKernelSize  = glGetUniformLocation(m_SSAOShader, "u_KernelSize");
+    m_LocRadius      = glGetUniformLocation(m_SSAOShader, "u_Radius");
+    m_LocBias        = glGetUniformLocation(m_SSAOShader, "u_Bias");
+    m_LocIntensity   = glGetUniformLocation(m_SSAOShader, "u_Intensity");
+    m_LocProjection  = glGetUniformLocation(m_SSAOShader, "u_Projection");
+    m_LocView        = glGetUniformLocation(m_SSAOShader, "u_View");
+    m_LocScreenSize  = glGetUniformLocation(m_SSAOShader, "u_ScreenSize");
+    for (int i = 0; i < 64; i++)
+        m_LocSamples[i] = glGetUniformLocation(m_SSAOShader, s_SampleNames[i]);
+    m_LocBlurInput   = glGetUniformLocation(m_BlurShader, "u_Input");
+    m_UniformsCached = true;
 }
 
 void SSAO::GenerateKernel() {
@@ -308,28 +340,27 @@ uint32_t SSAO::Compute(uint32_t depthTexture, uint32_t width, uint32_t height,
     glUseProgram(m_SSAOShader);
 
     // Depth texture
-    glUniform1i(glGetUniformLocation(m_SSAOShader, "u_DepthMap"), 0);
+    glUniform1i(m_LocDepthMap, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, depthTexture);
 
     // Noise texture
-    glUniform1i(glGetUniformLocation(m_SSAOShader, "u_NoiseTex"), 1);
+    glUniform1i(m_LocNoiseTex, 1);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, m_NoiseTexture);
 
-    // Kernel samples
+    // Kernel samples (using cached locations and pre-built name strings)
     for (int i = 0; i < kernelSize; i++) {
-        std::string name = "u_Samples[" + std::to_string(i) + "]";
-        glUniform3fv(glGetUniformLocation(m_SSAOShader, name.c_str()), 1, &m_Kernel[i].x);
+        glUniform3fv(m_LocSamples[i], 1, &m_Kernel[i].x);
     }
 
-    glUniform1i(glGetUniformLocation(m_SSAOShader, "u_KernelSize"), kernelSize);
-    glUniform1f(glGetUniformLocation(m_SSAOShader, "u_Radius"), settings.Radius);
-    glUniform1f(glGetUniformLocation(m_SSAOShader, "u_Bias"), settings.Bias);
-    glUniform1f(glGetUniformLocation(m_SSAOShader, "u_Intensity"), settings.Intensity);
-    glUniformMatrix4fv(glGetUniformLocation(m_SSAOShader, "u_Projection"), 1, GL_FALSE, &projection[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(m_SSAOShader, "u_View"), 1, GL_FALSE, &view[0][0]);
-    glUniform2f(glGetUniformLocation(m_SSAOShader, "u_ScreenSize"),
+    glUniform1i(m_LocKernelSize, kernelSize);
+    glUniform1f(m_LocRadius, settings.Radius);
+    glUniform1f(m_LocBias, settings.Bias);
+    glUniform1f(m_LocIntensity, settings.Intensity);
+    glUniformMatrix4fv(m_LocProjection, 1, GL_FALSE, &projection[0][0]);
+    glUniformMatrix4fv(m_LocView, 1, GL_FALSE, &view[0][0]);
+    glUniform2f(m_LocScreenSize,
                 static_cast<float>(m_Width), static_cast<float>(m_Height));
 
     RenderFullscreenQuad();
@@ -340,7 +371,7 @@ uint32_t SSAO::Compute(uint32_t depthTexture, uint32_t width, uint32_t height,
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(m_BlurShader);
-    glUniform1i(glGetUniformLocation(m_BlurShader, "u_Input"), 0);
+    glUniform1i(m_LocBlurInput, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_SSAOTexture);
 

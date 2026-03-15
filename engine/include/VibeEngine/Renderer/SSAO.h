@@ -61,6 +61,15 @@ private:
     // Kernel + noise
     std::vector<glm::vec3> m_Kernel;
     uint32_t m_NoiseTexture = 0;
+
+    // Cached uniform locations (resolved once after shader compile)
+    bool m_UniformsCached = false;
+    int32_t m_LocDepthMap = -1, m_LocNoiseTex = -1;
+    int32_t m_LocSamples[64] = {};
+    int32_t m_LocKernelSize = -1, m_LocRadius = -1, m_LocBias = -1, m_LocIntensity = -1;
+    int32_t m_LocProjection = -1, m_LocView = -1, m_LocScreenSize = -1;
+    int32_t m_LocBlurInput = -1;
+    void CacheUniformLocations();
 };
 
 } // namespace VE

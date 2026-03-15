@@ -8,14 +8,9 @@
 #pragma once
 
 #include "VibeEngine/Core/UUID.h"
-#include "VibeEngine/Renderer/VertexArray.h"
-#include "VibeEngine/Renderer/Shader.h"
-#include "VibeEngine/Renderer/Texture.h"
-#include "VibeEngine/Renderer/Material.h"
-#include "VibeEngine/Renderer/VideoPlayer.h"
-#include "VibeEngine/Asset/MeshAsset.h"
-#include "VibeEngine/UI/FontAtlas.h"
-#include "VibeEngine/Terrain/Terrain.h"
+#include "VibeEngine/Renderer/Material.h"   // MaterialProperty used by value
+#include "VibeEngine/Asset/MeshAsset.h"     // AABB used by value
+#include "VibeEngine/Animation/AnimStateMachine.h" // AnimState/AnimTransition/AnimParameter by value
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -26,8 +21,14 @@
 #include <unordered_map>
 #include <variant>
 
-namespace VE { class Animator; }
-#include "VibeEngine/Animation/AnimStateMachine.h"
+namespace VE {
+    class Animator;
+    class VertexArray;
+    class Texture2D;
+    class VideoPlayer;
+    class FontAtlas;
+    class Terrain;
+}
 
 namespace VE {
 

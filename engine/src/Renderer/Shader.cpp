@@ -1,6 +1,7 @@
 #include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Renderer/RendererAPI.h"
 #include "VibeEngine/Renderer/ShaderLab.h"
+#include "VibeEngine/Renderer/ShaderSources.h"
 #include "VibeEngine/Platform/OpenGL/OpenGLShader.h"
 #include "VibeEngine/Platform/Vulkan/VulkanShader.h"
 #include "VibeEngine/Core/Log.h"
@@ -61,7 +62,14 @@ std::shared_ptr<Shader> Shader::Create(const std::string& vertexSrc, const std::
 }
 
 std::shared_ptr<Shader> Shader::CreateFromFile(const std::string& filePath) {
-    return ShaderLabCompiler::CompileFile(filePath);
+    auto shader = ShaderLabCompiler::CompileFile(filePath);
+    if (!shader) {
+        VE_ENGINE_WARN("Shader::CreateFromFile('{}') failed — returning magenta error shader", filePath);
+        shader = Shader::Create(ErrorVertexSrc, ErrorFragmentSrc);
+        if (shader)
+            shader->SetName("Error");
+    }
+    return shader;
 }
 
 // ── ShaderLibrary ───────────────────────────────────────────────────

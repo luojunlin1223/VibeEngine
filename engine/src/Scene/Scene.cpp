@@ -4,17 +4,21 @@
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
 #include "VibeEngine/Renderer/ShadowMap.h"
+#include "VibeEngine/Renderer/VertexArray.h"
+#include "VibeEngine/Renderer/Texture.h"
+#include "VibeEngine/Renderer/VideoPlayer.h"
 #include "VibeEngine/Scripting/ScriptEngine.h"
 #include "VibeEngine/Scripting/NativeScript.h"
 #include "VibeEngine/Animation/Animator.h"
 #include "VibeEngine/Audio/AudioEngine.h"
-#include "VibeEngine/Renderer/VideoPlayer.h"
 #include "VibeEngine/Renderer/SpriteBatchRenderer.h"
 #include "VibeEngine/Renderer/ParticleSystem.h"
 #include "VibeEngine/Renderer/InstancedRenderer.h"
 #include "VibeEngine/Renderer/Frustum.h"
 #include "VibeEngine/Renderer/LODSystem.h"
 #include "VibeEngine/UI/UIRenderer.h"
+#include "VibeEngine/UI/FontAtlas.h"
+#include "VibeEngine/Terrain/Terrain.h"
 #include "VibeEngine/Asset/MeshAsset.h"
 #include "VibeEngine/Asset/MeshImporter.h"
 #include "VibeEngine/Asset/FBXImporter.h"
@@ -30,6 +34,32 @@
 #include <random>
 
 namespace VE {
+
+// ── Pre-built uniform name strings to avoid per-frame heap allocations ──
+
+static const char* s_PointLightPositions[]  = { "u_PointLightPositions[0]", "u_PointLightPositions[1]", "u_PointLightPositions[2]", "u_PointLightPositions[3]", "u_PointLightPositions[4]", "u_PointLightPositions[5]", "u_PointLightPositions[6]", "u_PointLightPositions[7]" };
+static const char* s_PointLightColors[]     = { "u_PointLightColors[0]", "u_PointLightColors[1]", "u_PointLightColors[2]", "u_PointLightColors[3]", "u_PointLightColors[4]", "u_PointLightColors[5]", "u_PointLightColors[6]", "u_PointLightColors[7]" };
+static const char* s_PointLightIntensities[] = { "u_PointLightIntensities[0]", "u_PointLightIntensities[1]", "u_PointLightIntensities[2]", "u_PointLightIntensities[3]", "u_PointLightIntensities[4]", "u_PointLightIntensities[5]", "u_PointLightIntensities[6]", "u_PointLightIntensities[7]" };
+static const char* s_PointLightRanges[]     = { "u_PointLightRanges[0]", "u_PointLightRanges[1]", "u_PointLightRanges[2]", "u_PointLightRanges[3]", "u_PointLightRanges[4]", "u_PointLightRanges[5]", "u_PointLightRanges[6]", "u_PointLightRanges[7]" };
+static const char* s_PointLightShadowIndex[] = { "u_PointLightShadowIndex[0]", "u_PointLightShadowIndex[1]", "u_PointLightShadowIndex[2]", "u_PointLightShadowIndex[3]", "u_PointLightShadowIndex[4]", "u_PointLightShadowIndex[5]", "u_PointLightShadowIndex[6]", "u_PointLightShadowIndex[7]" };
+
+static const char* s_SpotLightPositions[]   = { "u_SpotLightPositions[0]", "u_SpotLightPositions[1]", "u_SpotLightPositions[2]", "u_SpotLightPositions[3]" };
+static const char* s_SpotLightDirections[]  = { "u_SpotLightDirections[0]", "u_SpotLightDirections[1]", "u_SpotLightDirections[2]", "u_SpotLightDirections[3]" };
+static const char* s_SpotLightColors[]      = { "u_SpotLightColors[0]", "u_SpotLightColors[1]", "u_SpotLightColors[2]", "u_SpotLightColors[3]" };
+static const char* s_SpotLightIntensities[] = { "u_SpotLightIntensities[0]", "u_SpotLightIntensities[1]", "u_SpotLightIntensities[2]", "u_SpotLightIntensities[3]" };
+static const char* s_SpotLightRanges[]      = { "u_SpotLightRanges[0]", "u_SpotLightRanges[1]", "u_SpotLightRanges[2]", "u_SpotLightRanges[3]" };
+static const char* s_SpotLightInnerCos[]    = { "u_SpotLightInnerCos[0]", "u_SpotLightInnerCos[1]", "u_SpotLightInnerCos[2]", "u_SpotLightInnerCos[3]" };
+static const char* s_SpotLightOuterCos[]    = { "u_SpotLightOuterCos[0]", "u_SpotLightOuterCos[1]", "u_SpotLightOuterCos[2]", "u_SpotLightOuterCos[3]" };
+static const char* s_SpotLightShadowIndex[] = { "u_SpotLightShadowIndex[0]", "u_SpotLightShadowIndex[1]", "u_SpotLightShadowIndex[2]", "u_SpotLightShadowIndex[3]" };
+
+static const char* s_LightSpaceMatrices[]   = { "u_LightSpaceMatrices[0]", "u_LightSpaceMatrices[1]", "u_LightSpaceMatrices[2]", "u_LightSpaceMatrices[3]" };
+
+static const char* s_SpotShadowMaps[]            = { "u_SpotShadowMaps[0]", "u_SpotShadowMaps[1]" };
+static const char* s_SpotLightSpaceMatrices[]     = { "u_SpotLightSpaceMatrices[0]", "u_SpotLightSpaceMatrices[1]" };
+static const char* s_PointShadowCubeMaps[]        = { "u_PointShadowCubeMaps[0]", "u_PointShadowCubeMaps[1]" };
+static const char* s_PointShadowFarPlanes[]       = { "u_PointShadowFarPlanes[0]", "u_PointShadowFarPlanes[1]" };
+
+static const char* s_TerrainLayers[] = { "u_Layer0", "u_Layer1", "u_Layer2", "u_Layer3" };
 
 Entity Scene::CreateEntity(const std::string& name) {
     return CreateEntityWithUUID(UUID(), name);
@@ -861,8 +891,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
             shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
             for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c) {
-                std::string name = "u_LightSpaceMatrices[" + std::to_string(c) + "]";
-                shader->SetMat4(name, m_ShadowMap->GetLightSpaceMatrix(c));
+                shader->SetMat4(s_LightSpaceMatrices[c], m_ShadowMap->GetLightSpaceMatrix(c));
             }
             shader->SetVec3("u_CascadeSplits",
                 glm::vec3(m_ShadowMap->GetCascadeSplit(0),
@@ -874,26 +903,24 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
         shader->SetInt("u_NumPointLights", numPointLights);
         for (int i = 0; i < numPointLights; ++i) {
-            std::string idx = std::to_string(i);
-            shader->SetVec3("u_PointLightPositions[" + idx + "]",  pointPositions[i]);
-            shader->SetVec3("u_PointLightColors[" + idx + "]",     pointColors[i]);
-            shader->SetFloat("u_PointLightIntensities[" + idx + "]", pointIntensities[i]);
-            shader->SetFloat("u_PointLightRanges[" + idx + "]",    pointRanges[i]);
-            shader->SetInt("u_PointLightShadowIndex[" + idx + "]", pointShadowIndex[i]);
+            shader->SetVec3(s_PointLightPositions[i],  pointPositions[i]);
+            shader->SetVec3(s_PointLightColors[i],     pointColors[i]);
+            shader->SetFloat(s_PointLightIntensities[i], pointIntensities[i]);
+            shader->SetFloat(s_PointLightRanges[i],    pointRanges[i]);
+            shader->SetInt(s_PointLightShadowIndex[i], pointShadowIndex[i]);
         }
 
         // Spot lights
         shader->SetInt("u_NumSpotLights", numSpotLights);
         for (int i = 0; i < numSpotLights; ++i) {
-            std::string idx = std::to_string(i);
-            shader->SetVec3("u_SpotLightPositions[" + idx + "]",   spotPositions[i]);
-            shader->SetVec3("u_SpotLightDirections[" + idx + "]",  spotDirections[i]);
-            shader->SetVec3("u_SpotLightColors[" + idx + "]",      spotColors[i]);
-            shader->SetFloat("u_SpotLightIntensities[" + idx + "]", spotIntensities[i]);
-            shader->SetFloat("u_SpotLightRanges[" + idx + "]",     spotRanges[i]);
-            shader->SetFloat("u_SpotLightInnerCos[" + idx + "]",   spotInnerCos[i]);
-            shader->SetFloat("u_SpotLightOuterCos[" + idx + "]",   spotOuterCos[i]);
-            shader->SetInt("u_SpotLightShadowIndex[" + idx + "]",  spotShadowIndex[i]);
+            shader->SetVec3(s_SpotLightPositions[i],   spotPositions[i]);
+            shader->SetVec3(s_SpotLightDirections[i],  spotDirections[i]);
+            shader->SetVec3(s_SpotLightColors[i],      spotColors[i]);
+            shader->SetFloat(s_SpotLightIntensities[i], spotIntensities[i]);
+            shader->SetFloat(s_SpotLightRanges[i],     spotRanges[i]);
+            shader->SetFloat(s_SpotLightInnerCos[i],   spotInnerCos[i]);
+            shader->SetFloat(s_SpotLightOuterCos[i],   spotOuterCos[i]);
+            shader->SetInt(s_SpotLightShadowIndex[i],  spotShadowIndex[i]);
         }
 
         // Spot light shadow maps (texture units 9, 10)
@@ -902,8 +929,8 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             if (!m_SpotShadowMaps[i]) continue;
             int texUnit = 9 + i; // units 9, 10
             m_SpotShadowMaps[i]->BindForReading(texUnit);
-            shader->SetInt("u_SpotShadowMaps[" + std::to_string(i) + "]", texUnit);
-            shader->SetMat4("u_SpotLightSpaceMatrices[" + std::to_string(i) + "]",
+            shader->SetInt(s_SpotShadowMaps[i], texUnit);
+            shader->SetMat4(s_SpotLightSpaceMatrices[i],
                             m_SpotShadowMaps[i]->GetLightSpaceMatrix());
         }
 
@@ -913,8 +940,8 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
             if (!m_PointShadowMaps[i]) continue;
             int texUnit = 11 + i; // units 11, 12
             m_PointShadowMaps[i]->BindForReading(texUnit);
-            shader->SetInt("u_PointShadowCubeMaps[" + std::to_string(i) + "]", texUnit);
-            shader->SetFloat("u_PointShadowFarPlanes[" + std::to_string(i) + "]",
+            shader->SetInt(s_PointShadowCubeMaps[i], texUnit);
+            shader->SetFloat(s_PointShadowFarPlanes[i],
                              m_PointShadowMaps[i]->GetFarPlane());
         }
 
@@ -1270,11 +1297,11 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
             if (!IsEntityActiveInHierarchy(plE)) continue;
             auto [ptc, pl] = plView.get<TransformComponent, PointLightComponent>(plE);
             glm::vec3 plPos = glm::vec3(GetWorldTransform(plE)[3]);
-            s_TerrainShader->SetVec3("u_PointLightPositions[" + std::to_string(numPL) + "]", plPos);
-            s_TerrainShader->SetVec3("u_PointLightColors[" + std::to_string(numPL) + "]",
+            s_TerrainShader->SetVec3(s_PointLightPositions[numPL], plPos);
+            s_TerrainShader->SetVec3(s_PointLightColors[numPL],
                 glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]));
-            s_TerrainShader->SetFloat("u_PointLightIntensities[" + std::to_string(numPL) + "]", pl.Intensity);
-            s_TerrainShader->SetFloat("u_PointLightRanges[" + std::to_string(numPL) + "]", pl.Range);
+            s_TerrainShader->SetFloat(s_PointLightIntensities[numPL], pl.Intensity);
+            s_TerrainShader->SetFloat(s_PointLightRanges[numPL], pl.Range);
             numPL++;
         }
         s_TerrainShader->SetInt("u_NumPointLights", numPL);
@@ -1291,15 +1318,15 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
             glm::vec3 slPos = glm::vec3(wm[3]);
             glm::vec3 localDir = glm::normalize(glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
             glm::vec3 slDir = glm::normalize(glm::mat3(wm) * localDir);
-            s_TerrainShader->SetVec3("u_SpotLightPositions[" + std::to_string(numSL) + "]", slPos);
-            s_TerrainShader->SetVec3("u_SpotLightDirections[" + std::to_string(numSL) + "]", slDir);
-            s_TerrainShader->SetVec3("u_SpotLightColors[" + std::to_string(numSL) + "]",
+            s_TerrainShader->SetVec3(s_SpotLightPositions[numSL], slPos);
+            s_TerrainShader->SetVec3(s_SpotLightDirections[numSL], slDir);
+            s_TerrainShader->SetVec3(s_SpotLightColors[numSL],
                 glm::vec3(sl.Color[0], sl.Color[1], sl.Color[2]));
-            s_TerrainShader->SetFloat("u_SpotLightIntensities[" + std::to_string(numSL) + "]", sl.Intensity);
-            s_TerrainShader->SetFloat("u_SpotLightRanges[" + std::to_string(numSL) + "]", sl.Range);
-            s_TerrainShader->SetFloat("u_SpotLightInnerCos[" + std::to_string(numSL) + "]",
+            s_TerrainShader->SetFloat(s_SpotLightIntensities[numSL], sl.Intensity);
+            s_TerrainShader->SetFloat(s_SpotLightRanges[numSL], sl.Range);
+            s_TerrainShader->SetFloat(s_SpotLightInnerCos[numSL],
                 std::cos(glm::radians(sl.InnerAngle)));
-            s_TerrainShader->SetFloat("u_SpotLightOuterCos[" + std::to_string(numSL) + "]",
+            s_TerrainShader->SetFloat(s_SpotLightOuterCos[numSL],
                 std::cos(glm::radians(sl.OuterAngle)));
             numSL++;
         }
@@ -1317,8 +1344,7 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
 
         // Bind layer textures
         for (int i = 0; i < 4; i++) {
-            std::string uniformName = "u_Layer" + std::to_string(i);
-            s_TerrainShader->SetInt(uniformName, i);
+            s_TerrainShader->SetInt(s_TerrainLayers[i], i);
             if (terrain._LayerTextures[i])
                 terrain._LayerTextures[i]->Bind(i);
         }

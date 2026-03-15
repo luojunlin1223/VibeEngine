@@ -9,6 +9,7 @@
  *   5. Apply screen-edge and facing-angle fade to hide artifacts
  */
 #include "VibeEngine/Renderer/SSR.h"
+#include "VibeEngine/Renderer/ShaderSources.h"
 #include "VibeEngine/Core/Log.h"
 #include <glad/gl.h>
 
@@ -16,15 +17,8 @@ namespace VE {
 
 // ── Shader sources ───────────────────────────────────────────────────
 
-static const char* s_QuadVertSrc = R"(
-#version 450 core
-layout(location = 0) out vec2 v_UV;
-void main() {
-    vec2 pos = vec2((gl_VertexID & 1) * 2.0, (gl_VertexID & 2) * 1.0);
-    v_UV = pos;
-    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
-}
-)";
+// Fullscreen quad vertex shader shared via ShaderSources.h
+static const char* s_QuadVertSrc = QuadVertexShaderSrc;
 
 static const char* s_SSRFragSrc = R"(
 #version 450 core

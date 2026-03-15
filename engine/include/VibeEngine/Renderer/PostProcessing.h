@@ -216,6 +216,51 @@ private:
 
     // Color curves 1D LUT (256x1 RGBA)
     uint32_t m_CurvesLUT = 0;
+
+    // Cached uniform locations (resolved once after shader compile)
+    void CacheUniformLocations();
+
+    // Bright extract
+    int32_t m_LocBE_Scene = -1, m_LocBE_Threshold = -1;
+    // Blur
+    int32_t m_LocBlur_Image = -1, m_LocBlur_Horizontal = -1;
+    // Composite
+    int32_t m_LocC_Scene = -1, m_LocC_Bloom = -1, m_LocC_CurvesLUT = -1;
+    int32_t m_LocC_SSAOTex = -1, m_LocC_SSRTex = -1;
+    int32_t m_LocC_SSAOEnabled = -1, m_LocC_SSREnabled = -1;
+    int32_t m_LocC_FogEnabled = -1, m_LocC_FogMode = -1, m_LocC_FogColor = -1;
+    int32_t m_LocC_FogDensity = -1, m_LocC_FogStart = -1, m_LocC_FogEnd = -1;
+    int32_t m_LocC_FogHeightFalloff = -1, m_LocC_FogMaxOpacity = -1;
+    int32_t m_LocC_NearClip = -1, m_LocC_FarClip = -1, m_LocC_DepthTex = -1;
+    int32_t m_LocC_BloomEnabled = -1, m_LocC_BloomIntensity = -1;
+    int32_t m_LocC_CurvesEnabled = -1;
+    int32_t m_LocC_SMHEnabled = -1, m_LocC_SMH_Shadows = -1, m_LocC_SMH_Midtones = -1, m_LocC_SMH_Highlights = -1;
+    int32_t m_LocC_SMH_ShadowStart = -1, m_LocC_SMH_ShadowEnd = -1;
+    int32_t m_LocC_SMH_HighlightStart = -1, m_LocC_SMH_HighlightEnd = -1;
+    int32_t m_LocC_ColorEnabled = -1, m_LocC_Exposure = -1, m_LocC_Contrast = -1;
+    int32_t m_LocC_Saturation = -1, m_LocC_ColorFilter = -1, m_LocC_Gamma = -1;
+    int32_t m_LocC_TonemapEnabled = -1, m_LocC_TonemapMode = -1;
+    int32_t m_LocC_VignetteEnabled = -1, m_LocC_VignetteIntensity = -1, m_LocC_VignetteSmoothness = -1;
+    // Volumetric fog
+    int32_t m_LocVF_Scene = -1, m_LocVF_DepthTex = -1, m_LocVF_InvProjection = -1, m_LocVF_InvView = -1;
+    int32_t m_LocVF_LightDir = -1, m_LocVF_FogColor = -1, m_LocVF_Density = -1;
+    int32_t m_LocVF_Scattering = -1, m_LocVF_LightIntensity = -1, m_LocVF_Steps = -1;
+    int32_t m_LocVF_MaxDistance = -1, m_LocVF_HeightFalloff = -1, m_LocVF_BaseHeight = -1;
+    int32_t m_LocVF_NearClip = -1, m_LocVF_FarClip = -1;
+    // DoF
+    int32_t m_LocDoF_Scene = -1, m_LocDoF_DepthTex = -1, m_LocDoF_Horizontal = -1;
+    int32_t m_LocDoF_FocusDistance = -1, m_LocDoF_FocusRange = -1;
+    int32_t m_LocDoF_MaxBlur = -1, m_LocDoF_ApertureSize = -1;
+    int32_t m_LocDoF_NearClip = -1, m_LocDoF_FarClip = -1;
+    // Motion blur
+    int32_t m_LocMB_Scene = -1, m_LocMB_DepthTex = -1, m_LocMB_InvViewProj = -1;
+    int32_t m_LocMB_PrevViewProj = -1, m_LocMB_BlurStrength = -1, m_LocMB_NumSamples = -1;
+    // FXAA
+    int32_t m_LocFX_Scene = -1, m_LocFX_InvScreenSize = -1;
+    int32_t m_LocFX_EdgeThreshold = -1, m_LocFX_EdgeThresholdMin = -1, m_LocFX_SubpixelQuality = -1;
+    // TAA
+    int32_t m_LocTAA_Current = -1, m_LocTAA_History = -1;
+    int32_t m_LocTAA_BlendFactor = -1, m_LocTAA_JitterOffset = -1;
 };
 
 } // namespace VE

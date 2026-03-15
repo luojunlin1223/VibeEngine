@@ -16,6 +16,7 @@
 #include "VibeEngine/Input/InputAction.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Renderer/Material.h"
+#include "VibeEngine/Renderer/VideoPlayer.h"
 #include "VibeEngine/Scene/SceneSerializer.h"
 #include "VibeEngine/Scene/SceneManager.h"
 #include "VibeEngine/Navigation/NavGrid.h"

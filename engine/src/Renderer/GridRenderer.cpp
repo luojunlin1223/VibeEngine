@@ -80,9 +80,14 @@ void GridRenderer::DrawGrid(const glm::mat4& viewProjection,
         vertices.push_back(r); vertices.push_back(g); vertices.push_back(bv); vertices.push_back(alpha);
     };
 
+    // Half-length of each grid line in world units. Set very large so lines
+    // extend well beyond the visible area regardless of camera zoom.
     const float kExtent = 50000.0f;
+    // Three grid layers at 1x, 10x, 100x base spacing (e.g. 1m, 10m, 100m).
     const float spacings[] = { baseSpacing, baseSpacing * 10.0f, baseSpacing * 100.0f };
+    // Max lines drawn per side of center for each layer (fine→coarse).
     const int   maxLines[] = { 60, 30, 15 };
+    // Base opacity per layer — coarser layers are more visible.
     const float baseAlpha[] = { 0.18f, 0.25f, 0.35f };
 
     for (int layer = 0; layer < 3; layer++) {

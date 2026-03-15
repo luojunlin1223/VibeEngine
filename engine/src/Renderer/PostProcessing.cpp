@@ -12,6 +12,7 @@
  *   8. Vignette
  */
 #include "VibeEngine/Renderer/PostProcessing.h"
+#include "VibeEngine/Renderer/ShaderSources.h"
 #include "VibeEngine/Core/Log.h"
 #include <glad/gl.h>
 #include <cmath>
@@ -21,15 +22,8 @@ namespace VE {
 
 // ── Shader sources ───────────────────────────────────────────────────
 
-static const char* s_QuadVertexSrc = R"(
-#version 450 core
-layout(location = 0) out vec2 v_UV;
-void main() {
-    vec2 pos = vec2((gl_VertexID & 1) * 2.0, (gl_VertexID & 2) * 1.0);
-    v_UV = pos;
-    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
-}
-)";
+// Fullscreen quad vertex shader shared via ShaderSources.h
+static const char* s_QuadVertexSrc = QuadVertexShaderSrc;
 
 static const char* s_BrightExtractFragSrc = R"(
 #version 450 core
@@ -39,6 +33,7 @@ uniform sampler2D u_Scene;
 uniform float u_Threshold;
 void main() {
     vec3 color = texture(u_Scene, v_UV).rgb;
+    // Rec. 709 luminance coefficients (sRGB / HDTV standard)
     float brightness = dot(color, vec3(0.2126, 0.7152, 0.0722));
     FragColor = (brightness > u_Threshold) ? vec4(color, 1.0) : vec4(0.0, 0.0, 0.0, 1.0);
 }
@@ -50,6 +45,8 @@ layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec4 FragColor;
 uniform sampler2D u_Image;
 uniform bool u_Horizontal;
+// 5-tap Gaussian blur weights (sigma ~= 1.0, normalized so sum of all taps = 1.0):
+// center(0.227) + 2*(0.195 + 0.122 + 0.054 + 0.016) ≈ 1.0
 const float weights[5] = float[](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
 void main() {
     vec2 texelSize = 1.0 / vec2(textureSize(u_Image, 0));
@@ -821,6 +818,101 @@ void PostProcessing::CompileShaders() {
     m_MotionBlurShader = LinkProgram(s_QuadVertexSrc, s_MotionBlurFragSrc);
     m_VolFogShader = LinkProgram(s_QuadVertexSrc, s_VolFogFragSrc);
     m_DoFShader = LinkProgram(s_QuadVertexSrc, s_DoFFragSrc);
+    CacheUniformLocations();
+}
+
+void PostProcessing::CacheUniformLocations() {
+    // Bright extract
+    m_LocBE_Scene     = glGetUniformLocation(m_BrightExtractShader, "u_Scene");
+    m_LocBE_Threshold = glGetUniformLocation(m_BrightExtractShader, "u_Threshold");
+    // Blur
+    m_LocBlur_Image      = glGetUniformLocation(m_BlurShader, "u_Image");
+    m_LocBlur_Horizontal = glGetUniformLocation(m_BlurShader, "u_Horizontal");
+    // Composite
+    m_LocC_Scene            = glGetUniformLocation(m_CompositeShader, "u_Scene");
+    m_LocC_Bloom            = glGetUniformLocation(m_CompositeShader, "u_Bloom");
+    m_LocC_CurvesLUT        = glGetUniformLocation(m_CompositeShader, "u_CurvesLUT");
+    m_LocC_SSAOTex          = glGetUniformLocation(m_CompositeShader, "u_SSAOTex");
+    m_LocC_SSRTex           = glGetUniformLocation(m_CompositeShader, "u_SSRTex");
+    m_LocC_SSAOEnabled      = glGetUniformLocation(m_CompositeShader, "u_SSAOEnabled");
+    m_LocC_SSREnabled       = glGetUniformLocation(m_CompositeShader, "u_SSREnabled");
+    m_LocC_FogEnabled       = glGetUniformLocation(m_CompositeShader, "u_FogEnabled");
+    m_LocC_FogMode          = glGetUniformLocation(m_CompositeShader, "u_FogMode");
+    m_LocC_FogColor         = glGetUniformLocation(m_CompositeShader, "u_FogColor");
+    m_LocC_FogDensity       = glGetUniformLocation(m_CompositeShader, "u_FogDensity");
+    m_LocC_FogStart         = glGetUniformLocation(m_CompositeShader, "u_FogStart");
+    m_LocC_FogEnd           = glGetUniformLocation(m_CompositeShader, "u_FogEnd");
+    m_LocC_FogHeightFalloff = glGetUniformLocation(m_CompositeShader, "u_FogHeightFalloff");
+    m_LocC_FogMaxOpacity    = glGetUniformLocation(m_CompositeShader, "u_FogMaxOpacity");
+    m_LocC_NearClip         = glGetUniformLocation(m_CompositeShader, "u_NearClip");
+    m_LocC_FarClip          = glGetUniformLocation(m_CompositeShader, "u_FarClip");
+    m_LocC_DepthTex         = glGetUniformLocation(m_CompositeShader, "u_DepthTex");
+    m_LocC_BloomEnabled     = glGetUniformLocation(m_CompositeShader, "u_BloomEnabled");
+    m_LocC_BloomIntensity   = glGetUniformLocation(m_CompositeShader, "u_BloomIntensity");
+    m_LocC_CurvesEnabled    = glGetUniformLocation(m_CompositeShader, "u_CurvesEnabled");
+    m_LocC_SMHEnabled       = glGetUniformLocation(m_CompositeShader, "u_SMHEnabled");
+    m_LocC_SMH_Shadows      = glGetUniformLocation(m_CompositeShader, "u_SMH_Shadows");
+    m_LocC_SMH_Midtones     = glGetUniformLocation(m_CompositeShader, "u_SMH_Midtones");
+    m_LocC_SMH_Highlights   = glGetUniformLocation(m_CompositeShader, "u_SMH_Highlights");
+    m_LocC_SMH_ShadowStart  = glGetUniformLocation(m_CompositeShader, "u_SMH_ShadowStart");
+    m_LocC_SMH_ShadowEnd    = glGetUniformLocation(m_CompositeShader, "u_SMH_ShadowEnd");
+    m_LocC_SMH_HighlightStart = glGetUniformLocation(m_CompositeShader, "u_SMH_HighlightStart");
+    m_LocC_SMH_HighlightEnd = glGetUniformLocation(m_CompositeShader, "u_SMH_HighlightEnd");
+    m_LocC_ColorEnabled     = glGetUniformLocation(m_CompositeShader, "u_ColorEnabled");
+    m_LocC_Exposure         = glGetUniformLocation(m_CompositeShader, "u_Exposure");
+    m_LocC_Contrast         = glGetUniformLocation(m_CompositeShader, "u_Contrast");
+    m_LocC_Saturation       = glGetUniformLocation(m_CompositeShader, "u_Saturation");
+    m_LocC_ColorFilter      = glGetUniformLocation(m_CompositeShader, "u_ColorFilter");
+    m_LocC_Gamma            = glGetUniformLocation(m_CompositeShader, "u_Gamma");
+    m_LocC_TonemapEnabled   = glGetUniformLocation(m_CompositeShader, "u_TonemapEnabled");
+    m_LocC_TonemapMode      = glGetUniformLocation(m_CompositeShader, "u_TonemapMode");
+    m_LocC_VignetteEnabled  = glGetUniformLocation(m_CompositeShader, "u_VignetteEnabled");
+    m_LocC_VignetteIntensity = glGetUniformLocation(m_CompositeShader, "u_VignetteIntensity");
+    m_LocC_VignetteSmoothness = glGetUniformLocation(m_CompositeShader, "u_VignetteSmoothness");
+    // Volumetric fog
+    m_LocVF_Scene          = glGetUniformLocation(m_VolFogShader, "u_Scene");
+    m_LocVF_DepthTex       = glGetUniformLocation(m_VolFogShader, "u_DepthTex");
+    m_LocVF_InvProjection  = glGetUniformLocation(m_VolFogShader, "u_InvProjection");
+    m_LocVF_InvView        = glGetUniformLocation(m_VolFogShader, "u_InvView");
+    m_LocVF_LightDir       = glGetUniformLocation(m_VolFogShader, "u_LightDir");
+    m_LocVF_FogColor       = glGetUniformLocation(m_VolFogShader, "u_FogColor");
+    m_LocVF_Density        = glGetUniformLocation(m_VolFogShader, "u_Density");
+    m_LocVF_Scattering     = glGetUniformLocation(m_VolFogShader, "u_Scattering");
+    m_LocVF_LightIntensity = glGetUniformLocation(m_VolFogShader, "u_LightIntensity");
+    m_LocVF_Steps          = glGetUniformLocation(m_VolFogShader, "u_Steps");
+    m_LocVF_MaxDistance    = glGetUniformLocation(m_VolFogShader, "u_MaxDistance");
+    m_LocVF_HeightFalloff  = glGetUniformLocation(m_VolFogShader, "u_HeightFalloff");
+    m_LocVF_BaseHeight     = glGetUniformLocation(m_VolFogShader, "u_BaseHeight");
+    m_LocVF_NearClip       = glGetUniformLocation(m_VolFogShader, "u_NearClip");
+    m_LocVF_FarClip        = glGetUniformLocation(m_VolFogShader, "u_FarClip");
+    // DoF
+    m_LocDoF_Scene         = glGetUniformLocation(m_DoFShader, "u_Scene");
+    m_LocDoF_DepthTex      = glGetUniformLocation(m_DoFShader, "u_DepthTex");
+    m_LocDoF_Horizontal    = glGetUniformLocation(m_DoFShader, "u_Horizontal");
+    m_LocDoF_FocusDistance  = glGetUniformLocation(m_DoFShader, "u_FocusDistance");
+    m_LocDoF_FocusRange    = glGetUniformLocation(m_DoFShader, "u_FocusRange");
+    m_LocDoF_MaxBlur       = glGetUniformLocation(m_DoFShader, "u_MaxBlur");
+    m_LocDoF_ApertureSize  = glGetUniformLocation(m_DoFShader, "u_ApertureSize");
+    m_LocDoF_NearClip      = glGetUniformLocation(m_DoFShader, "u_NearClip");
+    m_LocDoF_FarClip       = glGetUniformLocation(m_DoFShader, "u_FarClip");
+    // Motion blur
+    m_LocMB_Scene        = glGetUniformLocation(m_MotionBlurShader, "u_Scene");
+    m_LocMB_DepthTex     = glGetUniformLocation(m_MotionBlurShader, "u_DepthTex");
+    m_LocMB_InvViewProj  = glGetUniformLocation(m_MotionBlurShader, "u_InvViewProj");
+    m_LocMB_PrevViewProj = glGetUniformLocation(m_MotionBlurShader, "u_PrevViewProj");
+    m_LocMB_BlurStrength = glGetUniformLocation(m_MotionBlurShader, "u_BlurStrength");
+    m_LocMB_NumSamples   = glGetUniformLocation(m_MotionBlurShader, "u_NumSamples");
+    // FXAA
+    m_LocFX_Scene            = glGetUniformLocation(m_FXAAShader, "u_Scene");
+    m_LocFX_InvScreenSize    = glGetUniformLocation(m_FXAAShader, "u_InvScreenSize");
+    m_LocFX_EdgeThreshold    = glGetUniformLocation(m_FXAAShader, "u_EdgeThreshold");
+    m_LocFX_EdgeThresholdMin = glGetUniformLocation(m_FXAAShader, "u_EdgeThresholdMin");
+    m_LocFX_SubpixelQuality  = glGetUniformLocation(m_FXAAShader, "u_SubpixelQuality");
+    // TAA
+    m_LocTAA_Current      = glGetUniformLocation(m_TAAShader, "u_Current");
+    m_LocTAA_History      = glGetUniformLocation(m_TAAShader, "u_History");
+    m_LocTAA_BlendFactor  = glGetUniformLocation(m_TAAShader, "u_BlendFactor");
+    m_LocTAA_JitterOffset = glGetUniformLocation(m_TAAShader, "u_JitterOffset");
 }
 
 static uint32_t CreateColorFBO(uint32_t& texture, uint32_t w, uint32_t h) {
@@ -947,14 +1039,14 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glViewport(0, 0, m_Width, m_Height);
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(m_BrightExtractShader);
-        glUniform1i(glGetUniformLocation(m_BrightExtractShader, "u_Scene"), 0);
-        glUniform1f(glGetUniformLocation(m_BrightExtractShader, "u_Threshold"), settings.Bloom.Threshold);
+        glUniform1i(m_LocBE_Scene, 0);
+        glUniform1f(m_LocBE_Threshold, settings.Bloom.Threshold);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
         RenderFullscreenQuad();
 
         glUseProgram(m_BlurShader);
-        glUniform1i(glGetUniformLocation(m_BlurShader, "u_Image"), 0);
+        glUniform1i(m_LocBlur_Image, 0);
         glViewport(0, 0, halfW, halfH);
 
         bool horizontal = true;
@@ -964,7 +1056,7 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
             int target = horizontal ? 0 : 1;
             glBindFramebuffer(GL_FRAMEBUFFER, m_BlurFBO[target]);
             glClear(GL_COLOR_BUFFER_BIT);
-            glUniform1i(glGetUniformLocation(m_BlurShader, "u_Horizontal"), horizontal ? 1 : 0);
+            glUniform1i(m_LocBlur_Horizontal, horizontal ? 1 : 0);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, inputTex);
             RenderFullscreenQuad();
@@ -987,28 +1079,28 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(m_VolFogShader);
 
-        glUniform1i(glGetUniformLocation(m_VolFogShader, "u_Scene"), 0);
+        glUniform1i(m_LocVF_Scene, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
 
-        glUniform1i(glGetUniformLocation(m_VolFogShader, "u_DepthTex"), 1);
+        glUniform1i(m_LocVF_DepthTex, 1);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, settings.DepthTexture);
 
-        glUniformMatrix4fv(glGetUniformLocation(m_VolFogShader, "u_InvProjection"), 1, GL_FALSE, &settings.InvProjection[0][0]);
-        glUniformMatrix4fv(glGetUniformLocation(m_VolFogShader, "u_InvView"), 1, GL_FALSE, &settings.InvView[0][0]);
-        glUniform3fv(glGetUniformLocation(m_VolFogShader, "u_LightDir"), 1, &settings.LightDir[0]);
-        glUniform3f(glGetUniformLocation(m_VolFogShader, "u_FogColor"),
+        glUniformMatrix4fv(m_LocVF_InvProjection, 1, GL_FALSE, &settings.InvProjection[0][0]);
+        glUniformMatrix4fv(m_LocVF_InvView, 1, GL_FALSE, &settings.InvView[0][0]);
+        glUniform3fv(m_LocVF_LightDir, 1, &settings.LightDir[0]);
+        glUniform3f(m_LocVF_FogColor,
                     settings.VolumetricFog.Color[0], settings.VolumetricFog.Color[1], settings.VolumetricFog.Color[2]);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_Density"), settings.VolumetricFog.Density);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_Scattering"), settings.VolumetricFog.Scattering);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_LightIntensity"), settings.VolumetricFog.LightIntensity);
-        glUniform1i(glGetUniformLocation(m_VolFogShader, "u_Steps"), settings.VolumetricFog.Steps);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_MaxDistance"), settings.VolumetricFog.MaxDistance);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_HeightFalloff"), settings.VolumetricFog.HeightFalloff);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_BaseHeight"), settings.VolumetricFog.BaseHeight);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_NearClip"), settings.NearClip);
-        glUniform1f(glGetUniformLocation(m_VolFogShader, "u_FarClip"), settings.FarClip);
+        glUniform1f(m_LocVF_Density, settings.VolumetricFog.Density);
+        glUniform1f(m_LocVF_Scattering, settings.VolumetricFog.Scattering);
+        glUniform1f(m_LocVF_LightIntensity, settings.VolumetricFog.LightIntensity);
+        glUniform1i(m_LocVF_Steps, settings.VolumetricFog.Steps);
+        glUniform1f(m_LocVF_MaxDistance, settings.VolumetricFog.MaxDistance);
+        glUniform1f(m_LocVF_HeightFalloff, settings.VolumetricFog.HeightFalloff);
+        glUniform1f(m_LocVF_BaseHeight, settings.VolumetricFog.BaseHeight);
+        glUniform1f(m_LocVF_NearClip, settings.NearClip);
+        glUniform1f(m_LocVF_FarClip, settings.FarClip);
 
         RenderFullscreenQuad();
         sceneColorTexture = m_VolFogTexture; // feed into composite
@@ -1017,20 +1109,20 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
     // ── Depth of Field pass (two-pass separable CoC-weighted blur) ───
     if (settings.DoF.Enabled && settings.DepthTexture) {
         glUseProgram(m_DoFShader);
-        glUniform1i(glGetUniformLocation(m_DoFShader, "u_Scene"), 0);
-        glUniform1i(glGetUniformLocation(m_DoFShader, "u_DepthTex"), 1);
-        glUniform1f(glGetUniformLocation(m_DoFShader, "u_FocusDistance"), settings.DoF.FocusDistance);
-        glUniform1f(glGetUniformLocation(m_DoFShader, "u_FocusRange"), settings.DoF.FocusRange);
-        glUniform1f(glGetUniformLocation(m_DoFShader, "u_MaxBlur"), settings.DoF.MaxBlur);
-        glUniform1f(glGetUniformLocation(m_DoFShader, "u_ApertureSize"), settings.DoF.ApertureSize);
-        glUniform1f(glGetUniformLocation(m_DoFShader, "u_NearClip"), settings.NearClip);
-        glUniform1f(glGetUniformLocation(m_DoFShader, "u_FarClip"), settings.FarClip);
+        glUniform1i(m_LocDoF_Scene, 0);
+        glUniform1i(m_LocDoF_DepthTex, 1);
+        glUniform1f(m_LocDoF_FocusDistance, settings.DoF.FocusDistance);
+        glUniform1f(m_LocDoF_FocusRange, settings.DoF.FocusRange);
+        glUniform1f(m_LocDoF_MaxBlur, settings.DoF.MaxBlur);
+        glUniform1f(m_LocDoF_ApertureSize, settings.DoF.ApertureSize);
+        glUniform1f(m_LocDoF_NearClip, settings.NearClip);
+        glUniform1f(m_LocDoF_FarClip, settings.FarClip);
 
         // Horizontal pass
         glBindFramebuffer(GL_FRAMEBUFFER, m_DoFFBO[0]);
         glViewport(0, 0, m_Width, m_Height);
         glClear(GL_COLOR_BUFFER_BIT);
-        glUniform1i(glGetUniformLocation(m_DoFShader, "u_Horizontal"), 1);
+        glUniform1i(m_LocDoF_Horizontal, 1);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
         glActiveTexture(GL_TEXTURE1);
@@ -1041,7 +1133,7 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glBindFramebuffer(GL_FRAMEBUFFER, m_DoFFBO[1]);
         glViewport(0, 0, m_Width, m_Height);
         glClear(GL_COLOR_BUFFER_BIT);
-        glUniform1i(glGetUniformLocation(m_DoFShader, "u_Horizontal"), 0);
+        glUniform1i(m_LocDoF_Horizontal, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_DoFTexture[0]);
         glActiveTexture(GL_TEXTURE1);
@@ -1058,98 +1150,98 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
     glUseProgram(m_CompositeShader);
 
     // Texture unit 0: scene
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_Scene"), 0);
+    glUniform1i(m_LocC_Scene, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
 
     // Texture unit 1: bloom
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_BloomEnabled"), settings.Bloom.Enabled ? 1 : 0);
+    glUniform1i(m_LocC_BloomEnabled, settings.Bloom.Enabled ? 1 : 0);
     if (settings.Bloom.Enabled) {
-        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_Bloom"), 1);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_BloomIntensity"), settings.Bloom.Intensity);
+        glUniform1i(m_LocC_Bloom, 1);
+        glUniform1f(m_LocC_BloomIntensity, settings.Bloom.Intensity);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, bloomTex);
     }
 
     // Fog
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_FogEnabled"), settings.Fog.Enabled ? 1 : 0);
+    glUniform1i(m_LocC_FogEnabled, settings.Fog.Enabled ? 1 : 0);
     if (settings.Fog.Enabled && settings.DepthTexture) {
-        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_FogMode"), static_cast<int>(settings.Fog.Mode));
-        glUniform3f(glGetUniformLocation(m_CompositeShader, "u_FogColor"),
+        glUniform1i(m_LocC_FogMode, static_cast<int>(settings.Fog.Mode));
+        glUniform3f(m_LocC_FogColor,
                     settings.Fog.Color[0], settings.Fog.Color[1], settings.Fog.Color[2]);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogDensity"), settings.Fog.Density);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogStart"), settings.Fog.Start);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogEnd"), settings.Fog.End);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogHeightFalloff"), settings.Fog.HeightFalloff);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FogMaxOpacity"), settings.Fog.MaxOpacity);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_NearClip"), settings.NearClip);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_FarClip"), settings.FarClip);
-        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_DepthTex"), 4);
+        glUniform1f(m_LocC_FogDensity, settings.Fog.Density);
+        glUniform1f(m_LocC_FogStart, settings.Fog.Start);
+        glUniform1f(m_LocC_FogEnd, settings.Fog.End);
+        glUniform1f(m_LocC_FogHeightFalloff, settings.Fog.HeightFalloff);
+        glUniform1f(m_LocC_FogMaxOpacity, settings.Fog.MaxOpacity);
+        glUniform1f(m_LocC_NearClip, settings.NearClip);
+        glUniform1f(m_LocC_FarClip, settings.FarClip);
+        glUniform1i(m_LocC_DepthTex, 4);
         glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, settings.DepthTexture);
     }
 
     // Texture unit 3: SSAO
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSAOEnabled"), settings.SSAOTexture ? 1 : 0);
+    glUniform1i(m_LocC_SSAOEnabled, settings.SSAOTexture ? 1 : 0);
     if (settings.SSAOTexture) {
-        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSAOTex"), 3);
+        glUniform1i(m_LocC_SSAOTex, 3);
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, settings.SSAOTexture);
     }
 
     // Texture unit 5: SSR
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSREnabled"), settings.SSRTexture ? 1 : 0);
+    glUniform1i(m_LocC_SSREnabled, settings.SSRTexture ? 1 : 0);
     if (settings.SSRTexture) {
-        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SSRTex"), 5);
+        glUniform1i(m_LocC_SSRTex, 5);
         glActiveTexture(GL_TEXTURE5);
         glBindTexture(GL_TEXTURE_2D, settings.SSRTexture);
     }
 
     // Texture unit 2: curves LUT
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_CurvesEnabled"), settings.Curves.Enabled ? 1 : 0);
+    glUniform1i(m_LocC_CurvesEnabled, settings.Curves.Enabled ? 1 : 0);
     if (settings.Curves.Enabled) {
-        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_CurvesLUT"), 2);
+        glUniform1i(m_LocC_CurvesLUT, 2);
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, m_CurvesLUT);
     }
 
     // SMH
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_SMHEnabled"), settings.SMH.Enabled ? 1 : 0);
+    glUniform1i(m_LocC_SMHEnabled, settings.SMH.Enabled ? 1 : 0);
     if (settings.SMH.Enabled) {
-        glUniform3f(glGetUniformLocation(m_CompositeShader, "u_SMH_Shadows"),
+        glUniform3f(m_LocC_SMH_Shadows,
                     settings.SMH.Shadows[0], settings.SMH.Shadows[1], settings.SMH.Shadows[2]);
-        glUniform3f(glGetUniformLocation(m_CompositeShader, "u_SMH_Midtones"),
+        glUniform3f(m_LocC_SMH_Midtones,
                     settings.SMH.Midtones[0], settings.SMH.Midtones[1], settings.SMH.Midtones[2]);
-        glUniform3f(glGetUniformLocation(m_CompositeShader, "u_SMH_Highlights"),
+        glUniform3f(m_LocC_SMH_Highlights,
                     settings.SMH.Highlights[0], settings.SMH.Highlights[1], settings.SMH.Highlights[2]);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_SMH_ShadowStart"), settings.SMH.ShadowStart);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_SMH_ShadowEnd"), settings.SMH.ShadowEnd);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_SMH_HighlightStart"), settings.SMH.HighlightStart);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_SMH_HighlightEnd"), settings.SMH.HighlightEnd);
+        glUniform1f(m_LocC_SMH_ShadowStart, settings.SMH.ShadowStart);
+        glUniform1f(m_LocC_SMH_ShadowEnd, settings.SMH.ShadowEnd);
+        glUniform1f(m_LocC_SMH_HighlightStart, settings.SMH.HighlightStart);
+        glUniform1f(m_LocC_SMH_HighlightEnd, settings.SMH.HighlightEnd);
     }
 
     // Color Adjustments
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_ColorEnabled"), settings.Color.Enabled ? 1 : 0);
+    glUniform1i(m_LocC_ColorEnabled, settings.Color.Enabled ? 1 : 0);
     if (settings.Color.Enabled) {
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_Exposure"), settings.Color.Exposure);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_Contrast"), settings.Color.Contrast);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_Saturation"), settings.Color.Saturation);
-        glUniform3f(glGetUniformLocation(m_CompositeShader, "u_ColorFilter"),
+        glUniform1f(m_LocC_Exposure, settings.Color.Exposure);
+        glUniform1f(m_LocC_Contrast, settings.Color.Contrast);
+        glUniform1f(m_LocC_Saturation, settings.Color.Saturation);
+        glUniform3f(m_LocC_ColorFilter,
                     settings.Color.ColorFilter[0], settings.Color.ColorFilter[1], settings.Color.ColorFilter[2]);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_Gamma"), settings.Color.Gamma);
+        glUniform1f(m_LocC_Gamma, settings.Color.Gamma);
     }
 
     // Tonemapping
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_TonemapEnabled"), settings.Tonemap.Enabled ? 1 : 0);
+    glUniform1i(m_LocC_TonemapEnabled, settings.Tonemap.Enabled ? 1 : 0);
     if (settings.Tonemap.Enabled) {
-        glUniform1i(glGetUniformLocation(m_CompositeShader, "u_TonemapMode"), static_cast<int>(settings.Tonemap.Mode));
+        glUniform1i(m_LocC_TonemapMode, static_cast<int>(settings.Tonemap.Mode));
     }
 
     // Vignette
-    glUniform1i(glGetUniformLocation(m_CompositeShader, "u_VignetteEnabled"), settings.Vignette.Enabled ? 1 : 0);
+    glUniform1i(m_LocC_VignetteEnabled, settings.Vignette.Enabled ? 1 : 0);
     if (settings.Vignette.Enabled) {
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_VignetteIntensity"), settings.Vignette.Intensity);
-        glUniform1f(glGetUniformLocation(m_CompositeShader, "u_VignetteSmoothness"), settings.Vignette.Smoothness);
+        glUniform1f(m_LocC_VignetteIntensity, settings.Vignette.Intensity);
+        glUniform1f(m_LocC_VignetteSmoothness, settings.Vignette.Smoothness);
     }
 
     RenderFullscreenQuad();
@@ -1169,21 +1261,21 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(m_MotionBlurShader);
 
-        glUniform1i(glGetUniformLocation(m_MotionBlurShader, "u_Scene"), 0);
+        glUniform1i(m_LocMB_Scene, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, currentOutput);
 
-        glUniform1i(glGetUniformLocation(m_MotionBlurShader, "u_DepthTex"), 1);
+        glUniform1i(m_LocMB_DepthTex, 1);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, settings.MotionBlur.DepthTexture);
 
-        glUniformMatrix4fv(glGetUniformLocation(m_MotionBlurShader, "u_InvViewProj"),
+        glUniformMatrix4fv(m_LocMB_InvViewProj,
                            1, GL_FALSE, &settings.MotionBlur.InvViewProj[0][0]);
-        glUniformMatrix4fv(glGetUniformLocation(m_MotionBlurShader, "u_PrevViewProj"),
+        glUniformMatrix4fv(m_LocMB_PrevViewProj,
                            1, GL_FALSE, &settings.MotionBlur.PrevViewProj[0][0]);
-        glUniform1f(glGetUniformLocation(m_MotionBlurShader, "u_BlurStrength"),
+        glUniform1f(m_LocMB_BlurStrength,
                     settings.MotionBlur.Strength);
-        glUniform1i(glGetUniformLocation(m_MotionBlurShader, "u_NumSamples"),
+        glUniform1i(m_LocMB_NumSamples,
                     settings.MotionBlur.NumSamples);
 
         RenderFullscreenQuad();
@@ -1196,12 +1288,12 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glViewport(0, 0, m_Width, m_Height);
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(m_FXAAShader);
-        glUniform1i(glGetUniformLocation(m_FXAAShader, "u_Scene"), 0);
-        glUniform2f(glGetUniformLocation(m_FXAAShader, "u_InvScreenSize"),
+        glUniform1i(m_LocFX_Scene, 0);
+        glUniform2f(m_LocFX_InvScreenSize,
                     1.0f / m_Width, 1.0f / m_Height);
-        glUniform1f(glGetUniformLocation(m_FXAAShader, "u_EdgeThreshold"), settings.FXAA.EdgeThreshold);
-        glUniform1f(glGetUniformLocation(m_FXAAShader, "u_EdgeThresholdMin"), settings.FXAA.EdgeThresholdMin);
-        glUniform1f(glGetUniformLocation(m_FXAAShader, "u_SubpixelQuality"), settings.FXAA.SubpixelQuality);
+        glUniform1f(m_LocFX_EdgeThreshold, settings.FXAA.EdgeThreshold);
+        glUniform1f(m_LocFX_EdgeThresholdMin, settings.FXAA.EdgeThresholdMin);
+        glUniform1f(m_LocFX_SubpixelQuality, settings.FXAA.SubpixelQuality);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, currentOutput);
         RenderFullscreenQuad();
@@ -1232,10 +1324,10 @@ uint32_t PostProcessing::Apply(uint32_t sceneColorTexture, uint32_t width, uint3
         glViewport(0, 0, m_Width, m_Height);
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(m_TAAShader);
-        glUniform1i(glGetUniformLocation(m_TAAShader, "u_Current"), 0);
-        glUniform1i(glGetUniformLocation(m_TAAShader, "u_History"), 1);
-        glUniform1f(glGetUniformLocation(m_TAAShader, "u_BlendFactor"), settings.TAA.BlendFactor);
-        glUniform2f(glGetUniformLocation(m_TAAShader, "u_JitterOffset"), 0.0f, 0.0f); // jitter handled externally
+        glUniform1i(m_LocTAA_Current, 0);
+        glUniform1i(m_LocTAA_History, 1);
+        glUniform1f(m_LocTAA_BlendFactor, settings.TAA.BlendFactor);
+        glUniform2f(m_LocTAA_JitterOffset, 0.0f, 0.0f); // jitter handled externally
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, currentOutput);
         glActiveTexture(GL_TEXTURE1);

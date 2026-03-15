@@ -1,6 +1,7 @@
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/Buffer.h"
 #include "VibeEngine/Renderer/ShaderLab.h"
+#include "VibeEngine/Renderer/ShaderSources.h"
 #include "VibeEngine/Core/Log.h"
 #include <glm/glm.hpp>
 
@@ -557,21 +558,33 @@ void MeshLibrary::Init() {
         s_LitShader     = tryLoadShader("Lit.shader",   s_LitVertexSrc,     s_LitFragmentSrc);
         s_SkyShader     = tryLoadShader("Sky.shader",   s_SkyVertexSrc,     s_SkyFragmentSrc);
 
-        // Register built-in shaders in ShaderLibrary (skip if null)
-        if (s_DefaultShader)
-            ShaderLibrary::Register("Default", s_DefaultShader);
-        else
-            VE_ENGINE_ERROR("MeshLibrary: Default shader failed to compile!");
+        // Magenta error shader — used as a last-resort fallback so objects
+        // remain visible (in bright magenta) instead of silently disappearing.
+        auto errorShader = Shader::Create(ErrorVertexSrc, ErrorFragmentSrc);
+        if (errorShader)
+            errorShader->SetName("Error");
 
-        if (s_LitShader)
-            ShaderLibrary::Register("Lit",     s_LitShader);
-        else
-            VE_ENGINE_ERROR("MeshLibrary: Lit shader failed to compile!");
+        // Register built-in shaders in ShaderLibrary; fall back to error shader if null.
+        if (!s_DefaultShader) {
+            VE_ENGINE_ERROR("MeshLibrary: Default shader failed to compile — using error shader");
+            s_DefaultShader = errorShader;
+        }
+        if (s_DefaultShader) ShaderLibrary::Register("Default", s_DefaultShader);
 
-        if (s_SkyShader)
-            ShaderLibrary::Register("Sky",     s_SkyShader);
-        else
-            VE_ENGINE_ERROR("MeshLibrary: Sky shader failed to compile!");
+        if (!s_LitShader) {
+            VE_ENGINE_ERROR("MeshLibrary: Lit shader failed to compile — using error shader");
+            s_LitShader = errorShader;
+        }
+        if (s_LitShader) ShaderLibrary::Register("Lit", s_LitShader);
+
+        if (!s_SkyShader) {
+            VE_ENGINE_ERROR("MeshLibrary: Sky shader failed to compile — using error shader");
+            s_SkyShader = errorShader;
+        }
+        if (s_SkyShader) ShaderLibrary::Register("Sky", s_SkyShader);
+
+        // Register the error shader itself so other systems can request it by name
+        if (errorShader) ShaderLibrary::Register("Error", errorShader);
     }
 
     // ── Built-in Materials ──────────────────────────────────────────
