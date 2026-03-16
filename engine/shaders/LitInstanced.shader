@@ -143,6 +143,11 @@ uniform int   u_NumPointShadows;
 uniform samplerCube u_PointShadowCubeMaps[MAX_POINT_SHADOWS];
 uniform float u_PointShadowFarPlanes[MAX_POINT_SHADOWS];
 
+// Reflection probe uniforms
+uniform int          u_HasReflectionProbe;
+uniform samplerCube  u_ReflectionProbe;
+uniform float        u_ReflectionIntensity;
+
 out vec4 FragColor;
 
 const float PI = 3.14159265359;

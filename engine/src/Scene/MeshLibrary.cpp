@@ -410,12 +410,12 @@ void MeshLibrary::Init() {
             -0.5f,-0.5f, 0.5f, -1, 0, 0,  0.65f,0.65f,0.65f,  0,0,
         };
         uint32_t indices[] = {
-             0, 1, 2,  2, 3, 0,   // front
-             4, 6, 5,  6, 4, 7,   // back
-             8, 9,10, 10,11, 8,   // top
-            12,14,13, 14,12,15,   // bottom
-            16,17,18, 18,19,16,   // right
-            20,21,22, 22,23,20,   // left
+             0, 1, 2,  2, 3, 0,   // front  (+Z) CCW from outside ✓
+             4, 6, 5,  6, 4, 7,   // back   (-Z) CCW from outside ✓
+             8,10, 9,  8,11,10,   // top    (+Y) CCW from above   ✓ (was CW)
+            12,13,14, 12,15,14,   // bottom (-Y) CCW from below   ✓ (was CW)
+            16,17,18, 18,19,16,   // right  (+X) CCW from outside ✓
+            20,22,21, 20,23,22,   // left   (-X) CCW from outside ✓ (was CW)
         };
 
         s_Cube = VertexArray::Create();

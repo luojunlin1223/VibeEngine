@@ -1,0 +1,282 @@
+Scene: PostProcessingTest
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.2, 0.35, 0.7]
+  SkyBottomColor: [0.85, 0.7, 0.5]
+  ShadowEnabled: true
+  ShadowBias: 0.001
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 2
+  SSAOEnabled: true
+  SSAORadius: 0.5
+  SSAOBias: 0.025
+  SSAOIntensity: 1.5
+  BloomEnabled: true
+  BloomThreshold: 0.6
+  BloomIntensity: 1.2
+  BloomIterations: 6
+  VignetteEnabled: true
+  VignetteIntensity: 0.4
+  VignetteSmoothness: 0.6
+  ColorAdjustEnabled: true
+  ColorExposure: 0.1
+  ColorContrast: 0.1
+  ColorSaturation: 0.15
+  ColorFilter: [1, 0.98, 0.95]
+  ColorGamma: 1.0
+  TonemapEnabled: true
+  TonemapMode: 2
+  FogEnabled: true
+  AAMode: 1
+Entities:
+  # ==================== LIGHTING ====================
+  - Entity: 700001
+    TagComponent:
+      Tag: Sun
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [0.4, 1.0, 0.3]
+      Color: [1.0, 0.9, 0.75]
+      Intensity: 1.5
+
+  # Bright point light (bloom source)
+  - Entity: 700002
+    TagComponent:
+      Tag: Bloom Light A
+    TransformComponent:
+      Position: [-3, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.2, 0.2, 0.2]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 0.8, 0.3, 1.0]
+    PointLightComponent:
+      Color: [1.0, 0.8, 0.3]
+      Intensity: 8.0
+      Range: 10.0
+
+  - Entity: 700003
+    TagComponent:
+      Tag: Bloom Light B
+    TransformComponent:
+      Position: [3, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.2, 0.2, 0.2]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.3, 0.6, 1.0, 1.0]
+    PointLightComponent:
+      Color: [0.3, 0.6, 1.0]
+      Intensity: 8.0
+      Range: 10.0
+
+  # ==================== GROUND ====================
+  - Entity: 700100
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [25, 0.1, 25]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.45, 0.4, 0.35, 1.0]
+      MaterialName: Lit
+      CastShadows: false
+
+  # ==================== OBJECTS (for SSAO, bloom, shadow testing) ====================
+
+  # Tight corner cubes (SSAO visible in crevices)
+  - Entity: 700200
+    TagComponent:
+      Tag: SSAO Corner A
+    TransformComponent:
+      Position: [-1, 1, -3]
+      Rotation: [0, 0, 0]
+      Scale: [2, 2, 2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.85, 0.85, 0.85, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  - Entity: 700201
+    TagComponent:
+      Tag: SSAO Corner B
+    TransformComponent:
+      Position: [1, 1, -3]
+      Rotation: [0, 0, 0]
+      Scale: [2, 2, 2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.85, 0.85, 0.85, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  - Entity: 700202
+    TagComponent:
+      Tag: SSAO Corner Top
+    TransformComponent:
+      Position: [0, 3, -3]
+      Rotation: [0, 0, 0]
+      Scale: [4, 2, 2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.85, 0.85, 0.85, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  # Emissive spheres (bloom test - should glow)
+  - Entity: 700300
+    TagComponent:
+      Tag: Emissive Hot
+    TransformComponent:
+      Position: [-3, 0.6, 2]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 0.8, 0.8]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.02, 0.02, 0.02, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.5
+        - Name: u_EmissionColor
+          Type: Vec3
+          Value: [1.0, 0.4, 0.1]
+
+  - Entity: 700301
+    TagComponent:
+      Tag: Emissive Cool
+    TransformComponent:
+      Position: [3, 0.6, 2]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 0.8, 0.8]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.02, 0.02, 0.02, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.5
+        - Name: u_EmissionColor
+          Type: Vec3
+          Value: [0.1, 0.5, 1.0]
+
+  # Reflective sphere (tonemapping / HDR range test)
+  - Entity: 700302
+    TagComponent:
+      Tag: Chrome Sphere
+    TransformComponent:
+      Position: [0, 1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1.5, 1.5, 1.5]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.95, 0.95, 0.97, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 1.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.05
+
+  # Distant objects (fog test)
+  - Entity: 700400
+    TagComponent:
+      Tag: Far Cube 1
+    TransformComponent:
+      Position: [-8, 1, -10]
+      Rotation: [0, 20, 0]
+      Scale: [2, 2, 2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.7, 0.3, 0.3, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  - Entity: 700401
+    TagComponent:
+      Tag: Far Cube 2
+    TransformComponent:
+      Position: [0, 1.5, -15]
+      Rotation: [0, 0, 0]
+      Scale: [3, 3, 3]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.7, 0.3, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  - Entity: 700402
+    TagComponent:
+      Tag: Far Cube 3
+    TransformComponent:
+      Position: [8, 1, -20]
+      Rotation: [0, -15, 0]
+      Scale: [2, 2, 2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.3, 0.7, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  # Shadow casters (tall pillars)
+  - Entity: 700500
+    TagComponent:
+      Tag: Pillar A
+    TransformComponent:
+      Position: [2, 2.5, -1]
+      Rotation: [0, 0, 0]
+      Scale: [0.5, 5, 0.5]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.7, 0.7, 0.7, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  - Entity: 700501
+    TagComponent:
+      Tag: Pillar B
+    TransformComponent:
+      Position: [-2, 2.5, -1]
+      Rotation: [0, 0, 0]
+      Scale: [0.5, 5, 0.5]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.7, 0.7, 0.7, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  # ==================== CAMERA ====================
+  - Entity: 700900
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+    TransformComponent:
+      Position: [0, 4, 10]
+      Rotation: [-15, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60
+      NearClip: 0.1
+      FarClip: 500
+      Priority: 0
+    AudioListenerComponent: {}

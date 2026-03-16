@@ -84,6 +84,7 @@ void OpenGLShader::SetMat4(const std::string& name, const glm::mat4& value) {
     glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, glm::value_ptr(value));
 }
 
+
 void OpenGLShader::SetVec4(const std::string& name, const glm::vec4& value) {
     glUniform4fv(GetUniformLocation(name), 1, glm::value_ptr(value));
 }

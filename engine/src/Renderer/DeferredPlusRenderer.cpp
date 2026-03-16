@@ -1184,10 +1184,53 @@ void DeferredPlusRenderer::LightingPass(const glm::mat4& view, const glm::mat4& 
         glUniform1i(glGetUniformLocation(m_LightingProgram, "u_ShadowEnabled"), 0);
     }
 
-    // Spot shadow maps
+    // Spot shadow maps — bind dummy depth textures to prevent sampler warnings
     glUniform1i(glGetUniformLocation(m_LightingProgram, "u_NumSpotShadows"), 0);
     // Point shadow maps
     glUniform1i(glGetUniformLocation(m_LightingProgram, "u_NumPointShadows"), 0);
+
+    // Bind dummy depth textures so shadow samplers don't reference non-depth textures
+    {
+        static GLuint s_DummySpotTex = 0, s_DummyPointTex = 0, s_DummyCsmTex = 0;
+        if (s_DummySpotTex == 0) {
+            float one = 1.0f;
+            // 1x1 depth texture for sampler2DShadow
+            glGenTextures(1, &s_DummySpotTex);
+            glBindTexture(GL_TEXTURE_2D, s_DummySpotTex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            // 1x1 depth cubemap for samplerCube
+            glGenTextures(1, &s_DummyPointTex);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyPointTex);
+            for (int f = 0; f < 6; ++f)
+                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            // 1x1x1 depth array for sampler2DArrayShadow (CSM)
+            glGenTextures(1, &s_DummyCsmTex);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, s_DummyCsmTex);
+            glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, 1, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        }
+        if (!(shadowMap && ps.ShadowEnabled)) {
+            glActiveTexture(GL_TEXTURE0 + 8);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, s_DummyCsmTex);
+        }
+        for (int i = 0; i < 2; ++i) {
+            glActiveTexture(GL_TEXTURE0 + 9 + i);
+            glBindTexture(GL_TEXTURE_2D, s_DummySpotTex);
+        }
+        for (int i = 0; i < 2; ++i) {
+            glActiveTexture(GL_TEXTURE0 + 11 + i);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyPointTex);
+        }
+    }
 
     // Draw fullscreen triangle
     glBindVertexArray(m_QuadVAO);

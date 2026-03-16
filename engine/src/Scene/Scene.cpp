@@ -67,6 +67,102 @@ static const char* s_PointShadowFarPlanes[]       = { "u_PointShadowFarPlanes[0]
 
 static const char* s_TerrainLayers[] = { "u_Layer0", "u_Layer1", "u_Layer2", "u_Layer3" };
 
+// ── Dummy depth textures for shadow samplers when no shadows are active ──
+// Prevents OpenGL warnings about sampling non-depth textures with shadow samplers.
+static GLuint s_DummyDepthTex2D = 0;      // for sampler2DShadow (spot shadows)
+static GLuint s_DummyDepthTexCube = 0;     // for samplerCube (point shadows - depth format)
+static GLuint s_DummyDepthTexArray = 0;    // for sampler2DArrayShadow (CSM)
+static GLuint s_DummyColorTexCube = 0;     // for samplerCube (reflection probes - color format)
+
+static void EnsureDummyShadowTextures() {
+    if (s_DummyDepthTex2D != 0) return;
+
+    // 1x1 depth texture for sampler2DShadow
+    glGenTextures(1, &s_DummyDepthTex2D);
+    glBindTexture(GL_TEXTURE_2D, s_DummyDepthTex2D);
+    float one = 1.0f;
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // 1x1 depth cubemap for samplerCube (point shadows use manual depth compare)
+    glGenTextures(1, &s_DummyDepthTexCube);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyDepthTexCube);
+    for (int i = 0; i < 6; ++i)
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    // 1x1x1 depth texture array for sampler2DArrayShadow (CSM)
+    glGenTextures(1, &s_DummyDepthTexArray);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, s_DummyDepthTexArray);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, 1, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // 1x1 color cubemap for samplerCube (reflection probes - RGBA format, not depth)
+    glGenTextures(1, &s_DummyColorTexCube);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyColorTexCube);
+    unsigned char black[4] = {0, 0, 0, 255};
+    for (int i = 0; i < 6; ++i)
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, black);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+static void BindDummyShadowTextures(const std::shared_ptr<Shader>& shader,
+                                     int numSpotShadows, int numPointShadows,
+                                     bool hasShadowMap) {
+    EnsureDummyShadowTextures();
+
+    // Bind dummy CSM shadow map to unit 8 if no directional shadow
+    if (!hasShadowMap) {
+        glActiveTexture(GL_TEXTURE8);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, s_DummyDepthTexArray);
+        shader->SetInt("u_ShadowMap", 8);
+    }
+
+    // Bind dummy spot shadow textures to units 9, 10
+    for (int i = numSpotShadows; i < 2; ++i) {
+        int texUnit = 9 + i;
+        glActiveTexture(GL_TEXTURE0 + texUnit);
+        glBindTexture(GL_TEXTURE_2D, s_DummyDepthTex2D);
+        shader->SetInt(s_SpotShadowMaps[i], texUnit);
+    }
+
+    // Bind dummy point shadow cubemaps to units 11, 12
+    for (int i = numPointShadows; i < 2; ++i) {
+        int texUnit = 11 + i;
+        glActiveTexture(GL_TEXTURE0 + texUnit);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyDepthTexCube);
+        shader->SetInt(s_PointShadowCubeMaps[i], texUnit);
+        shader->SetFloat(s_PointShadowFarPlanes[i], 100.0f);
+    }
+
+    // Bind dummy color cubemap for reflection probe (unit 13)
+    glActiveTexture(GL_TEXTURE0 + 13);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyColorTexCube);
+    shader->SetInt("u_ReflectionProbe", 13);
+    shader->SetInt("u_HasReflectionProbe", 0);
+    shader->SetFloat("u_ReflectionIntensity", 0.0f);
+}
+
 Entity Scene::CreateEntity(const std::string& name) {
     return CreateEntityWithUUID(UUID(), name);
 }
@@ -960,6 +1056,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         }
     }
 
+
     const bool useForwardPlus = (m_PipelineSettings.Pipeline == RenderPipeline::ForwardPlus);
 
     // Gather point lights (max 8 for classic Forward, unlimited for Forward+)
@@ -1138,6 +1235,10 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
                              m_PointShadowMaps[i]->GetFarPlane());
         }
 
+        // Bind dummy depth textures to unused shadow sampler slots
+        BindDummyShadowTextures(shader, m_NumSpotShadows, m_NumPointShadows,
+                                m_ShadowsComputed && m_ShadowMap != nullptr);
+
         // Forward+ tile uniforms (screen size + tile count for SSBO indexing)
         if (useForwardPlus && ForwardPlusRenderer::IsInitialized()) {
             shader->SetInt("u_ScreenWidth",
@@ -1290,7 +1391,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         glCullFace(GL_BACK);
 
         shader->SetMat4("u_MVP", mvp);
-        shader->SetMat4("u_Model", model); // always set model for both lit/unlit
+        shader->SetMat4("u_Model", model);
 
         // Global time for animated shaders (water, etc.)
         static auto startTime = std::chrono::high_resolution_clock::now();
@@ -1303,6 +1404,7 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
 
         // Always set lighting uniforms for lit materials
         glm::vec3 entityWorldPos = glm::vec3(model[3]);
+
         if (mr.Mat->IsLit()) {
             setLightingUniforms(shader, true);
             if (mr.Mat != lastPBRMat) {
@@ -1511,6 +1613,13 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         litInstShader->SetFloat("u_Cutoff", 0.0f);
         litInstShader->SetFloat("u_EmissionIntensity", 1.0f);
         litInstShader->SetFloat("u_Reflectance", 0.5f);
+        // Bind dummy reflection probe cubemap (unit 13) for instanced shader
+        EnsureDummyShadowTextures();
+        glActiveTexture(GL_TEXTURE0 + 13);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyColorTexCube);
+        litInstShader->SetInt("u_ReflectionProbe", 13);
+        litInstShader->SetInt("u_HasReflectionProbe", 0);
+        litInstShader->SetFloat("u_ReflectionIntensity", 0.0f);
     }
 
     InstancedRenderer::EndScene();
@@ -1712,6 +1821,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetInt(s_PointShadowCubeMaps[i], texUnit);
             shader->SetFloat(s_PointShadowFarPlanes[i], m_PointShadowMaps[i]->GetFarPlane());
         }
+
+        // Bind dummy depth textures to unused shadow sampler slots
+        BindDummyShadowTextures(shader, m_NumSpotShadows, m_NumPointShadows,
+                                m_ShadowsComputed && m_ShadowMap != nullptr);
     };
 
     // ── Frustum culling setup ──

@@ -1,0 +1,398 @@
+Scene: PhysicsTest
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.3, 0.5, 0.8]
+  SkyBottomColor: [0.85, 0.88, 0.95]
+  ShadowEnabled: true
+  ShadowBias: 0.001
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 1
+Entities:
+  # ==================== LIGHTING ====================
+  - Entity: 400001
+    TagComponent:
+      Tag: Sun
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [0.3, 1.0, 0.4]
+      Color: [1.0, 0.97, 0.9]
+      Intensity: 1.0
+
+  # ==================== STATIC GROUND & WALLS ====================
+
+  # Ground platform
+  - Entity: 400100
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Position: [0, -0.5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [30, 1, 30]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.45, 0.4, 1.0]
+      MaterialName: Lit
+      CastShadows: false
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0.0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.8
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [30, 1, 30]
+      Offset: [0, 0, 0]
+
+  # Ramp
+  - Entity: 400101
+    TagComponent:
+      Tag: Ramp
+    TransformComponent:
+      Position: [6, 1.0, 0]
+      Rotation: [0, 0, -20]
+      Scale: [6, 0.3, 3]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.6, 0.5, 0.3, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0.0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.7
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [6, 0.3, 3]
+      Offset: [0, 0, 0]
+
+  # Containment wall left
+  - Entity: 400102
+    TagComponent:
+      Tag: Wall Left
+    TransformComponent:
+      Position: [-10, 1.5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.4, 3, 20]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.6, 0.6, 0.65, 1.0]
+      MaterialName: Lit
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.5
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.4, 3, 20]
+      Offset: [0, 0, 0]
+
+  # Containment wall right
+  - Entity: 400103
+    TagComponent:
+      Tag: Wall Right
+    TransformComponent:
+      Position: [10, 1.5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.4, 3, 20]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.6, 0.6, 0.65, 1.0]
+      MaterialName: Lit
+    RigidbodyComponent:
+      BodyType: Static
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.5
+      Friction: 0.5
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [0.4, 3, 20]
+      Offset: [0, 0, 0]
+
+  # ==================== DYNAMIC CUBES (stacked) ====================
+
+  # Cube stack - bottom row
+  - Entity: 400200
+    TagComponent:
+      Tag: Stack Cube 1
+    TransformComponent:
+      Position: [-2, 0.5, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.9, 0.3, 0.2, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 2.0
+      LinearDamping: 0.1
+      AngularDamping: 0.2
+      Restitution: 0.2
+      Friction: 0.7
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [1, 1, 1]
+      Offset: [0, 0, 0]
+
+  - Entity: 400201
+    TagComponent:
+      Tag: Stack Cube 2
+    TransformComponent:
+      Position: [-1, 0.5, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.9, 0.2, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 2.0
+      LinearDamping: 0.1
+      AngularDamping: 0.2
+      Restitution: 0.2
+      Friction: 0.7
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [1, 1, 1]
+      Offset: [0, 0, 0]
+
+  # Cube stack - top row
+  - Entity: 400202
+    TagComponent:
+      Tag: Stack Cube 3 (Top)
+    TransformComponent:
+      Position: [-1.5, 1.5, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.2, 0.3, 0.9, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 1.0
+      LinearDamping: 0.1
+      AngularDamping: 0.2
+      Restitution: 0.2
+      Friction: 0.7
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [1, 1, 1]
+      Offset: [0, 0, 0]
+
+  # ==================== DYNAMIC SPHERES (bouncy) ====================
+
+  # High-bounce sphere
+  - Entity: 400300
+    TagComponent:
+      Tag: Bouncy Sphere
+    TransformComponent:
+      Position: [0, 8, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 0.8, 0.8]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 0.5, 0.0, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 0.5
+      LinearDamping: 0.05
+      AngularDamping: 0.05
+      Restitution: 0.95
+      Friction: 0.3
+      UseGravity: true
+    SphereColliderComponent:
+      Radius: 0.8
+      Offset: [0, 0, 0]
+
+  # Heavy sphere (low bounce)
+  - Entity: 400301
+    TagComponent:
+      Tag: Heavy Sphere
+    TransformComponent:
+      Position: [3, 6, -2]
+      Rotation: [0, 0, 0]
+      Scale: [1.2, 1.2, 1.2]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.4, 0.4, 0.5, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.9
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.15
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 10.0
+      LinearDamping: 0.2
+      AngularDamping: 0.3
+      Restitution: 0.1
+      Friction: 0.8
+      UseGravity: true
+    SphereColliderComponent:
+      Radius: 1.2
+      Offset: [0, 0, 0]
+
+  # Ramp ball
+  - Entity: 400302
+    TagComponent:
+      Tag: Ramp Ball
+    TransformComponent:
+      Position: [8, 5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.6, 0.6, 0.6]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.2, 0.6, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 1.0
+      LinearDamping: 0.05
+      AngularDamping: 0.1
+      Restitution: 0.5
+      Friction: 0.5
+      UseGravity: true
+    SphereColliderComponent:
+      Radius: 0.6
+      Offset: [0, 0, 0]
+
+  # ==================== KINEMATIC PLATFORM ====================
+  - Entity: 400400
+    TagComponent:
+      Tag: Kinematic Platform
+    TransformComponent:
+      Position: [-5, 1.5, -3]
+      Rotation: [0, 0, 0]
+      Scale: [3, 0.3, 3]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.2, 0.7, 0.9, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Kinematic
+      Mass: 0
+      LinearDamping: 0
+      AngularDamping: 0
+      Restitution: 0.3
+      Friction: 0.8
+      UseGravity: false
+    BoxColliderComponent:
+      Size: [3, 0.3, 3]
+      Offset: [0, 0, 0]
+
+  # Object on kinematic platform
+  - Entity: 400401
+    TagComponent:
+      Tag: Cube on Platform
+    TransformComponent:
+      Position: [-5, 2.2, -3]
+      Rotation: [0, 15, 0]
+      Scale: [0.6, 0.6, 0.6]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.8, 0.8, 0.1, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 0.8
+      LinearDamping: 0.1
+      AngularDamping: 0.2
+      Restitution: 0.3
+      Friction: 0.6
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [0.6, 0.6, 0.6]
+      Offset: [0, 0, 0]
+
+  # ==================== FALLING OBJECTS ====================
+  - Entity: 400500
+    TagComponent:
+      Tag: Falling Cube A
+    TransformComponent:
+      Position: [-3, 12, -1]
+      Rotation: [25, 45, 15]
+      Scale: [0.7, 0.7, 0.7]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.7, 0.3, 0.9, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 1.5
+      LinearDamping: 0.1
+      AngularDamping: 0.1
+      Restitution: 0.4
+      Friction: 0.5
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [0.7, 0.7, 0.7]
+      Offset: [0, 0, 0]
+
+  - Entity: 400501
+    TagComponent:
+      Tag: Falling Cube B
+    TransformComponent:
+      Position: [1, 10, 1]
+      Rotation: [10, -30, 5]
+      Scale: [0.5, 0.5, 0.5]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.8, 0.7, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+    RigidbodyComponent:
+      BodyType: Dynamic
+      Mass: 0.8
+      LinearDamping: 0.1
+      AngularDamping: 0.1
+      Restitution: 0.6
+      Friction: 0.5
+      UseGravity: true
+    BoxColliderComponent:
+      Size: [0.5, 0.5, 0.5]
+      Offset: [0, 0, 0]
+
+  # ==================== CAMERA ====================
+  - Entity: 400900
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+    TransformComponent:
+      Position: [0, 8, 18]
+      Rotation: [-20, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60
+      NearClip: 0.1
+      FarClip: 500
+      Priority: 0
+    AudioListenerComponent: {}

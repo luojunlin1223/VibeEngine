@@ -1,0 +1,287 @@
+Scene: LightingTest
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.05, 0.05, 0.15]
+  SkyBottomColor: [0.1, 0.1, 0.2]
+  ShadowEnabled: true
+  ShadowBias: 0.001
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 2
+Entities:
+  # ==================== DIRECTIONAL LIGHT ====================
+  - Entity: 300001
+    TagComponent:
+      Tag: Sun (Directional)
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [0.4, 1.0, 0.3]
+      Color: [1.0, 0.95, 0.85]
+      Intensity: 0.6
+
+  # ==================== POINT LIGHTS ====================
+
+  # Red point light
+  - Entity: 300010
+    TagComponent:
+      Tag: Point Light Red
+    TransformComponent:
+      Position: [-5, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.2, 0.2, 0.2]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 0.1, 0.1, 1.0]
+    PointLightComponent:
+      Color: [1.0, 0.1, 0.1]
+      Intensity: 5.0
+      Range: 12.0
+      CastShadows: true
+
+  # Green point light
+  - Entity: 300011
+    TagComponent:
+      Tag: Point Light Green
+    TransformComponent:
+      Position: [0, 2, -5]
+      Rotation: [0, 0, 0]
+      Scale: [0.2, 0.2, 0.2]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.1, 1.0, 0.1, 1.0]
+    PointLightComponent:
+      Color: [0.1, 1.0, 0.1]
+      Intensity: 5.0
+      Range: 12.0
+      CastShadows: true
+
+  # Blue point light
+  - Entity: 300012
+    TagComponent:
+      Tag: Point Light Blue
+    TransformComponent:
+      Position: [5, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.2, 0.2, 0.2]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.1, 0.1, 1.0, 1.0]
+    PointLightComponent:
+      Color: [0.2, 0.3, 1.0]
+      Intensity: 5.0
+      Range: 12.0
+
+  # Yellow point light
+  - Entity: 300013
+    TagComponent:
+      Tag: Point Light Yellow
+    TransformComponent:
+      Position: [0, 2, 5]
+      Rotation: [0, 0, 0]
+      Scale: [0.2, 0.2, 0.2]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 1.0, 0.2, 1.0]
+    PointLightComponent:
+      Color: [1.0, 1.0, 0.2]
+      Intensity: 4.0
+      Range: 10.0
+
+  # ==================== SPOT LIGHTS ====================
+
+  # Spot light - White downward
+  - Entity: 300020
+    TagComponent:
+      Tag: Spot Light White
+    TransformComponent:
+      Position: [-4, 6, -4]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    SpotLightComponent:
+      Direction: [0.2, -1.0, 0.2]
+      Color: [1.0, 1.0, 1.0]
+      Intensity: 8.0
+      Range: 20.0
+      InnerAngle: 12.0
+      OuterAngle: 25.0
+      CastShadows: true
+
+  # Spot light - Magenta angled
+  - Entity: 300021
+    TagComponent:
+      Tag: Spot Light Magenta
+    TransformComponent:
+      Position: [4, 5, 4]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    SpotLightComponent:
+      Direction: [-0.3, -1.0, -0.3]
+      Color: [1.0, 0.3, 0.8]
+      Intensity: 6.0
+      Range: 15.0
+      InnerAngle: 18.0
+      OuterAngle: 35.0
+
+  # ==================== GEOMETRY (lit by lights) ====================
+
+  # Ground
+  - Entity: 300100
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [30, 0.2, 30]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.5, 0.5, 0.5, 1.0]
+      MaterialName: Lit
+      CastShadows: false
+
+  # Center pillar
+  - Entity: 300101
+    TagComponent:
+      Tag: Center Pillar
+    TransformComponent:
+      Position: [0, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.8, 4, 0.8]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  # Sphere near red light
+  - Entity: 300102
+    TagComponent:
+      Tag: Sphere A
+    TransformComponent:
+      Position: [-3, 0.6, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.8
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.2
+
+  # Sphere near green light
+  - Entity: 300103
+    TagComponent:
+      Tag: Sphere B
+    TransformComponent:
+      Position: [0, 0.6, -3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.7
+
+  # Sphere near blue light
+  - Entity: 300104
+    TagComponent:
+      Tag: Sphere C
+    TransformComponent:
+      Position: [3, 0.6, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.5
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.4
+
+  # Shadow-casting cubes under spot light
+  - Entity: 300105
+    TagComponent:
+      Tag: Cube Under Spot A
+    TransformComponent:
+      Position: [-4, 0.5, -4]
+      Rotation: [0, 30, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.8, 0.6, 0.3, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  - Entity: 300106
+    TagComponent:
+      Tag: Cube Under Spot B
+    TransformComponent:
+      Position: [-3, 0.5, -3.5]
+      Rotation: [0, -15, 0]
+      Scale: [0.7, 0.7, 0.7]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.6, 0.8, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  # Walls to receive light
+  - Entity: 300107
+    TagComponent:
+      Tag: Back Wall
+    TransformComponent:
+      Position: [0, 3, -8]
+      Rotation: [0, 0, 0]
+      Scale: [16, 6, 0.2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.85, 0.85, 0.85, 1.0]
+      CastShadows: false
+
+  - Entity: 300108
+    TagComponent:
+      Tag: Side Wall Left
+    TransformComponent:
+      Position: [-8, 3, 0]
+      Rotation: [0, 90, 0]
+      Scale: [16, 6, 0.2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.85, 0.85, 0.85, 1.0]
+      CastShadows: false
+
+  # ==================== CAMERA ====================
+  - Entity: 300900
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+    TransformComponent:
+      Position: [8, 6, 10]
+      Rotation: [-20, -30, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60
+      NearClip: 0.1
+      FarClip: 500
+      Priority: 0
+    AudioListenerComponent: {}

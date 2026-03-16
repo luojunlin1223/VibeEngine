@@ -1,0 +1,370 @@
+Scene: PBRMaterialTest
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.2, 0.3, 0.5]
+  SkyBottomColor: [0.6, 0.65, 0.75]
+  ShadowEnabled: true
+  ShadowBias: 0.001
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 2
+  SSAOEnabled: true
+  SSAORadius: 0.5
+  SSAOBias: 0.025
+  SSAOIntensity: 1.0
+Entities:
+  # ==================== LIGHTING ====================
+  - Entity: 500001
+    TagComponent:
+      Tag: Sun
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [0.5, 1.0, 0.3]
+      Color: [1.0, 0.98, 0.92]
+      Intensity: 1.2
+
+  - Entity: 500002
+    TagComponent:
+      Tag: Fill Light
+    TransformComponent:
+      Position: [-5, 3, 5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    PointLightComponent:
+      Color: [0.6, 0.7, 1.0]
+      Intensity: 2.0
+      Range: 20.0
+
+  # ==================== GROUND ====================
+  - Entity: 500100
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [20, 0.1, 20]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.3, 0.32, 1.0]
+      MaterialName: PBR
+      CastShadows: false
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.9
+
+  # ==================== METALLIC GRADIENT (back row) ====================
+  # Roughness = 0.3, Metallic varies 0.0 -> 1.0
+
+  - Entity: 500200
+    TagComponent:
+      Tag: Metal 0.0
+    TransformComponent:
+      Position: [-4, 0.8, -3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.3
+
+  - Entity: 500201
+    TagComponent:
+      Tag: Metal 0.25
+    TransformComponent:
+      Position: [-2, 0.8, -3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.25
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.3
+
+  - Entity: 500202
+    TagComponent:
+      Tag: Metal 0.5
+    TransformComponent:
+      Position: [0, 0.8, -3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.5
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.3
+
+  - Entity: 500203
+    TagComponent:
+      Tag: Metal 0.75
+    TransformComponent:
+      Position: [2, 0.8, -3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.75
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.3
+
+  - Entity: 500204
+    TagComponent:
+      Tag: Metal 1.0
+    TransformComponent:
+      Position: [4, 0.8, -3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.9, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 1.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.3
+
+  # ==================== ROUGHNESS GRADIENT (front row) ====================
+  # Metallic = 0.8, Roughness varies 0.0 -> 1.0
+
+  - Entity: 500210
+    TagComponent:
+      Tag: Rough 0.05
+    TransformComponent:
+      Position: [-4, 0.8, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.95, 0.64, 0.54, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.8
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.05
+
+  - Entity: 500211
+    TagComponent:
+      Tag: Rough 0.25
+    TransformComponent:
+      Position: [-2, 0.8, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.95, 0.64, 0.54, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.8
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.25
+
+  - Entity: 500212
+    TagComponent:
+      Tag: Rough 0.5
+    TransformComponent:
+      Position: [0, 0.8, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.95, 0.64, 0.54, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.8
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.5
+
+  - Entity: 500213
+    TagComponent:
+      Tag: Rough 0.75
+    TransformComponent:
+      Position: [2, 0.8, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.95, 0.64, 0.54, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.8
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.75
+
+  - Entity: 500214
+    TagComponent:
+      Tag: Rough 1.0
+    TransformComponent:
+      Position: [4, 0.8, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.95, 0.64, 0.54, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.8
+        - Name: u_Roughness
+          Type: Float
+          Value: 1.0
+
+  # ==================== COLORED MATERIALS ====================
+
+  # Gold
+  - Entity: 500300
+    TagComponent:
+      Tag: Gold
+    TransformComponent:
+      Position: [-3, 0.8, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [1.0, 0.76, 0.33, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 1.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.15
+
+  # Copper
+  - Entity: 500301
+    TagComponent:
+      Tag: Copper
+    TransformComponent:
+      Position: [-1, 0.8, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.97, 0.74, 0.62, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 1.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.25
+
+  # Red plastic
+  - Entity: 500302
+    TagComponent:
+      Tag: Red Plastic
+    TransformComponent:
+      Position: [1, 0.8, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.1, 0.1, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.02
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.4
+
+  # Emissive
+  - Entity: 500303
+    TagComponent:
+      Tag: Emissive Glow
+    TransformComponent:
+      Position: [3, 0.8, 3]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.05, 0.05, 0.05, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.0
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.5
+        - Name: u_EmissionColor
+          Type: Vec3
+          Value: [0.0, 0.8, 1.0]
+
+  # ==================== CAMERA ====================
+  - Entity: 500900
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+    TransformComponent:
+      Position: [0, 4, 8]
+      Rotation: [-20, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 50
+      NearClip: 0.1
+      FarClip: 500
+      Priority: 0

@@ -25,7 +25,7 @@ Entities:
       Rotation: [-45, 30, 0]
       Scale: [1, 1, 1]
     DirectionalLightComponent:
-      Direction: [-0.3, -1.0, -0.5]
+      Direction: [0.3, 1.0, 0.5]
       Color: [1.0, 0.95, 0.85]
       Intensity: 1.2
 

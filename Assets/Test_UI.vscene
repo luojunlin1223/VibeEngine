@@ -1,0 +1,286 @@
+Scene: UITest
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.3, 0.4, 0.6]
+  SkyBottomColor: [0.7, 0.75, 0.85]
+  ShadowEnabled: true
+  ShadowBias: 0.001
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 1
+Entities:
+  # ==================== LIGHTING ====================
+  - Entity: 800001
+    TagComponent:
+      Tag: Sun
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [0.3, 1.0, 0.5]
+      Color: [1.0, 0.95, 0.9]
+      Intensity: 1.0
+
+  # ==================== 3D SCENE BEHIND UI ====================
+
+  - Entity: 800100
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [20, 0.1, 20]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.5, 0.4, 1.0]
+      MaterialName: Lit
+
+  - Entity: 800101
+    TagComponent:
+      Tag: Center Cube
+    TransformComponent:
+      Position: [0, 1, 0]
+      Rotation: [0, 30, 0]
+      Scale: [1.5, 1.5, 1.5]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.3, 0.6, 0.9, 1.0]
+      MaterialName: PBR
+      CastShadows: true
+      MaterialOverrides:
+        - Name: u_Metallic
+          Type: Float
+          Value: 0.5
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.3
+
+  - Entity: 800102
+    TagComponent:
+      Tag: Sphere
+    TransformComponent:
+      Position: [3, 0.8, -2]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: 3
+      Color: [0.9, 0.5, 0.2, 1.0]
+      MaterialName: Lit
+      CastShadows: true
+
+  # ==================== UI CANVAS ====================
+
+  # Main HUD Canvas
+  - Entity: 800200
+    TagComponent:
+      Tag: HUD Canvas
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UICanvasComponent:
+      ScreenSpace: true
+      SortOrder: 0
+
+  # Title text (top center)
+  - Entity: 800210
+    Parent: 800200
+    TagComponent:
+      Tag: Title Text
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 1
+      AnchoredPosition: [0, 30]
+      Size: [400, 40]
+      Pivot: [0.5, 0]
+    UITextComponent:
+      Text: "VibeEngine UI Test"
+      FontSize: 28
+      Color: [1.0, 1.0, 1.0, 1.0]
+
+  # FPS counter (top right)
+  - Entity: 800211
+    Parent: 800200
+    TagComponent:
+      Tag: FPS Text
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 2
+      AnchoredPosition: [-10, 10]
+      Size: [120, 25]
+      Pivot: [1, 0]
+    UITextComponent:
+      Text: "FPS: 60"
+      FontSize: 16
+      Color: [0.2, 1.0, 0.3, 1.0]
+
+  # Health bar background (bottom left)
+  - Entity: 800220
+    Parent: 800200
+    TagComponent:
+      Tag: Health Bar BG
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 6
+      AnchoredPosition: [20, -20]
+      Size: [200, 20]
+      Pivot: [0, 1]
+    UIImageComponent:
+      Color: [0.2, 0.2, 0.2, 0.8]
+
+  # Health bar fill
+  - Entity: 800221
+    Parent: 800200
+    TagComponent:
+      Tag: Health Bar Fill
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 6
+      AnchoredPosition: [22, -22]
+      Size: [150, 16]
+      Pivot: [0, 1]
+    UIImageComponent:
+      Color: [0.2, 0.9, 0.3, 0.9]
+
+  # Health label
+  - Entity: 800222
+    Parent: 800200
+    TagComponent:
+      Tag: Health Label
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 6
+      AnchoredPosition: [20, -45]
+      Size: [200, 20]
+      Pivot: [0, 1]
+    UITextComponent:
+      Text: "HP: 75 / 100"
+      FontSize: 14
+      Color: [1.0, 1.0, 1.0, 0.9]
+
+  # Minimap placeholder (top right area)
+  - Entity: 800230
+    Parent: 800200
+    TagComponent:
+      Tag: Minimap BG
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 2
+      AnchoredPosition: [-10, 40]
+      Size: [120, 120]
+      Pivot: [1, 0]
+    UIImageComponent:
+      Color: [0.1, 0.15, 0.2, 0.7]
+
+  # Minimap label
+  - Entity: 800231
+    Parent: 800200
+    TagComponent:
+      Tag: Minimap Label
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 2
+      AnchoredPosition: [-40, 95]
+      Size: [80, 20]
+      Pivot: [1, 0]
+    UITextComponent:
+      Text: "MAP"
+      FontSize: 12
+      Color: [0.7, 0.8, 0.9, 0.8]
+
+  # Action button
+  - Entity: 800240
+    Parent: 800200
+    TagComponent:
+      Tag: Action Button
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 7
+      AnchoredPosition: [0, -30]
+      Size: [160, 40]
+      Pivot: [0.5, 1]
+    UIButtonComponent:
+      Label: "INTERACT"
+      FontSize: 18
+      LabelColor: [1.0, 1.0, 1.0, 1.0]
+      NormalColor: [0.2, 0.5, 0.8, 0.9]
+      HoverColor: [0.3, 0.6, 0.9, 1.0]
+      PressedColor: [0.1, 0.3, 0.6, 1.0]
+
+  # Score text (bottom right)
+  - Entity: 800250
+    Parent: 800200
+    TagComponent:
+      Tag: Score Text
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 8
+      AnchoredPosition: [-15, -15]
+      Size: [150, 25]
+      Pivot: [1, 1]
+    UITextComponent:
+      Text: "Score: 12345"
+      FontSize: 18
+      Color: [1.0, 0.9, 0.3, 1.0]
+
+  # Center notification
+  - Entity: 800260
+    Parent: 800200
+    TagComponent:
+      Tag: Center Notice
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UIRectTransformComponent:
+      Anchor: 4
+      AnchoredPosition: [0, -50]
+      Size: [300, 30]
+      Pivot: [0.5, 0.5]
+    UITextComponent:
+      Text: "Press [E] to interact"
+      FontSize: 16
+      Color: [1.0, 1.0, 1.0, 0.7]
+
+  # ==================== CAMERA ====================
+  - Entity: 800900
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+    TransformComponent:
+      Position: [3, 3, 6]
+      Rotation: [-15, -15, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60
+      NearClip: 0.1
+      FarClip: 500
+      Priority: 0

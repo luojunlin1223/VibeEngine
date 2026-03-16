@@ -88,7 +88,7 @@ void main() {
 
     // Compute wave normal
     vec3 waveNormal = WaveNormal(a_Position.xz, time, 0.1);
-    v_Normal = mat3(transpose(inverse(u_Model))) * waveNormal;
+    v_Normal = normalize(mat3(transpose(inverse(u_Model))) * waveNormal);
 
     v_TexCoord = a_TexCoord;
     v_Color = a_Color;

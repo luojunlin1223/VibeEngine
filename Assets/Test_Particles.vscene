@@ -1,0 +1,275 @@
+Scene: ParticleTest
+PipelineSettings:
+  SkyEnabled: true
+  SkyTopColor: [0.05, 0.05, 0.12]
+  SkyBottomColor: [0.15, 0.1, 0.2]
+  ShadowEnabled: true
+  ShadowBias: 0.001
+  ShadowNormalBias: 0.02
+  ShadowPCFRadius: 1
+Entities:
+  # ==================== LIGHTING ====================
+  - Entity: 600001
+    TagComponent:
+      Tag: Sun
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Direction: [0.3, 1.0, 0.5]
+      Color: [0.6, 0.6, 0.8]
+      Intensity: 0.4
+
+  # Warm point light near fire
+  - Entity: 600002
+    TagComponent:
+      Tag: Fire Glow
+    TransformComponent:
+      Position: [-4, 1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.1, 0.1, 0.1]
+    PointLightComponent:
+      Color: [1.0, 0.6, 0.2]
+      Intensity: 4.0
+      Range: 8.0
+
+  # Cool point light near rain
+  - Entity: 600003
+    TagComponent:
+      Tag: Rain Glow
+    TransformComponent:
+      Position: [4, 3, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.1, 0.1, 0.1]
+    PointLightComponent:
+      Color: [0.3, 0.5, 1.0]
+      Intensity: 3.0
+      Range: 10.0
+
+  # ==================== GROUND ====================
+  - Entity: 600100
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [30, 0.1, 30]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.2, 0.2, 0.22, 1.0]
+      MaterialName: Lit
+      CastShadows: false
+
+  # ==================== PARTICLE SYSTEMS ====================
+
+  # 1. Fire (Point emitter, upward)
+  - Entity: 600200
+    TagComponent:
+      Tag: Fire
+    TransformComponent:
+      Position: [-4, 0.1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 100.0
+      ParticleLifetime: 1.2
+      LifetimeVariance: 0.4
+      MaxParticles: 600
+      VelocityMin: [-0.4, 2.0, -0.4]
+      VelocityMax: [0.4, 4.0, 0.4]
+      Gravity: [0, 0.5, 0]
+      StartColor: [1.0, 0.9, 0.2, 1.0]
+      EndColor: [1.0, 0.1, 0.0, 0.0]
+      StartSize: 0.35
+      EndSize: 0.02
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 0
+      ShapeRadius: 0.4
+      ConeAngle: 10.0
+      SpeedMin: 2.0
+      SpeedMax: 4.0
+
+  # 2. Water Fountain (Cone emitter, gravity-affected)
+  - Entity: 600201
+    TagComponent:
+      Tag: Fountain
+    TransformComponent:
+      Position: [0, 0.2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 150.0
+      ParticleLifetime: 2.5
+      LifetimeVariance: 0.5
+      MaxParticles: 1000
+      VelocityMin: [-0.5, 5.0, -0.5]
+      VelocityMax: [0.5, 7.0, 0.5]
+      Gravity: [0, -9.8, 0]
+      StartColor: [0.4, 0.7, 1.0, 0.9]
+      EndColor: [0.8, 0.9, 1.0, 0.0]
+      StartSize: 0.12
+      EndSize: 0.06
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 2
+      ShapeRadius: 0.15
+      ConeAngle: 15.0
+      SpeedMin: 5.0
+      SpeedMax: 7.0
+
+  # 3. Magic Sparkles (Sphere emitter, floating)
+  - Entity: 600202
+    TagComponent:
+      Tag: Magic Sparkles
+    TransformComponent:
+      Position: [4, 2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 50.0
+      ParticleLifetime: 3.5
+      LifetimeVariance: 1.0
+      MaxParticles: 400
+      VelocityMin: [-1, -0.5, -1]
+      VelocityMax: [1, 0.5, 1]
+      Gravity: [0, 0.3, 0]
+      StartColor: [1.0, 0.9, 0.4, 1.0]
+      EndColor: [0.6, 0.2, 1.0, 0.0]
+      StartSize: 0.2
+      EndSize: 0.0
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 1
+      ShapeRadius: 2.0
+      ConeAngle: 45.0
+      SpeedMin: 0.3
+      SpeedMax: 1.0
+
+  # 4. Smoke (large, slow, fading)
+  - Entity: 600203
+    TagComponent:
+      Tag: Smoke
+    TransformComponent:
+      Position: [-4, 1.5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 20.0
+      ParticleLifetime: 4.0
+      LifetimeVariance: 1.0
+      MaxParticles: 200
+      VelocityMin: [-0.3, 0.5, -0.3]
+      VelocityMax: [0.3, 1.5, 0.3]
+      Gravity: [0, 0.2, 0]
+      StartColor: [0.3, 0.3, 0.3, 0.6]
+      EndColor: [0.5, 0.5, 0.5, 0.0]
+      StartSize: 0.3
+      EndSize: 1.2
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 0
+      ShapeRadius: 0.5
+      ConeAngle: 20.0
+      SpeedMin: 0.5
+      SpeedMax: 1.5
+
+  # 5. Snow (wide area, falling down)
+  - Entity: 600204
+    TagComponent:
+      Tag: Snow
+    TransformComponent:
+      Position: [0, 8, -5]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 80.0
+      ParticleLifetime: 5.0
+      LifetimeVariance: 1.5
+      MaxParticles: 800
+      VelocityMin: [-0.5, -1.5, -0.5]
+      VelocityMax: [0.5, -0.5, 0.5]
+      Gravity: [0, -0.5, 0]
+      StartColor: [1.0, 1.0, 1.0, 0.9]
+      EndColor: [0.9, 0.95, 1.0, 0.0]
+      StartSize: 0.08
+      EndSize: 0.04
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 1
+      ShapeRadius: 8.0
+      ConeAngle: 0.0
+      SpeedMin: 0.5
+      SpeedMax: 1.5
+
+  # 6. Explosion Burst (high speed, short life)
+  - Entity: 600205
+    TagComponent:
+      Tag: Sparks Burst
+    TransformComponent:
+      Position: [-1, 1, 4]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      EmissionRate: 200.0
+      ParticleLifetime: 0.8
+      LifetimeVariance: 0.3
+      MaxParticles: 500
+      VelocityMin: [-3, -3, -3]
+      VelocityMax: [3, 3, 3]
+      Gravity: [0, -5.0, 0]
+      StartColor: [1.0, 0.8, 0.3, 1.0]
+      EndColor: [1.0, 0.3, 0.0, 0.0]
+      StartSize: 0.1
+      EndSize: 0.0
+      PlayOnStart: true
+      Looping: true
+      EmitterShape: 1
+      ShapeRadius: 0.3
+      ConeAngle: 0.0
+      SpeedMin: 3.0
+      SpeedMax: 8.0
+
+  # ==================== DECORATIVE ====================
+  # Pedestal for fire
+  - Entity: 600300
+    TagComponent:
+      Tag: Fire Pedestal
+    TransformComponent:
+      Position: [-4, 0.15, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1.2, 0.3, 1.2]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.35, 0.25, 0.2, 1.0]
+      MaterialName: Lit
+
+  # Fountain basin
+  - Entity: 600301
+    TagComponent:
+      Tag: Fountain Basin
+    TransformComponent:
+      Position: [0, 0.1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [2.5, 0.2, 2.5]
+    MeshRendererComponent:
+      MeshType: 2
+      Color: [0.4, 0.45, 0.5, 1.0]
+      MaterialName: Lit
+
+  # ==================== CAMERA ====================
+  - Entity: 600900
+    TagComponent:
+      Tag: Main Camera
+      GameObjectTag: MainCamera
+    TransformComponent:
+      Position: [0, 4, 12]
+      Rotation: [-15, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60
+      NearClip: 0.1
+      FarClip: 500
+      Priority: 0

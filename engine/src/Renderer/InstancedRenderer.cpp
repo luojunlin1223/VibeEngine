@@ -145,6 +145,7 @@ void InstancedRenderer::EndScene() {
         // so we need the caller to set them on the shader. We expose the shaders
         // for that purpose via GetLitInstancedShader() / GetUnlitInstancedShader().
 
+
         RenderCommand::DrawIndexedInstanced(instancedVAO, count);
 
         s_Stats.DrawCalls++;
