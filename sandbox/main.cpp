@@ -453,6 +453,17 @@ void main() { FragColor = texture(u_Source, v_UV); }
             b.SideEffect();
         }, [&](const VE::RGResources&) {
             if (m_Framebuffer) {
+                // Flush any pending gizmo 3D lines into framebuffer with depth testing
+                // (lines were accumulated from the previous frame's gizmo drawing)
+                if (!VE::GizmoRenderer::IsLines3DEmpty()) {
+                    // Framebuffer is still bound from scene rendering
+                    glEnable(GL_DEPTH_TEST);
+                    glDepthFunc(GL_LEQUAL);
+                    glDepthMask(GL_FALSE);
+                    VE::GizmoRenderer::FlushLines3D(m_FrameVP);
+                    glDepthMask(GL_TRUE);
+                    glDepthFunc(GL_LESS);
+                }
                 m_Framebuffer->Unbind();
                 if (m_Framebuffer->IsMultisampled())
                     m_Framebuffer->Resolve();
@@ -2561,10 +2572,11 @@ private:
         }
 
         if (m_GizmosEnabled) {
-            VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode());
+            VE::GizmoRenderer::BeginScene(m_FrameVP, vpX, vpY, vpW, vpH, m_Camera.GetMode(),
+                ImGui::GetWindowDrawList());
             VE::GizmoRenderer::DrawGrid(20.0f, 1.0f);
 
-            // Draw point light gizmos for all point lights
+            // Draw point light gizmos
             {
                 auto plView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::PointLightComponent>();
                 for (auto e : plView) {
@@ -2576,7 +2588,7 @@ private:
                 }
             }
 
-            // Draw spot light gizmos for all spot lights
+            // Draw spot light gizmos
             {
                 auto slView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::SpotLightComponent>();
                 for (auto e : slView) {

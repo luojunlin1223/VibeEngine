@@ -1,8 +1,11 @@
 #include "VibeEngine/Renderer/GizmoRenderer.h"
 #include "VibeEngine/Scene/Components.h"
+#include "VibeEngine/Core/Log.h"
 
 #include <imgui.h>
+#include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <cmath>
 
 namespace VE {
@@ -14,6 +17,13 @@ static glm::mat4 s_InvVP(1.0f);
 static float s_VpX = 0, s_VpY = 0, s_VpW = 1280, s_VpH = 720;
 static CameraMode s_CameraMode = CameraMode::Perspective3D;
 static ImDrawList* s_DrawList = nullptr;
+
+// ── Depth-tested line renderer statics ─────────────────────────────
+std::vector<GizmoRenderer::GizmoLine> GizmoRenderer::s_Lines3D;
+uint32_t GizmoRenderer::s_LineShaderProgram = 0;
+uint32_t GizmoRenderer::s_LineVAO = 0;
+uint32_t GizmoRenderer::s_LineVBO = 0;
+bool     GizmoRenderer::s_LineRendererInited = false;
 
 static constexpr float kGizmoArmLength  = 0.4f;
 static constexpr float kGizmoArrowSize  = 0.06f;
@@ -83,6 +93,22 @@ static float PointToSegmentDistanceSS(ImVec2 p, ImVec2 a, ImVec2 b) {
     float cx = a.x + t * dx - p.x;
     float cy = a.y + t * dy - p.y;
     return std::sqrt(cx * cx + cy * cy);
+}
+
+// ── ImU32 → glm::vec4 conversion ───────────────────────────────────
+static glm::vec4 ImColorToVec4(ImU32 col) {
+    return glm::vec4(
+        ((col >>  0) & 0xFF) / 255.0f,   // R
+        ((col >>  8) & 0xFF) / 255.0f,   // G
+        ((col >> 16) & 0xFF) / 255.0f,   // B
+        ((col >> 24) & 0xFF) / 255.0f    // A
+    );
+}
+
+// ── Depth-tested line helper ───────────────────────────────────────
+// Like DrawLineWorld but pushes to s_Lines3D instead of ImDrawList.
+static void DrawLineWorld3D(const glm::vec3& a, const glm::vec3& b, ImU32 color) {
+    GizmoRenderer::AddLine3D(a, b, ImColorToVec4(color));
 }
 
 // ── API ────────────────────────────────────────────────────────────
@@ -181,8 +207,6 @@ float GizmoRenderer::ProjectMouseOntoAxis(GizmoAxis axis,
 }
 
 void GizmoRenderer::DrawGrid(float /*gridSize*/, float spacing) {
-    ImDrawList* dl = s_DrawList;
-
     // Extract camera position from inverse VP
     glm::vec4 camPosH = s_InvVP * glm::vec4(0, 0, 0, 1);
     glm::vec3 camPos = glm::vec3(camPosH) / camPosH.w;
@@ -214,9 +238,8 @@ void GizmoRenderer::DrawGrid(float /*gridSize*/, float spacing) {
                 float gx = cx + i * sp;
                 float gy = cy + i * sp;
 
-                // Fade at edges of this layer
                 float fx = 1.0f - std::abs((float)i) / (float)count;
-                fx = fx * fx; // smoother falloff
+                fx = fx * fx;
                 int a = static_cast<int>(fx * alpha);
                 if (a <= 0) continue;
 
@@ -226,8 +249,8 @@ void GizmoRenderer::DrawGrid(float /*gridSize*/, float spacing) {
                 ImU32 colV = originX ? axisYColor : IM_COL32(80, 80, 80, a);
                 ImU32 colH = originY ? axisXColor : IM_COL32(80, 80, 80, a);
 
-                DrawLineWorld(dl, { gx, -kHugeExtent, 0 }, { gx, kHugeExtent, 0 }, colV);
-                DrawLineWorld(dl, { -kHugeExtent, gy, 0 }, { kHugeExtent, gy, 0 }, colH);
+                DrawLineWorld3D({ gx, -kHugeExtent, 0 }, { gx, kHugeExtent, 0 }, colV);
+                DrawLineWorld3D({ -kHugeExtent, gy, 0 }, { kHugeExtent, gy, 0 }, colH);
             }
         } else {
             float cx = std::floor(camPos.x / sp) * sp;
@@ -248,8 +271,9 @@ void GizmoRenderer::DrawGrid(float /*gridSize*/, float spacing) {
                 ImU32 colZ = originX ? axisZColor : IM_COL32(80, 80, 80, a);
                 ImU32 colX = originZ ? axisXColor : IM_COL32(80, 80, 80, a);
 
-                DrawLineWorld(dl, { gx, 0, -kHugeExtent }, { gx, 0, kHugeExtent }, colZ);
-                DrawLineWorld(dl, { -kHugeExtent, 0, gz }, { kHugeExtent, 0, gz }, colX);
+                const float gridY = 0.001f; // slight offset to avoid z-fighting with ground
+                DrawLineWorld3D({ gx, gridY, -kHugeExtent }, { gx, gridY, kHugeExtent }, colZ);
+                DrawLineWorld3D({ -kHugeExtent, gridY, gz }, { kHugeExtent, gridY, gz }, colX);
             }
         }
     }
@@ -320,8 +344,6 @@ void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis,
 
 void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
                                          const glm::vec3& color) {
-    ImDrawList* dl = s_DrawList;
-
     // Convert light color to ImU32 (clamped, semi-transparent)
     ImU32 wireColor = IM_COL32(
         (int)(std::min(color.x, 1.0f) * 200 + 55),
@@ -334,18 +356,18 @@ void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
         (int)(std::min(color.z, 1.0f) * 255),
         255);
 
-    // Draw center dot
+    // Draw center dot (always visible via ImGui)
     ImVec2 center = WorldToScreen(position);
-    dl->AddCircleFilled(center, 5.0f, dotColor);
+    s_DrawList->AddCircleFilled(center, 5.0f, dotColor);
 
-    // Draw 3 wireframe circles (one per plane) to show range
+    // Draw 3 wireframe circles (depth-tested)
     constexpr int SEGMENTS = 32;
 
     auto drawCircle = [&](auto getPoint) {
         for (int i = 0; i < SEGMENTS; ++i) {
             float a0 = (float)i / SEGMENTS * 2.0f * 3.14159265f;
             float a1 = (float)(i + 1) / SEGMENTS * 2.0f * 3.14159265f;
-            DrawLineWorld(dl, getPoint(a0), getPoint(a1), wireColor, 1.0f);
+            DrawLineWorld3D(getPoint(a0), getPoint(a1), wireColor);
         }
     };
 
@@ -366,16 +388,14 @@ void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
 
     // Draw small cross-hair lines from center along each axis
     float crossLen = range * 0.15f;
-    DrawLineWorld(dl, position - glm::vec3(crossLen, 0, 0), position + glm::vec3(crossLen, 0, 0), wireColor, 1.0f);
-    DrawLineWorld(dl, position - glm::vec3(0, crossLen, 0), position + glm::vec3(0, crossLen, 0), wireColor, 1.0f);
-    DrawLineWorld(dl, position - glm::vec3(0, 0, crossLen), position + glm::vec3(0, 0, crossLen), wireColor, 1.0f);
+    DrawLineWorld3D(position - glm::vec3(crossLen, 0, 0), position + glm::vec3(crossLen, 0, 0), wireColor);
+    DrawLineWorld3D(position - glm::vec3(0, crossLen, 0), position + glm::vec3(0, crossLen, 0), wireColor);
+    DrawLineWorld3D(position - glm::vec3(0, 0, crossLen), position + glm::vec3(0, 0, crossLen), wireColor);
 }
 
 void GizmoRenderer::DrawSpotLightGizmo(const glm::vec3& position, const glm::vec3& direction,
                                         float range, float outerAngle,
                                         const glm::vec3& color) {
-    ImDrawList* dl = s_DrawList;
-
     ImU32 wireColor = IM_COL32(
         (int)(std::min(color.x, 1.0f) * 200 + 55),
         (int)(std::min(color.y, 1.0f) * 200 + 55),
@@ -387,9 +407,9 @@ void GizmoRenderer::DrawSpotLightGizmo(const glm::vec3& position, const glm::vec
         (int)(std::min(color.z, 1.0f) * 255),
         255);
 
-    // Draw center dot
+    // Draw center dot (always visible via ImGui)
     ImVec2 center = WorldToScreen(position);
-    dl->AddCircleFilled(center, 5.0f, dotColor);
+    s_DrawList->AddCircleFilled(center, 5.0f, dotColor);
 
     // Build a local coordinate frame around the direction
     glm::vec3 dir = glm::normalize(direction);
@@ -400,31 +420,30 @@ void GizmoRenderer::DrawSpotLightGizmo(const glm::vec3& position, const glm::vec
     float coneRadius = range * std::tan(glm::radians(outerAngle));
     glm::vec3 tipEnd = position + dir * range;
 
-    // Draw direction line
-    DrawLineWorld(dl, position, tipEnd, wireColor, 1.5f);
+    // Draw direction line (depth-tested)
+    DrawLineWorld3D(position, tipEnd, wireColor);
 
-    // Draw the base circle of the cone
+    // Draw the base circle of the cone (depth-tested)
     constexpr int SEGMENTS = 24;
     for (int i = 0; i < SEGMENTS; ++i) {
         float a0 = (float)i / SEGMENTS * 2.0f * 3.14159265f;
         float a1 = (float)(i + 1) / SEGMENTS * 2.0f * 3.14159265f;
         glm::vec3 p0 = tipEnd + (right * std::cos(a0) + up * std::sin(a0)) * coneRadius;
         glm::vec3 p1 = tipEnd + (right * std::cos(a1) + up * std::sin(a1)) * coneRadius;
-        DrawLineWorld(dl, p0, p1, wireColor, 1.0f);
+        DrawLineWorld3D(p0, p1, wireColor);
     }
 
-    // Draw 4 cone edge lines from position to base circle
+    // Draw 4 cone edge lines from position to base circle (depth-tested)
     for (int i = 0; i < 4; ++i) {
         float a = (float)i / 4.0f * 2.0f * 3.14159265f;
         glm::vec3 p = tipEnd + (right * std::cos(a) + up * std::sin(a)) * coneRadius;
-        DrawLineWorld(dl, position, p, wireColor, 1.0f);
+        DrawLineWorld3D(position, p, wireColor);
     }
 }
 
 void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
                                        int projType, float fov, float size,
                                        float nearClip, float farClip, float aspect) {
-    ImDrawList* dl = s_DrawList;
     ImU32 wireColor = IM_COL32(220, 220, 220, 160);
 
     // Compute near/far plane half-extents
@@ -471,26 +490,24 @@ void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
     for (int i = 0; i < 8; i++)
         corners[i] = glm::vec3(worldTransform * glm::vec4(local[i], 1.0f));
 
-    // Draw 12 edges
+    // Draw 12 edges (depth-tested)
     // Near plane
     for (int i = 0; i < 4; i++)
-        DrawLineWorld(dl, corners[i], corners[(i + 1) % 4], wireColor, 1.5f);
+        DrawLineWorld3D(corners[i], corners[(i + 1) % 4], wireColor);
     // Far plane
     for (int i = 0; i < 4; i++)
-        DrawLineWorld(dl, corners[4 + i], corners[4 + (i + 1) % 4], wireColor, 1.5f);
+        DrawLineWorld3D(corners[4 + i], corners[4 + (i + 1) % 4], wireColor);
     // Connecting edges
     for (int i = 0; i < 4; i++)
-        DrawLineWorld(dl, corners[i], corners[i + 4], wireColor, 1.0f);
+        DrawLineWorld3D(corners[i], corners[i + 4], wireColor);
 
-    // Draw camera icon (small triangle at position pointing forward)
+    // Draw camera icon (always visible via ImGui)
     glm::vec3 camPos = glm::vec3(worldTransform[3]);
     ImVec2 center = WorldToScreen(camPos);
-    dl->AddCircleFilled(center, 4.0f, IM_COL32(255, 255, 255, 200));
+    s_DrawList->AddCircleFilled(center, 4.0f, IM_COL32(255, 255, 255, 200));
 }
 
 void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
-    ImDrawList* dl = s_DrawList;
-    glm::mat4 model = worldMatrix;
     ImU32 wireColor = IM_COL32(255, 150, 0, 255);
 
     // 8 corners of a unit cube in local space, transformed to world space
@@ -503,16 +520,16 @@ void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
 
     glm::vec3 corners[8];
     for (int i = 0; i < 8; i++)
-        corners[i] = glm::vec3(model * glm::vec4(local[i], 1.0f));
+        corners[i] = glm::vec3(worldMatrix * glm::vec4(local[i], 1.0f));
 
-    // 12 edges
+    // 12 edges (depth-tested)
     int edges[][2] = {
         {0,1},{1,2},{2,3},{3,0},
         {4,5},{5,6},{6,7},{7,4},
         {0,4},{1,5},{2,6},{3,7},
     };
     for (auto& e : edges)
-        DrawLineWorld(dl, corners[e[0]], corners[e[1]], wireColor, 1.5f);
+        DrawLineWorld3D(corners[e[0]], corners[e[1]], wireColor);
 }
 
 // ── Collider wireframe defaults ────────────────────────────────────
@@ -526,12 +543,10 @@ static ImU32 ColliderColor(const glm::vec4& color) {
 
 void GizmoRenderer::DrawWireframeBoxCollider(const glm::vec3& center, const glm::vec3& size,
                                               const glm::mat3& rotation, const glm::vec4& color) {
-    ImDrawList* dl = s_DrawList;
     ImU32 col = ColliderColor(color);
 
     glm::vec3 half = size * 0.5f;
 
-    // 8 corners of an oriented box
     glm::vec3 local[8] = {
         { -half.x, -half.y, -half.z }, {  half.x, -half.y, -half.z },
         {  half.x,  half.y, -half.z }, { -half.x,  half.y, -half.z },
@@ -549,12 +564,11 @@ void GizmoRenderer::DrawWireframeBoxCollider(const glm::vec3& center, const glm:
         {0,4},{1,5},{2,6},{3,7},
     };
     for (auto& e : edges)
-        DrawLineWorld(dl, corners[e[0]], corners[e[1]], col, 1.5f);
+        DrawLineWorld3D(corners[e[0]], corners[e[1]], col);
 }
 
 void GizmoRenderer::DrawWireframeSphereCollider(const glm::vec3& center, float radius,
                                                  const glm::vec4& color) {
-    ImDrawList* dl = s_DrawList;
     ImU32 col = ColliderColor(color);
     constexpr int SEGMENTS = 32;
     constexpr float PI2 = 2.0f * 3.14159265f;
@@ -563,41 +577,35 @@ void GizmoRenderer::DrawWireframeSphereCollider(const glm::vec3& center, float r
     for (int i = 0; i < SEGMENTS; ++i) {
         float a0 = (float)i / SEGMENTS * PI2;
         float a1 = (float)(i + 1) / SEGMENTS * PI2;
-        DrawLineWorld(dl,
+        DrawLineWorld3D(
             center + glm::vec3(std::cos(a0), std::sin(a0), 0.0f) * radius,
-            center + glm::vec3(std::cos(a1), std::sin(a1), 0.0f) * radius,
-            col, 1.5f);
+            center + glm::vec3(std::cos(a1), std::sin(a1), 0.0f) * radius, col);
     }
     // XZ circle
     for (int i = 0; i < SEGMENTS; ++i) {
         float a0 = (float)i / SEGMENTS * PI2;
         float a1 = (float)(i + 1) / SEGMENTS * PI2;
-        DrawLineWorld(dl,
+        DrawLineWorld3D(
             center + glm::vec3(std::cos(a0), 0.0f, std::sin(a0)) * radius,
-            center + glm::vec3(std::cos(a1), 0.0f, std::sin(a1)) * radius,
-            col, 1.5f);
+            center + glm::vec3(std::cos(a1), 0.0f, std::sin(a1)) * radius, col);
     }
     // YZ circle
     for (int i = 0; i < SEGMENTS; ++i) {
         float a0 = (float)i / SEGMENTS * PI2;
         float a1 = (float)(i + 1) / SEGMENTS * PI2;
-        DrawLineWorld(dl,
+        DrawLineWorld3D(
             center + glm::vec3(0.0f, std::cos(a0), std::sin(a0)) * radius,
-            center + glm::vec3(0.0f, std::cos(a1), std::sin(a1)) * radius,
-            col, 1.5f);
+            center + glm::vec3(0.0f, std::cos(a1), std::sin(a1)) * radius, col);
     }
 }
 
 void GizmoRenderer::DrawWireframeCapsuleCollider(const glm::vec3& center, float radius, float height,
                                                   const glm::mat3& rotation, const glm::vec4& color) {
-    ImDrawList* dl = s_DrawList;
     ImU32 col = ColliderColor(color);
     constexpr int SEGMENTS = 32;
     constexpr float PI  = 3.14159265f;
     constexpr float PI2 = 2.0f * PI;
 
-    // Capsule is oriented along local Y axis
-    // Half-height of the cylindrical section (total height minus two hemisphere radii)
     float cylHalf = std::max(0.0f, (height - 2.0f * radius) * 0.5f);
 
     glm::vec3 up    = rotation * glm::vec3(0, 1, 0);
@@ -613,18 +621,18 @@ void GizmoRenderer::DrawWireframeCapsuleCollider(const glm::vec3& center, float 
         float a1 = (float)(i + 1) / SEGMENTS * PI2;
         glm::vec3 p0 = right * (std::cos(a0) * radius) + fwd * (std::sin(a0) * radius);
         glm::vec3 p1 = right * (std::cos(a1) * radius) + fwd * (std::sin(a1) * radius);
-        DrawLineWorld(dl, topCenter + p0, topCenter + p1, col, 1.5f);
-        DrawLineWorld(dl, bottomCenter + p0, bottomCenter + p1, col, 1.5f);
+        DrawLineWorld3D(topCenter + p0, topCenter + p1, col);
+        DrawLineWorld3D(bottomCenter + p0, bottomCenter + p1, col);
     }
 
     // 4 vertical lines connecting the circles
     for (int i = 0; i < 4; ++i) {
         float a = (float)i / 4.0f * PI2;
         glm::vec3 offset = right * (std::cos(a) * radius) + fwd * (std::sin(a) * radius);
-        DrawLineWorld(dl, topCenter + offset, bottomCenter + offset, col, 1.5f);
+        DrawLineWorld3D(topCenter + offset, bottomCenter + offset, col);
     }
 
-    // Draw hemisphere arcs (2 arcs per cap: one in right-up plane, one in fwd-up plane)
+    // Draw hemisphere arcs
     constexpr int HALF_SEGS = 16;
 
     auto drawHemiArc = [&](const glm::vec3& capCenter, float sign,
@@ -632,19 +640,140 @@ void GizmoRenderer::DrawWireframeCapsuleCollider(const glm::vec3& center, float 
         for (int i = 0; i < HALF_SEGS; ++i) {
             float a0 = (float)i / HALF_SEGS * PI;
             float a1 = (float)(i + 1) / HALF_SEGS * PI;
-            // Arc goes from tangent direction, over up, to -tangent direction
             glm::vec3 p0 = capCenter + tangent * (std::cos(a0) * radius) + up * (sign * std::sin(a0) * radius);
             glm::vec3 p1 = capCenter + tangent * (std::cos(a1) * radius) + up * (sign * std::sin(a1) * radius);
-            DrawLineWorld(dl, p0, p1, col, 1.5f);
+            DrawLineWorld3D(p0, p1, col);
         }
     };
 
-    // Top hemisphere (arcs going upward)
     drawHemiArc(topCenter,  1.0f, right);
     drawHemiArc(topCenter,  1.0f, fwd);
-    // Bottom hemisphere (arcs going downward)
     drawHemiArc(bottomCenter, -1.0f, right);
     drawHemiArc(bottomCenter, -1.0f, fwd);
+}
+
+// ── Depth-tested 3D line rendering ─────────────────────────────────
+
+void GizmoRenderer::AddLine3D(const glm::vec3& start, const glm::vec3& end, const glm::vec4& color) {
+    s_Lines3D.push_back({ start, end, color });
+}
+
+void GizmoRenderer::InitLineRenderer() {
+    if (s_LineRendererInited) return;
+
+    // ── Shader ──
+    const char* vertSrc = R"(
+        #version 460 core
+        layout(location = 0) in vec3 a_Position;
+        layout(location = 1) in vec4 a_Color;
+        uniform mat4 u_ViewProjection;
+        out vec4 v_Color;
+        void main() {
+            v_Color = a_Color;
+            gl_Position = u_ViewProjection * vec4(a_Position, 1.0);
+        }
+    )";
+
+    const char* fragSrc = R"(
+        #version 460 core
+        in vec4 v_Color;
+        out vec4 FragColor;
+        void main() {
+            FragColor = v_Color;
+        }
+    )";
+
+    auto compile = [](GLenum type, const char* src) -> uint32_t {
+        uint32_t shader = glCreateShader(type);
+        glShaderSource(shader, 1, &src, nullptr);
+        glCompileShader(shader);
+        return shader;
+    };
+
+    uint32_t vs = compile(GL_VERTEX_SHADER, vertSrc);
+    uint32_t fs = compile(GL_FRAGMENT_SHADER, fragSrc);
+    s_LineShaderProgram = glCreateProgram();
+    glAttachShader(s_LineShaderProgram, vs);
+    glAttachShader(s_LineShaderProgram, fs);
+    glLinkProgram(s_LineShaderProgram);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    // ── VAO / VBO ──
+    glGenVertexArrays(1, &s_LineVAO);
+    glGenBuffers(1, &s_LineVBO);
+
+    glBindVertexArray(s_LineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_LineVBO);
+
+    // Each vertex: vec3 position + vec4 color = 7 floats = 28 bytes
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+
+    glBindVertexArray(0);
+
+    s_LineRendererInited = true;
+}
+
+bool GizmoRenderer::IsLines3DEmpty() { return s_Lines3D.empty(); }
+
+void GizmoRenderer::FlushLines3D(const glm::mat4& viewProjection) {
+    if (s_Lines3D.empty()) return;
+    if (!s_LineRendererInited) InitLineRenderer();
+
+    // Build vertex data: 2 vertices per line, 7 floats per vertex
+    std::vector<float> vertices;
+    vertices.reserve(s_Lines3D.size() * 2 * 7);
+
+    for (auto& line : s_Lines3D) {
+        // Start vertex
+        vertices.push_back(line.Start.x);
+        vertices.push_back(line.Start.y);
+        vertices.push_back(line.Start.z);
+        vertices.push_back(line.Color.r);
+        vertices.push_back(line.Color.g);
+        vertices.push_back(line.Color.b);
+        vertices.push_back(line.Color.a);
+        // End vertex
+        vertices.push_back(line.End.x);
+        vertices.push_back(line.End.y);
+        vertices.push_back(line.End.z);
+        vertices.push_back(line.Color.r);
+        vertices.push_back(line.Color.g);
+        vertices.push_back(line.Color.b);
+        vertices.push_back(line.Color.a);
+    }
+
+    // Save GL state we'll modify
+    GLboolean prevBlend;
+    glGetBooleanv(GL_BLEND, &prevBlend);
+    GLint prevBlendSrc, prevBlendDst;
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrc);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDst);
+
+    // Upload and draw
+    glBindVertexArray(s_LineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_LineVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+
+    glUseProgram(s_LineShaderProgram);
+    GLint vpLoc = glGetUniformLocation(s_LineShaderProgram, "u_ViewProjection");
+    glUniformMatrix4fv(vpLoc, 1, GL_FALSE, glm::value_ptr(viewProjection));
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glLineWidth(1.0f);
+
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(s_Lines3D.size() * 2));
+
+    // Restore state
+    glUseProgram(0);
+    glBindVertexArray(0);
+    if (!prevBlend) glDisable(GL_BLEND);
+
+    s_Lines3D.clear();
 }
 
 } // namespace VE

@@ -1,8 +1,10 @@
 /*
- * GizmoRenderer — Draws Unity-style gizmos using ImGui's ImDrawList.
+ * GizmoRenderer — Draws Unity-style gizmos.
  *
- * Backend-agnostic: works with both OpenGL and Vulkan since all
- * drawing goes through ImGui's rendering pipeline.
+ * Depth-tested lines (grid, wireframes, light gizmos) are drawn via
+ * OpenGL GL_LINES with depth read-only, so they are properly occluded
+ * by scene geometry.  Translation gizmo arrows remain on the ImGui
+ * draw list so the user can always see and grab them.
  *
  * Supports both 2D (XY plane) and 3D (XZ plane) grid modes.
  */
@@ -11,6 +13,8 @@
 #include "VibeEngine/Scene/Entity.h"
 #include "VibeEngine/Renderer/EditorCamera.h"
 #include <glm/glm.hpp>
+#include <vector>
+#include <cstdint>
 
 struct ImDrawList;
 
@@ -69,6 +73,27 @@ public:
                                        const glm::vec3& entityPos,
                                        float screenX, float screenY,
                                        const glm::mat3& rotMatrix = glm::mat3(1.0f));
+
+    // ── Depth-tested 3D line rendering ────────────────────────────
+    struct GizmoLine {
+        glm::vec3 Start, End;
+        glm::vec4 Color;
+    };
+
+    /// Queue a world-space line for depth-tested rendering.
+    static void AddLine3D(const glm::vec3& start, const glm::vec3& end, const glm::vec4& color);
+
+    /// Upload queued lines and draw them with GL_LINES.
+    /// Call this while the scene framebuffer is bound with depth test enabled.
+    static void FlushLines3D(const glm::mat4& viewProjection);
+    static bool IsLines3DEmpty();
+
+private:
+    static std::vector<GizmoLine> s_Lines3D;
+    static uint32_t s_LineShaderProgram;
+    static uint32_t s_LineVAO, s_LineVBO;
+    static bool     s_LineRendererInited;
+    static void InitLineRenderer();
 };
 
 } // namespace VE
