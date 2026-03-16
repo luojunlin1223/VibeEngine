@@ -3,6 +3,7 @@
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <yaml-cpp/yaml.h>
 #include <limits>
 #include <filesystem>
@@ -158,61 +159,75 @@ protected:
         }
         if (!vao) return;
 
-        auto shader = VE::MeshLibrary::GetDefaultShader();
-        if (!shader) return;
+        // Inline outline shader: extrudes back-face vertices along normals (Cull Front)
+        static GLuint s_OutlineProg = 0;
+        if (s_OutlineProg == 0) {
+            const char* vs = R"(
+                #version 460 core
+                layout(location = 0) in vec3 a_Position;
+                layout(location = 1) in vec3 a_Normal;
+                uniform mat4 u_MVP;
+                uniform mat4 u_Model;
+                uniform vec2 u_ViewportSize;
+                uniform float u_OutlinePixels;
+                void main() {
+                    gl_Position = u_MVP * vec4(a_Position, 1.0);
+                    mat3 normalMat = mat3(u_Model);
+                    vec3 clipNorm = mat3(u_MVP) * a_Normal;
+                    vec2 offset = normalize(clipNorm.xy) * (u_OutlinePixels / u_ViewportSize) * 2.0;
+                    gl_Position.xy += offset * gl_Position.w;
+                }
+            )";
+            const char* fs = R"(
+                #version 460 core
+                uniform vec4 u_OutlineColor;
+                out vec4 FragColor;
+                void main() { FragColor = u_OutlineColor; }
+            )";
+            auto compileShader = [](GLenum type, const char* src) -> GLuint {
+                GLuint s = glCreateShader(type);
+                glShaderSource(s, 1, &src, nullptr);
+                glCompileShader(s);
+                return s;
+            };
+            GLuint vsID = compileShader(GL_VERTEX_SHADER, vs);
+            GLuint fsID = compileShader(GL_FRAGMENT_SHADER, fs);
+            s_OutlineProg = glCreateProgram();
+            glAttachShader(s_OutlineProg, vsID);
+            glAttachShader(s_OutlineProg, fsID);
+            glLinkProgram(s_OutlineProg);
+            glDeleteShader(vsID);
+            glDeleteShader(fsID);
+        }
 
         glm::mat4 model = m_Scene->GetWorldTransform(m_SelectedEntity.GetHandle());
         glm::mat4 mvp = m_FrameVP * model;
+        uint32_t fbW = m_Framebuffer ? m_Framebuffer->GetWidth() : 1280;
+        uint32_t fbH = m_Framebuffer ? m_Framebuffer->GetHeight() : 720;
 
-        // Pass 1: draw the mesh into stencil buffer only (no color/depth writes)
-        glEnable(GL_STENCIL_TEST);
+        // Draw back-faces only, extruded along normals
+        glUseProgram(s_OutlineProg);
+        glUniformMatrix4fv(glGetUniformLocation(s_OutlineProg, "u_MVP"), 1, GL_FALSE, glm::value_ptr(mvp));
+        glUniformMatrix4fv(glGetUniformLocation(s_OutlineProg, "u_Model"), 1, GL_FALSE, glm::value_ptr(model));
+        glUniform2f(glGetUniformLocation(s_OutlineProg, "u_ViewportSize"), (float)fbW, (float)fbH);
+        glUniform1f(glGetUniformLocation(s_OutlineProg, "u_OutlinePixels"), 3.0f);
+        glUniform4f(glGetUniformLocation(s_OutlineProg, "u_OutlineColor"), 1.0f, 0.5f, 0.0f, 1.0f);
+
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT);       // draw back-faces only
         glDepthFunc(GL_LEQUAL);
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-        glStencilMask(0xFF);
-        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-        glDepthMask(GL_FALSE);
+        glDepthMask(GL_FALSE);      // don't write depth
 
-        shader->Bind();
-        shader->SetMat4("u_MVP", mvp);
-        shader->SetInt("u_UseTexture", 0);
-        shader->SetVec4("u_EntityColor", glm::vec4(1.0f));
         vao->Bind();
         glDrawElements(GL_TRIANGLES,
             static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
             GL_UNSIGNED_INT, nullptr);
 
-        // Pass 2: draw scaled-up mesh in outline color, only where stencil != 1
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-        glStencilMask(0x00);
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glDisable(GL_DEPTH_TEST);
-
-        VE::AABB localBox = VE::AABB{ glm::vec3(-0.5f), glm::vec3(0.5f) };
-        if (m_SelectedEntity.HasComponent<VE::MeshRendererComponent>())
-            localBox = GetEntityLocalAABB(m_SelectedEntity.GetComponent<VE::MeshRendererComponent>());
-        glm::vec3 center = localBox.Center();
-
-        float outlineScale = 1.05f;
-        glm::mat4 scaledModel = model
-            * glm::translate(glm::mat4(1.0f), center)
-            * glm::scale(glm::mat4(1.0f), glm::vec3(outlineScale))
-            * glm::translate(glm::mat4(1.0f), -center);
-        glm::mat4 scaledMVP = m_FrameVP * scaledModel;
-
-        shader->SetMat4("u_MVP", scaledMVP);
-        shader->SetVec4("u_EntityColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
-        glDrawElements(GL_TRIANGLES,
-            static_cast<GLsizei>(vao->GetIndexBuffer()->GetCount()),
-            GL_UNSIGNED_INT, nullptr);
-
         // Restore GL state
-        glStencilMask(0xFF);
-        glStencilFunc(GL_ALWAYS, 0, 0xFF);
-        glDisable(GL_STENCIL_TEST);
-        glEnable(GL_DEPTH_TEST);
+        glCullFace(GL_BACK);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
+        glUseProgram(0);
     }
 
     VE::PostProcessSettings BuildPostProcessSettings() const {
