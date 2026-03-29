@@ -11,6 +11,7 @@
  * replacing the constant ambient term.
  */
 #include "VibeEngine/Renderer/LightProbe.h"
+#include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Scene/Scene.h"
 #include "VibeEngine/Core/Log.h"
 
@@ -145,9 +146,53 @@ void LightProbe::Bake(Scene& scene, const glm::vec3& position, uint32_t cubemapR
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // Render the scene from this face's perspective
-        // First render the sky, then the scene geometry
         scene.OnRenderSky(vp);
-        scene.OnRender(vp, position);
+        scene.OnRenderDeferred(vp, position, res, res);
+
+        // Blit deferred output into the light probe's FBO
+        {
+            auto& dr = scene.GetDeferredRenderer();
+            uint32_t deferredOut = dr.GetOutputTexture();
+            if (deferredOut) {
+                glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, deferredOut);
+                glDisable(GL_DEPTH_TEST);
+                glDepthMask(GL_FALSE);
+
+                static std::shared_ptr<Shader> s_LPBlit;
+                if (!s_LPBlit) {
+                    static const char* vs = R"(
+#version 450 core
+layout(location = 0) out vec2 v_UV;
+void main() {
+    vec2 pos = vec2((gl_VertexID & 1) * 2.0, (gl_VertexID & 2) * 1.0);
+    v_UV = pos;
+    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+})";
+                    static const char* fs = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+uniform sampler2D u_Source;
+void main() { FragColor = texture(u_Source, v_UV); }
+)";
+                    s_LPBlit = Shader::Create(vs, fs);
+                }
+                if (s_LPBlit) {
+                    s_LPBlit->Bind();
+                    s_LPBlit->SetInt("u_Source", 0);
+                    static GLuint lpBlitVAO = 0;
+                    if (!lpBlitVAO) glGenVertexArrays(1, &lpBlitVAO);
+                    glBindVertexArray(lpBlitVAO);
+                    glDrawArrays(GL_TRIANGLES, 0, 3);
+                    glBindVertexArray(0);
+                }
+
+                glEnable(GL_DEPTH_TEST);
+                glDepthMask(GL_TRUE);
+            }
+        }
 
         // Read back pixels (HDR float)
         glReadPixels(0, 0, res, res, GL_RGBA, GL_FLOAT, pixels.data());

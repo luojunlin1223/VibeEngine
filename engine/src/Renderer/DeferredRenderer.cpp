@@ -180,10 +180,15 @@ void DeferredRenderer::EndGeometryPass() {
 void DeferredRenderer::BindGBufferTextures(int startUnit) {
     if (!m_GBuffer) return;
 
+    static bool logged = false;
     for (int i = 0; i < m_GBuffer->GetColorAttachmentCount(); ++i) {
+        GLuint texID = static_cast<GLuint>(m_GBuffer->GetColorAttachmentID(i));
         glActiveTexture(GL_TEXTURE0 + startUnit + i);
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_GBuffer->GetColorAttachmentID(i)));
+        glBindTexture(GL_TEXTURE_2D, texID);
+        if (!logged)
+            VE_ENGINE_INFO("[DEBUG] G-buffer RT{} texID={} bound to unit {}", i, texID, startUnit + i);
     }
+    logged = true;
 }
 
 void DeferredRenderer::LightingPass() {

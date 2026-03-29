@@ -883,6 +883,14 @@ std::shared_ptr<Shader> ShaderLabCompiler::CompileFile(const std::string& filePa
                 pass.FragmentSource.clear();
                 ExtractGLSL(pass.RawGLSL, pass.VertexEntry, pass.FragmentEntry,
                              pass.VertexSource, pass.FragmentSource);
+
+                // DEBUG: dump expanded fragment source for DeferredLighting
+                if (filePath.find("DeferredLighting") != std::string::npos) {
+                    std::ofstream dump("DeferredLighting_expanded_frag.glsl");
+                    dump << pass.FragmentSource;
+                    dump.close();
+                    VE_ENGINE_INFO("Dumped DeferredLighting fragment source ({} chars)", pass.FragmentSource.size());
+                }
             }
         }
     }

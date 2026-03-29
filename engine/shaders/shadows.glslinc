@@ -3,7 +3,7 @@
 
 // Shadow uniforms (directional CSM)
 uniform int   u_ShadowEnabled;
-uniform sampler2DArrayShadow u_ShadowMap;
+layout(binding = 8)  uniform sampler2DArrayShadow u_ShadowMap;
 uniform mat4  u_LightSpaceMatrices[3];
 uniform vec3  u_CascadeSplits;
 uniform mat4  u_ViewMatrix;
@@ -14,13 +14,13 @@ uniform int   u_PCFRadius;
 // Spot light shadow maps (max 2)
 const int MAX_SPOT_SHADOWS = 2;
 uniform int   u_NumSpotShadows;
-uniform sampler2DShadow u_SpotShadowMaps[MAX_SPOT_SHADOWS];
+layout(binding = 9)  uniform sampler2DShadow u_SpotShadowMaps[MAX_SPOT_SHADOWS];
 uniform mat4  u_SpotLightSpaceMatrices[MAX_SPOT_SHADOWS];
 
 // Point light shadow maps (max 2)
 const int MAX_POINT_SHADOWS = 2;
 uniform int   u_NumPointShadows;
-uniform samplerCube u_PointShadowCubeMaps[MAX_POINT_SHADOWS];
+layout(binding = 11) uniform samplerCube u_PointShadowCubeMaps[MAX_POINT_SHADOWS];
 uniform float u_PointShadowFarPlanes[MAX_POINT_SHADOWS];
 
 float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {

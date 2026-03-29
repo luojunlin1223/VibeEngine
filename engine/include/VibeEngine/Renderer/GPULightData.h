@@ -1,7 +1,6 @@
 /*
- * GPULightData — Shared GPU-side light structs for tiled rendering pipelines.
+ * GPULightData — Shared GPU-side light structs for rendering pipelines.
  *
- * Used by both ForwardPlusRenderer and DeferredPlusRenderer.
  * All structs are 16-byte aligned for std430 SSBO layout.
  */
 #pragma once

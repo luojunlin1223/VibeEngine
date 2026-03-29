@@ -10,6 +10,7 @@
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
+#include "VibeEngine/Renderer/Shader.h"
 #include "VibeEngine/Core/Log.h"
 
 #include <glad/gl.h>
@@ -181,8 +182,58 @@ void ReflectionProbe::RenderFace(Scene& scene, int faceIndex, const glm::vec3& p
     glm::mat4 skyVP = projection * skyView;
     scene.OnRenderSky(skyVP);
 
-    // Render scene geometry
-    scene.OnRender(viewProjection, position);
+    // Render scene geometry via deferred pipeline
+    scene.OnRenderDeferred(viewProjection, position, m_Resolution, m_Resolution);
+
+    // Blit deferred output into the cubemap face FBO
+    {
+        auto& dr = scene.GetDeferredRenderer();
+        uint32_t deferredOut = dr.GetOutputTexture();
+        if (deferredOut) {
+            // Re-bind the cubemap FBO (deferred pass unbound it)
+            glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_CUBE_MAP_POSITIVE_X + faceIndex,
+                                   m_CubemapTexture, 0);
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, deferredOut);
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+
+            static std::shared_ptr<Shader> s_ProbeBlit;
+            if (!s_ProbeBlit) {
+                static const char* vs = R"(
+#version 450 core
+layout(location = 0) out vec2 v_UV;
+void main() {
+    vec2 pos = vec2((gl_VertexID & 1) * 2.0, (gl_VertexID & 2) * 1.0);
+    v_UV = pos;
+    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+})";
+                static const char* fs = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+uniform sampler2D u_Source;
+void main() { FragColor = texture(u_Source, v_UV); }
+)";
+                s_ProbeBlit = Shader::Create(vs, fs);
+            }
+            if (s_ProbeBlit) {
+                s_ProbeBlit->Bind();
+                s_ProbeBlit->SetInt("u_Source", 0);
+                static GLuint probeBlitVAO = 0;
+                if (!probeBlitVAO) glGenVertexArrays(1, &probeBlitVAO);
+                glBindVertexArray(probeBlitVAO);
+                glDrawArrays(GL_TRIANGLES, 0, 3);
+                glBindVertexArray(0);
+            }
+
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+        }
+    }
 
     // Render terrain if present
     scene.OnRenderTerrain(viewProjection, position);

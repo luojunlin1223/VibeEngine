@@ -141,7 +141,7 @@ void InstancedRenderer::EndScene() {
         shader->Bind();
         shader->SetMat4("u_ViewProjection", s_ViewProjection);
 
-        // Lighting uniforms are set by Scene::OnRender before EndScene is called,
+        // Lighting uniforms are set by the scene rendering before EndScene is called,
         // so we need the caller to set them on the shader. We expose the shaders
         // for that purpose via GetLitInstancedShader() / GetUnlitInstancedShader().
 

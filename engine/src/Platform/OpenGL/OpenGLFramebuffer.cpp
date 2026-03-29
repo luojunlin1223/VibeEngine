@@ -204,6 +204,14 @@ void OpenGLFramebuffer::Cleanup() {
 void OpenGLFramebuffer::Bind() {
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
     glViewport(0, 0, m_Width, m_Height);
+
+    // Restore MRT draw buffers (in case another FBO changed the state)
+    if (m_ColorAttachments.size() > 1) {
+        std::vector<GLenum> drawBuffers(m_ColorAttachments.size());
+        for (size_t i = 0; i < m_ColorAttachments.size(); ++i)
+            drawBuffers[i] = GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(i);
+        glDrawBuffers(static_cast<GLsizei>(drawBuffers.size()), drawBuffers.data());
+    }
 }
 
 void OpenGLFramebuffer::Unbind() {

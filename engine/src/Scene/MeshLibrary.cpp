@@ -652,20 +652,6 @@ void MeshLibrary::Init() {
         }
         if (s_SkyShader) ShaderLibrary::Register("Sky", s_SkyShader);
 
-        // Load Forward+ lit shader (optional — only needed when Forward+ mode is active)
-        {
-            std::string fpPath = shaderDir + "LitForwardPlus.shader";
-            if (std::filesystem::exists(fpPath)) {
-                auto fpShader = Shader::CreateFromFile(fpPath);
-                if (fpShader) {
-                    ShaderLibrary::Register("LitForwardPlus", fpShader);
-                    VE_ENGINE_INFO("ShaderLab: Loaded Forward+ lit shader");
-                } else {
-                    VE_ENGINE_WARN("ShaderLab: Failed to compile LitForwardPlus.shader");
-                }
-            }
-        }
-
         // Register the error shader itself so other systems can request it by name
         if (errorShader) ShaderLibrary::Register("Error", errorShader);
     }

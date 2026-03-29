@@ -56,7 +56,7 @@ out vec2 v_TexCoord;
 void main() {
     v_Color    = a_Color;
     v_TexCoord = a_TexCoord;
-    v_Normal   = normalize(mat3(transpose(inverse(u_Model))) * a_Normal);
+    v_Normal   = normalize(mat3(u_Model) * a_Normal);
     v_FragPos  = vec3(u_Model * vec4(a_Position, 1.0));
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
@@ -171,7 +171,7 @@ void main() {
 
     // ── Write G-Buffer ───────────────────────────────────────────────
     gPositionMetallic = vec4(v_FragPos, metallic);
-    gNormalRoughness  = vec4(N * 0.5 + 0.5, roughness); // encode normal to [0,1]
+    gNormalRoughness  = vec4(N, roughness); // RGBA16F stores [-1,1] directly
     gAlbedoAO         = vec4(baseColor.rgb, ao);
     gEmissionFlags    = vec4(emission, 0.0); // flags=0 for standard lit
 }

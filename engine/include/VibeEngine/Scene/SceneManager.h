@@ -96,7 +96,8 @@ public:
 
     // Render all loaded scenes in order (additive scenes layer on top)
     void OnRenderAllSky(const glm::mat4& skyViewProjection);
-    void OnRenderAll(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
+    void OnRenderAll(const glm::mat4& viewProjection, const glm::vec3& cameraPos,
+                     uint32_t viewportWidth = 1280, uint32_t viewportHeight = 720);
     void OnRenderAllTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
     void OnRenderAllSprites(const glm::mat4& viewProjection);
     void OnRenderAllParticles(const glm::mat4& viewProjection, const glm::vec3& cameraPos);

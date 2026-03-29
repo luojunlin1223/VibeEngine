@@ -54,6 +54,19 @@ OpenGLShader::OpenGLShader(const std::string& vertexSrc, const std::string& frag
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
+
+    // Validate program
+    glValidateProgram(m_RendererID);
+    GLint valid;
+    glGetProgramiv(m_RendererID, GL_VALIDATE_STATUS, &valid);
+    if (!valid) {
+        GLint length;
+        glGetProgramiv(m_RendererID, GL_INFO_LOG_LENGTH, &length);
+        std::vector<char> log(static_cast<size_t>(length));
+        glGetProgramInfoLog(m_RendererID, length, &length, log.data());
+        VE_ENGINE_WARN("Shader program validation warning: {0}", log.data());
+    }
+
     VE_GPU_TRACK(GPUResourceType::ShaderProgram, m_RendererID);
 }
 
@@ -81,23 +94,28 @@ int OpenGLShader::GetUniformLocation(const std::string& name) {
 }
 
 void OpenGLShader::SetMat4(const std::string& name, const glm::mat4& value) {
+    glUseProgram(m_RendererID);
     glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, glm::value_ptr(value));
 }
 
 
 void OpenGLShader::SetVec4(const std::string& name, const glm::vec4& value) {
+    glUseProgram(m_RendererID);
     glUniform4fv(GetUniformLocation(name), 1, glm::value_ptr(value));
 }
 
 void OpenGLShader::SetVec3(const std::string& name, const glm::vec3& value) {
+    glUseProgram(m_RendererID);
     glUniform3fv(GetUniformLocation(name), 1, glm::value_ptr(value));
 }
 
 void OpenGLShader::SetFloat(const std::string& name, float value) {
+    glUseProgram(m_RendererID);
     glUniform1f(GetUniformLocation(name), value);
 }
 
 void OpenGLShader::SetInt(const std::string& name, int value) {
+    glUseProgram(m_RendererID);
     glUniform1i(GetUniformLocation(name), value);
 }
 

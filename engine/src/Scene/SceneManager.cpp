@@ -135,9 +135,10 @@ void SceneManager::OnRenderAllSky(const glm::mat4& skyViewProjection) {
         active->OnRenderSky(skyViewProjection);
 }
 
-void SceneManager::OnRenderAll(const glm::mat4& viewProjection, const glm::vec3& cameraPos) {
+void SceneManager::OnRenderAll(const glm::mat4& viewProjection, const glm::vec3& cameraPos,
+                               uint32_t viewportWidth, uint32_t viewportHeight) {
     for (auto& info : m_LoadedScenes) {
-        info.ScenePtr->OnRender(viewProjection, cameraPos);
+        info.ScenePtr->OnRenderDeferred(viewProjection, cameraPos, viewportWidth, viewportHeight);
     }
 }
 

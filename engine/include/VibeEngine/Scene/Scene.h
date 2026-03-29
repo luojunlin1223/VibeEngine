@@ -12,7 +12,6 @@
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/ReflectionProbe.h"
 #include "VibeEngine/Renderer/DeferredRenderer.h"
-#include "VibeEngine/Renderer/DeferredPlusRenderer.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Navigation/NavGrid.h"
 #include <entt/entt.hpp>
@@ -27,17 +26,14 @@ namespace VE {
 
 class Entity;
 
-/// Render pipeline mode.
+/// Render pipeline mode (only Deferred is supported).
 enum class RenderPipeline {
-    Forward = 0,
-    Deferred = 1,
-    ForwardPlus = 2,
-    DeferredPlus = 3
+    Deferred = 0
 };
 
 struct RenderPipelineSettings {
     // Render Pipeline
-    RenderPipeline Pipeline = RenderPipeline::Forward;
+    RenderPipeline Pipeline = RenderPipeline::Deferred;
     // HDR Pipeline
     bool HDREnabled = true;
     int  ToneMapMode = 1; // 0=Reinhard, 1=ACES Filmic, 2=Uncharted2
@@ -155,14 +151,8 @@ struct RenderPipelineSettings {
     // Occlusion Culling
     bool OcclusionCullingEnabled = false;
 
-    // Forward+ debug
-    bool ForwardPlusDebugHeatmap = false;
-
     // Deferred debug
     int  GBufferDebugView = 0; // 0=None, 1..8 = GBufferDebugView enum
-
-    // Deferred+ debug
-    bool DeferredPlusDebugOverlay = false;
 };
 
 class Scene {
@@ -190,16 +180,13 @@ public:
     void OnUpdate(float deltaTime = 0.0f);
     void OnRenderSky(const glm::mat4& skyViewProjection);
 
-    // Compute shadow maps (call before OnRender each frame)
+    // Compute shadow maps (call before OnRenderDeferred each frame)
     void ComputeShadows(const glm::mat4& viewMatrix,
                         const glm::mat4& projMatrix,
                         float nearClip, float farClip);
     ShadowMap* GetShadowMap() const { return m_ShadowMap.get(); }
 
-    void OnRender(const glm::mat4& viewProjection,
-                  const glm::vec3& cameraPos = glm::vec3(0.0f));
-
-    /// Deferred rendering path — call instead of OnRender when pipeline is Deferred.
+    /// Deferred rendering path — the sole rendering pipeline.
     /// Fills G-buffer, runs lighting pass, then forward-renders transparent objects.
     void OnRenderDeferred(const glm::mat4& viewProjection,
                           const glm::vec3& cameraPos,
@@ -207,13 +194,6 @@ public:
 
     /// Get the deferred renderer instance (creates on first access).
     DeferredRenderer& GetDeferredRenderer() { return m_DeferredRenderer; }
-    /// Get the deferred+ (tiled deferred) renderer instance.
-    DeferredPlusRenderer& GetDeferredPlusRenderer() { return m_DeferredPlusRenderer; }
-    /// Deferred+ (tiled deferred) rendering path.
-    void OnRenderDeferredPlus(const glm::mat4& viewProjection,
-                              const glm::mat4& viewMatrix, const glm::mat4& projMatrix,
-                              const glm::vec3& cameraPos,
-                              uint32_t targetFBO, uint32_t fbWidth, uint32_t fbHeight);
 
     void OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
     void OnRenderSprites(const glm::mat4& viewProjection);
@@ -298,7 +278,7 @@ private:
     std::unique_ptr<ShadowMap> m_ShadowMap;
     bool m_ShadowsComputed = false; // true if ComputeShadows ran this frame
     glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
-    glm::mat4 m_CachedProjMatrix = glm::mat4(1.0f); // stored from ComputeShadows for Forward+ culling
+    glm::mat4 m_CachedProjMatrix = glm::mat4(1.0f); // stored from ComputeShadows
 
     // Spot light shadows (max 2 shadow-casting spot lights)
     static constexpr int MAX_SPOT_SHADOW_LIGHTS = 2;
@@ -315,7 +295,6 @@ private:
 
     // Deferred rendering
     DeferredRenderer m_DeferredRenderer;
-    DeferredPlusRenderer m_DeferredPlusRenderer;
 
     // Deferred entity deletion queue (flushed at end of OnUpdate)
     std::vector<entt::entity> m_PendingDestroy;

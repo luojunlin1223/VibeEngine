@@ -1,6 +1,5 @@
 // VibeEngine ShaderLab — Deferred Lighting Pass
 // Fullscreen quad that reads G-buffer textures and computes PBR lighting.
-// Uses the same Cook-Torrance BRDF as the forward Lit.shader.
 
 Shader "VibeEngine/DeferredLighting" {
     Properties {
@@ -25,7 +24,6 @@ Shader "VibeEngine/DeferredLighting" {
 #ifdef VERTEX
 layout(location = 0) out vec2 v_UV;
 void main() {
-    // Fullscreen triangle from gl_VertexID (no VBO needed)
     vec2 pos = vec2((gl_VertexID & 1) * 2.0, (gl_VertexID & 2) * 1.0);
     v_UV = pos;
     gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
@@ -36,11 +34,11 @@ void main() {
 layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec4 FragColor;
 
-// G-Buffer samplers
-uniform sampler2D u_GPositionMetallic;  // RT0
-uniform sampler2D u_GNormalRoughness;   // RT1
-uniform sampler2D u_GAlbedoAO;          // RT2
-uniform sampler2D u_GEmissionFlags;     // RT3
+// G-Buffer samplers — explicit binding
+layout(binding = 0) uniform sampler2D u_GPositionMetallic;  // RT0
+layout(binding = 1) uniform sampler2D u_GNormalRoughness;   // RT1
+layout(binding = 2) uniform sampler2D u_GAlbedoAO;          // RT2
+layout(binding = 3) uniform sampler2D u_GEmissionFlags;     // RT3
 
 // Lighting, shadows, PBR — shared includes
 #include "lighting.glslinc"
@@ -77,16 +75,17 @@ void main() {
 
     vec3  fragPos   = posMetallic.xyz;
     float metallic  = posMetallic.w;
-    vec3  N         = normalize(normRoughness.xyz * 2.0 - 1.0); // decode from [0,1]
+    vec3  N         = normalize(normRoughness.xyz);
     float roughness = normRoughness.w;
     vec3  albedo    = albedoAO.rgb;
     float ao        = albedoAO.a;
     vec3  emission  = emissionFlags.rgb;
 
-    // Discard sky pixels (position at origin with zero metallic can be checked,
-    // but more reliable: check if albedo+normal are both zero)
-    if (length(normRoughness.xyz) < 0.01)
-        discard;
+    // Skip sky pixels (no geometry)
+    if (length(normRoughness.xyz) < 0.01) {
+        FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+        return;
+    }
 
     vec3 V = normalize(u_ViewPos - fragPos);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
@@ -131,7 +130,6 @@ void main() {
 
         vec3  L = lightVec / dist;
 
-        // Spot cone attenuation
         float theta = dot(L, normalize(-u_SpotLightDirections[i]));
         float epsilon = u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i];
         float spotFactor = clamp((theta - u_SpotLightOuterCos[i]) / max(epsilon, 0.0001), 0.0, 1.0);
@@ -152,7 +150,6 @@ void main() {
     vec3 ambient = vec3(0.03) * albedo * ao;
     vec3 color = ambient + Lo + emission;
 
-    // Output linear HDR — tone mapping and gamma handled by post-processing
     FragColor = vec4(color, 1.0);
 }
 #endif

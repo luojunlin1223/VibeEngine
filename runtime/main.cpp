@@ -6,6 +6,7 @@
  * engine features available in Play mode.
  */
 #include <VibeEngine/VibeEngine.h>
+#include <VibeEngine/Renderer/ShaderSources.h>
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -120,8 +121,46 @@ protected:
         glm::mat4 skyView = glm::mat4(glm::mat3(gameView));
         m_Scene->OnRenderSky(gameProj * skyView);
 
-        // Scene
-        m_Scene->OnRender(gameVP, gameCamPos);
+        // Scene (deferred pipeline)
+        m_Scene->OnRenderDeferred(gameVP, gameCamPos,
+                                   static_cast<uint32_t>(fbW),
+                                   static_cast<uint32_t>(fbH));
+
+        // Blit deferred output to default framebuffer
+        {
+            auto& dr = m_Scene->GetDeferredRenderer();
+            uint32_t deferredOut = dr.GetOutputTexture();
+            if (deferredOut) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, deferredOut);
+                glDisable(GL_DEPTH_TEST);
+                glDepthMask(GL_FALSE);
+
+                static std::shared_ptr<VE::Shader> s_BlitShader;
+                if (!s_BlitShader) {
+                    static const char* blitFrag = R"(
+#version 450 core
+layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 FragColor;
+uniform sampler2D u_Source;
+void main() { FragColor = texture(u_Source, v_UV); }
+)";
+                    s_BlitShader = VE::Shader::Create(VE::QuadVertexShaderSrc, blitFrag);
+                }
+                if (s_BlitShader) {
+                    s_BlitShader->Bind();
+                    s_BlitShader->SetInt("u_Source", 0);
+                    static GLuint blitVAO = 0;
+                    if (!blitVAO) glGenVertexArrays(1, &blitVAO);
+                    glBindVertexArray(blitVAO);
+                    glDrawArrays(GL_TRIANGLES, 0, 3);
+                    glBindVertexArray(0);
+                }
+
+                glEnable(GL_DEPTH_TEST);
+                glDepthMask(GL_TRUE);
+            }
+        }
         m_Scene->OnRenderSprites(gameVP);
         m_Scene->OnRenderParticles(gameVP, gameCamPos);
     }
