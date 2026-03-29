@@ -85,7 +85,18 @@ AssetMeta AssetDatabase::LoadOrCreateMeta(const std::string& absPath,
                 else if (t == "Audio") meta.Type = AssetType::Audio;
                 else if (t == "Prefab") meta.Type = AssetType::Prefab;
                 else if (t == "Video") meta.Type = AssetType::Video;
+                else if (t == "Script") meta.Type = AssetType::Script;
                 else meta.Type = AssetType::Unknown;
+            }
+            // Re-deduce if type is Unknown (may have been added in a newer version)
+            if (meta.Type == AssetType::Unknown && !isDirectory) {
+                std::string ext = fs::path(absPath).extension().generic_string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                AssetType deduced = DeduceType(ext);
+                if (deduced != AssetType::Unknown) {
+                    meta.Type = deduced;
+                    WriteMeta(absPath, meta);
+                }
             }
             return meta;
         } catch (...) {
@@ -123,6 +134,7 @@ void AssetDatabase::WriteMeta(const std::string& absPath, const AssetMeta& meta)
         case AssetType::Audio:         typeStr = "Audio"; break;
         case AssetType::Prefab:        typeStr = "Prefab"; break;
         case AssetType::Video:         typeStr = "Video"; break;
+        case AssetType::Script:        typeStr = "Script"; break;
         default: break;
     }
     out << YAML::Key << "type" << YAML::Value << typeStr;
@@ -150,6 +162,8 @@ AssetType AssetDatabase::DeduceType(const std::string& extension) const {
         return AssetType::Prefab;
     if (extension == ".mpg" || extension == ".mpeg")
         return AssetType::Video;
+    if (extension == ".cpp" || extension == ".h" || extension == ".hpp")
+        return AssetType::Script;
     return AssetType::Unknown;
 }
 

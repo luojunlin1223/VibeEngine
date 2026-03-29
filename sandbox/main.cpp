@@ -8,6 +8,13 @@
 #include <limits>
 #include <filesystem>
 #include <sstream>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#include <shellapi.h>
+#endif
 #include <fstream>
 #include <algorithm>
 #include <any>
@@ -42,6 +49,19 @@ public:
         m_Scene = std::make_shared<VE::Scene>();
         m_SceneManager.AddScene(m_Scene, "Untitled");
         VE::ScriptEngine::SetSceneManager(&m_SceneManager);
+        VE::ScriptEngine::SetupScriptFileWatcher();
+
+        // Editor plugins
+        VE::PluginEngine::Init();
+        // Plugin source path relative to CWD (build/bin/Debug/), same as Scripts
+        VE::PluginEngine::SetPluginSourcePath("Assets/Editor");
+        VE::PluginEngine::SetEngineIncludePath(std::string(VE_PROJECT_ROOT) + "/engine/include");
+        VE::PluginEngine::SetImGuiSourcePath(VE_IMGUI_SOURCE_DIR);
+        if (VE::PluginEngine::HasPluginFiles()) {
+            VE_INFO("Auto-building editor plugins...");
+            VE::PluginEngine::BuildPluginProjectSync();
+        }
+        VE::PluginEngine::SetupFileWatcher();
         m_Camera.SetViewportSize(1280.0f, 720.0f);
         m_AssetDatabase.Init(".");
         ScanAndRegisterAssets();
@@ -80,11 +100,25 @@ public:
 
     ~Sandbox() override {
         SaveEditorSettings();
+
+        // Release GPU resources before renderer shutdown
+        m_Scene.reset();
+        m_SceneManager.UnloadAllScenes();
+        m_Framebuffer.reset();
+        m_GameFramebuffer.reset();
+        m_PostProcessing.Shutdown();
+        m_GamePostProcessing.Shutdown();
+        m_ThumbnailCache.Clear();
+
+        VE::ForwardPlusRenderer::Shutdown();
+        VE::MeshLibrary::Shutdown();
+        VE::MeshImporter::ClearCache();
         VE::UIRenderer::Shutdown();
         VE::OcclusionCulling::Shutdown();
         VE::InstancedRenderer::Shutdown();
         VE::ParticleRenderer::Shutdown();
         VE::SpriteBatchRenderer::Shutdown();
+        VE::PluginEngine::Shutdown();
         VE::ScriptEngine::Shutdown();
         VE::AudioEngine::Shutdown();
         VE_INFO("Sandbox application destroyed");
@@ -107,6 +141,14 @@ protected:
 
         m_AssetDatabase.Update(m_DeltaTime);
 
+        // Script file watcher + auto-build-on-save (runs in both edit and play mode)
+        VE::ScriptEngine::UpdateScriptFileWatcher(m_DeltaTime);
+        VE::ScriptEngine::CheckForReload();
+
+        // Editor plugin file watcher + auto-build
+        VE::PluginEngine::UpdateFileWatcher(m_DeltaTime);
+        VE::PluginEngine::CheckForReload();
+
         // Auto-save timer (only outside play mode and when scene is dirty)
         if (m_AutoSaveEnabled && !m_PlayMode && m_SceneDirty) {
             m_AutoSaveTimer += m_DeltaTime;
@@ -120,7 +162,6 @@ protected:
         }
 
         if (m_PlayMode) {
-            VE::ScriptEngine::CheckForReload();
 
             // Update 3D audio listener from camera
             glm::vec3 camPos = (m_Camera.GetMode() == VE::CameraMode::Perspective3D)
@@ -1012,7 +1053,11 @@ void main() { FragColor = texture(u_Source, v_UV); }
         DrawMaterialEditorPanel();
 
         DrawProfilerPanel();
-        DrawFPSOverlay();
+        DrawScriptBuildStatus();
+
+        // Render all editor plugin UIs (pass viewport bounds for overlay positioning)
+        VE::PluginEngine::SetViewportBounds(m_SceneVpX, m_SceneVpY, m_SceneVpW, m_SceneVpH);
+        VE::PluginEngine::RenderAllPluginUI();
 
         DrawSceneManagerPanel();
         DrawTransitionOverlay();
@@ -1270,6 +1315,14 @@ private:
         std::string title = std::string("VibeEngine - ") + sceneName;
         if (m_SceneDirty) title += " *";
         glfwSetWindowTitle(GetWindow().GetNativeWindow(), title.c_str());
+    }
+
+    void OpenInExternalEditor(const std::string& path) {
+#ifdef _WIN32
+        std::string absPath = std::filesystem::absolute(path).string();
+        ShellExecuteA(nullptr, "open", absPath.c_str(), nullptr, nullptr, SW_SHOW);
+        VE_INFO("Opening in external editor: {0}", absPath);
+#endif
     }
 
     void NewScene() {
@@ -1755,7 +1808,6 @@ private:
         out << YAML::Key << "ShowMaterialEditor" << YAML::Value << m_ShowMaterialEditor;
 
         out << YAML::Key << "ShowProfiler" << YAML::Value << m_ShowProfiler;
-        out << YAML::Key << "ShowFPSOverlay" << YAML::Value << m_ShowFPSOverlay;
         out << YAML::Key << "ShowColliders" << YAML::Value << m_ShowColliders;
 
         out << YAML::Key << "ShowSceneManager" << YAML::Value << m_ShowSceneManager;
@@ -1844,8 +1896,6 @@ private:
 
             if (root["ShowProfiler"])
                 m_ShowProfiler = root["ShowProfiler"].as<bool>(false);
-            if (root["ShowFPSOverlay"])
-                m_ShowFPSOverlay = root["ShowFPSOverlay"].as<bool>(false);
             if (root["ShowColliders"])
                 m_ShowColliders = root["ShowColliders"].as<bool>(true);
 
@@ -2478,7 +2528,6 @@ private:
 
                 ImGui::Separator();
                 ImGui::MenuItem("Profiler", nullptr, &m_ShowProfiler);
-                ImGui::MenuItem("FPS Overlay", nullptr, &m_ShowFPSOverlay);
                 ImGui::MenuItem("Show Colliders", nullptr, &m_ShowColliders);
 
                 ImGui::MenuItem("Scene Manager", nullptr, &m_ShowSceneManager);
@@ -2493,6 +2542,10 @@ private:
         if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_O)) LoadScene();
         if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_S)) SaveScene();
         if (ctrl &&  shift && ImGui::IsKeyPressed(ImGuiKey_S)) SaveSceneAs();
+        if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_R, false))
+            VE::ScriptEngine::RequestBuildAndReload();
+        if (ctrl &&  shift && ImGui::IsKeyPressed(ImGuiKey_R, false))
+            VE::PluginEngine::RequestBuildAndReload();
     }
 
     // ── Viewport Panel ──────────────────────────────────────────────────
@@ -2581,7 +2634,7 @@ private:
                 ImGui::PopStyleColor(3);
             };
 
-            // Right to left: Gizmos, Outline
+            // Right to left: Gizmos, Outline, FPS
             DrawToggleButton("G##GizmosToggle",  m_GizmosEnabled, "Gizmos",  btnSize + padding);
             DrawToggleButton("O##OutlineToggle", m_OutlineEnabled, "Outline", (btnSize + spacing) * 2 + padding - spacing);
         }
@@ -2798,6 +2851,7 @@ private:
         m_SceneManager.StartAllAudio();
         m_SceneManager.StartAllParticles();
         m_PlayMode = true;
+        VE::ScriptEngine::SetPlayMode(true);
         m_CommandHistory.Clear();
         VE_INFO("Entered Play mode");
     }
@@ -2840,6 +2894,7 @@ private:
         m_SceneSnapshot.clear();
 
         m_PlayMode = false;
+        VE::ScriptEngine::SetPlayMode(false);
         m_CommandHistory.Clear();
         VE_INFO("Exited Play mode (scene restored)");
     }
@@ -5930,24 +5985,14 @@ private:
                 ImGui::Button("Building...");
                 ImGui::EndDisabled();
             } else {
-                if (ImGui::Button("Build Scripts")) {
-                    VE::ScriptEngine::BuildScriptProject();
+                if (ImGui::Button("Build Scripts (Ctrl+R)")) {
+                    VE::ScriptEngine::RequestBuildAndReload();
                 }
             }
 
-            // Auto-load DLL on successful build
-            if (buildStatus == VE::ScriptEngine::BuildStatus::Success && m_BuildAutoLoad) {
-                auto dllPath = VE::ScriptEngine::GetBuildDLLOutputPath();
-                if (!dllPath.empty() && std::filesystem::exists(dllPath)) {
-                    VE::ScriptEngine::LoadScriptDLL(dllPath);
-                    m_ScriptDLLPath = dllPath;
-                    VE_INFO("Auto-loaded built DLL: {0}", dllPath);
-                }
-                m_BuildAutoLoad = false;
-            }
-            if (buildStatus == VE::ScriptEngine::BuildStatus::Building) {
-                m_BuildAutoLoad = true;
-            }
+            bool autoReload = VE::ScriptEngine::IsAutoReloadEnabled();
+            if (ImGui::Checkbox("Auto-build on save", &autoReload))
+                VE::ScriptEngine::SetAutoReloadEnabled(autoReload);
 
             // Status
             switch (buildStatus) {
@@ -6735,6 +6780,11 @@ private:
                 float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
                 float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
                 dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SND");
+            } else if (meta->Type == VE::AssetType::Script) {
+                dl->AddRectFilled(itemMin, itemMax, IM_COL32(60, 120, 180, 255));
+                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
+                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
+                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "C++");
             } else {
                 dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
             }
@@ -6813,6 +6863,8 @@ private:
                         mr.Mat = VE::MaterialLibrary::Get("Lit");
                         mr.MeshSourcePath = absPath;
                     }
+                } else if (meta->Type == VE::AssetType::Script || meta->Type == VE::AssetType::Shader) {
+                    OpenInExternalEditor(m_AssetDatabase.GetAbsolutePath(relPath));
                 }
             }
 
@@ -6886,8 +6938,10 @@ private:
                 ImGui::EndPopup();
             }
 
-            // Filename label (truncated)
-            ImGui::TextWrapped("%s", filename.c_str());
+            // Filename label (no extension, truncated)
+            std::string displayName = (meta->Type != VE::AssetType::Folder)
+                ? std::filesystem::path(filename).stem().string() : filename;
+            ImGui::TextWrapped("%s", displayName.c_str());
 
             ImGui::PopID();
             ImGui::NextColumn();
@@ -7239,32 +7293,80 @@ private:
         ImGui::End();
     }
 
-    // ── FPS Overlay (small corner display, always on top) ───────────────
 
-    void DrawFPSOverlay() {
-        if (!m_ShowFPSOverlay) return;
+    // ── Script Build Status Overlay ────────────────────────────────────
 
-        const float PAD = 10.0f;
-        ImGuiIO& io = ImGui::GetIO();
-        ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize
-            | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing
-            | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+    // Generic build status overlay helper
+    bool DrawBuildStatusOverlay(const char* windowID, int statusInt, float& fadeTimer,
+                                float yOffset, const char* buildingText,
+                                const char* successText, const char* failedText) {
+        // statusInt: 0=Idle, 1=Building, 2=Success, 3=Failed
+        static std::unordered_map<std::string, int> lastStatuses;
+        auto& lastStatus = lastStatuses[windowID];
+        if (statusInt != lastStatus) {
+            lastStatus = statusInt;
+            if (statusInt == 2 || statusInt == 3)
+                fadeTimer = 3.0f;
+        }
 
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
-        ImVec2 pos(viewport->WorkPos.x + viewport->WorkSize.x - PAD,
-                   viewport->WorkPos.y + PAD);
-        ImGui::SetNextWindowPos(pos, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-        ImGui::SetNextWindowBgAlpha(0.6f);
+        bool show = false;
+        if (statusInt == 1) {
+            show = true;
+        } else if ((statusInt == 2 || statusInt == 3) && fadeTimer > 0.0f) {
+            fadeTimer -= m_DeltaTime;
+            show = true;
+        }
+        if (!show) return false;
 
-        if (ImGui::Begin("##FPSOverlay", &m_ShowFPSOverlay, flags)) {
-            const auto& stats = VE::Profiler::GetCurrentStats();
-            ImGui::Text("%.0f FPS", stats.FPS);
-            ImGui::Text("%.2f ms", stats.FrameTimeMs);
-            ImGui::Text("DC: %u  Tri: %s",
-                VE::RenderCommand::GetStats().DrawCalls,
-                FormatNumber(VE::RenderCommand::GetStats().Triangles).c_str());
+        ImGuiViewport* vp = ImGui::GetMainViewport();
+        float width = 280.0f, height = 28.0f;
+        ImVec2 pos(vp->WorkPos.x + vp->WorkSize.x - width - 10.0f,
+                   vp->WorkPos.y + vp->WorkSize.y - height - 10.0f - yOffset);
+        ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(width, height));
+
+        float alpha = (fadeTimer < 1.0f && statusInt != 1) ? fadeTimer : 1.0f;
+        ImGui::SetNextWindowBgAlpha(0.75f * alpha);
+
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs
+            | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings
+            | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoMove;
+
+        if (ImGui::Begin(windowID, nullptr, flags)) {
+            ImVec4 col;
+            const char* text;
+            switch (statusInt) {
+                case 1: col = ImVec4(1,1,0.2f,alpha); text = buildingText; break;
+                case 2: col = ImVec4(0.2f,1,0.2f,alpha); text = successText; break;
+                case 3: col = ImVec4(1,0.2f,0.2f,alpha); text = failedText; break;
+                default: col = ImVec4(1,1,1,alpha); text = ""; break;
+            }
+            ImGui::TextColored(col, "%s", text);
         }
         ImGui::End();
+        return show;
+    }
+
+    void DrawScriptBuildStatus() {
+        float yOff = 0.0f;
+
+        // Script build status
+        int scriptStatus = static_cast<int>(VE::ScriptEngine::GetBuildStatus());
+        bool scriptShown = DrawBuildStatusOverlay("##ScriptBuild", scriptStatus,
+            m_BuildStatusFadeTimer, yOff,
+            ">> Building scripts...",
+            "Scripts compiled + reloaded",
+            "Script build failed");
+        if (scriptShown) yOff += 34.0f;
+
+        // Plugin build status
+        static float pluginFadeTimer = 0.0f;
+        int pluginStatus = static_cast<int>(VE::PluginEngine::GetBuildStatus());
+        DrawBuildStatusOverlay("##PluginBuild", pluginStatus,
+            pluginFadeTimer, yOff,
+            ">> Building plugins...",
+            "Plugins compiled + reloaded",
+            "Plugin build failed");
     }
 
     // ── Input Settings Panel ────────────────────────────────────────────
@@ -7453,7 +7555,6 @@ private:
     bool m_ShowMaterialEditor = false;
 
     bool m_ShowProfiler = false;
-    bool m_ShowFPSOverlay = false;
     bool m_ShowColliders = true;
 
     // Add Component search
@@ -7461,6 +7562,7 @@ private:
     bool m_AddComponentFocusSearch = false;
 
     bool m_ShowSceneManager = false;
+
 
     // Scene Manager
     VE::SceneManager m_SceneManager;
@@ -7495,7 +7597,7 @@ private:
 
     // Scripting
     std::string m_ScriptDLLPath;
-    bool m_BuildAutoLoad = false;
+    float m_BuildStatusFadeTimer = 0.0f;
 
     // Asset management
     VE::AssetDatabase m_AssetDatabase;

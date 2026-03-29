@@ -72,6 +72,8 @@
 #include "Terrain/Terrain.h"
 
 #include "Editor/EditorCommand.h"
+#include "Editor/EditorPlugin.h"
+#include "Editor/PluginEngine.h"
 
 #include "ImGui/ImGuiLayer.h"
 #include <imgui.h>

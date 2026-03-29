@@ -40,6 +40,17 @@ public:
     // Hot-reload — call once per frame
     static void CheckForReload();
     static void ReloadScripts(Scene& scene);
+    static void ReloadDLLOnly();           // edit-mode reload (no instances)
+
+    // File watcher + auto-build-on-save
+    static void SetupScriptFileWatcher();
+    static void UpdateScriptFileWatcher(float dt);
+    static void RequestBuildAndReload();   // manual trigger (Ctrl+R)
+
+    // Play mode awareness
+    static void SetPlayMode(bool playing);
+    static void SetAutoReloadEnabled(bool enabled);
+    static bool IsAutoReloadEnabled();
 
     // Scene context
     static void SetActiveScene(Scene* scene);

@@ -8,6 +8,7 @@
 #include "VibeEngine/Scene/SceneManager.h"
 #include "VibeEngine/Scene/Entity.h"
 #include "VibeEngine/Scene/Components.h"
+#include "VibeEngine/Asset/FileWatcher.h"
 #include "VibeEngine/Core/Log.h"
 
 #ifdef _WIN32
@@ -75,6 +76,23 @@ struct ScriptEngineData {
     std::string BuildDLLOutputPath;
     std::mutex BuildMutex;
     std::thread BuildThread;
+
+    // File watcher for script sources
+    FileWatcher ScriptFileWatcher;
+    bool ScriptFileWatcherInitialized = false;
+
+    // Debounce state for auto-build-on-save
+    float SourceChangeTimer = -1.0f;
+    bool SourceFilesAdded = false;    // file created/deleted → need registry regen + configure
+    bool SourceFilesModified = false; // file modified → just rebuild
+    static constexpr float DebounceDelay = 0.3f;
+
+    // Auto-reload pipeline
+    bool NeedsConfigure = true;
+    bool AutoReloadAfterBuild = false;
+    bool BuildPendingAfterCurrent = false;
+    bool PlayMode = false;
+    bool AutoReloadEnabled = true;
 };
 
 static ScriptEngineData* s_Data = nullptr;
@@ -250,35 +268,86 @@ void ScriptEngine::DestroyInstance(NativeScript* instance) {
 }
 
 void ScriptEngine::CheckForReload() {
-    if (!s_Data)
-        return;
-
+    if (!s_Data) return;
     s_Data->ReloadedThisFrame = false;
 
-    if (!s_Data->DLLHandle || s_Data->DLLPath.empty())
+    // Path 1: Auto-reload after successful async build
+    if (s_Data->AutoReloadAfterBuild && s_Data->BuildState == BuildStatus::Success) {
+        s_Data->AutoReloadAfterBuild = false;
+        std::string dllPath;
+        {
+            std::lock_guard<std::mutex> lock(s_Data->BuildMutex);
+            dllPath = s_Data->BuildDLLOutputPath;
+        }
+        if (!dllPath.empty() && std::filesystem::exists(dllPath)) {
+            std::lock_guard<std::mutex> lock(s_Data->ReloadMutex);
+            s_Data->DLLPath = dllPath;
+            if (s_Data->PlayMode && s_Data->ActiveScene) {
+                ReloadScripts(*s_Data->ActiveScene);
+            } else if (s_Data->DLLHandle) {
+                ReloadDLLOnly();
+            } else {
+                LoadScriptDLL(dllPath);
+            }
+            s_Data->ReloadedThisFrame = true;
+            VE_ENGINE_INFO("Auto-reload after build complete");
+        }
+    }
+
+    // Handle pending build (queued while previous build was running)
+    if (s_Data->BuildPendingAfterCurrent && s_Data->BuildState != BuildStatus::Building) {
+        s_Data->BuildPendingAfterCurrent = false;
+        s_Data->AutoReloadAfterBuild = true;
+        BuildScriptProject();
+    }
+
+    // Clear auto-reload flag on build failure
+    if (s_Data->AutoReloadAfterBuild && s_Data->BuildState == BuildStatus::Failed) {
+        s_Data->AutoReloadAfterBuild = false;
+    }
+
+    // Path 2: DLL file timestamp changed (fallback / external rebuild)
+    // Skip if we're waiting for our own build to finish — avoid racing with the build thread
+    if (s_Data->AutoReloadAfterBuild || s_Data->BuildState == BuildStatus::Building)
         return;
 
+    if (!s_Data->DLLHandle || s_Data->DLLPath.empty()) return;
+
     auto srcPath = std::filesystem::path(s_Data->DLLPath);
-    if (!std::filesystem::exists(srcPath))
-        return;
+    if (!std::filesystem::exists(srcPath)) return;
 
     auto currentTime = std::filesystem::last_write_time(srcPath);
     if (currentTime != s_Data->LastWriteTime) {
-        VE_ENGINE_INFO("Script DLL changed, hot-reloading...");
+        VE_ENGINE_INFO("Script DLL changed (external), hot-reloading...");
         std::lock_guard<std::mutex> lock(s_Data->ReloadMutex);
-        if (s_Data->ActiveScene)
+        if (s_Data->PlayMode && s_Data->ActiveScene)
             ReloadScripts(*s_Data->ActiveScene);
+        else
+            ReloadDLLOnly();
         s_Data->ReloadedThisFrame = true;
     }
 }
 
 void ScriptEngine::ReloadScripts(Scene& scene) {
-    // NOTE: Caller must hold s_Data->ReloadMutex (CheckForReload does this).
-    // 1. Destroy all existing script instances
+    // NOTE: Caller must hold s_Data->ReloadMutex.
+    // 1. Save properties from all live instances
+    struct SavedInstance {
+        entt::entity Entity;
+        std::string ClassName;
+        std::unordered_map<std::string, std::variant<float, int, bool>> Props;
+    };
+    std::vector<SavedInstance> saved;
+
     auto view = scene.GetRegistry().view<ScriptComponent>();
     for (auto entity : view) {
         auto& sc = view.get<ScriptComponent>(entity);
         if (sc._Instance) {
+            SavedInstance si;
+            si.Entity = entity;
+            si.ClassName = sc.ClassName;
+            ReadPropertiesFromInstance(sc._Instance, sc.ClassName, si.Props);
+            saved.push_back(std::move(si));
+
             sc._Instance->OnDestroy();
             DestroyInstance(sc._Instance);
             sc._Instance = nullptr;
@@ -293,20 +362,125 @@ void ScriptEngine::ReloadScripts(Scene& scene) {
         return;
     }
 
-    // 3. Recreate instances
-    for (auto entity : view) {
-        auto& sc = view.get<ScriptComponent>(entity);
-        if (sc.ClassName.empty()) continue;
-
-        sc._Instance = CreateInstance(sc.ClassName);
+    // 3. Recreate instances and restore properties
+    for (auto& si : saved) {
+        if (!scene.GetRegistry().valid(si.Entity)) continue;
+        auto& sc = scene.GetRegistry().get<ScriptComponent>(si.Entity);
+        sc._Instance = CreateInstance(si.ClassName);
         if (sc._Instance) {
-            auto& id = scene.GetRegistry().get<IDComponent>(entity);
+            auto& id = scene.GetRegistry().get<IDComponent>(si.Entity);
             sc._Instance->m_EntityID = static_cast<uint64_t>(id.ID);
+            ApplyPropertiesToInstance(sc._Instance, si.ClassName, si.Props);
             sc._Instance->OnCreate();
         }
     }
 
-    VE_ENGINE_INFO("Hot-reload complete");
+    VE_ENGINE_INFO("Hot-reload complete (properties preserved)");
+}
+
+void ScriptEngine::ReloadDLLOnly() {
+    // Edit-mode reload: no live instances, just refresh factory map + property cache
+    // NOTE: Caller must hold s_Data->ReloadMutex.
+    std::string path = s_Data->DLLPath;
+    UnloadScriptDLL();
+    if (!LoadScriptDLL(path)) {
+        VE_ENGINE_ERROR("Edit-mode reload failed!");
+        return;
+    }
+    VE_ENGINE_INFO("Edit-mode hot-reload complete");
+}
+
+// ── File watcher + auto-build-on-save ──────────────────────────────
+
+void ScriptEngine::SetupScriptFileWatcher() {
+    if (!s_Data) return;
+
+    auto projPath = std::filesystem::absolute(s_Data->ScriptProjectPath).string();
+    if (!std::filesystem::exists(projPath)) {
+        // Create the directory so the watcher can start
+        std::filesystem::create_directories(projPath);
+    }
+
+    s_Data->ScriptFileWatcher.Init(projPath, 0.5f);
+    s_Data->ScriptFileWatcher.SetCallback([](const std::vector<FileEvent>& events) {
+        if (!s_Data || !s_Data->AutoReloadEnabled) return;
+
+        bool relevant = false;
+        for (auto& e : events) {
+            // Only care about .cpp and .h files
+            auto ext = std::filesystem::path(e.FilePath).extension().string();
+            if (ext != ".cpp" && ext != ".h") continue;
+            // Skip generated files
+            auto fname = std::filesystem::path(e.FilePath).filename().string();
+            if (fname == "ScriptRegistry.gen.cpp") continue;
+
+            relevant = true;
+            if (e.EventType == FileEvent::Type::Created || e.EventType == FileEvent::Type::Deleted)
+                s_Data->SourceFilesAdded = true;
+            else
+                s_Data->SourceFilesModified = true;
+        }
+
+        if (relevant) {
+            s_Data->SourceChangeTimer = ScriptEngineData::DebounceDelay;
+            VE_ENGINE_INFO("Script source change detected, will build in {0}ms...",
+                (int)(ScriptEngineData::DebounceDelay * 1000));
+        }
+    });
+
+    s_Data->ScriptFileWatcherInitialized = true;
+    VE_ENGINE_INFO("Script file watcher started on: {0}", projPath);
+}
+
+void ScriptEngine::UpdateScriptFileWatcher(float dt) {
+    if (!s_Data || !s_Data->ScriptFileWatcherInitialized) return;
+
+    s_Data->ScriptFileWatcher.Update(dt);
+
+    // Debounce timer
+    if (s_Data->SourceChangeTimer > 0.0f) {
+        s_Data->SourceChangeTimer -= dt;
+        if (s_Data->SourceChangeTimer <= 0.0f) {
+            s_Data->SourceChangeTimer = -1.0f;
+
+            // Files added/deleted → regenerate registry, need configure
+            if (s_Data->SourceFilesAdded) {
+                RegenerateScriptRegistry();
+                s_Data->NeedsConfigure = true;
+            }
+            s_Data->SourceFilesAdded = false;
+            s_Data->SourceFilesModified = false;
+
+            // Trigger build
+            if (IsBuildInProgress()) {
+                s_Data->BuildPendingAfterCurrent = true;
+                VE_ENGINE_INFO("Build already in progress, queuing next build...");
+            } else {
+                s_Data->AutoReloadAfterBuild = true;
+                BuildScriptProject();
+            }
+        }
+    }
+}
+
+void ScriptEngine::RequestBuildAndReload() {
+    if (!s_Data || IsBuildInProgress()) return;
+    RegenerateScriptRegistry();
+    s_Data->AutoReloadAfterBuild = true;
+    BuildScriptProject();
+    VE_ENGINE_INFO("Manual build+reload triggered (Ctrl+R)");
+}
+
+void ScriptEngine::SetPlayMode(bool playing) {
+    if (s_Data) s_Data->PlayMode = playing;
+}
+
+void ScriptEngine::SetAutoReloadEnabled(bool enabled) {
+    if (s_Data) s_Data->AutoReloadEnabled = enabled;
+}
+
+bool ScriptEngine::IsAutoReloadEnabled() {
+    return s_Data && s_Data->AutoReloadEnabled;
 }
 
 void ScriptEngine::SetActiveScene(Scene* scene) {
@@ -621,9 +795,6 @@ bool ScriptEngine::BuildScriptProject() {
         return false;
     }
 
-    // Ensure registry is up to date
-    RegenerateScriptRegistry();
-
     s_Data->BuildState = BuildStatus::Building;
     {
         std::lock_guard<std::mutex> lock(s_Data->BuildMutex);
@@ -638,11 +809,21 @@ bool ScriptEngine::BuildScriptProject() {
 
     // Build directory next to exe, not inside Assets
     std::string buildDir = std::filesystem::absolute("ScriptBuild").string();
+    bool needsConfigure = s_Data->NeedsConfigure;
 
-    s_Data->BuildThread = std::thread([projPath, cmakeBin, buildDir]() {
+    // Check if out/ directory exists — if not, must configure
+    if (!std::filesystem::exists(buildDir + "/out")) {
+        needsConfigure = true;
+    }
+
+    // If configure needed, ensure registry is up to date
+    if (needsConfigure) {
+        RegenerateScriptRegistry();
+    }
+
+    s_Data->BuildThread = std::thread([cmakeBin, buildDir, needsConfigure]() {
         std::string output;
 
-        // Helper to run command and capture output
         auto runCmd = [&](const std::string& cmd) -> int {
             std::string fullCmd = "\"" + cmd + "\" 2>&1";
             FILE* pipe = _popen(fullCmd.c_str(), "r");
@@ -656,21 +837,26 @@ bool ScriptEngine::BuildScriptProject() {
             return _pclose(pipe);
         };
 
-        // Configure
-        std::string configCmd = "\"" + cmakeBin + "\" -B \"" + buildDir + "/out\" -S \"" + buildDir + "\" -G \"Visual Studio 17 2022\" -A x64";
-        output += "=== Configuring ===\n";
-        int configResult = runCmd(configCmd);
-        if (configResult != 0) {
-            output += "\n=== Configure FAILED ===\n";
-            {
-                std::lock_guard<std::mutex> lock(s_Data->BuildMutex);
-                s_Data->BuildOutput = output;
+        // Configure — only when needed (first build or files added/removed)
+        if (needsConfigure) {
+            std::string configCmd = "\"" + cmakeBin + "\" -B \"" + buildDir + "/out\" -S \"" + buildDir + "\" -G \"Visual Studio 17 2022\" -A x64";
+            output += "=== Configuring ===\n";
+            int configResult = runCmd(configCmd);
+            if (configResult != 0) {
+                output += "\n=== Configure FAILED ===\n";
+                {
+                    std::lock_guard<std::mutex> lock(s_Data->BuildMutex);
+                    s_Data->BuildOutput = output;
+                }
+                s_Data->BuildState = ScriptEngine::BuildStatus::Failed;
+                return;
             }
-            s_Data->BuildState = BuildStatus::Failed;
-            return;
+            s_Data->NeedsConfigure = false;
+        } else {
+            output += "=== Skipping configure (incremental) ===\n";
         }
 
-        // Build
+        // Build (incremental — only recompiles changed files)
         std::string buildCmd = "\"" + cmakeBin + "\" --build \"" + buildDir + "/out\" --config Debug";
         output += "\n=== Building ===\n";
         int buildResult = runCmd(buildCmd);
@@ -680,20 +866,19 @@ bool ScriptEngine::BuildScriptProject() {
                 std::lock_guard<std::mutex> lock(s_Data->BuildMutex);
                 s_Data->BuildOutput = output;
             }
-            s_Data->BuildState = BuildStatus::Failed;
+            s_Data->BuildState = ScriptEngine::BuildStatus::Failed;
             return;
         }
 
         output += "\n=== Build SUCCESS ===\n";
 
-        // Find built DLL
         std::string dllPath = buildDir + "/out/Debug/GameScripts.dll";
         {
             std::lock_guard<std::mutex> lock(s_Data->BuildMutex);
             s_Data->BuildOutput = output;
             s_Data->BuildDLLOutputPath = dllPath;
         }
-        s_Data->BuildState = BuildStatus::Success;
+        s_Data->BuildState = ScriptEngine::BuildStatus::Success;
     });
 
     return true;
@@ -722,7 +907,6 @@ bool ScriptEngine::BuildScriptProjectSync() {
     RegenerateScriptRegistry();
 
     std::string cmakeBin = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe";
-    // Build directory next to exe, not inside Assets
     std::string buildDir = std::filesystem::absolute("ScriptBuild").string();
     std::string output;
 
@@ -741,19 +925,23 @@ bool ScriptEngine::BuildScriptProjectSync() {
 
     VE_ENGINE_INFO("Building script project (sync)...");
 
-    // Configure
-    std::string configCmd = "\"" + cmakeBin + "\" -B \"" + buildDir + "/out\" -S \"" + buildDir + "\" -G \"Visual Studio 17 2022\" -A x64";
-    VE_ENGINE_INFO("CMake cmd: {0}", configCmd);
-    int configResult = runCmd(configCmd);
-    if (configResult != 0) {
-        VE_ENGINE_ERROR("Script project configure failed (exit {0})", configResult);
-        VE_ENGINE_ERROR("Output:\n{0}", output);
-        s_Data->BuildOutput = output;
-        s_Data->BuildState = BuildStatus::Failed;
-        return false;
+    // Configure — only when needed
+    bool needsConfigure = s_Data->NeedsConfigure || !std::filesystem::exists(buildDir + "/out");
+    if (needsConfigure) {
+        std::string configCmd = "\"" + cmakeBin + "\" -B \"" + buildDir + "/out\" -S \"" + buildDir + "\" -G \"Visual Studio 17 2022\" -A x64";
+        VE_ENGINE_INFO("CMake cmd: {0}", configCmd);
+        int configResult = runCmd(configCmd);
+        if (configResult != 0) {
+            VE_ENGINE_ERROR("Script project configure failed (exit {0})", configResult);
+            VE_ENGINE_ERROR("Output:\n{0}", output);
+            s_Data->BuildOutput = output;
+            s_Data->BuildState = BuildStatus::Failed;
+            return false;
+        }
+        s_Data->NeedsConfigure = false;
     }
 
-    // Build
+    // Build (incremental)
     std::string buildCmd = "\"" + cmakeBin + "\" --build \"" + buildDir + "/out\" --config Debug";
     if (runCmd(buildCmd) != 0) {
         VE_ENGINE_ERROR("Script project build failed");

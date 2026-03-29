@@ -10,6 +10,7 @@ endif()
 # Inject project root so Sandbox can find ScriptProject/ at runtime
 target_compile_definitions(Sandbox PRIVATE
     VE_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+    VE_IMGUI_SOURCE_DIR="${imgui_SOURCE_DIR}"
 )
 
 # Copy scene files from source Assets/ to output directory
