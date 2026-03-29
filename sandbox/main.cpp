@@ -6281,8 +6281,8 @@ private:
         if (ImGui::CollapsingHeader("Shadows (CSM)", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable Shadows", &ps.ShadowEnabled);
             if (ps.ShadowEnabled) {
-                ImGui::SliderFloat("Shadow Bias", &ps.ShadowBias, 0.0f, 0.01f, "%.5f");
-                ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.1f, "%.3f");
+                ImGui::SliderFloat("Shadow Bias", &ps.ShadowBias, 0.0f, 0.1f, "%.4f");
+                ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.5f, "%.3f");
                 const char* pcfModes[] = { "Hard (1x1)", "Soft (3x3)", "Softer (5x5)" };
                 ImGui::Combo("PCF Quality", &ps.ShadowPCFRadius, pcfModes, 3);
             }

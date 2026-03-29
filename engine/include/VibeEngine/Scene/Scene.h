@@ -139,8 +139,8 @@ struct RenderPipelineSettings {
 
     // Shadows (CSM)
     bool ShadowEnabled = true;
-    float ShadowBias = 0.0005f;
-    float ShadowNormalBias = 0.02f;
+    float ShadowBias = 0.02f;
+    float ShadowNormalBias = 0.05f;
     int   ShadowPCFRadius = 1; // 0=hard, 1=3x3, 2=5x5
 
     // Motion Blur

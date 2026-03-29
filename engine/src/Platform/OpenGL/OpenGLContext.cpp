@@ -12,6 +12,31 @@ static void GLAPIENTRY OpenGLDebugCallback(GLenum source, GLenum type, GLuint id
 {
     (void)source; (void)type; (void)id; (void)length; (void)userParam;
 
+    // Collapse repeated identical messages
+    static std::string s_LastMessage;
+    static int s_RepeatCount = 0;
+    std::string msg(message);
+
+    if (msg == s_LastMessage) {
+        s_RepeatCount++;
+        // Only print at powers-of-2 intervals to avoid log flooding
+        if ((s_RepeatCount & (s_RepeatCount - 1)) == 0) { // is power of 2
+            switch (severity) {
+                case GL_DEBUG_SEVERITY_HIGH:   VE_ENGINE_ERROR("[OpenGL] (x{}) {}", s_RepeatCount, message); break;
+                case GL_DEBUG_SEVERITY_MEDIUM: VE_ENGINE_WARN("[OpenGL] (x{}) {}", s_RepeatCount, message);  break;
+                default: break;
+            }
+        }
+        return;
+    }
+
+    // New message — flush previous repeat count if any
+    if (s_RepeatCount > 1) {
+        VE_ENGINE_WARN("[OpenGL] (previous message repeated {} times total)", s_RepeatCount);
+    }
+    s_LastMessage = msg;
+    s_RepeatCount = 1;
+
     switch (severity) {
         case GL_DEBUG_SEVERITY_HIGH:   VE_ENGINE_ERROR("[OpenGL] {}", message); break;
         case GL_DEBUG_SEVERITY_MEDIUM: VE_ENGINE_WARN("[OpenGL] {}", message);  break;
