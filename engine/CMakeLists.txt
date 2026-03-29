@@ -43,10 +43,10 @@ target_compile_definitions(VibeEngineLib PUBLIC
     $<$<CONFIG:Release>:VE_RELEASE>
 )
 
-# ── Copy ShaderLab .shader files to output directory ─────────────────
-# Copy ShaderLab .shader files next to the executable (handles per-config dirs)
+# ── Copy ShaderLab .shader and .glslinc files to output directory ────
+# Copy ShaderLab shader files next to the executable (handles per-config dirs)
 set(VE_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
-file(GLOB VE_SHADER_FILES "${VE_SHADER_DIR}/*.shader")
+file(GLOB VE_SHADER_FILES "${VE_SHADER_DIR}/*.shader" "${VE_SHADER_DIR}/*.glslinc")
 foreach(SHADER_FILE ${VE_SHADER_FILES})
     get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
     add_custom_command(TARGET VibeEngineLib POST_BUILD

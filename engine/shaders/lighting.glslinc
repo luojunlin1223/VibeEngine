@@ -1,0 +1,28 @@
+// VibeEngine shared light uniform declarations
+
+// Directional light
+uniform vec3  u_LightDir;
+uniform vec3  u_LightColor;
+uniform float u_LightIntensity;
+uniform vec3  u_ViewPos;
+
+// Point lights (max 8)
+const int MAX_POINT_LIGHTS = 8;
+uniform int   u_NumPointLights;
+uniform vec3  u_PointLightPositions[MAX_POINT_LIGHTS];
+uniform vec3  u_PointLightColors[MAX_POINT_LIGHTS];
+uniform float u_PointLightIntensities[MAX_POINT_LIGHTS];
+uniform float u_PointLightRanges[MAX_POINT_LIGHTS];
+uniform int   u_PointLightShadowIndex[MAX_POINT_LIGHTS];
+
+// Spot lights (max 4)
+const int MAX_SPOT_LIGHTS = 4;
+uniform int   u_NumSpotLights;
+uniform vec3  u_SpotLightPositions[MAX_SPOT_LIGHTS];
+uniform vec3  u_SpotLightDirections[MAX_SPOT_LIGHTS];
+uniform vec3  u_SpotLightColors[MAX_SPOT_LIGHTS];
+uniform float u_SpotLightIntensities[MAX_SPOT_LIGHTS];
+uniform float u_SpotLightRanges[MAX_SPOT_LIGHTS];
+uniform float u_SpotLightInnerCos[MAX_SPOT_LIGHTS];
+uniform float u_SpotLightOuterCos[MAX_SPOT_LIGHTS];
+uniform int   u_SpotLightShadowIndex[MAX_SPOT_LIGHTS];

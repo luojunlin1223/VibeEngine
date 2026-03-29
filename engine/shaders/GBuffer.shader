@@ -102,7 +102,7 @@ layout(location = 1) out vec4 gNormalRoughness;    // RT1: normal.xyz + roughnes
 layout(location = 2) out vec4 gAlbedoAO;           // RT2: albedo.rgb + ao
 layout(location = 3) out vec4 gEmissionFlags;      // RT3: emission.rgb + flags
 
-// ── Cotangent-frame Normal Mapping ──────────────────────────────────
+// ── Cotangent-frame Normal Mapping (GBuffer variant — uses fragPos, not view dir) ──
 
 mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
     vec3 dp1 = dFdx(p);

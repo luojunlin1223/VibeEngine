@@ -12,6 +12,9 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <set>
+#include <regex>
 
 namespace VE {
 
@@ -787,6 +790,65 @@ std::shared_ptr<Shader> ShaderLabCompiler::Compile(const ShaderLabShader& shader
     return result;
 }
 
+// ── #include Preprocessor ───────────────────────────────────────────
+// Scans GLSL source for #include "filename" directives and replaces them
+// with the contents of the referenced file.  Supports recursive includes
+// with cycle detection.
+
+static std::string PreprocessIncludes(const std::string& source,
+                                      const std::string& baseDir,
+                                      std::set<std::string>& alreadyIncluded) {
+    static const std::regex includeRegex(R"(^\s*#include\s+\"([^\"]+)\"\s*$)");
+
+    std::istringstream stream(source);
+    std::string line;
+    std::string result;
+    result.reserve(source.size());
+
+    while (std::getline(stream, line)) {
+        std::smatch match;
+        if (std::regex_match(line, match, includeRegex)) {
+            std::string filename = match[1].str();
+            std::string fullPath = baseDir + "/" + filename;
+
+            // Normalize path separators
+            std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
+
+            // Cycle detection
+            if (alreadyIncluded.count(fullPath)) {
+                result += "// [ShaderLab] skipped duplicate #include \"" + filename + "\"\n";
+                continue;
+            }
+
+            std::ifstream file(fullPath);
+            if (!file.is_open()) {
+                VE_ENGINE_WARN("ShaderLab: #include \"{}\" not found (searched: {})", filename, fullPath);
+                result += "// [ShaderLab] ERROR: #include \"" + filename + "\" not found\n";
+                continue;
+            }
+
+            std::stringstream ss;
+            ss << file.rdbuf();
+            std::string contents = ss.str();
+
+            alreadyIncluded.insert(fullPath);
+
+            // Recursively preprocess the included file
+            std::string processed = PreprocessIncludes(contents, baseDir, alreadyIncluded);
+
+            result += "// [ShaderLab] begin #include \"" + filename + "\"\n";
+            result += processed;
+            if (!processed.empty() && processed.back() != '\n')
+                result += "\n";
+            result += "// [ShaderLab] end #include \"" + filename + "\"\n";
+        } else {
+            result += line + "\n";
+        }
+    }
+
+    return result;
+}
+
 std::shared_ptr<Shader> ShaderLabCompiler::CompileFile(const std::string& filePath) {
     ShaderLabShader shader;
     std::string error;
@@ -794,6 +856,37 @@ std::shared_ptr<Shader> ShaderLabCompiler::CompileFile(const std::string& filePa
         VE_ENGINE_ERROR("ShaderLab: Failed to parse '{}': {}", filePath, error);
         return nullptr;
     }
+
+    // Determine the base directory for #include resolution
+    std::string baseDir;
+    {
+        std::filesystem::path p(filePath);
+        if (p.has_parent_path())
+            baseDir = p.parent_path().string();
+        else
+            baseDir = "shaders"; // fallback
+        std::replace(baseDir.begin(), baseDir.end(), '\\', '/');
+    }
+
+    // Preprocess #include directives in each pass's raw GLSL, then re-extract
+    for (auto& subShader : shader.SubShaders) {
+        for (auto& pass : subShader.Passes) {
+            if (pass.RawGLSL.empty()) continue;
+
+            // Check if any #include directives exist before doing regex work
+            if (pass.RawGLSL.find("#include") != std::string::npos) {
+                std::set<std::string> included;
+                pass.RawGLSL = PreprocessIncludes(pass.RawGLSL, baseDir, included);
+
+                // Re-extract vertex/fragment sources with the expanded GLSL
+                pass.VertexSource.clear();
+                pass.FragmentSource.clear();
+                ExtractGLSL(pass.RawGLSL, pass.VertexEntry, pass.FragmentEntry,
+                             pass.VertexSource, pass.FragmentSource);
+            }
+        }
+    }
+
     return Compile(shader);
 }
 
