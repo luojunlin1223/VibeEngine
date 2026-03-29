@@ -1385,6 +1385,16 @@ void Scene::OnRender(const glm::mat4& viewProjection, const glm::vec3& cameraPos
         auto shader = mr.Mat->GetShader();
         if (!shader) return;
 
+        // DEBUG: log shader usage once per unique material
+        {
+            static std::set<std::string> s_loggedMats;
+            if (s_loggedMats.find(mr.Mat->GetName()) == s_loggedMats.end()) {
+                s_loggedMats.insert(mr.Mat->GetName());
+                VE_ENGINE_INFO("[DEBUG] Rendering with material='{}' shader='{}'",
+                    mr.Mat->GetName(), shader->GetName());
+            }
+        }
+
         // Ensure correct GL state for individual draws (material's ApplyRenderState
         // may set Cull Front or disable cull for some shaders — restore defaults)
         glEnable(GL_CULL_FACE);

@@ -19,6 +19,7 @@ std::shared_ptr<VertexArray> MeshLibrary::s_Triangle;
 std::shared_ptr<VertexArray> MeshLibrary::s_Quad;
 std::shared_ptr<VertexArray> MeshLibrary::s_Cube;
 std::shared_ptr<VertexArray> MeshLibrary::s_Sphere;
+std::shared_ptr<VertexArray> MeshLibrary::s_Plane;
 std::shared_ptr<VertexArray> MeshLibrary::s_SkySphere;
 std::shared_ptr<Shader>      MeshLibrary::s_DefaultShader;
 std::shared_ptr<Shader>      MeshLibrary::s_LitShader;
@@ -500,6 +501,64 @@ void MeshLibrary::Init() {
             static_cast<uint32_t>(indices.size())));
     }
 
+    // ── Plane (XZ horizontal, 10x10 subdivisions, lit layout) ────────
+    {
+        const int subdivs = 10;
+        const float halfSize = 0.5f;
+        std::vector<float> vertices;
+        std::vector<uint32_t> indices;
+
+        vertices.reserve(static_cast<size_t>((subdivs + 1) * (subdivs + 1)) * 11);
+        indices.reserve(static_cast<size_t>(subdivs * subdivs) * 6);
+
+        for (int z = 0; z <= subdivs; z++) {
+            for (int x = 0; x <= subdivs; x++) {
+                float px = -halfSize + static_cast<float>(x) / static_cast<float>(subdivs);
+                float pz = -halfSize + static_cast<float>(z) / static_cast<float>(subdivs);
+                float u  = static_cast<float>(x) / static_cast<float>(subdivs);
+                float v  = static_cast<float>(z) / static_cast<float>(subdivs);
+
+                vertices.push_back(px);   // pos
+                vertices.push_back(0.0f);
+                vertices.push_back(pz);
+                vertices.push_back(0.0f);  // normal (up)
+                vertices.push_back(1.0f);
+                vertices.push_back(0.0f);
+                vertices.push_back(1.0f);  // color (white)
+                vertices.push_back(1.0f);
+                vertices.push_back(1.0f);
+                vertices.push_back(u);     // uv
+                vertices.push_back(v);
+            }
+        }
+
+        for (int z = 0; z < subdivs; z++) {
+            for (int x = 0; x < subdivs; x++) {
+                uint32_t a = static_cast<uint32_t>(z * (subdivs + 1) + x);
+                uint32_t b = a + static_cast<uint32_t>(subdivs + 1);
+                indices.push_back(a);
+                indices.push_back(b);
+                indices.push_back(a + 1);
+                indices.push_back(a + 1);
+                indices.push_back(b);
+                indices.push_back(b + 1);
+            }
+        }
+
+        s_Plane = VertexArray::Create();
+        auto vb = VertexBuffer::Create(vertices.data(),
+            static_cast<uint32_t>(vertices.size() * sizeof(float)));
+        vb->SetLayout({
+            { ShaderDataType::Float3, "a_Position" },
+            { ShaderDataType::Float3, "a_Normal"   },
+            { ShaderDataType::Float3, "a_Color"    },
+            { ShaderDataType::Float2, "a_TexCoord" },
+        });
+        s_Plane->AddVertexBuffer(vb);
+        s_Plane->SetIndexBuffer(IndexBuffer::Create(indices.data(),
+            static_cast<uint32_t>(indices.size())));
+    }
+
     // ── Sky Sphere (position-only, inside-facing for sky rendering) ─
     {
         const int rings = 32;
@@ -634,17 +693,6 @@ void MeshLibrary::Init() {
             MaterialLibrary::Register(skyMat);
         }
 
-        // PBR material
-        auto pbrShader = Shader::CreateFromFile("shaders/PBR.shader");
-        if (pbrShader) {
-            pbrShader->SetName("PBR");
-            ShaderLibrary::Register("PBR", pbrShader);
-            auto pbrMat = Material::Create("PBR", pbrShader);
-            pbrMat->SetLit(true);
-            pbrMat->PopulateFromShader();
-            MaterialLibrary::Register(pbrMat);
-        }
-
         // Water material
         auto waterShader = Shader::CreateFromFile("shaders/Water.shader");
         if (waterShader) {
@@ -668,7 +716,7 @@ void MeshLibrary::Init() {
         }
     }
 
-    VE_ENGINE_INFO("MeshLibrary initialized (Triangle, Quad, Cube, Sphere)");
+    VE_ENGINE_INFO("MeshLibrary initialized (Triangle, Quad, Cube, Sphere, Plane)");
 }
 
 void MeshLibrary::Shutdown() {
@@ -678,6 +726,7 @@ void MeshLibrary::Shutdown() {
     s_Quad.reset();
     s_Cube.reset();
     s_Sphere.reset();
+    s_Plane.reset();
     s_SkySphere.reset();
     s_DefaultShader.reset();
     s_LitShader.reset();
@@ -689,13 +738,14 @@ std::shared_ptr<VertexArray> MeshLibrary::GetTriangle() { return s_Triangle; }
 std::shared_ptr<VertexArray> MeshLibrary::GetQuad()     { return s_Quad; }
 std::shared_ptr<VertexArray> MeshLibrary::GetCube()     { return s_Cube; }
 std::shared_ptr<VertexArray> MeshLibrary::GetSphere()    { return s_Sphere; }
+std::shared_ptr<VertexArray> MeshLibrary::GetPlane()     { return s_Plane; }
 std::shared_ptr<VertexArray> MeshLibrary::GetSkySphere() { return s_SkySphere; }
 std::shared_ptr<Shader>      MeshLibrary::GetDefaultShader() { return s_DefaultShader; }
 std::shared_ptr<Shader>      MeshLibrary::GetLitShader()     { return s_LitShader; }
 std::shared_ptr<Shader>      MeshLibrary::GetSkyShader()     { return s_SkyShader; }
 
 const char* MeshLibrary::GetMeshName(int index) {
-    static const char* names[] = { "Triangle", "Quad", "Cube", "Sphere" };
+    static const char* names[] = { "Triangle", "Quad", "Cube", "Sphere", "Plane" };
     if (index >= 0 && index < GetMeshCount()) return names[index];
     return "Unknown";
 }
@@ -706,15 +756,16 @@ std::shared_ptr<VertexArray> MeshLibrary::GetMeshByIndex(int index) {
         case 1: return s_Quad;
         case 2: return s_Cube;
         case 3: return s_Sphere;
+        case 4: return s_Plane;
         default: return nullptr;
     }
 }
 
 bool MeshLibrary::IsLitMesh(int index) {
-    return index >= 2; // Cube (2) and Sphere (3) use lit shader
+    return index >= 2; // Cube (2), Sphere (3), Plane (4) use lit shader
 }
 
-int MeshLibrary::GetMeshCount() { return 4; }
+int MeshLibrary::GetMeshCount() { return 5; }
 
 AABB MeshLibrary::GetMeshAABB(int index) {
     AABB box;
@@ -731,6 +782,10 @@ AABB MeshLibrary::GetMeshAABB(int index) {
         case 3: // Sphere
             box.Min = glm::vec3(-1.0f, -1.0f, -1.0f);
             box.Max = glm::vec3( 1.0f,  1.0f,  1.0f);
+            break;
+        case 4: // Plane
+            box.Min = glm::vec3(-0.5f, 0.0f, -0.5f);
+            box.Max = glm::vec3( 0.5f, 0.0f,  0.5f);
             break;
         default:
             box.Min = glm::vec3(-0.5f);

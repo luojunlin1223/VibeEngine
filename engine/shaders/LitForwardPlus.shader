@@ -239,7 +239,7 @@ float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {
     else if (depthValue < u_CascadeSplits.y)
         cascade = 1;
 
-    vec3 biasedPos = fragPos + normal * u_ShadowNormalBias * (1.0 + float(cascade));
+    vec3 biasedPos = fragPos + normal * u_ShadowNormalBias;
 
     vec4 fragPosLightSpace = u_LightSpaceMatrices[cascade] * vec4(biasedPos, 1.0);
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;

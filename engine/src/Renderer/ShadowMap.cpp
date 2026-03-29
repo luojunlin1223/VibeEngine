@@ -153,45 +153,30 @@ void ShadowMap::ComputeCascades(const glm::mat4& viewMatrix,
 
         auto corners = GetFrustumCornersWorldSpace(cascadeVP);
 
-        // Compute frustum center
+        // Compute frustum center and bounding sphere radius
         glm::vec3 center(0.0f);
         for (const auto& c : corners)
             center += glm::vec3(c);
         center /= static_cast<float>(corners.size());
 
-        // Light view matrix looking at the center from light direction
+        float radius = 0.0f;
+        for (const auto& c : corners)
+            radius = std::max(radius, glm::length(glm::vec3(c) - center));
+
+        // Light view: place light far enough away (beyond bounding sphere)
         glm::vec3 lightDirN = glm::normalize(lightDir);
-        glm::mat4 lightView = glm::lookAt(center + lightDirN * 50.0f, center, glm::vec3(0, 1, 0));
+        float lightDist = radius * 3.0f;
+        glm::vec3 lightEye = center + lightDirN * lightDist;
+        glm::vec3 up(0, 1, 0);
+        if (std::abs(glm::dot(lightDirN, up)) > 0.99f)
+            up = glm::vec3(0, 0, 1);
+        glm::mat4 lightView = glm::lookAt(lightEye, center, up);
 
-        // Handle edge case: light direction nearly parallel to up vector
-        if (std::abs(glm::dot(lightDirN, glm::vec3(0, 1, 0))) > 0.99f)
-            lightView = glm::lookAt(center + lightDirN * 50.0f, center, glm::vec3(0, 0, 1));
+        // Use sphere radius for XY, fixed Z range centered on light distance
+        float zNear = 0.0f;
+        float zFar  = lightDist + radius * 3.0f; // cover objects behind center too
 
-        // Find bounding box of frustum corners in light space
-        float minX =  std::numeric_limits<float>::max();
-        float maxX = -std::numeric_limits<float>::max();
-        float minY =  std::numeric_limits<float>::max();
-        float maxY = -std::numeric_limits<float>::max();
-        float minZ =  std::numeric_limits<float>::max();
-        float maxZ = -std::numeric_limits<float>::max();
-
-        for (const auto& c : corners) {
-            glm::vec4 lc = lightView * c;
-            minX = std::min(minX, lc.x);
-            maxX = std::max(maxX, lc.x);
-            minY = std::min(minY, lc.y);
-            maxY = std::max(maxY, lc.y);
-            minZ = std::min(minZ, lc.z);
-            maxZ = std::max(maxZ, lc.z);
-        }
-
-        // Extend Z range to include shadow casters behind the frustum
-        float zExtent = maxZ - minZ;
-        minZ -= zExtent * 2.0f;
-        maxZ += zExtent * 0.5f;
-
-        // Orthographic projection that tightly fits the cascade
-        glm::mat4 lightProj = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+        glm::mat4 lightProj = glm::ortho(-radius, radius, -radius, radius, zNear, zFar);
 
         // Stabilize shadow map: snap to texel grid to reduce shimmer
         glm::mat4 shadowMatrix = lightProj * lightView;

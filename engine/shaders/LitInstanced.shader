@@ -211,14 +211,14 @@ float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir) {
     if (depthValue < u_CascadeSplits.x) cascade = 0;
     else if (depthValue < u_CascadeSplits.y) cascade = 1;
 
-    vec3 biasedPos = fragPos + normal * u_ShadowNormalBias * (1.0 + float(cascade));
+    vec3 biasedPos = fragPos + normal * u_ShadowNormalBias;
     vec4 fragPosLightSpace = u_LightSpaceMatrices[cascade] * vec4(biasedPos, 1.0);
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
-    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
-        projCoords.y < 0.0 || projCoords.y > 1.0 ||
-        projCoords.z > 1.0)
+    // Z check is required (depth comparison against border=1.0 fails for z>1)
+    // XY is handled by texture border clamp
+    if (projCoords.z > 1.0 || projCoords.z < 0.0)
         return 1.0;
 
     float cosTheta = max(dot(normal, lightDir), 0.0);
