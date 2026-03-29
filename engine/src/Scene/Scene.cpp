@@ -3,7 +3,6 @@
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
-#include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/VideoPlayer.h"
@@ -45,7 +44,7 @@ static const char* s_PointLightPositions[]  = { "u_PointLightPositions[0]", "u_P
 static const char* s_PointLightColors[]     = { "u_PointLightColors[0]", "u_PointLightColors[1]", "u_PointLightColors[2]", "u_PointLightColors[3]", "u_PointLightColors[4]", "u_PointLightColors[5]", "u_PointLightColors[6]", "u_PointLightColors[7]" };
 static const char* s_PointLightIntensities[] = { "u_PointLightIntensities[0]", "u_PointLightIntensities[1]", "u_PointLightIntensities[2]", "u_PointLightIntensities[3]", "u_PointLightIntensities[4]", "u_PointLightIntensities[5]", "u_PointLightIntensities[6]", "u_PointLightIntensities[7]" };
 static const char* s_PointLightRanges[]     = { "u_PointLightRanges[0]", "u_PointLightRanges[1]", "u_PointLightRanges[2]", "u_PointLightRanges[3]", "u_PointLightRanges[4]", "u_PointLightRanges[5]", "u_PointLightRanges[6]", "u_PointLightRanges[7]" };
-static const char* s_PointLightShadowIndex[] = { "u_PointLightShadowIndex[0]", "u_PointLightShadowIndex[1]", "u_PointLightShadowIndex[2]", "u_PointLightShadowIndex[3]", "u_PointLightShadowIndex[4]", "u_PointLightShadowIndex[5]", "u_PointLightShadowIndex[6]", "u_PointLightShadowIndex[7]" };
+
 
 static const char* s_SpotLightPositions[]   = { "u_SpotLightPositions[0]", "u_SpotLightPositions[1]", "u_SpotLightPositions[2]", "u_SpotLightPositions[3]" };
 static const char* s_SpotLightDirections[]  = { "u_SpotLightDirections[0]", "u_SpotLightDirections[1]", "u_SpotLightDirections[2]", "u_SpotLightDirections[3]" };
@@ -54,67 +53,19 @@ static const char* s_SpotLightIntensities[] = { "u_SpotLightIntensities[0]", "u_
 static const char* s_SpotLightRanges[]      = { "u_SpotLightRanges[0]", "u_SpotLightRanges[1]", "u_SpotLightRanges[2]", "u_SpotLightRanges[3]" };
 static const char* s_SpotLightInnerCos[]    = { "u_SpotLightInnerCos[0]", "u_SpotLightInnerCos[1]", "u_SpotLightInnerCos[2]", "u_SpotLightInnerCos[3]" };
 static const char* s_SpotLightOuterCos[]    = { "u_SpotLightOuterCos[0]", "u_SpotLightOuterCos[1]", "u_SpotLightOuterCos[2]", "u_SpotLightOuterCos[3]" };
-static const char* s_SpotLightShadowIndex[] = { "u_SpotLightShadowIndex[0]", "u_SpotLightShadowIndex[1]", "u_SpotLightShadowIndex[2]", "u_SpotLightShadowIndex[3]" };
-
-static const char* s_LightSpaceMatrices[]   = { "u_LightSpaceMatrices[0]", "u_LightSpaceMatrices[1]", "u_LightSpaceMatrices[2]", "u_LightSpaceMatrices[3]" };
-
-static const char* s_SpotShadowMaps[]            = { "u_SpotShadowMaps[0]", "u_SpotShadowMaps[1]" };
-static const char* s_SpotLightSpaceMatrices[]     = { "u_SpotLightSpaceMatrices[0]", "u_SpotLightSpaceMatrices[1]" };
-static const char* s_PointShadowCubeMaps[]        = { "u_PointShadowCubeMaps[0]", "u_PointShadowCubeMaps[1]" };
-static const char* s_PointShadowFarPlanes[]       = { "u_PointShadowFarPlanes[0]", "u_PointShadowFarPlanes[1]" };
-
 static const char* s_TerrainLayers[] = { "u_Layer0", "u_Layer1", "u_Layer2", "u_Layer3" };
 
-// ── Dummy depth textures for shadow samplers when no shadows are active ──
-// Prevents OpenGL warnings about sampling non-depth textures with shadow samplers.
-static GLuint s_DummyDepthTex2D = 0;      // for sampler2DShadow (spot shadows)
-static GLuint s_DummyDepthTexCube = 0;     // for samplerCube (point shadows - depth format)
-static GLuint s_DummyDepthTexArray = 0;    // for sampler2DArrayShadow (CSM)
+// ── Dummy textures for unused sampler slots ──
 static GLuint s_DummyColorTexCube = 0;     // for samplerCube (reflection probes - color format)
 
-static void EnsureDummyShadowTextures() {
-    if (s_DummyDepthTex2D != 0) return;
+static void EnsureDummyTextures() {
+    if (s_DummyColorTexCube != 0) return;
 
-    // Save active texture unit — texture creation below will pollute it
     GLint savedActiveTexture;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &savedActiveTexture);
-    glActiveTexture(GL_TEXTURE0); // use unit 0 for creation to avoid polluting shadow units
+    glActiveTexture(GL_TEXTURE0);
 
-    // 1x1 depth texture for sampler2DShadow
-    glGenTextures(1, &s_DummyDepthTex2D);
-    glBindTexture(GL_TEXTURE_2D, s_DummyDepthTex2D);
-    float one = 1.0f;
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    // 1x1 depth cubemap for samplerCube (point shadows use manual depth compare)
-    glGenTextures(1, &s_DummyDepthTexCube);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyDepthTexCube);
-    for (int i = 0; i < 6; ++i)
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-    // 1x1x1 depth texture array for sampler2DArrayShadow (CSM)
-    glGenTextures(1, &s_DummyDepthTexArray);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, s_DummyDepthTexArray);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, 1, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &one);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    // 1x1 color cubemap for samplerCube (reflection probes - RGBA format, not depth)
+    // 1x1 color cubemap for samplerCube (reflection probes - RGBA format)
     glGenTextures(1, &s_DummyColorTexCube);
     glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyColorTexCube);
     unsigned char black[4] = {0, 0, 0, 255};
@@ -126,41 +77,12 @@ static void EnsureDummyShadowTextures() {
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-    // Unbind all targets and restore active unit
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
     glActiveTexture(savedActiveTexture);
 }
 
-static void BindDummyShadowTextures(const std::shared_ptr<Shader>& shader,
-                                     int numSpotShadows, int numPointShadows,
-                                     bool hasShadowMap) {
-    EnsureDummyShadowTextures();
-
-    // Bind dummy CSM shadow map to unit 8 if no directional shadow
-    if (!hasShadowMap) {
-        glActiveTexture(GL_TEXTURE8);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, s_DummyDepthTexArray);
-        shader->SetInt("u_ShadowMap", 8);
-    }
-
-    // Bind dummy spot shadow textures to units 9, 10
-    for (int i = numSpotShadows; i < 2; ++i) {
-        int texUnit = 9 + i;
-        glActiveTexture(GL_TEXTURE0 + texUnit);
-        glBindTexture(GL_TEXTURE_2D, s_DummyDepthTex2D);
-        shader->SetInt(s_SpotShadowMaps[i], texUnit);
-    }
-
-    // Bind dummy point shadow cubemaps to units 11, 12
-    for (int i = numPointShadows; i < 2; ++i) {
-        int texUnit = 11 + i;
-        glActiveTexture(GL_TEXTURE0 + texUnit);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, s_DummyDepthTexCube);
-        shader->SetInt(s_PointShadowCubeMaps[i], texUnit);
-        shader->SetFloat(s_PointShadowFarPlanes[i], 100.0f);
-    }
+static void BindDummyReflectionProbe(const std::shared_ptr<Shader>& shader) {
+    EnsureDummyTextures();
 
     // Bind dummy color cubemap for reflection probe (unit 13)
     glActiveTexture(GL_TEXTURE0 + 13);
@@ -868,181 +790,6 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
     glCullFace(GL_BACK);
 }
 
-void Scene::ComputeShadows(const glm::mat4& viewMatrix,
-                            const glm::mat4& projMatrix,
-                            float nearClip, float farClip) {
-    m_ShadowsComputed = false;
-    m_NumSpotShadows = 0;
-    m_NumPointShadows = 0;
-
-    // Always cache camera matrices (needed by Forward+ light culling even when shadows are off)
-    m_CachedViewMatrix = viewMatrix;
-    m_CachedProjMatrix = projMatrix;
-
-    if (!m_PipelineSettings.ShadowEnabled)
-        return;
-
-    // Find directional light
-    glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
-    {
-        auto lightView = m_Registry.view<DirectionalLightComponent>();
-        for (auto lightEntity : lightView) {
-            auto& dl = lightView.get<DirectionalLightComponent>(lightEntity);
-            glm::vec3 dir(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
-            float len = glm::length(dir);
-            if (len > 0.0001f)
-                lightDir = dir / len;
-            break;
-        }
-    }
-
-    // Create shadow map lazily
-    if (!m_ShadowMap)
-        m_ShadowMap = std::make_unique<ShadowMap>();
-
-    m_CachedViewMatrix = viewMatrix;
-    m_CachedProjMatrix = projMatrix;
-    m_ShadowMap->ComputeCascades(viewMatrix, projMatrix, lightDir, nearClip, farClip);
-
-    // Render depth for each cascade
-    auto depthShader = m_ShadowMap->GetDepthShader();
-    if (!depthShader) return;
-
-    auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
-
-    for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c) {
-        m_ShadowMap->BeginPass(c);
-        depthShader->Bind();
-        depthShader->SetMat4("u_LightSpaceMatrix", m_ShadowMap->GetLightSpaceMatrix(c));
-
-        for (auto entityID : meshView) {
-            if (!IsEntityActiveInHierarchy(entityID)) continue;
-            auto [tc, mr] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
-            if (!mr.Mesh || !mr.CastShadows) continue;
-
-            std::shared_ptr<VertexArray> shadowVAO = mr.Mesh;
-            if (m_Registry.all_of<AnimatorComponent>(entityID)) {
-                auto& ac = m_Registry.get<AnimatorComponent>(entityID);
-                if (ac._Animator && ac._Animator->GetSkinnedVAO())
-                    shadowVAO = ac._Animator->GetSkinnedVAO();
-            }
-
-            glm::mat4 model = GetWorldTransform(entityID);
-            depthShader->SetMat4("u_Model", model);
-            RenderCommand::DrawIndexed(shadowVAO);
-        }
-
-        m_ShadowMap->EndPass();
-    }
-
-    // ── Spot light shadow passes (max 2) ────────────────────────────────
-    m_NumSpotShadows = 0;
-    {
-        auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
-        for (auto slEntity : slView) {
-            if (m_NumSpotShadows >= MAX_SPOT_SHADOW_LIGHTS) break;
-            if (!IsEntityActiveInHierarchy(slEntity)) continue;
-            auto [stc, sl] = slView.get<TransformComponent, SpotLightComponent>(slEntity);
-            if (!sl.CastShadows) continue;
-
-            int idx = m_NumSpotShadows;
-            if (!m_SpotShadowMaps[idx])
-                m_SpotShadowMaps[idx] = std::make_unique<SpotLightShadowMap>();
-
-            glm::mat4 worldMat = GetWorldTransform(slEntity);
-            glm::vec3 spotPos = glm::vec3(worldMat[3]);
-            // Transform local direction by entity rotation
-            glm::vec3 spotDir = glm::normalize(glm::mat3(worldMat) *
-                glm::vec3(sl.Direction[0], sl.Direction[1], sl.Direction[2]));
-
-            m_SpotShadowMaps[idx]->ComputeMatrix(spotPos, spotDir, sl.OuterAngle, sl.Range);
-
-            auto spotDepthShader = m_SpotShadowMaps[idx]->GetDepthShader();
-            if (!spotDepthShader) continue;
-
-            m_SpotShadowMaps[idx]->BeginPass();
-            spotDepthShader->Bind();
-            spotDepthShader->SetMat4("u_LightSpaceMatrix", m_SpotShadowMaps[idx]->GetLightSpaceMatrix());
-
-            for (auto entityID : meshView) {
-                if (!IsEntityActiveInHierarchy(entityID)) continue;
-                auto [tc2, mr2] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
-                if (!mr2.Mesh || !mr2.CastShadows) continue;
-
-                std::shared_ptr<VertexArray> shadowVAO = mr2.Mesh;
-                if (m_Registry.all_of<AnimatorComponent>(entityID)) {
-                    auto& ac = m_Registry.get<AnimatorComponent>(entityID);
-                    if (ac._Animator && ac._Animator->GetSkinnedVAO())
-                        shadowVAO = ac._Animator->GetSkinnedVAO();
-                }
-
-                glm::mat4 model = GetWorldTransform(entityID);
-                spotDepthShader->SetMat4("u_Model", model);
-                RenderCommand::DrawIndexed(shadowVAO);
-            }
-
-            m_SpotShadowMaps[idx]->EndPass();
-            m_NumSpotShadows++;
-        }
-    }
-
-    // ── Point light shadow passes (max 2, 6 faces each) ─────────────────
-    m_NumPointShadows = 0;
-    {
-        auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
-        for (auto plEntity : plView) {
-            if (m_NumPointShadows >= MAX_POINT_SHADOW_LIGHTS) break;
-            if (!IsEntityActiveInHierarchy(plEntity)) continue;
-            auto [ptc, pl] = plView.get<TransformComponent, PointLightComponent>(plEntity);
-            if (!pl.CastShadows) continue;
-
-            int idx = m_NumPointShadows;
-            if (!m_PointShadowMaps[idx])
-                m_PointShadowMaps[idx] = std::make_unique<PointLightShadowMap>();
-
-            glm::mat4 worldMat = GetWorldTransform(plEntity);
-            glm::vec3 lightPos = glm::vec3(worldMat[3]);
-            float farPlane = pl.Range;
-
-            m_PointShadowMaps[idx]->ComputeMatrices(lightPos, farPlane);
-
-            auto pointDepthShader = m_PointShadowMaps[idx]->GetDepthShader();
-            if (!pointDepthShader) continue;
-
-            for (int face = 0; face < 6; ++face) {
-                m_PointShadowMaps[idx]->BeginPass(face);
-                pointDepthShader->Bind();
-                pointDepthShader->SetMat4("u_LightSpaceMatrix", m_PointShadowMaps[idx]->GetLightSpaceMatrix(face));
-                pointDepthShader->SetVec3("u_LightPos", lightPos);
-                pointDepthShader->SetFloat("u_FarPlane", farPlane);
-
-                for (auto entityID : meshView) {
-                    if (!IsEntityActiveInHierarchy(entityID)) continue;
-                    auto [tc2, mr2] = meshView.get<TransformComponent, MeshRendererComponent>(entityID);
-                    if (!mr2.Mesh || !mr2.CastShadows) continue;
-
-                    std::shared_ptr<VertexArray> shadowVAO = mr2.Mesh;
-                    if (m_Registry.all_of<AnimatorComponent>(entityID)) {
-                        auto& ac = m_Registry.get<AnimatorComponent>(entityID);
-                        if (ac._Animator && ac._Animator->GetSkinnedVAO())
-                            shadowVAO = ac._Animator->GetSkinnedVAO();
-                    }
-
-                    glm::mat4 model = GetWorldTransform(entityID);
-                    pointDepthShader->SetMat4("u_Model", model);
-                    RenderCommand::DrawIndexed(shadowVAO);
-                }
-
-                m_PointShadowMaps[idx]->EndPass();
-            }
-
-            m_NumPointShadows++;
-        }
-    }
-
-    m_ShadowsComputed = true;
-}
-
 
 // ── Deferred Rendering ─────────────────────────────────────────────
 
@@ -1087,9 +834,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     glm::vec3 pointColors[MAX_POINT_LIGHTS] = {};
     float     pointIntensities[MAX_POINT_LIGHTS] = {};
     float     pointRanges[MAX_POINT_LIGHTS] = {};
-    int       pointShadowIndex[MAX_POINT_LIGHTS] = {};
     {
-        int shadowIdx = 0;
         auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto plEntity : plView) {
             if (numPointLights >= MAX_POINT_LIGHTS) break;
@@ -1100,10 +845,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             pointColors[numPointLights]      = glm::vec3(pl.Color[0], pl.Color[1], pl.Color[2]);
             pointIntensities[numPointLights] = pl.Intensity;
             pointRanges[numPointLights]      = pl.Range;
-            if (pl.CastShadows && shadowIdx < m_NumPointShadows)
-                pointShadowIndex[numPointLights] = shadowIdx++;
-            else
-                pointShadowIndex[numPointLights] = -1;
             numPointLights++;
         }
     }
@@ -1117,9 +858,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float     spotRanges[MAX_SPOT_LIGHTS] = {};
     float     spotInnerCos[MAX_SPOT_LIGHTS] = {};
     float     spotOuterCos[MAX_SPOT_LIGHTS] = {};
-    int       spotShadowIndex[MAX_SPOT_LIGHTS] = {};
     {
-        int shadowIdx = 0;
         auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
         for (auto slEntity : slView) {
             if (numSpotLights >= MAX_SPOT_LIGHTS) break;
@@ -1134,10 +873,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             spotRanges[numSpotLights]      = sl.Range;
             spotInnerCos[numSpotLights]    = std::cos(glm::radians(sl.InnerAngle));
             spotOuterCos[numSpotLights]    = std::cos(glm::radians(sl.OuterAngle));
-            if (sl.CastShadows && shadowIdx < m_NumSpotShadows)
-                spotShadowIndex[numSpotLights] = shadowIdx++;
-            else
-                spotShadowIndex[numSpotLights] = -1;
             numSpotLights++;
         }
     }
@@ -1149,29 +884,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         shader->SetFloat("u_LightIntensity", lightIntensity);
         shader->SetVec3("u_ViewPos", cameraPos);
 
-        // Bind dummy depth textures FIRST to fill unused shadow sampler slots
-        bool hasSM = m_ShadowsComputed && m_ShadowMap != nullptr;
-        BindDummyShadowTextures(shader, m_NumSpotShadows, m_NumPointShadows, hasSM);
-
-        if (m_ShadowsComputed && m_ShadowMap) {
-            shader->SetInt("u_ShadowEnabled", 1);
-            shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
-            shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
-            shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
-            shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
-            for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c)
-                shader->SetMat4(s_LightSpaceMatrices[c], m_ShadowMap->GetLightSpaceMatrix(c));
-            shader->SetVec3("u_CascadeSplits",
-                glm::vec3(m_ShadowMap->GetCascadeSplit(0),
-                          m_ShadowMap->GetCascadeSplit(1),
-                          m_ShadowMap->GetCascadeSplit(2)));
-
-            // Bind REAL shadow textures AFTER dummies — ensures they win
-            m_ShadowMap->BindForReading(8);
-            shader->SetInt("u_ShadowMap", 8);
-        } else {
-            shader->SetInt("u_ShadowEnabled", 0);
-        }
+        BindDummyReflectionProbe(shader);
 
         shader->SetInt("u_NumPointLights", numPointLights);
         for (int i = 0; i < numPointLights; ++i) {
@@ -1179,7 +892,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetVec3(s_PointLightColors[i], pointColors[i]);
             shader->SetFloat(s_PointLightIntensities[i], pointIntensities[i]);
             shader->SetFloat(s_PointLightRanges[i], pointRanges[i]);
-            shader->SetInt(s_PointLightShadowIndex[i], pointShadowIndex[i]);
         }
 
         shader->SetInt("u_NumSpotLights", numSpotLights);
@@ -1191,25 +903,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetFloat(s_SpotLightRanges[i], spotRanges[i]);
             shader->SetFloat(s_SpotLightInnerCos[i], spotInnerCos[i]);
             shader->SetFloat(s_SpotLightOuterCos[i], spotOuterCos[i]);
-            shader->SetInt(s_SpotLightShadowIndex[i], spotShadowIndex[i]);
-        }
-
-        shader->SetInt("u_NumSpotShadows", m_NumSpotShadows);
-        for (int i = 0; i < m_NumSpotShadows; ++i) {
-            if (!m_SpotShadowMaps[i]) continue;
-            int texUnit = 9 + i;
-            m_SpotShadowMaps[i]->BindForReading(texUnit);
-            shader->SetInt(s_SpotShadowMaps[i], texUnit);
-            shader->SetMat4(s_SpotLightSpaceMatrices[i], m_SpotShadowMaps[i]->GetLightSpaceMatrix());
-        }
-
-        shader->SetInt("u_NumPointShadows", m_NumPointShadows);
-        for (int i = 0; i < m_NumPointShadows; ++i) {
-            if (!m_PointShadowMaps[i]) continue;
-            int texUnit = 11 + i;
-            m_PointShadowMaps[i]->BindForReading(texUnit);
-            shader->SetInt(s_PointShadowCubeMaps[i], texUnit);
-            shader->SetFloat(s_PointShadowFarPlanes[i], m_PointShadowMaps[i]->GetFarPlane());
         }
     };
 
@@ -1415,30 +1108,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetVec3("u_LightColor", lightColor);
             shader->SetFloat("u_LightIntensity", lightIntensity);
             shader->SetVec3("u_ViewPos", cameraPos);
-            if (m_ShadowsComputed && m_ShadowMap) {
-                shader->SetInt("u_ShadowEnabled", 1);
-                m_ShadowMap->BindForReading(8);
-                shader->SetInt("u_ShadowMap", 8);
-                shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
-                shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
-                shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
-                shader->SetMat4("u_ViewMatrix", m_CachedViewMatrix);
-                for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c)
-                    shader->SetMat4(s_LightSpaceMatrices[c], m_ShadowMap->GetLightSpaceMatrix(c));
-                shader->SetVec3("u_CascadeSplits",
-                    glm::vec3(m_ShadowMap->GetCascadeSplit(0),
-                              m_ShadowMap->GetCascadeSplit(1),
-                              m_ShadowMap->GetCascadeSplit(2)));
-            } else {
-                shader->SetInt("u_ShadowEnabled", 0);
-            }
             shader->SetInt("u_NumPointLights", numPointLights);
             for (int i = 0; i < numPointLights; ++i) {
                 shader->SetVec3(s_PointLightPositions[i], pointPositions[i]);
                 shader->SetVec3(s_PointLightColors[i], pointColors[i]);
                 shader->SetFloat(s_PointLightIntensities[i], pointIntensities[i]);
                 shader->SetFloat(s_PointLightRanges[i], pointRanges[i]);
-                shader->SetInt(s_PointLightShadowIndex[i], pointShadowIndex[i]);
             }
             shader->SetInt("u_NumSpotLights", numSpotLights);
             for (int i = 0; i < numSpotLights; ++i) {
@@ -1449,7 +1124,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 shader->SetFloat(s_SpotLightRanges[i], spotRanges[i]);
                 shader->SetFloat(s_SpotLightInnerCos[i], spotInnerCos[i]);
                 shader->SetFloat(s_SpotLightOuterCos[i], spotOuterCos[i]);
-                shader->SetInt(s_SpotLightShadowIndex[i], spotShadowIndex[i]);
             }
         };
 
@@ -1612,8 +1286,6 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
                 terrain._LayerTextures[i]->Bind(i);
         }
 
-        // Shadow uniforms (if available)
-        s_TerrainShader->SetInt("u_ShadowEnabled", 0);
 
         RenderCommand::DrawIndexed(terrain._Mesh);
     }

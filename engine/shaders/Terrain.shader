@@ -16,7 +16,7 @@ Shader "VibeEngine/Terrain" {
 
         Pass {
             Name "TerrainLit"
-            Tags { "LightMode"="ForwardBase" }
+            Tags { "LightMode"="Lit" }
 
             Cull Back
             ZWrite On
@@ -108,15 +108,6 @@ uniform float u_SpotLightIntensities[4];
 uniform float u_SpotLightRanges[4];
 uniform float u_SpotLightInnerCos[4];
 uniform float u_SpotLightOuterCos[4];
-
-// Shadow (optional)
-uniform bool u_ShadowEnabled;
-uniform sampler2D u_ShadowMap;
-uniform mat4 u_LightSpaceMatrices[3];
-uniform vec3 u_CascadeSplits;
-uniform float u_ShadowBias;
-uniform float u_ShadowNormalBias;
-uniform int u_PCFRadius;
 
 out vec4 FragColor;
 

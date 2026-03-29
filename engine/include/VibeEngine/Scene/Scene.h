@@ -9,7 +9,6 @@
 
 #include "VibeEngine/Core/UUID.h"
 #include "VibeEngine/Renderer/Texture.h"
-#include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/ReflectionProbe.h"
 #include "VibeEngine/Renderer/DeferredRenderer.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
@@ -26,14 +25,7 @@ namespace VE {
 
 class Entity;
 
-/// Render pipeline mode (only Deferred is supported).
-enum class RenderPipeline {
-    Deferred = 0
-};
-
 struct RenderPipelineSettings {
-    // Render Pipeline
-    RenderPipeline Pipeline = RenderPipeline::Deferred;
     // HDR Pipeline
     bool HDREnabled = true;
     int  ToneMapMode = 1; // 0=Reinhard, 1=ACES Filmic, 2=Uncharted2
@@ -137,12 +129,6 @@ struct RenderPipelineSettings {
     // TAA params
     float TAABlendFactor = 0.1f;  // weight of current frame (lower = more smoothing)
 
-    // Shadows (CSM)
-    bool ShadowEnabled = true;
-    float ShadowBias = 0.02f;
-    float ShadowNormalBias = 0.05f;
-    int   ShadowPCFRadius = 1; // 0=hard, 1=3x3, 2=5x5
-
     // Motion Blur
     bool  MotionBlurEnabled  = false;
     float MotionBlurStrength  = 0.5f;
@@ -179,12 +165,6 @@ public:
 
     void OnUpdate(float deltaTime = 0.0f);
     void OnRenderSky(const glm::mat4& skyViewProjection);
-
-    // Compute shadow maps (call before OnRenderDeferred each frame)
-    void ComputeShadows(const glm::mat4& viewMatrix,
-                        const glm::mat4& projMatrix,
-                        float nearClip, float farClip);
-    ShadowMap* GetShadowMap() const { return m_ShadowMap.get(); }
 
     /// Deferred rendering path — the sole rendering pipeline.
     /// Fills G-buffer, runs lighting pass, then forward-renders transparent objects.
@@ -274,21 +254,6 @@ private:
     std::unique_ptr<PhysicsWorld> m_PhysicsWorld;
     bool  m_PhysicsRunning = false;
     float m_PhysicsAccumulator = 0.0f;
-
-    std::unique_ptr<ShadowMap> m_ShadowMap;
-    bool m_ShadowsComputed = false; // true if ComputeShadows ran this frame
-    glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f); // stored from ComputeShadows for cascade selection
-    glm::mat4 m_CachedProjMatrix = glm::mat4(1.0f); // stored from ComputeShadows
-
-    // Spot light shadows (max 2 shadow-casting spot lights)
-    static constexpr int MAX_SPOT_SHADOW_LIGHTS = 2;
-    std::unique_ptr<SpotLightShadowMap> m_SpotShadowMaps[MAX_SPOT_SHADOW_LIGHTS];
-    int m_NumSpotShadows = 0;
-
-    // Point light shadows (max 2 shadow-casting point lights)
-    static constexpr int MAX_POINT_SHADOW_LIGHTS = 2;
-    std::unique_ptr<PointLightShadowMap> m_PointShadowMaps[MAX_POINT_SHADOW_LIGHTS];
-    int m_NumPointShadows = 0;
 
     std::string m_PendingScenePath; // scene to load at end of frame
     std::unique_ptr<NavGrid> m_NavGrid;

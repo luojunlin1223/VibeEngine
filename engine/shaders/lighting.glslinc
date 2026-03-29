@@ -13,7 +13,6 @@ uniform vec3  u_PointLightPositions[MAX_POINT_LIGHTS];
 uniform vec3  u_PointLightColors[MAX_POINT_LIGHTS];
 uniform float u_PointLightIntensities[MAX_POINT_LIGHTS];
 uniform float u_PointLightRanges[MAX_POINT_LIGHTS];
-uniform int   u_PointLightShadowIndex[MAX_POINT_LIGHTS];
 
 // Spot lights (max 4)
 const int MAX_SPOT_LIGHTS = 4;
@@ -25,4 +24,3 @@ uniform float u_SpotLightIntensities[MAX_SPOT_LIGHTS];
 uniform float u_SpotLightRanges[MAX_SPOT_LIGHTS];
 uniform float u_SpotLightInnerCos[MAX_SPOT_LIGHTS];
 uniform float u_SpotLightOuterCos[MAX_SPOT_LIGHTS];
-uniform int   u_SpotLightShadowIndex[MAX_SPOT_LIGHTS];

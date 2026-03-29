@@ -18,11 +18,11 @@ Shader "VibeEngine/LitInstanced" {
     }
 
     SubShader {
-        Tags { "RenderType"="Opaque" "Queue"="Geometry" "LightMode"="Forward" }
+        Tags { "RenderType"="Opaque" "Queue"="Geometry" "LightMode"="Lit" }
 
         Pass {
             Name "ForwardLitInstanced"
-            Tags { "LightMode"="Forward" }
+            Tags { "LightMode"="Lit" }
 
             Cull Back
             ZWrite On
@@ -94,9 +94,8 @@ uniform int u_HasEmissionMap;
 uniform sampler2D u_Texture;
 uniform int   u_UseTexture;
 
-// Lighting, shadows, PBR, normal mapping — shared includes
+// Lighting, PBR, normal mapping — shared includes
 #include "lighting.glslinc"
-#include "shadows.glslinc"
 #include "common.glslinc"
 #include "brdf.glslinc"
 #include "normal_mapping.glslinc"
@@ -151,8 +150,7 @@ void main() {
         vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
         vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
         float NdotL = max(dot(N, L), 0.0);
-        float shadow = ShadowCalculation(v_FragPos, N, L);
-        Lo += (kD * albedo / PI + spec) * radiance * NdotL * shadow;
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
     }
 
     // Point lights
@@ -174,8 +172,7 @@ void main() {
         vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
         vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
         float NdotL = max(dot(N, L), 0.0);
-        float pointShadow = PointShadowCalculation(u_PointLightShadowIndex[i], v_FragPos, u_PointLightPositions[i]);
-        Lo += (kD * albedo / PI + spec) * radiance * NdotL * pointShadow;
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
     }
 
     // Spot lights
@@ -201,8 +198,7 @@ void main() {
         vec3  spec = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.001);
         vec3  kD = (vec3(1.0) - F) * (1.0 - metallic);
         float NdotL = max(dot(N, L), 0.0);
-        float spotShadow = SpotShadowCalculation(u_SpotLightShadowIndex[i], v_FragPos, N);
-        Lo += (kD * albedo / PI + spec) * radiance * NdotL * spotShadow;
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
     }
 
     // Spot lights

@@ -79,7 +79,6 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
             << YAML::BeginSeq << pl.Color[0] << pl.Color[1] << pl.Color[2] << YAML::EndSeq;
         out << YAML::Key << "Intensity" << YAML::Value << pl.Intensity;
         out << YAML::Key << "Range" << YAML::Value << pl.Range;
-        out << YAML::Key << "CastShadows" << YAML::Value << pl.CastShadows;
         out << YAML::EndMap;
     }
 
@@ -95,7 +94,6 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "Range" << YAML::Value << sl.Range;
         out << YAML::Key << "InnerAngle" << YAML::Value << sl.InnerAngle;
         out << YAML::Key << "OuterAngle" << YAML::Value << sl.OuterAngle;
-        out << YAML::Key << "CastShadows" << YAML::Value << sl.CastShadows;
         out << YAML::EndMap;
     }
 
@@ -452,8 +450,6 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
                 out << YAML::Key << "MaterialName" << YAML::Value << mr.Mat->GetName();
         }
 
-        out << YAML::Key << "CastShadows" << YAML::Value << mr.CastShadows;
-
         // Per-entity material property overrides
         // Only serialize overrides that have actual user-set values
         // (skip Texture2D without a real file, skip defaults from auto-populate)
@@ -631,8 +627,6 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     // Pipeline settings
     auto& ps = scene->GetPipelineSettings();
     out << YAML::Key << "PipelineSettings" << YAML::Value << YAML::BeginMap;
-    // Always serialize as "Deferred" (the sole supported pipeline)
-    out << YAML::Key << "RenderPipeline" << YAML::Value << "Deferred";
     out << YAML::Key << "HDREnabled" << YAML::Value << ps.HDREnabled;
     out << YAML::Key << "ToneMapMode" << YAML::Value << ps.ToneMapMode;
     out << YAML::Key << "HDRExposure" << YAML::Value << ps.Exposure;
@@ -723,10 +717,6 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "FXAAEdgeThresholdMin" << YAML::Value << ps.FXAAEdgeThresholdMin;
     out << YAML::Key << "FXAASubpixelQuality" << YAML::Value << ps.FXAASubpixelQuality;
     out << YAML::Key << "TAABlendFactor" << YAML::Value << ps.TAABlendFactor;
-    out << YAML::Key << "ShadowEnabled" << YAML::Value << ps.ShadowEnabled;
-    out << YAML::Key << "ShadowBias" << YAML::Value << ps.ShadowBias;
-    out << YAML::Key << "ShadowNormalBias" << YAML::Value << ps.ShadowNormalBias;
-    out << YAML::Key << "ShadowPCFRadius" << YAML::Value << ps.ShadowPCFRadius;
     out << YAML::Key << "OcclusionCullingEnabled" << YAML::Value << ps.OcclusionCullingEnabled;
     out << YAML::Key << "GBufferDebugView" << YAML::Value << ps.GBufferDebugView;
     out << YAML::EndMap;
@@ -754,8 +744,6 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
     // Pipeline settings
     if (auto psNode = data["PipelineSettings"]) {
         auto& ps = scene->GetPipelineSettings();
-        // All pipeline values map to Deferred (the sole supported pipeline)
-        ps.Pipeline = RenderPipeline::Deferred;
         if (psNode["HDREnabled"]) ps.HDREnabled = psNode["HDREnabled"].as<bool>();
         if (psNode["ToneMapMode"]) ps.ToneMapMode = psNode["ToneMapMode"].as<int>();
         if (psNode["HDRExposure"]) ps.Exposure = psNode["HDRExposure"].as<float>();
@@ -849,10 +837,6 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["FXAAEdgeThresholdMin"]) ps.FXAAEdgeThresholdMin = psNode["FXAAEdgeThresholdMin"].as<float>();
         if (psNode["FXAASubpixelQuality"]) ps.FXAASubpixelQuality = psNode["FXAASubpixelQuality"].as<float>();
         if (psNode["TAABlendFactor"]) ps.TAABlendFactor = psNode["TAABlendFactor"].as<float>();
-        if (psNode["ShadowEnabled"]) ps.ShadowEnabled = psNode["ShadowEnabled"].as<bool>();
-        if (psNode["ShadowBias"]) ps.ShadowBias = psNode["ShadowBias"].as<float>();
-        if (psNode["ShadowNormalBias"]) ps.ShadowNormalBias = psNode["ShadowNormalBias"].as<float>();
-        if (psNode["ShadowPCFRadius"]) ps.ShadowPCFRadius = psNode["ShadowPCFRadius"].as<int>();
         if (psNode["OcclusionCullingEnabled"]) ps.OcclusionCullingEnabled = psNode["OcclusionCullingEnabled"].as<bool>();
         if (psNode["GBufferDebugView"]) ps.GBufferDebugView = psNode["GBufferDebugView"].as<int>();
     }
@@ -918,7 +902,6 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 pl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
                 pl.Intensity = plNode["Intensity"].as<float>();
                 pl.Range = plNode["Range"].as<float>();
-                if (plNode["CastShadows"]) pl.CastShadows = plNode["CastShadows"].as<bool>();
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize PointLightComponent: {}", e.what());
             }
@@ -933,7 +916,6 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
                 if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
                 if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
-                if (slNode["CastShadows"]) sl.CastShadows = slNode["CastShadows"].as<bool>();
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize SpotLightComponent: {}", e.what());
             }
@@ -1350,8 +1332,6 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     mr.Mat = MaterialLibrary::Get("Lit");
             }
 
-            if (auto castNode = mrNode["CastShadows"])
-                mr.CastShadows = castNode.as<bool>();
             // Per-entity material property overrides
             if (auto ovNode = mrNode["MaterialOverrides"]) {
                 for (auto propNode : ovNode) {
@@ -1771,8 +1751,6 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
                 auto mat = MaterialLibrary::Get(matNameNode.as<std::string>());
                 if (mat) mr.Mat = mat;
             }
-            if (auto castNode = mrNode["CastShadows"])
-                mr.CastShadows = castNode.as<bool>();
         }
 
         // RigidbodyComponent
@@ -1820,7 +1798,6 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
             if (auto c = plNode["Color"]) pl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
             if (plNode["Intensity"]) pl.Intensity = plNode["Intensity"].as<float>();
             if (plNode["Range"]) pl.Range = plNode["Range"].as<float>();
-            if (plNode["CastShadows"]) pl.CastShadows = plNode["CastShadows"].as<bool>();
         }
 
         // SpotLightComponent
@@ -1832,7 +1809,6 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
             if (slNode["Range"]) sl.Range = slNode["Range"].as<float>();
             if (slNode["InnerAngle"]) sl.InnerAngle = slNode["InnerAngle"].as<float>();
             if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
-            if (slNode["CastShadows"]) sl.CastShadows = slNode["CastShadows"].as<bool>();
         }
 
         // SpotLightComponent
@@ -2035,8 +2011,6 @@ Entity SceneSerializer::InstantiateFromString(const std::string& yamlData, Scene
                 if (mr.Mat->GetName() == "Default")
                     mr.Mat = MaterialLibrary::Get("Lit");
             }
-            if (auto castNode = mrNode["CastShadows"])
-                mr.CastShadows = castNode.as<bool>();
             if (auto ovNode = mrNode["MaterialOverrides"]) {
                 for (auto propNode : ovNode) {
                     MaterialProperty ov;

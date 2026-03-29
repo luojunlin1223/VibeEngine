@@ -40,9 +40,8 @@ layout(binding = 1) uniform sampler2D u_GNormalRoughness;   // RT1
 layout(binding = 2) uniform sampler2D u_GAlbedoAO;          // RT2
 layout(binding = 3) uniform sampler2D u_GEmissionFlags;     // RT3
 
-// Lighting, shadows, PBR — shared includes
+// Lighting, PBR — shared includes
 #include "lighting.glslinc"
-#include "shadows.glslinc"
 #include "common.glslinc"
 #include "brdf.glslinc"
 
@@ -96,8 +95,7 @@ void main() {
     {
         vec3 L = normalize(u_LightDir);
         vec3 radiance = u_LightColor * u_LightIntensity;
-        float shadow = ShadowCalculation(fragPos, N, L);
-        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0) * shadow;
+        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0);
     }
 
     // ── Point lights ─────────────────────────────────────────────────
@@ -116,8 +114,7 @@ void main() {
         attenuation *= window;
 
         vec3 radiance = u_PointLightColors[i] * u_PointLightIntensities[i] * attenuation;
-        float pointShadow = PointShadowCalculation(u_PointLightShadowIndex[i], fragPos, u_PointLightPositions[i]);
-        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0) * pointShadow;
+        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0);
     }
 
     // ── Spot lights ─────────────────────────────────────────────────
@@ -142,8 +139,7 @@ void main() {
         attenuation *= window * spotFactor;
 
         vec3 radiance = u_SpotLightColors[i] * u_SpotLightIntensities[i] * attenuation;
-        float spotShadow = SpotShadowCalculation(u_SpotLightShadowIndex[i], fragPos, N);
-        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0) * spotShadow;
+        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0);
     }
 
     // ── Ambient + Occlusion ──────────────────────────────────────────

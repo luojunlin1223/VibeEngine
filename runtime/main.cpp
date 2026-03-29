@@ -112,11 +112,6 @@ protected:
         VE::SetScriptCameraMatrices(gameView, gameProj,
                                      static_cast<float>(fbW), static_cast<float>(fbH));
 
-        // Shadow pass
-        if (m_Scene->GetPipelineSettings().ShadowEnabled) {
-            m_Scene->ComputeShadows(gameView, gameProj, cam.NearClip, cam.FarClip);
-        }
-
         // Sky
         glm::mat4 skyView = glm::mat4(glm::mat3(gameView));
         m_Scene->OnRenderSky(gameProj * skyView);

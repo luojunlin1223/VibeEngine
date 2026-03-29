@@ -19,7 +19,7 @@ Shader "VibeEngine/Water" {
 
         Pass {
             Name "Water"
-            Tags { "LightMode"="ForwardBase" }
+            Tags { "LightMode"="Lit" }
 
             Cull Off
             ZWrite Off

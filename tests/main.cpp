@@ -1033,7 +1033,6 @@ TEST_CASE("Default settings are sensible") {
     CHECK(settings.SkyEnabled == true);
     CHECK(settings.BloomEnabled == false);
     CHECK(settings.SSAOEnabled == false);
-    CHECK(settings.ShadowEnabled == true);
     CHECK(settings.AAMode == 0); // none
     CHECK(settings.FogEnabled == false);
 }

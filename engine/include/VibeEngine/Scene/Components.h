@@ -99,7 +99,6 @@ struct PointLightComponent {
     std::array<float, 3> Color = { 1.0f, 1.0f, 1.0f };
     float Intensity = 1.0f;
     float Range     = 10.0f; // world-space radius of influence
-    bool  CastShadows = false; // expensive: cube map shadow (max 2 shadow-casting point lights)
 
     PointLightComponent() = default;
 };
@@ -111,7 +110,6 @@ struct SpotLightComponent {
     float Range      = 15.0f;  // world-space radius of influence
     float InnerAngle = 25.0f;  // degrees — full-brightness cone
     float OuterAngle = 35.0f;  // degrees — falloff cone edge
-    bool  CastShadows = false; // max 2 shadow-casting spot lights
 
     SpotLightComponent() = default;
 };
@@ -306,7 +304,6 @@ struct MeshRendererComponent {
     std::array<float, 4>          Color = { 1.0f, 1.0f, 1.0f, 1.0f }; // per-instance color override
     std::string                   MaterialPath;   // .vmat path for custom materials
     std::string                   MeshSourcePath; // for imported meshes (FBX etc.)
-    bool                          CastShadows = true;
 
     // Local-space AABB for frustum culling (set when mesh is assigned).
     // If invalid (default), a unit AABB [-0.5, 0.5] is assumed.

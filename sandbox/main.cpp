@@ -367,23 +367,7 @@ protected:
 
         VE::RenderGraph rg;
         rg.SetViewportSize(fbW, fbH);
-        VE::RGHandle shadowMap, sceneColor;
-
-        // Pass 0: Shadow depth (3D perspective only, or Forward+ needs camera matrices)
-        if (perspective3D) {
-            rg.AddPass("ShadowDepth", [&](VE::RGBuilder& b) {
-                shadowMap = b.Import("ShadowMap",
-                    m_Scene->GetShadowMap() ? m_Scene->GetShadowMap()->GetDepthTextureID() : 0,
-                    VE::ShadowMap::MAP_SIZE, VE::ShadowMap::MAP_SIZE);
-                b.Write(shadowMap);
-                b.SideEffect();
-            }, [&](const VE::RGResources&) {
-                m_Scene->ComputeShadows(m_Camera.GetViewMatrix(),
-                                        m_Camera.GetProjectionMatrix(),
-                                        m_Camera.GetNearClip(),
-                                        m_Camera.GetFarClip());
-            });
-        }
+        VE::RGHandle sceneColor;
 
         // Pass 1: Sky
         rg.AddPass("Sky", [&](VE::RGBuilder& b) {
@@ -404,7 +388,6 @@ protected:
 
         // Pass 2: Opaque geometry (deferred pipeline)
         rg.AddPass("Opaque", [&](VE::RGBuilder& b) {
-            if (shadowMap.IsValid()) b.Read(shadowMap);
             b.Write(sceneColor);
             b.SideEffect();
         }, [&](const VE::RGResources&) {
@@ -4353,10 +4336,6 @@ private:
                 ImGui::DragFloat("Range##PL", &pl.Range, 0.1f, 0.1f, 100.0f);
                 if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Point Light Range");
                 if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-                if (ImGui::Checkbox("Cast Shadows##PL", &pl.CastShadows)) {
-                    auto before = m_CommandHistory.CaptureSnapshot();
-                    m_CommandHistory.RecordPropertyEdit("Toggle Point Light Shadows", std::move(before));
-                }
             }
             if (removePointLight)
                 m_CommandHistory.Execute("Remove Point Light", [this]() {
@@ -4389,10 +4368,6 @@ private:
                 ImGui::DragFloat("Outer Angle##SL", &sl.OuterAngle, 0.5f, sl.InnerAngle, 89.0f);
                 if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Spot Light Outer Angle");
                 if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
-                if (ImGui::Checkbox("Cast Shadows##SL", &sl.CastShadows)) {
-                    auto before = m_CommandHistory.CaptureSnapshot();
-                    m_CommandHistory.RecordPropertyEdit("Toggle Spot Light Shadows", std::move(before));
-                }
             }
             if (removeSpotLight)
                 m_CommandHistory.Execute("Remove Spot Light", [this]() {
@@ -5358,8 +5333,6 @@ private:
                     }
                 }
 
-                ImGui::Checkbox("Cast Shadows", &mr.CastShadows);
-
                 // Per-entity material property overrides
                 if (mr.Mat) {
                     // Ensure overrides are synced with material properties (add missing ones)
@@ -6275,16 +6248,6 @@ private:
 
                     ImGui::PopID();
                 }
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Shadows (CSM)", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Checkbox("Enable Shadows", &ps.ShadowEnabled);
-            if (ps.ShadowEnabled) {
-                ImGui::SliderFloat("Shadow Bias", &ps.ShadowBias, 0.0f, 0.1f, "%.4f");
-                ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.5f, "%.3f");
-                const char* pcfModes[] = { "Hard (1x1)", "Soft (3x3)", "Softer (5x5)" };
-                ImGui::Combo("PCF Quality", &ps.ShadowPCFRadius, pcfModes, 3);
             }
         }
 
