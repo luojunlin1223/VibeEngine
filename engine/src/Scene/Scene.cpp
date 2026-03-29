@@ -75,6 +75,11 @@ static GLuint s_DummyColorTexCube = 0;     // for samplerCube (reflection probes
 static void EnsureDummyShadowTextures() {
     if (s_DummyDepthTex2D != 0) return;
 
+    // Save active texture unit — texture creation below will pollute it
+    GLint savedActiveTexture;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &savedActiveTexture);
+    glActiveTexture(GL_TEXTURE0); // use unit 0 for creation to avoid polluting shadow units
+
     // 1x1 depth texture for sampler2DShadow
     glGenTextures(1, &s_DummyDepthTex2D);
     glBindTexture(GL_TEXTURE_2D, s_DummyDepthTex2D);
@@ -121,7 +126,11 @@ static void EnsureDummyShadowTextures() {
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
+    // Unbind all targets and restore active unit
     glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    glActiveTexture(savedActiveTexture);
 }
 
 static void BindDummyShadowTextures(const std::shared_ptr<Shader>& shader,
@@ -1140,10 +1149,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         shader->SetFloat("u_LightIntensity", lightIntensity);
         shader->SetVec3("u_ViewPos", cameraPos);
 
+        // Bind dummy depth textures FIRST to fill unused shadow sampler slots
+        bool hasSM = m_ShadowsComputed && m_ShadowMap != nullptr;
+        BindDummyShadowTextures(shader, m_NumSpotShadows, m_NumPointShadows, hasSM);
+
         if (m_ShadowsComputed && m_ShadowMap) {
             shader->SetInt("u_ShadowEnabled", 1);
-            m_ShadowMap->BindForReading(8);
-            shader->SetInt("u_ShadowMap", 8);
             shader->SetFloat("u_ShadowBias", m_PipelineSettings.ShadowBias);
             shader->SetFloat("u_ShadowNormalBias", m_PipelineSettings.ShadowNormalBias);
             shader->SetInt("u_PCFRadius", m_PipelineSettings.ShadowPCFRadius);
@@ -1154,6 +1165,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 glm::vec3(m_ShadowMap->GetCascadeSplit(0),
                           m_ShadowMap->GetCascadeSplit(1),
                           m_ShadowMap->GetCascadeSplit(2)));
+
+            // Bind REAL shadow textures AFTER dummies — ensures they win
+            m_ShadowMap->BindForReading(8);
+            shader->SetInt("u_ShadowMap", 8);
         } else {
             shader->SetInt("u_ShadowEnabled", 0);
         }
@@ -1196,10 +1211,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetInt(s_PointShadowCubeMaps[i], texUnit);
             shader->SetFloat(s_PointShadowFarPlanes[i], m_PointShadowMaps[i]->GetFarPlane());
         }
-
-        // Bind dummy depth textures to unused shadow sampler slots
-        BindDummyShadowTextures(shader, m_NumSpotShadows, m_NumPointShadows,
-                                m_ShadowsComputed && m_ShadowMap != nullptr);
     };
 
     // ── Frustum culling setup ──

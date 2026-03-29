@@ -201,16 +201,23 @@ void ShadowMap::BeginPass(int cascadeIndex) {
     glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                               m_DepthTexture, 0, cascadeIndex);
     glViewport(0, 0, MAP_SIZE, MAP_SIZE);
+
+    // Ensure depth state is fully initialized — previous passes may leave
+    // glDepthMask(GL_FALSE) which prevents both glClear and depth writes.
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
     glClear(GL_DEPTH_BUFFER_BIT);
 
-    // Avoid peter-panning artifacts with front-face culling during shadow pass
-    glEnable(GL_DEPTH_TEST);
+    // Front-face culling: render only back faces to avoid shadow acne on closed meshes
+    glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
 }
 
 void ShadowMap::EndPass() {
-    // Restore back-face culling
+    // Restore default render state
     glCullFace(GL_BACK);
+    glDepthFunc(GL_LEQUAL);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(m_SavedViewport[0], m_SavedViewport[1],
@@ -291,13 +298,19 @@ void SpotLightShadowMap::BeginPass() {
     glGetIntegerv(GL_VIEWPORT, m_SavedViewport);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
     glViewport(0, 0, MAP_SIZE, MAP_SIZE);
-    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
 }
 
 void SpotLightShadowMap::EndPass() {
     glCullFace(GL_BACK);
+    glDepthFunc(GL_LEQUAL);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(m_SavedViewport[0], m_SavedViewport[1],
                m_SavedViewport[2], m_SavedViewport[3]);
@@ -408,13 +421,19 @@ void PointLightShadowMap::BeginPass(int face) {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                            GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, m_DepthCubeMap, 0);
     glViewport(0, 0, MAP_SIZE, MAP_SIZE);
-    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
 }
 
 void PointLightShadowMap::EndPass() {
     glCullFace(GL_BACK);
+    glDepthFunc(GL_LEQUAL);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(m_SavedViewport[0], m_SavedViewport[1],
                m_SavedViewport[2], m_SavedViewport[3]);
