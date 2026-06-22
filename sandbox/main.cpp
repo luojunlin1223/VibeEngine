@@ -599,8 +599,6 @@ void main() { FragColor = texture(u_Source, v_UV); }
                     VE::RenderCommand::SetDepthWrite(true);
                     VE::RenderCommand::SetClearColor(0.1f, 0.1f, 0.1f, 1.0f);
                     VE::RenderCommand::Clear();
-                    glm::mat4 skyView = glm::mat4(glm::mat3(gameView));
-                    m_Scene->OnRenderSky(gameProj * skyView);
                 });
 
                 // Game Pass 1: Opaque (deferred pipeline)
@@ -644,7 +642,18 @@ void main() { FragColor = texture(u_Source, v_UV); }
                         }
                         glEnable(GL_DEPTH_TEST);
                         glDepthMask(GL_TRUE);
+
+                        // Match the Scene View path: copy deferred depth back,
+                        // then draw sky into pixels that were not covered by geometry.
+                        {
+                            GLint currentFBO;
+                            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &currentFBO);
+                            dr.BlitDepthTo(static_cast<uint32_t>(currentFBO), gw, gh);
+                            m_GameFramebuffer->Bind();
+                        }
                     }
+                    glm::mat4 skyView = glm::mat4(glm::mat3(gameView));
+                    m_Scene->OnRenderSky(gameProj * skyView);
                     m_Scene->OnRenderTerrain(gameVP, gameCamPos);
                 });
 
