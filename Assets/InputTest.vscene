@@ -41,7 +41,7 @@ PipelineSettings:
   TonemapMode: 2
   ShadowEnabled: true
   ShadowBias: 0.000500000024
-  ShadowNormalBias: 0.0199999996
+  ShadowNormalBias: 0
   ShadowPCFRadius: 1
 Entities:
   - Entity: 1001

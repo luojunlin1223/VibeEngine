@@ -40,8 +40,9 @@ layout(binding = 1) uniform sampler2D u_GNormalRoughness;   // RT1
 layout(binding = 2) uniform sampler2D u_GAlbedoAO;          // RT2
 layout(binding = 3) uniform sampler2D u_GEmissionFlags;     // RT3
 
-// Lighting, PBR — shared includes
+// Lighting, PBR, Shadows — shared includes
 #include "lighting.glslinc"
+#include "shadows.glslinc"
 #include "common.glslinc"
 #include "brdf.glslinc"
 
@@ -87,15 +88,18 @@ void main() {
     }
 
     vec3 V = normalize(u_ViewPos - fragPos);
+    float viewDepth = length(fragPos - u_ViewPos);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 Lo = vec3(0.0);
 
     // ── Directional light ────────────────────────────────────────────
+    float directionalShadow = 1.0;
     {
         vec3 L = normalize(u_LightDir);
         vec3 radiance = u_LightColor * u_LightIntensity;
-        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0);
+        directionalShadow = ComputeShadow(fragPos, N, viewDepth);
+        Lo += ComputePBR(N, V, L, radiance, albedo, metallic, roughness, F0) * directionalShadow;
     }
 
     // ── Point lights ─────────────────────────────────────────────────

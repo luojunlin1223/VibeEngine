@@ -10,6 +10,7 @@
 #include "VibeEngine/Core/UUID.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/ReflectionProbe.h"
+#include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/DeferredRenderer.h"
 #include "VibeEngine/Physics/PhysicsWorld.h"
 #include "VibeEngine/Navigation/NavGrid.h"
@@ -137,6 +138,16 @@ struct RenderPipelineSettings {
     // Occlusion Culling
     bool OcclusionCullingEnabled = false;
 
+    // Cascaded Shadow Maps
+    bool  ShadowsEnabled          = true;
+    int   ShadowResolution        = 2048;   // per-cascade (512, 1024, 2048, 4096)
+    float ShadowMaxDistance       = 200.0f;
+    float ShadowSplitLambda       = 0.75f;  // 0=uniform, 1=logarithmic
+    float ShadowDepthBias         = 0.0015f;
+    float ShadowNormalBias        = 0.0f;
+    int   ShadowPCFQuality        = 1;      // 0=Hard, 1=3x3, 2=5x5
+    float ShadowCascadeBlendWidth = 0.1f;
+
     // Deferred debug
     int  GBufferDebugView = 0; // 0=None, 1..8 = GBufferDebugView enum
 };
@@ -169,7 +180,9 @@ public:
     /// Deferred rendering path — the sole rendering pipeline.
     /// Fills G-buffer, runs lighting pass, then forward-renders transparent objects.
     void OnRenderDeferred(const glm::mat4& viewProjection,
+                          const glm::mat4& cameraView, const glm::mat4& cameraProjection,
                           const glm::vec3& cameraPos,
+                          float nearClip, float farClip,
                           uint32_t viewportWidth, uint32_t viewportHeight);
 
     /// Get the deferred renderer instance (creates on first access).
@@ -260,6 +273,7 @@ private:
 
     // Deferred rendering
     DeferredRenderer m_DeferredRenderer;
+    ShadowMap m_ShadowMap;
 
     // Deferred entity deletion queue (flushed at end of OnUpdate)
     std::vector<entt::entity> m_PendingDestroy;

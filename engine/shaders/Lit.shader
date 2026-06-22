@@ -94,8 +94,9 @@ uniform int u_HasEmissionMap;
 uniform sampler2D u_Texture;
 uniform int   u_UseTexture;
 
-// Lighting, PBR, normal mapping — shared includes
+// Lighting, PBR, shadows, normal mapping — shared includes
 #include "lighting.glslinc"
+#include "shadows.glslinc"
 #include "common.glslinc"
 #include "brdf.glslinc"
 #include "normal_mapping.glslinc"
@@ -144,6 +145,7 @@ void main() {
     // ── Normal ───────────────────────────────────────────────────────
     vec3 N = normalize(v_Normal);
     vec3 V = normalize(u_ViewPos - v_FragPos);
+    float viewDepth = length(v_FragPos - u_ViewPos);
 
     if (u_HasBumpMap == 1)
         N = perturbNormal(N, V, v_TexCoord);
@@ -168,7 +170,8 @@ void main() {
 
         float NdotL = max(dot(N, L), 0.0);
 
-        Lo += (kD * albedo / PI + spec) * radiance * NdotL;
+        float shadow = ComputeShadow(v_FragPos, N, viewDepth);
+        Lo += (kD * albedo / PI + spec) * radiance * NdotL * shadow;
     }
 
     // ── Point lights ─────────────────────────────────────────────────

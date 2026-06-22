@@ -5,7 +5,7 @@ PipelineSettings:
   SkyBottomColor: [0.85, 0.7, 0.5]
   ShadowEnabled: true
   ShadowBias: 0.001
-  ShadowNormalBias: 0.02
+  ShadowNormalBias: 0
   ShadowPCFRadius: 2
   SSAOEnabled: true
   SSAORadius: 0.5

@@ -27,6 +27,7 @@ Entities:
     MeshRendererComponent:
       MeshType: 2
       Color: [0.8, 0.8, 0.8, 1.0]
+      CastShadows: false
 
   - Entity: 99003
     TagComponent:
@@ -38,6 +39,7 @@ Entities:
     MeshRendererComponent:
       MeshType: 2
       Color: [0.8, 0.8, 0.8, 1.0]
+      CastShadows: true
 
   - Entity: 99004
     TagComponent:
@@ -49,6 +51,7 @@ Entities:
     MeshRendererComponent:
       MeshType: 3
       Color: [0.8, 0.8, 0.8, 1.0]
+      CastShadows: true
 
   - Entity: 99005
     TagComponent:

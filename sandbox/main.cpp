@@ -17,9 +17,11 @@
 #endif
 #include <fstream>
 #include <algorithm>
+#include <array>
 #include <any>
 #include <set>
 #include <cmath>
+#include <cctype>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
 
@@ -392,7 +394,10 @@ protected:
             b.SideEffect();
         }, [&](const VE::RGResources&) {
             // Deferred rendering: G-buffer pass + lighting pass
-            m_Scene->OnRenderDeferred(m_FrameVP, camPos, fbW, fbH);
+            m_Scene->OnRenderDeferred(m_FrameVP,
+                m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix(),
+                camPos, m_Camera.GetNearClip(), m_Camera.GetFarClip(),
+                fbW, fbH);
 
             // If debug view is active, replace lighting output with debug visualization
             auto& dr = m_Scene->GetDeferredRenderer();
@@ -605,7 +610,8 @@ void main() { FragColor = texture(u_Source, v_UV); }
                 }, [&](const VE::RGResources&) {
                     uint32_t gw = m_GameFramebuffer->GetWidth();
                     uint32_t gh = m_GameFramebuffer->GetHeight();
-                    m_Scene->OnRenderDeferred(gameVP, gameCamPos, gw, gh);
+                    m_Scene->OnRenderDeferred(gameVP, gameView, gameProj,
+                        gameCamPos, cam.NearClip, cam.FarClip, gw, gh);
 
                     auto& dr = m_Scene->GetDeferredRenderer();
                     uint32_t deferredOut = dr.GetOutputTexture();
@@ -5333,6 +5339,8 @@ private:
                     }
                 }
 
+                ImGui::Checkbox("Cast Shadows", &mr.CastShadows);
+
                 // Per-entity material property overrides
                 if (mr.Mat) {
                     // Ensure overrides are synced with material properties (add missing ones)
@@ -6251,6 +6259,29 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("Cascaded Shadows", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Shadows", &ps.ShadowsEnabled);
+            if (ps.ShadowsEnabled) {
+                const char* resOptions[] = { "512", "1024", "2048", "4096" };
+                int resIdx = 2;
+                if (ps.ShadowResolution <= 512) resIdx = 0;
+                else if (ps.ShadowResolution <= 1024) resIdx = 1;
+                else if (ps.ShadowResolution <= 2048) resIdx = 2;
+                else resIdx = 3;
+                if (ImGui::Combo("Resolution##Shadows", &resIdx, resOptions, 4)) {
+                    const int resValues[] = { 512, 1024, 2048, 4096 };
+                    ps.ShadowResolution = resValues[resIdx];
+                }
+                ImGui::SliderFloat("Max Distance", &ps.ShadowMaxDistance, 10.0f, 1000.0f, "%.0f");
+                ImGui::SliderFloat("Split Lambda", &ps.ShadowSplitLambda, 0.0f, 1.0f, "%.2f");
+                ImGui::SliderFloat("Depth Bias", &ps.ShadowDepthBias, 0.0f, 0.1f, "%.4f");
+                ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.5f, "%.3f");
+                const char* pcfOptions[] = { "Hard", "PCF 3x3", "PCF 5x5" };
+                ImGui::Combo("PCF Quality", &ps.ShadowPCFQuality, pcfOptions, 3);
+                ImGui::SliderFloat("Blend Width", &ps.ShadowCascadeBlendWidth, 0.0f, 0.3f, "%.2f");
+            }
+        }
+
         if (ImGui::CollapsingHeader("Occlusion Culling", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable Occlusion Culling", &ps.OcclusionCullingEnabled);
             if (ps.OcclusionCullingEnabled) {
@@ -6592,8 +6623,32 @@ private:
         if (!m_ShowContentBrowser) return;
         ImGui::Begin("Content Browser", &m_ShowContentBrowser);
 
-        // Breadcrumb navigation
+        const float fontSize = ImGui::GetFontSize();
+        const float toolbarHeight = fontSize + ImGui::GetStyle().FramePadding.y * 2.0f;
+
+        // Top toolbar: Unity-style breadcrumb on the left, search/tools on the right.
         {
+            if (ImGui::Button("+", ImVec2(toolbarHeight, toolbarHeight))) {
+                ImGui::OpenPopup("CreateAssetPopup");
+            }
+            if (ImGui::BeginPopup("CreateAssetPopup")) {
+                if (ImGui::MenuItem("Folder")) {
+                    m_AssetDatabase.CreateFolder(m_BrowserCurrentDir, "New Folder");
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Material")) {
+                    CreateAssetFile(m_BrowserCurrentDir, "New Material", ".vmat");
+                }
+                if (ImGui::MenuItem("Shader")) {
+                    CreateAssetFile(m_BrowserCurrentDir, "New Shader", ".shader");
+                }
+                if (ImGui::MenuItem("C++ Script")) {
+                    CreateAssetFile(m_BrowserCurrentDir, "NewScript", ".cpp");
+                }
+                ImGui::EndPopup();
+            }
+
+            ImGui::SameLine();
             if (ImGui::Button("Assets"))
                 m_BrowserCurrentDir.clear();
 
@@ -6613,8 +6668,21 @@ private:
                 }
             }
 
-            // Refresh button
-            ImGui::SameLine(ImGui::GetWindowWidth() - 80);
+            const float sliderWidth = 110.0f;
+            const float searchWidth = 220.0f;
+            const float refreshWidth = 72.0f;
+            float rightStart = ImGui::GetWindowWidth() - searchWidth - sliderWidth - refreshWidth - 42.0f;
+            if (rightStart > ImGui::GetCursorPosX())
+                ImGui::SameLine(rightStart);
+            else
+                ImGui::SameLine();
+
+            ImGui::SetNextItemWidth(searchWidth);
+            ImGui::InputTextWithHint("##assetSearch", "Search", m_ContentSearch, sizeof(m_ContentSearch));
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(sliderWidth);
+            ImGui::SliderFloat("##iconSize", &m_ContentIconSize, 72.0f, 144.0f, "%.0f");
+            ImGui::SameLine();
             if (ImGui::Button("Refresh")) {
                 m_AssetDatabase.Refresh();
                 ScanAndRegisterAssets();
@@ -6624,11 +6692,21 @@ private:
         ImGui::Separator();
 
         // Two-column layout: folder tree | contents
-        float treeWidth = 180.0f;
+        float treeWidth = 260.0f;
 
         // Left pane: folder tree
         ImGui::BeginChild("FolderTree", ImVec2(treeWidth, 0), true);
+        ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow |
+            ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
+        if (m_BrowserCurrentDir.empty())
+            rootFlags |= ImGuiTreeNodeFlags_Selected;
+        bool rootOpen = ImGui::TreeNodeEx("Assets", rootFlags);
+        if (ImGui::IsItemClicked())
+            m_BrowserCurrentDir.clear();
+        if (rootOpen) {
         DrawFolderTree("");
+            ImGui::TreePop();
+        }
         ImGui::EndChild();
 
         ImGui::SameLine();
@@ -6656,94 +6734,182 @@ private:
         }
 
         auto contents = m_AssetDatabase.GetDirectoryContents(m_BrowserCurrentDir);
-        float padding = 8.0f;
-        float cellSize = 80.0f;
+        std::vector<std::string> filteredContents;
+        filteredContents.reserve(contents.size());
+        std::string search = m_ContentSearch;
+        std::transform(search.begin(), search.end(), search.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        for (auto& relPath : contents) {
+            if (search.empty()) {
+                filteredContents.push_back(relPath);
+                continue;
+            }
+
+            std::string filename = std::filesystem::path(relPath).filename().generic_string();
+            std::string haystack = filename;
+            std::transform(haystack.begin(), haystack.end(), haystack.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (haystack.find(search) != std::string::npos)
+                filteredContents.push_back(relPath);
+        }
+
+        float padding = 18.0f;
+        float iconSize = m_ContentIconSize;
+        float labelHeight = fontSize * 2.0f + 10.0f;
+        float cellSize = iconSize + 72.0f;
+        float tileHeight = iconSize + labelHeight + 20.0f;
         float panelWidth = ImGui::GetContentRegionAvail().x;
         int columns = std::max(1, static_cast<int>(panelWidth / (cellSize + padding)));
 
         ImGui::Columns(columns, nullptr, false);
 
-        for (auto& relPath : contents) {
+        auto truncateText = [](const std::string& text, float maxWidth) -> std::string {
+            if (ImGui::CalcTextSize(text.c_str()).x <= maxWidth)
+                return text;
+
+            const std::string ellipsis = "...";
+            if (ImGui::CalcTextSize(ellipsis.c_str()).x > maxWidth)
+                return "";
+
+            size_t len = text.size();
+            while (len > 0) {
+                std::string candidate = text.substr(0, len) + ellipsis;
+                if (ImGui::CalcTextSize(candidate.c_str()).x <= maxWidth)
+                    return candidate;
+                --len;
+            }
+            return ellipsis;
+        };
+
+        auto splitLabelLines = [&](const std::string& text, float maxWidth) {
+            std::array<std::string, 2> lines = { "", "" };
+            if (text.empty())
+                return lines;
+
+            if (ImGui::CalcTextSize(text.c_str()).x <= maxWidth) {
+                lines[0] = text;
+                return lines;
+            }
+
+            size_t split = 0;
+            for (size_t i = 1; i < text.size(); ++i) {
+                std::string first = text.substr(0, i);
+                if (ImGui::CalcTextSize(first.c_str()).x > maxWidth)
+                    break;
+                split = i;
+            }
+
+            if (split == 0) {
+                lines[0] = truncateText(text, maxWidth);
+                return lines;
+            }
+
+            lines[0] = text.substr(0, split);
+            lines[1] = truncateText(text.substr(split), maxWidth);
+            return lines;
+        };
+
+        auto drawFileIcon = [&](ImDrawList* dl, ImVec2 iconMin, ImVec2 iconMax,
+                                VE::AssetType type, const std::string& filename,
+                                uint64_t texID) {
+            const float w = iconMax.x - iconMin.x;
+            const float h = iconMax.y - iconMin.y;
+            const ImU32 docColor = IM_COL32(230, 230, 230, 255);
+            const ImU32 foldColor = IM_COL32(188, 188, 188, 255);
+            const ImU32 outlineColor = IM_COL32(35, 35, 35, 120);
+
+            if (type == VE::AssetType::Texture2D && texID != 0) {
+                dl->AddRectFilled(iconMin, iconMax, IM_COL32(70, 70, 70, 255), 3.0f);
+                ImVec2 imgMin(iconMin.x + 4.0f, iconMin.y + 4.0f);
+                ImVec2 imgMax(iconMax.x - 4.0f, iconMax.y - 4.0f);
+                dl->AddImage((ImTextureID)texID, imgMin, imgMax);
+                return;
+            }
+
+            if (type == VE::AssetType::Folder) {
+                ImVec2 tabMin(iconMin.x + w * 0.12f, iconMin.y + h * 0.22f);
+                ImVec2 tabMax(iconMin.x + w * 0.48f, iconMin.y + h * 0.39f);
+                ImVec2 bodyMin(iconMin.x + w * 0.10f, iconMin.y + h * 0.33f);
+                ImVec2 bodyMax(iconMin.x + w * 0.90f, iconMin.y + h * 0.78f);
+                dl->AddRectFilled(tabMin, tabMax, IM_COL32(198, 198, 198, 255), 4.0f);
+                dl->AddRectFilled(bodyMin, bodyMax, IM_COL32(188, 188, 188, 255), 5.0f);
+                dl->AddRect(bodyMin, bodyMax, outlineColor, 5.0f);
+                return;
+            }
+
+            ImVec2 docMin(iconMin.x + w * 0.18f, iconMin.y + h * 0.08f);
+            ImVec2 docMax(iconMin.x + w * 0.82f, iconMin.y + h * 0.86f);
+            ImVec2 foldA(docMax.x - w * 0.18f, docMin.y);
+            ImVec2 foldB(docMax.x, docMin.y + h * 0.18f);
+            dl->AddRectFilled(docMin, docMax, docColor, 5.0f);
+            dl->AddTriangleFilled(foldA, ImVec2(docMax.x, docMin.y), foldB, foldColor);
+            dl->AddRect(docMin, docMax, outlineColor, 5.0f);
+
+            const char* label = "FILE";
+            ImU32 labelColor = IM_COL32(90, 90, 90, 255);
+            if (type == VE::AssetType::Scene) {
+                label = "SCN";
+                labelColor = IM_COL32(82, 132, 68, 255);
+            } else if (type == VE::AssetType::Mesh) {
+                std::string ext = std::filesystem::path(filename).extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                label = (ext == ".fbx") ? "FBX" : (ext == ".obj") ? "OBJ" : "GLTF";
+                labelColor = IM_COL32(110, 84, 150, 255);
+            } else if (type == VE::AssetType::Shader) {
+                label = "SHD";
+                labelColor = IM_COL32(132, 86, 138, 255);
+            } else if (type == VE::AssetType::MaterialAsset) {
+                label = "MAT";
+                labelColor = IM_COL32(184, 126, 52, 255);
+            } else if (type == VE::AssetType::Audio) {
+                label = "SND";
+                labelColor = IM_COL32(72, 142, 112, 255);
+            } else if (type == VE::AssetType::Script) {
+                label = "C++";
+                labelColor = IM_COL32(50, 118, 74, 255);
+            }
+
+            ImVec2 textSize = ImGui::CalcTextSize(label);
+            ImVec2 textPos(iconMin.x + (w - textSize.x) * 0.5f, iconMin.y + h * 0.42f);
+            dl->AddText(textPos, labelColor, label);
+        };
+
+        for (auto& relPath : filteredContents) {
             auto* meta = m_AssetDatabase.GetMetaByPath(relPath);
             if (!meta) continue;
 
             std::string filename = std::filesystem::path(relPath).filename().generic_string();
+            std::string displayName = (meta->Type != VE::AssetType::Folder)
+                ? std::filesystem::path(filename).stem().string() : filename;
 
             ImGui::PushID(relPath.c_str());
 
-            // Draw icon/thumbnail
-            float thumbSize = cellSize - 16.0f;
-            // Use InvisibleButton as the base interactive item (gives us an ID for popups/clicks)
-            ImGui::InvisibleButton("##item", ImVec2(thumbSize, thumbSize));
+            ImVec2 tileStart = ImGui::GetCursorScreenPos();
+            ImGui::InvisibleButton("##item", ImVec2(cellSize, tileHeight));
             bool hovered = ImGui::IsItemHovered();
-            ImVec2 itemMin = ImGui::GetItemRectMin();
-            ImVec2 itemMax = ImGui::GetItemRectMax();
+            ImVec2 tileMin = ImGui::GetItemRectMin();
+            ImVec2 tileMax = ImGui::GetItemRectMax();
+            ImVec2 iconMin(tileMin.x + (cellSize - iconSize) * 0.5f, tileMin.y + 10.0f);
+            ImVec2 iconMax(iconMin.x + iconSize, iconMin.y + iconSize);
 
-            // Draw icon/thumbnail over the invisible button
             ImDrawList* dl = ImGui::GetWindowDrawList();
+            uint64_t texID = 0;
             if (meta->Type == VE::AssetType::Texture2D) {
                 std::string absPath = m_AssetDatabase.GetAbsolutePath(relPath);
-                uint64_t texID = m_ThumbnailCache.GetThumbnail(absPath);
-                if (texID != 0)
-                    dl->AddImage((ImTextureID)texID, itemMin, itemMax);
-                else
-                    dl->AddRectFilled(itemMin, itemMax, IM_COL32(120, 70, 70, 255));
-            } else if (meta->Type == VE::AssetType::Folder) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(70, 70, 120, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 8.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "DIR");
-            } else if (meta->Type == VE::AssetType::Scene) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(90, 120, 70, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SCN");
-            } else if (meta->Type == VE::AssetType::Mesh) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(100, 70, 130, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                // Show format-specific label based on file extension
-                std::string meshExt = std::filesystem::path(filename).extension().string();
-                std::transform(meshExt.begin(), meshExt.end(), meshExt.begin(), ::tolower);
-                const char* meshLabel = "MDL";
-                if (meshExt == ".fbx") meshLabel = "FBX";
-                else if (meshExt == ".gltf" || meshExt == ".glb") meshLabel = "GLT";
-                else if (meshExt == ".obj") meshLabel = "OBJ";
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), meshLabel);
-            } else if (meta->Type == VE::AssetType::Shader) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(130, 80, 130, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SHD");
-            } else if (meta->Type == VE::AssetType::MaterialAsset) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(180, 120, 50, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "MAT");
-            } else if (meta->Type == VE::AssetType::Audio) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(70, 130, 100, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "SND");
-            } else if (meta->Type == VE::AssetType::Script) {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(60, 120, 180, 255));
-                float cx = (itemMin.x + itemMax.x) * 0.5f - 10.0f;
-                float cy = (itemMin.y + itemMax.y) * 0.5f - 6.0f;
-                dl->AddText(ImVec2(cx, cy), IM_COL32(255, 255, 255, 200), "C++");
-            } else {
-                dl->AddRectFilled(itemMin, itemMax, IM_COL32(80, 80, 80, 255));
+                texID = m_ThumbnailCache.GetThumbnail(absPath);
             }
+            drawFileIcon(dl, iconMin, iconMax, meta->Type, filename, texID);
 
             // Track item center for box selection
-            ImVec2 itemCenter = { (itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f };
+            ImVec2 itemCenter = { (tileMin.x + tileMax.x) * 0.5f, (tileMin.y + tileMax.y) * 0.5f };
             m_ContentItemPositions.push_back({ relPath, itemCenter });
 
             // Selection highlight (multi-select aware)
             bool isAssetSelected = m_SelectedAssets.count(relPath) > 0;
             if (isAssetSelected)
-                dl->AddRect(itemMin, itemMax, IM_COL32(100, 180, 255, 255), 0.0f, 0, 2.5f);
+                dl->AddRect(tileMin, tileMax, IM_COL32(66, 133, 220, 255), 4.0f, 0, 2.0f);
             else if (hovered)
-                dl->AddRect(itemMin, itemMax, IM_COL32(255, 200, 100, 200), 0.0f, 0, 2.0f);
+                dl->AddRect(tileMin, tileMax, IM_COL32(120, 120, 120, 170), 4.0f, 0, 1.5f);
 
             // Click selection with Ctrl/Shift modifiers
             if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::GetDragDropPayload()) {
@@ -6758,7 +6924,7 @@ private:
                 } else if (io.KeyShift && !m_SelectedAssetPath.empty()) {
                     // Shift+Click: range select from last selected to this
                     bool inRange = false;
-                    for (auto& rp : contents) {
+                    for (auto& rp : filteredContents) {
                         if (rp == m_SelectedAssetPath || rp == relPath) {
                             m_SelectedAssets.insert(rp);
                             if (inRange) break;
@@ -6883,10 +7049,21 @@ private:
                 ImGui::EndPopup();
             }
 
-            // Filename label (no extension, truncated)
-            std::string displayName = (meta->Type != VE::AssetType::Folder)
-                ? std::filesystem::path(filename).stem().string() : filename;
-            ImGui::TextWrapped("%s", displayName.c_str());
+            const float labelWidth = cellSize - 12.0f;
+            auto labelLines = splitLabelLines(displayName, labelWidth);
+            bool labelTruncated = false;
+            for (int line = 0; line < 2; ++line) {
+                if (labelLines[line].empty())
+                    continue;
+                ImVec2 labelSize = ImGui::CalcTextSize(labelLines[line].c_str());
+                ImVec2 labelPos(tileMin.x + (cellSize - labelSize.x) * 0.5f,
+                                iconMax.y + 8.0f + line * (fontSize + 2.0f));
+                dl->AddText(labelPos, IM_COL32(205, 205, 205, 255), labelLines[line].c_str());
+                if (labelLines[line].find("...") != std::string::npos)
+                    labelTruncated = true;
+            }
+            if (hovered && labelTruncated)
+                ImGui::SetTooltip("%s", displayName.c_str());
 
             ImGui::PopID();
             ImGui::NextColumn();
@@ -7528,6 +7705,8 @@ private:
     std::string m_BrowserCurrentDir; // relative to Assets/
     std::string m_SelectedAssetPath; // primary selected asset in Content Browser
     std::set<std::string> m_SelectedAssets; // multi-select set
+    char m_ContentSearch[128] = {};
+    float m_ContentIconSize = 104.0f;
     // Box selection state
     bool m_BoxSelecting = false;
     ImVec2 m_BoxSelectStart = { 0, 0 };

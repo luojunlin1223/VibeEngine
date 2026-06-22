@@ -183,7 +183,7 @@ void ReflectionProbe::RenderFace(Scene& scene, int faceIndex, const glm::vec3& p
     scene.OnRenderSky(skyVP);
 
     // Render scene geometry via deferred pipeline
-    scene.OnRenderDeferred(viewProjection, position, m_Resolution, m_Resolution);
+    scene.OnRenderDeferred(viewProjection, view, projection, position, 0.1f, 100.0f, m_Resolution, m_Resolution);
 
     // Blit deferred output into the cubemap face FBO
     {

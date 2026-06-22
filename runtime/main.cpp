@@ -117,7 +117,8 @@ protected:
         m_Scene->OnRenderSky(gameProj * skyView);
 
         // Scene (deferred pipeline)
-        m_Scene->OnRenderDeferred(gameVP, gameCamPos,
+        m_Scene->OnRenderDeferred(gameVP, gameView, gameProj,
+                                   gameCamPos, cam.NearClip, cam.FarClip,
                                    static_cast<uint32_t>(fbW),
                                    static_cast<uint32_t>(fbH));
 

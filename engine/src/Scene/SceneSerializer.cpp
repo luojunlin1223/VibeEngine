@@ -441,6 +441,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
 
         out << YAML::Key << "Color" << YAML::Value << YAML::Flow
             << YAML::BeginSeq << mr.Color[0] << mr.Color[1] << mr.Color[2] << mr.Color[3] << YAML::EndSeq;
+        out << YAML::Key << "CastShadows" << YAML::Value << mr.CastShadows;
 
         // Material reference
         if (mr.Mat) {
@@ -719,6 +720,14 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
     out << YAML::Key << "TAABlendFactor" << YAML::Value << ps.TAABlendFactor;
     out << YAML::Key << "OcclusionCullingEnabled" << YAML::Value << ps.OcclusionCullingEnabled;
     out << YAML::Key << "GBufferDebugView" << YAML::Value << ps.GBufferDebugView;
+    out << YAML::Key << "ShadowsEnabled" << YAML::Value << ps.ShadowsEnabled;
+    out << YAML::Key << "ShadowResolution" << YAML::Value << ps.ShadowResolution;
+    out << YAML::Key << "ShadowMaxDistance" << YAML::Value << ps.ShadowMaxDistance;
+    out << YAML::Key << "ShadowSplitLambda" << YAML::Value << ps.ShadowSplitLambda;
+    out << YAML::Key << "ShadowDepthBias" << YAML::Value << ps.ShadowDepthBias;
+    out << YAML::Key << "ShadowNormalBias" << YAML::Value << ps.ShadowNormalBias;
+    out << YAML::Key << "ShadowPCFQuality" << YAML::Value << ps.ShadowPCFQuality;
+    out << YAML::Key << "ShadowCascadeBlendWidth" << YAML::Value << ps.ShadowCascadeBlendWidth;
     out << YAML::EndMap;
 
     out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
@@ -839,6 +848,14 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (psNode["TAABlendFactor"]) ps.TAABlendFactor = psNode["TAABlendFactor"].as<float>();
         if (psNode["OcclusionCullingEnabled"]) ps.OcclusionCullingEnabled = psNode["OcclusionCullingEnabled"].as<bool>();
         if (psNode["GBufferDebugView"]) ps.GBufferDebugView = psNode["GBufferDebugView"].as<int>();
+        if (psNode["ShadowsEnabled"]) ps.ShadowsEnabled = psNode["ShadowsEnabled"].as<bool>();
+        if (psNode["ShadowResolution"]) ps.ShadowResolution = psNode["ShadowResolution"].as<int>();
+        if (psNode["ShadowMaxDistance"]) ps.ShadowMaxDistance = psNode["ShadowMaxDistance"].as<float>();
+        if (psNode["ShadowSplitLambda"]) ps.ShadowSplitLambda = psNode["ShadowSplitLambda"].as<float>();
+        if (psNode["ShadowDepthBias"]) ps.ShadowDepthBias = psNode["ShadowDepthBias"].as<float>();
+        if (psNode["ShadowNormalBias"]) ps.ShadowNormalBias = psNode["ShadowNormalBias"].as<float>();
+        if (psNode["ShadowPCFQuality"]) ps.ShadowPCFQuality = psNode["ShadowPCFQuality"].as<int>();
+        if (psNode["ShadowCascadeBlendWidth"]) ps.ShadowCascadeBlendWidth = psNode["ShadowCascadeBlendWidth"].as<float>();
     }
 
     auto entities = data["Entities"];
@@ -1313,6 +1330,8 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                     colorNode[2].as<float>(), colorNode[3].as<float>()
                 };
             }
+            if (auto castNode = mrNode["CastShadows"])
+                mr.CastShadows = castNode.as<bool>();
             // Material reference
             if (auto matPathNode = mrNode["MaterialPath"]) {
                 mr.MaterialPath = matPathNode.as<std::string>();
@@ -1747,6 +1766,8 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
             if (auto colorNode = mrNode["Color"])
                 mr.Color = { colorNode[0].as<float>(), colorNode[1].as<float>(),
                              colorNode[2].as<float>(), colorNode[3].as<float>() };
+            if (auto castNode = mrNode["CastShadows"])
+                mr.CastShadows = castNode.as<bool>();
             if (auto matNameNode = mrNode["MaterialName"]) {
                 auto mat = MaterialLibrary::Get(matNameNode.as<std::string>());
                 if (mat) mr.Mat = mat;
@@ -1996,6 +2017,8 @@ Entity SceneSerializer::InstantiateFromString(const std::string& yamlData, Scene
             if (auto colorNode = mrNode["Color"])
                 mr.Color = { colorNode[0].as<float>(), colorNode[1].as<float>(),
                              colorNode[2].as<float>(), colorNode[3].as<float>() };
+            if (auto castNode = mrNode["CastShadows"])
+                mr.CastShadows = castNode.as<bool>();
             if (auto matPathNode = mrNode["MaterialPath"]) {
                 mr.MaterialPath = matPathNode.as<std::string>();
                 auto mat = Material::Load(mr.MaterialPath);

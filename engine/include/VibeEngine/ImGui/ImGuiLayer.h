@@ -28,8 +28,12 @@ public:
     void End();
 
 private:
+    float CalculateUIScale() const;
+    void ApplyUIScale();
+
     GLFWwindow* m_Window = nullptr;
     RendererAPI::API m_API = RendererAPI::API::None;
+    float m_UIScale = 1.0f;
 };
 
 } // namespace VE

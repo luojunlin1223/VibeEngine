@@ -3,6 +3,7 @@
 #include "VibeEngine/Scene/Components.h"
 #include "VibeEngine/Scene/MeshLibrary.h"
 #include "VibeEngine/Renderer/RenderCommand.h"
+#include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/VertexArray.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/VideoPlayer.h"
@@ -794,7 +795,9 @@ void Scene::OnRenderSky(const glm::mat4& skyViewProjection) {
 // ── Deferred Rendering ─────────────────────────────────────────────
 
 void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
+                              const glm::mat4& cameraView, const glm::mat4& cameraProjection,
                               const glm::vec3& cameraPos,
+                              float nearClip, float farClip,
                               uint32_t viewportWidth, uint32_t viewportHeight) {
     // ── Initialize or resize the deferred renderer ──
     if (!m_DeferredRenderer.IsInitialized()) {
@@ -905,6 +908,73 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetFloat(s_SpotLightOuterCos[i], spotOuterCos[i]);
         }
     };
+
+    // ── Shadow settings helper ──
+    auto& ps = m_PipelineSettings;
+    ShadowSettings shadowSettings;
+    shadowSettings.Enabled           = ps.ShadowsEnabled;
+    shadowSettings.Resolution        = ps.ShadowResolution;
+    shadowSettings.MaxDistance        = ps.ShadowMaxDistance;
+    shadowSettings.SplitLambda       = ps.ShadowSplitLambda;
+    shadowSettings.DepthBias         = ps.ShadowDepthBias;
+    shadowSettings.NormalBias        = ps.ShadowNormalBias;
+    shadowSettings.PCFQuality        = ps.ShadowPCFQuality;
+    shadowSettings.CascadeBlendWidth = ps.ShadowCascadeBlendWidth;
+
+    // ── Shadow Depth Pass (before geometry) ──────────────────────────
+    if (ps.ShadowsEnabled) {
+        if (!m_ShadowMap.IsInitialized())
+            m_ShadowMap.Init(ps.ShadowResolution);
+        else if (m_ShadowMap.GetResolution() != ps.ShadowResolution)
+            m_ShadowMap.Resize(ps.ShadowResolution);
+
+        // Unbind shadow texture from sampler before writing to it (avoid read-write conflict)
+        glActiveTexture(GL_TEXTURE0 + ShadowMap::TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+        m_ShadowMap.Update(cameraView, cameraProjection, lightDir, nearClip, farClip, shadowSettings);
+
+        auto depthShader = m_ShadowMap.GetDepthShader();
+        if (depthShader) {
+            auto shadowMeshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
+            for (int c = 0; c < ShadowMap::NUM_CASCADES; ++c) {
+                m_ShadowMap.BeginCascadePass(c);
+                glm::mat4 lightVP = m_ShadowMap.GetLightViewProjection(c);
+                depthShader->Bind();
+
+                for (auto entityID : shadowMeshView) {
+                    if (!IsEntityActiveInHierarchy(entityID)) continue;
+                    auto& mr = shadowMeshView.get<MeshRendererComponent>(entityID);
+                    if (!mr.Mesh) continue;
+
+                    if (!mr.CastShadows) {
+                        continue;
+                    }
+                    // Skip transparent objects
+                    if (mr.Mat && (mr.Mat->IsTransparent() || mr.Color[3] < 0.999f)) {
+                        continue;
+                    }
+
+                    std::shared_ptr<VertexArray> shadowVAO = mr.Mesh;
+                    if (m_Registry.all_of<AnimatorComponent>(entityID)) {
+                        auto& ac = m_Registry.get<AnimatorComponent>(entityID);
+                        if (ac._Animator && ac._Animator->GetSkinnedVAO())
+                            shadowVAO = ac._Animator->GetSkinnedVAO();
+                    }
+
+                    glm::mat4 model = GetWorldTransform(entityID);
+                    depthShader->SetMat4("u_LightMVP", lightVP * model);
+                    RenderCommand::DrawIndexed(shadowVAO);
+                }
+                m_ShadowMap.EndCascadePass();
+            }
+        } else {
+            VE_ENGINE_WARN("[CSM] Depth shader is null! Shadow depth pass skipped.");
+        }
+
+        // Restore viewport for subsequent passes
+        RenderCommand::SetViewport(0, 0, viewportWidth, viewportHeight);
+    }
 
     // ── Frustum culling setup ──
     Frustum frustum(viewProjection);
@@ -1088,6 +1158,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         if (lightingShader) {
             lightingShader->Bind();
             setLightingUniforms(lightingShader);
+            // Bind shadow map
+            if (ps.ShadowsEnabled && m_ShadowMap.IsInitialized()) {
+                m_ShadowMap.BindToShader(lightingShader, shadowSettings);
+                lightingShader->SetMat4("u_ShadowCameraView", cameraView);
+            } else {
+                lightingShader->SetInt("u_ShadowsEnabled", 0);
+            }
         }
         m_DeferredRenderer.LightingPass();
     }
@@ -1124,6 +1201,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 shader->SetFloat(s_SpotLightRanges[i], spotRanges[i]);
                 shader->SetFloat(s_SpotLightInnerCos[i], spotInnerCos[i]);
                 shader->SetFloat(s_SpotLightOuterCos[i], spotOuterCos[i]);
+            }
+            // Bind shadow map for forward transparent pass
+            if (ps.ShadowsEnabled && m_ShadowMap.IsInitialized()) {
+                m_ShadowMap.BindToShader(shader, shadowSettings);
+                shader->SetMat4("u_ShadowCameraView", cameraView);
+            } else {
+                shader->SetInt("u_ShadowsEnabled", 0);
             }
         };
 

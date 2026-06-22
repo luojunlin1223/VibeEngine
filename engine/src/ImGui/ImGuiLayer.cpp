@@ -8,6 +8,9 @@
 
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
+#include <cmath>
+
 // Vulkan context access (only used when API == Vulkan)
 #include "VibeEngine/Platform/Vulkan/VulkanContext.h"
 
@@ -52,11 +55,7 @@ void ImGuiLayer::Init(GLFWwindow* window, RendererAPI::API api) {
 
     ImGui::StyleColorsDark();
 
-    ImGuiStyle& style = ImGui::GetStyle();
-    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-        style.WindowRounding = 0.0f;
-        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-    }
+    ApplyUIScale();
 
     if (api == RendererAPI::API::OpenGL) {
         ImGui_ImplGlfw_InitForOpenGL(m_Window, true);
@@ -88,9 +87,10 @@ void ImGuiLayer::Init(GLFWwindow* window, RendererAPI::API api) {
         ctx.SetImGuiEnabled(true);
     }
 
-    VE_ENGINE_INFO("ImGui initialized ({0}, docking{1})",
+    VE_ENGINE_INFO("ImGui initialized ({0}, docking{1}, ui scale {2:.2f})",
         api == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan",
-        (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) ? " + viewports" : "");
+        (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) ? " + viewports" : "",
+        m_UIScale);
 }
 
 void ImGuiLayer::Shutdown() {
@@ -144,6 +144,60 @@ void ImGuiLayer::End() {
     }
     // For Vulkan, the draw data will be consumed by
     // VulkanContext::RecordCommandBuffer() during SwapBuffers().
+}
+
+float ImGuiLayer::CalculateUIScale() const {
+    if (!m_Window)
+        return 1.0f;
+
+    int windowW = 0;
+    int windowH = 0;
+    glfwGetWindowSize(m_Window, &windowW, &windowH);
+
+    if (windowW <= 0 || windowH <= 0)
+        return 1.0f;
+
+    // Unity CanvasScaler-style baseline: author editor UI at a reference
+    // resolution, then scale with the actual window size using a logarithmic
+    // Match Width/Height blend. This avoids non-uniform X/Y UI scaling.
+    constexpr float kReferenceWidth = 1600.0f;
+    constexpr float kReferenceHeight = 900.0f;
+    constexpr float kMatchHeight = 0.5f;
+    constexpr float kBaseDpiScale = 1.0f;
+
+    const float widthScale = static_cast<float>(windowW) / kReferenceWidth;
+    const float heightScale = static_cast<float>(windowH) / kReferenceHeight;
+    const float resolutionScale = std::pow(widthScale, 1.0f - kMatchHeight) *
+                                  std::pow(heightScale, kMatchHeight);
+
+    float contentScaleX = 1.0f;
+    float contentScaleY = 1.0f;
+    glfwGetWindowContentScale(m_Window, &contentScaleX, &contentScaleY);
+    const float dpiScale = std::max(contentScaleX, contentScaleY) / kBaseDpiScale;
+
+    // Keep small windows usable and prevent very large monitors from making the
+    // editor comically oversized.
+    return std::clamp(resolutionScale * dpiScale, 1.0f, 2.25f);
+}
+
+void ImGuiLayer::ApplyUIScale() {
+    m_UIScale = CalculateUIScale();
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
+
+    ImFontConfig fontConfig;
+    fontConfig.SizePixels = 16.0f;
+    io.Fonts->AddFontDefault(&fontConfig);
+    io.FontGlobalScale = m_UIScale;
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScaleAllSizes(m_UIScale);
+
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
 }
 
 } // namespace VE

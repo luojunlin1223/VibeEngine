@@ -147,7 +147,7 @@ void LightProbe::Bake(Scene& scene, const glm::vec3& position, uint32_t cubemapR
 
         // Render the scene from this face's perspective
         scene.OnRenderSky(vp);
-        scene.OnRenderDeferred(vp, position, res, res);
+        scene.OnRenderDeferred(vp, view, projection, position, 0.1f, 100.0f, res, res);
 
         // Blit deferred output into the light probe's FBO
         {
