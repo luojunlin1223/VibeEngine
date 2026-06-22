@@ -1302,12 +1302,21 @@ private:
     }
 
     void UpdateWindowTitle() {
-        std::string sceneName = m_CurrentScenePath.empty()
-            ? "Untitled"
-            : std::filesystem::path(m_CurrentScenePath).stem().string();
+        std::string sceneName = GetCurrentSceneDisplayName();
         std::string title = std::string("VibeEngine - ") + sceneName;
         if (m_SceneDirty) title += " *";
         glfwSetWindowTitle(GetWindow().GetNativeWindow(), title.c_str());
+    }
+
+    std::string GetCurrentSceneDisplayName() const {
+        if (m_CurrentScenePath.empty())
+            return "Untitled";
+
+        std::filesystem::path scenePath(m_CurrentScenePath);
+        std::string sceneName = scenePath.stem().string();
+        if (sceneName.empty())
+            sceneName = scenePath.filename().string();
+        return sceneName.empty() ? "Untitled" : sceneName;
     }
 
     void OpenInExternalEditor(const std::string& path) {
@@ -2989,8 +2998,22 @@ private:
                 roots.push_back(entityID);
         }
         std::reverse(roots.begin(), roots.end());
-        for (auto entityID : roots)
-            DrawEntityNode(entityID);
+
+        std::string sceneLabel = GetCurrentSceneDisplayName();
+        if (m_SceneDirty)
+            sceneLabel += " *";
+
+        ImGuiTreeNodeFlags sceneFlags = ImGuiTreeNodeFlags_OpenOnArrow |
+            ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
+        bool sceneOpen = ImGui::TreeNodeEx("##CurrentSceneRoot", sceneFlags, "%s", sceneLabel.c_str());
+        if (ImGui::IsItemHovered() && !m_CurrentScenePath.empty())
+            ImGui::SetTooltip("%s", m_CurrentScenePath.c_str());
+
+        if (sceneOpen) {
+            for (auto entityID : roots)
+                DrawEntityNode(entityID);
+            ImGui::TreePop();
+        }
 
         // Drop on empty space: unparent
         if (ImGui::BeginDragDropTarget()) {
