@@ -128,6 +128,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterVolume.shader");
     }
 
+    m_HPWaterVolumeFilterShader = Shader::CreateFromFile("shaders/HPWaterVolumeFilter.shader");
+    if (!m_HPWaterVolumeFilterShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterVolumeFilter.shader");
+    }
+
     m_LightingShader = Shader::CreateFromFile("shaders/DeferredLighting.shader");
     if (!m_LightingShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load DeferredLighting.shader");
@@ -152,14 +157,17 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterGBuffer.reset();
     m_HPWaterCompositeFBO.reset();
     m_HPWaterVolumeFBO.reset();
+    m_HPWaterVolumeFilteredFBO.reset();
     m_GBufferShader.reset();
     m_HPWaterGBufferShader.reset();
     m_HPWaterCompositeShader.reset();
     m_HPWaterVolumeShader.reset();
+    m_HPWaterVolumeFilterShader.reset();
     m_LightingShader.reset();
     m_DebugShader.reset();
     m_HPWaterCompositeValid = false;
     m_HPWaterVolumeValid = false;
+    m_HPWaterVolumeFilteredValid = false;
 
     if (m_QuadVAO) {
         VE_GPU_UNTRACK(GPUResourceType::VertexArray, m_QuadVAO);
@@ -205,7 +213,9 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
         { GL_RGBA16F }, // RT2: refracted linear depth + thickness diagnostics
     };
     m_HPWaterVolumeFBO = Framebuffer::Create(volumeSpec);
+    m_HPWaterVolumeFilteredFBO = Framebuffer::Create(volumeSpec);
     m_HPWaterVolumeValid = false;
+    m_HPWaterVolumeFilteredValid = false;
 }
 
 void DeferredRenderer::CreateHPWaterGBuffer() {
@@ -242,8 +252,12 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     if (m_HPWaterVolumeFBO)
         m_HPWaterVolumeFBO->Resize(GetHalfResolution(width), GetHalfResolution(height));
 
+    if (m_HPWaterVolumeFilteredFBO)
+        m_HPWaterVolumeFilteredFBO->Resize(GetHalfResolution(width), GetHalfResolution(height));
+
     m_HPWaterCompositeValid = false;
     m_HPWaterVolumeValid = false;
+    m_HPWaterVolumeFilteredValid = false;
 }
 
 void DeferredRenderer::ClearHPWaterGBuffer() {
@@ -312,6 +326,7 @@ void DeferredRenderer::LightingPass() {
     if (!m_LightingShader || !m_LightingFBO || !m_GBuffer) return;
     m_HPWaterCompositeValid = false;
     m_HPWaterVolumeValid = false;
+    m_HPWaterVolumeFilteredValid = false;
 
     m_LightingFBO->Bind();
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -378,17 +393,21 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterGBuffer->GetDepthAttachmentID()));
     m_HPWaterCompositeShader->SetInt("u_HPWaterDepth", 5);
 
-    if (m_HPWaterVolumeFBO) {
+    auto volumeForComposite = m_HPWaterVolumeFilteredValid && m_HPWaterVolumeFilteredFBO
+        ? m_HPWaterVolumeFilteredFBO
+        : m_HPWaterVolumeFBO;
+
+    if (volumeForComposite) {
         glActiveTexture(GL_TEXTURE6);
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(0)));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(volumeForComposite->GetColorAttachmentID(0)));
         m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeColor", 6);
 
         glActiveTexture(GL_TEXTURE7);
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(1)));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(volumeForComposite->GetColorAttachmentID(1)));
         m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeTransmittance", 7);
 
         glActiveTexture(GL_TEXTURE8);
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(2)));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(volumeForComposite->GetColorAttachmentID(2)));
         m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeDepth", 8);
     }
 
@@ -396,7 +415,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetFloat("u_FarClip", farClip);
     m_HPWaterCompositeShader->SetFloat("u_RefractionStrength", refractionStrength);
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
-    m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled", m_HPWaterVolumeValid ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled", (m_HPWaterVolumeValid || m_HPWaterVolumeFilteredValid) ? 1 : 0);
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -470,6 +489,49 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
 
     m_HPWaterVolumeFBO->Unbind();
     m_HPWaterVolumeValid = true;
+    m_HPWaterVolumeFilteredValid = false;
+    return true;
+}
+
+bool DeferredRenderer::FilterHPWaterVolume() {
+    if (!m_HPWaterVolumeFilterShader || !m_HPWaterVolumeFBO || !m_HPWaterVolumeFilteredFBO ||
+        !m_HPWaterVolumeValid || m_QuadVAO == 0) {
+        m_HPWaterVolumeFilteredValid = false;
+        return false;
+    }
+
+    m_HPWaterVolumeFilteredFBO->Bind();
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    m_HPWaterVolumeFilterShader->Bind();
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(0)));
+    m_HPWaterVolumeFilterShader->SetInt("u_VolumeColor", 0);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(1)));
+    m_HPWaterVolumeFilterShader->SetInt("u_VolumeTransmittance", 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(2)));
+    m_HPWaterVolumeFilterShader->SetInt("u_VolumeDepth", 2);
+
+    m_HPWaterVolumeFilterShader->SetFloat("u_FilterStep", 1.0f);
+
+    glBindVertexArray(m_QuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+
+    m_HPWaterVolumeFilteredFBO->Unbind();
+    m_HPWaterVolumeFilteredValid = true;
     return true;
 }
 
@@ -503,6 +565,11 @@ uint32_t DeferredRenderer::GetHPWaterRefractionMetaTexture() const {
 uint32_t DeferredRenderer::GetHPWaterVolumeTexture(int index) const {
     if (!m_HPWaterVolumeFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterVolumeFBO->GetColorAttachmentID(index));
+}
+
+uint32_t DeferredRenderer::GetHPWaterVolumeFilteredTexture(int index) const {
+    if (!m_HPWaterVolumeFilteredFBO) return 0;
+    return static_cast<uint32_t>(m_HPWaterVolumeFilteredFBO->GetColorAttachmentID(index));
 }
 
 uint32_t DeferredRenderer::GetHPWaterVolumeWidth() const {

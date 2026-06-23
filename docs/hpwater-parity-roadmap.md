@@ -11,6 +11,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterGBuffer.shader` renders water into a dedicated three-target resource set: normal/roughness, scatter/thickness, and absorption/foam.
 - `HPWaterComposite.shader` performs the first full-resolution refraction payload generation and final water composite.
 - `HPWaterVolume.shader` performs a first half-resolution volume accumulation pass for in-scattering, transmittance, and refracted depth.
+- `HPWaterVolumeFilter.shader` performs the first depth-aware a-trous-style spatial filter over the half-resolution volume buffers.
 - `DeferredRenderer` exports HPWater GBuffer, refraction, volume, and final composite diagnostics.
 - The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots.
 
@@ -51,7 +52,7 @@ HPWater uses low-resolution volumetric accumulation, then filters and composites
 - Depth-aware joint bilateral upsampling.
 - Final composite with full-resolution specular lighting and refraction.
 
-VibeEngine now has the first half-resolution `HPWaterVolume.shader` accumulation target with in-scattering, transmittance, and refracted depth. Temporal reprojection, a-trous filtering, and a fuller depth-aware upsample remain pending.
+VibeEngine now has the first half-resolution `HPWaterVolume.shader` accumulation target with in-scattering, transmittance, and refracted depth, plus one depth-aware a-trous-style spatial filtering pass. Temporal reprojection, multi-iteration a-trous filtering, and a fuller depth-aware upsample remain pending.
 
 ### Caustics
 
@@ -114,7 +115,8 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
    - Done: add low-resolution water volume accumulation.
    - Done: add transmittance and volume depth buffers.
    - Done: add composite into scene color.
-   - Pending: add temporal history, a-trous filtering, and HPWater-style depth-aware upsample.
+   - Done: add first-pass depth-aware spatial filtering.
+   - Pending: add temporal history, multi-iteration a-trous filtering, and HPWater-style depth-aware upsample.
 
 5. GPU fluid dynamics
    - Add top-down height capture passes.
