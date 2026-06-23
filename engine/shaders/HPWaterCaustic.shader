@@ -44,6 +44,8 @@ uniform sampler2D u_HPWaterAbsorptionFoam;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterMask;
 uniform sampler2D u_SceneDepth;
+uniform sampler2D u_HPWaterCausticAtlas;
+uniform sampler2D u_HPWaterCausticAtlasDepth;
 
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
@@ -56,6 +58,9 @@ uniform float u_CausticDispersionStrength;
 uniform float u_NearClip;
 uniform float u_FarClip;
 uniform int u_HPWaterMaskEnabled;
+uniform int u_HPWaterCausticAtlasEnabled;
+uniform float u_HPWaterCausticAtlasWidth;
+uniform float u_HPWaterCausticAtlasHeight;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -75,6 +80,41 @@ float CausticStrands(vec2 causticUV) {
     float bandC = sin((causticUV.x + causticUV.y) * 6.5 + Hash21(floor(causticUV)) * 1.2);
     float interference = (bandA + bandB + bandC) * 0.3333;
     return smoothstep(0.42, 0.95, interference);
+}
+
+float SampleAtlasFocus(vec2 screenUV, vec2 causticUV, vec3 waterNormal, vec3 lightDir, float thickness) {
+    if (u_HPWaterCausticAtlasEnabled == 0 ||
+        u_HPWaterCausticAtlasWidth <= 1.0 ||
+        u_HPWaterCausticAtlasHeight <= 1.0) {
+        return 1.0;
+    }
+
+    // Transitional HPWater parity step: consume the light-space cascade atlas as
+    // the caustic energy source until the original compute/atomic pass exists.
+    vec2 cascadeTile = floor(fract(screenUV * 1.37 + waterNormal.xz * 0.19) * 2.0);
+    vec2 atlasLocalUV = fract(causticUV * 0.071 + waterNormal.xz * 0.083 + lightDir.xz * 0.037);
+    vec2 atlasUV = (cascadeTile + atlasLocalUV) * 0.5;
+    vec2 texel = 1.0 / vec2(u_HPWaterCausticAtlasWidth, u_HPWaterCausticAtlasHeight);
+
+    vec4 atlasCenter = texture(u_HPWaterCausticAtlas, atlasUV);
+    vec4 atlasX = texture(u_HPWaterCausticAtlas, atlasUV + vec2(texel.x, 0.0));
+    vec4 atlasY = texture(u_HPWaterCausticAtlas, atlasUV + vec2(0.0, texel.y));
+    float atlasDepth = texture(u_HPWaterCausticAtlasDepth, atlasUV).r;
+
+    vec3 atlasNormal = normalize(atlasCenter.rgb * 2.0 - 1.0);
+    float normalGradient = length(atlasCenter.rgb - atlasX.rgb) + length(atlasCenter.rgb - atlasY.rgb);
+    float atlasCoverage = step(0.0001, atlasCenter.a) * step(atlasDepth, 0.9999);
+    float slopeFocus = smoothstep(0.015, 0.42, length(atlasNormal.xz));
+    float gradientFocus = smoothstep(0.006, 0.19, normalGradient);
+    float lightFocus = clamp(dot(atlasNormal, lightDir) * 0.5 + 0.5, 0.0, 1.0);
+    float strandFocus = CausticStrands(atlasLocalUV * 18.0 + atlasNormal.xz * 1.7);
+    float thicknessFocus = mix(1.16, 0.72, clamp(thickness / 18.0, 0.0, 1.0));
+
+    float atlasFocus = (0.45 + strandFocus * 1.65) *
+        (0.35 + slopeFocus * 0.45 + gradientFocus * 0.65) *
+        (0.45 + lightFocus * 0.75) *
+        thicknessFocus;
+    return mix(1.0, atlasFocus, atlasCoverage);
 }
 
 void main() {
@@ -117,6 +157,7 @@ void main() {
     float foamOcclusion = 1.0 - clamp(absorptionFoam.a, 0.0, 1.0) * 0.65;
     float sharedEnergy = slopeFocus * sunFacing * depthFade * foamOcclusion;
     sharedEnergy *= clamp(u_CausticStrength, 0.0, 8.0) * max(u_LightIntensity, 0.0);
+    sharedEnergy *= SampleAtlasFocus(v_UV, causticUV, N, L, thickness);
 
     float centerStrands = CausticStrands(causticUV);
     vec3 energyRGB = vec3(centerStrands) * sharedEnergy;

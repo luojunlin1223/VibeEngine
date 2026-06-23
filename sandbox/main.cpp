@@ -7091,6 +7091,7 @@ private:
         out << "HPWaterCausticAtlasSize: " << d.HPWaterCausticAtlasWidth << "x" << d.HPWaterCausticAtlasHeight << "\n";
         out << "HPWaterCausticAtlasCascades: " << d.HPWaterCausticAtlasCascades << "\n";
         out << "HPWaterCausticAtlasDrawn: " << d.HPWaterCausticAtlasDrawn << "\n";
+        out << "HPWaterCausticAtlasConsumed: " << d.HPWaterCausticAtlasConsumed << "\n";
         out << "HPWaterCausticFilterRadius: " << d.HPWaterCausticFilterRadius << "\n";
         out << "HPWaterCausticFilterDepthSigma: " << d.HPWaterCausticFilterDepthSigma << "\n";
         out << "HPWaterCausticVolumeStrength: " << d.HPWaterCausticVolumeStrength << "\n";
@@ -7368,9 +7369,10 @@ private:
             d.HPWaterCausticDispersionStrength,
             d.HPWaterCausticFilterRadius,
             d.HPWaterCausticVolumeStrength);
-        ImGui::Text("HPWater caustic atlas: ran=%d valid=%d drawn=%u tile=%u size=%ux%u cascades=%u tex=%u depth=%u",
+        ImGui::Text("HPWater caustic atlas: ran=%d valid=%d consumed=%d drawn=%u tile=%u size=%ux%u cascades=%u tex=%u depth=%u",
             d.HPWaterCausticAtlasRan ? 1 : 0,
             d.HPWaterCausticAtlasValid ? 1 : 0,
+            d.HPWaterCausticAtlasConsumed ? 1 : 0,
             d.HPWaterCausticAtlasDrawn,
             d.HPWaterCausticAtlasTileResolution,
             d.HPWaterCausticAtlasWidth,

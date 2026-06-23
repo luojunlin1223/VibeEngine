@@ -242,6 +242,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterCausticAtlasHeight = 0;
     uint32_t HPWaterCausticAtlasCascades = 0;
     uint32_t HPWaterCausticAtlasDrawn = 0;
+    bool HPWaterCausticAtlasConsumed = false;
     float HPWaterCausticFilterRadius = 0.0f;
     float HPWaterCausticFilterDepthSigma = 0.0f;
     float HPWaterCausticVolumeStrength = 0.0f;

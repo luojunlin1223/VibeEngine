@@ -271,6 +271,7 @@ public:
     uint32_t GetHPWaterCausticAtlasTexture() const;
     uint32_t GetHPWaterCausticAtlasDepthTexture() const;
     bool IsHPWaterCausticAtlasValid() const { return m_HPWaterCausticAtlasValid; }
+    bool IsHPWaterCausticAtlasConsumed() const { return m_HPWaterCausticAtlasConsumed; }
     uint32_t GetHPWaterCausticAtlasTileResolution() const { return m_HPWaterCausticAtlasTileResolution; }
     uint32_t GetHPWaterCausticAtlasWidth() const;
     uint32_t GetHPWaterCausticAtlasHeight() const;
@@ -386,6 +387,7 @@ private:
     // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
     std::shared_ptr<Framebuffer> m_HPWaterCausticAtlasFBO;
     bool m_HPWaterCausticAtlasValid = false;
+    bool m_HPWaterCausticAtlasConsumed = false;
     uint32_t m_HPWaterCausticAtlasTileResolution = 0;
 
     // HPWater FluidDynamics wave height ping-pong textures.
