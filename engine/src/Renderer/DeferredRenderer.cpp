@@ -335,6 +335,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
+    m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
+    m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticComputeIrradianceValid = false;
@@ -585,6 +588,9 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
+    m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
+    m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterVolumeFilterIterations = 0;
 }
 
@@ -1553,6 +1559,9 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
     if (!m_HPWaterVolumeTemporalShader || !m_HPWaterVolumeFBO || !m_HPWaterVolumeTemporalFBO ||
         !m_HPWaterVolumeHistoryFBO || !m_HPWaterCompositeFBO || !m_HPWaterVolumeValid || m_QuadVAO == 0) {
         m_HPWaterVolumeTemporalValid = false;
+        m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
+        m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
+        m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
         return false;
     }
 
@@ -1599,6 +1608,7 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
     m_HPWaterVolumeTemporalShader->SetFloat("u_HistoryBlend", 0.88f);
     m_HPWaterVolumeTemporalShader->SetFloat("u_DepthRejectionThreshold", 0.035f);
     m_HPWaterVolumeTemporalShader->SetFloat("u_VelocityRejectionScale", 9.0f);
+    m_HPWaterVolumeTemporalShader->SetFloat("u_NeighborhoodClampStrength", 1.0f);
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -1609,6 +1619,9 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
 
     m_HPWaterVolumeTemporalFBO->Unbind();
     m_HPWaterVolumeTemporalValid = true;
+    m_HPWaterVolumeTemporalNeighborhoodClampEnabled = true;
+    m_HPWaterVolumeTemporalMotionReprojectionEnabled = true;
+    m_HPWaterVolumeTemporalNeighborhoodClampStrength = 1.0f;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeFilterIterations = 0;
@@ -1628,6 +1641,9 @@ void DeferredRenderer::InvalidateHPWaterVolumeHistory() {
     m_HPWaterVolumeTemporalValid = false;
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
+    m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
+    m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
 }
 
 bool DeferredRenderer::RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,

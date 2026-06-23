@@ -1126,6 +1126,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
     m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
     m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
+    m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeTemporalNeighborhoodClampEnabled();
+    m_RenderDiagnostics.HPWaterVolumeTemporalMotionReprojectionEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeTemporalMotionReprojectionEnabled();
+    m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =
+        m_DeferredRenderer.GetHPWaterVolumeTemporalNeighborhoodClampStrength();
     m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
     m_RenderDiagnostics.HPWaterVolumeHistoryColorTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(0);
     m_RenderDiagnostics.HPWaterVolumeHistoryTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(1);
@@ -2296,6 +2302,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
     m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
     m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
+    m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeTemporalNeighborhoodClampEnabled();
+    m_RenderDiagnostics.HPWaterVolumeTemporalMotionReprojectionEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeTemporalMotionReprojectionEnabled();
+    m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =
+        m_DeferredRenderer.GetHPWaterVolumeTemporalNeighborhoodClampStrength();
     m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
     m_RenderDiagnostics.HPWaterVolumeHistoryColorTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(0);
     m_RenderDiagnostics.HPWaterVolumeHistoryTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(1);

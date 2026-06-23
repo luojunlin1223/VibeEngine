@@ -280,6 +280,15 @@ public:
     uint32_t GetHPWaterVolumeFilterIterations() const { return m_HPWaterVolumeFilterIterations; }
     bool IsHPWaterVolumeTemporalValid() const { return m_HPWaterVolumeTemporalValid; }
     bool HasHPWaterVolumeHistory() const { return m_HPWaterVolumeHistoryValid; }
+    bool IsHPWaterVolumeTemporalNeighborhoodClampEnabled() const {
+        return m_HPWaterVolumeTemporalNeighborhoodClampEnabled;
+    }
+    bool IsHPWaterVolumeTemporalMotionReprojectionEnabled() const {
+        return m_HPWaterVolumeTemporalMotionReprojectionEnabled;
+    }
+    float GetHPWaterVolumeTemporalNeighborhoodClampStrength() const {
+        return m_HPWaterVolumeTemporalNeighborhoodClampStrength;
+    }
     bool IsHPWaterVolumeUpsampledValid() const { return m_HPWaterVolumeUpsampledValid; }
     void InvalidateHPWaterVolumeHistory();
 
@@ -456,6 +465,9 @@ private:
     bool m_HPWaterVolumeFilteredValid = false;
     bool m_HPWaterVolumeUpsampledValid = false;
     uint32_t m_HPWaterVolumeFilterIterations = 0;
+    bool m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
+    bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
+    float m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
 
     // Full-resolution caustic energy consumed by the HPWater composite pass.
     std::shared_ptr<Framebuffer> m_HPWaterCausticFBO;

@@ -7093,6 +7093,12 @@ private:
         out << "HPWaterVolumeDepthTexture: " << d.HPWaterVolumeDepthTexture << "\n";
         out << "HPWaterVolumeSize: " << d.HPWaterVolumeWidth << "x" << d.HPWaterVolumeHeight << "\n";
         out << "HPWaterVolumeTemporalRan: " << d.HPWaterVolumeTemporalRan << "\n";
+        out << "HPWaterVolumeTemporalNeighborhoodClampEnabled: "
+            << d.HPWaterVolumeTemporalNeighborhoodClampEnabled << "\n";
+        out << "HPWaterVolumeTemporalMotionReprojectionEnabled: "
+            << d.HPWaterVolumeTemporalMotionReprojectionEnabled << "\n";
+        out << "HPWaterVolumeTemporalNeighborhoodClampStrength: "
+            << d.HPWaterVolumeTemporalNeighborhoodClampStrength << "\n";
         out << "HPWaterVolumeHistoryValid: " << d.HPWaterVolumeHistoryValid << "\n";
         out << "HPWaterVolumeHistoryColorTexture: " << d.HPWaterVolumeHistoryColorTexture << "\n";
         out << "HPWaterVolumeHistoryTransmittanceTexture: " << d.HPWaterVolumeHistoryTransmittanceTexture << "\n";
@@ -7395,6 +7401,10 @@ private:
             d.HPWaterDepthPyramidWidth,
             d.HPWaterDepthPyramidHeight,
             d.HPWaterDepthPyramidTexture);
+        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d strength=%.2f",
+            d.HPWaterVolumeTemporalNeighborhoodClampEnabled ? 1 : 0,
+            d.HPWaterVolumeTemporalMotionReprojectionEnabled ? 1 : 0,
+            d.HPWaterVolumeTemporalNeighborhoodClampStrength);
         ImGui::Text("HPWater mask: %ux%u tex=%u",
             d.HPWaterMaskWidth,
             d.HPWaterMaskHeight,
