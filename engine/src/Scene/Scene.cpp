@@ -1106,6 +1106,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterGBuffer1 = m_DeferredRenderer.GetHPWaterGBufferTexture(1);
     m_RenderDiagnostics.HPWaterGBuffer2 = m_DeferredRenderer.GetHPWaterGBufferTexture(2);
     m_RenderDiagnostics.HPWaterGBufferDepth = m_DeferredRenderer.GetHPWaterDepthTexture();
+    m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1303,6 +1304,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     };
     std::vector<VisibleEntity> transparentEntities;
     std::vector<VisibleEntity> hpWaterEntities;
+    float hpWaterRefractionStrength = 0.16f;
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     transparentEntities.reserve(view.size_hint() / 4);
@@ -1386,10 +1388,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             float distSq = glm::dot(worldPos - cameraPos, worldPos - cameraPos);
             transparentEntities.push_back({ entityID, model, distSq });
             m_RenderDiagnostics.TransparentQueued++;
-            if (isHPWater)
-                m_RenderDiagnostics.HPWaterQueued++;
             continue;
         }
+        if (isHPWater) {
+            hpWaterEntities.push_back({ entityID, model, 0.0f });
+            if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID))
+                hpWaterRefractionStrength = std::max(hpWaterRefractionStrength, water->RefractionStrength);
+            m_RenderDiagnostics.HPWaterQueued++;
+            continue;
+        }
+
         m_RenderDiagnostics.OpaqueSubmitted++;
 
         // ── Render opaque entity to G-buffer ──
@@ -1397,18 +1405,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         auto* ac = m_Registry.try_get<AnimatorComponent>(entityID);
         bool hasAnimator = ac && ac->_Animator && ac->_Animator->GetSkinnedVAO();
         if (hasAnimator) drawVAO = ac->_Animator->GetSkinnedVAO();
-        if (isHPWater)
-            hpWaterEntities.push_back({ entityID, model, 0.0f });
-
         glm::mat4 mvp = viewProjection * model;
         glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
-        if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID)) {
-            entityColor = glm::vec4(
-                water->ScatterColor[0],
-                water->ScatterColor[1],
-                water->ScatterColor[2],
-                1.0f);
-        }
 
         // Use the G-buffer shader for all opaque geometry
         gbufferShader->Bind();
@@ -1490,31 +1488,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     break;
             }
         }
-        if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID)) {
-            gbufferShader->SetFloat("u_Metallic", 0.0f);
-            gbufferShader->SetFloat("u_Roughness", std::clamp(water->Roughness, 0.02f, 0.75f));
-            gbufferShader->SetFloat("u_AO", 1.0f);
-            gbufferShader->SetInt("u_HasMainTex", 0);
-            gbufferShader->SetInt("u_UseTexture", 0);
-            gbufferShader->SetInt("u_IsWaterSurface", 1);
-            gbufferShader->SetVec3("u_WaterAbsorptionColor", glm::vec3(
-                water->AbsorptionColor[0],
-                water->AbsorptionColor[1],
-                water->AbsorptionColor[2]));
-            gbufferShader->SetVec3("u_WaterFoamColor", glm::vec3(
-                water->FoamColor[0],
-                water->FoamColor[1],
-                water->FoamColor[2]));
-            gbufferShader->SetFloat("u_WaterFoamIntensity", water->FoamIntensity);
-            gbufferShader->SetFloat("u_WaterHeightScale", water->HeightScale);
-            gbufferShader->SetFloat("u_WaterBaseHeight", water->BaseHeight);
-        }
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         RenderCommand::DrawIndexed(drawVAO);
-        if (isHPWater)
-            m_RenderDiagnostics.HPWaterDrawn++;
     }
 
     m_DeferredRenderer.EndGeometryPass();
@@ -1681,6 +1658,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         }
         m_DeferredRenderer.EndForwardPass();
     }
+
+    if (m_RenderDiagnostics.HPWaterGBufferDrawn > 0) {
+        m_RenderDiagnostics.HPWaterCompositeRan =
+            m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength);
+        if (m_RenderDiagnostics.HPWaterCompositeRan)
+            m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
+    }
+
+    m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
+    m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
 }
 
 // ── Terrain Rendering ───────────────────────────────────────────────

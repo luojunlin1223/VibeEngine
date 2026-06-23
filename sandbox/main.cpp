@@ -6990,12 +6990,14 @@ private:
         out << "HPWaterDrawn: " << d.HPWaterDrawn << "\n";
         out << "HPWaterCulled: " << d.HPWaterCulled << "\n";
         out << "HPWaterGBufferDrawn: " << d.HPWaterGBufferDrawn << "\n";
+        out << "HPWaterCompositeRan: " << d.HPWaterCompositeRan << "\n";
         out << "HPWaterGBufferInitialized: " << d.HPWaterGBufferInitialized << "\n";
         out << "HPWaterGBufferAttachmentCount: " << d.HPWaterGBufferAttachmentCount << "\n";
         out << "HPWaterGBuffer0: " << d.HPWaterGBuffer0 << "\n";
         out << "HPWaterGBuffer1: " << d.HPWaterGBuffer1 << "\n";
         out << "HPWaterGBuffer2: " << d.HPWaterGBuffer2 << "\n";
         out << "HPWaterGBufferDepth: " << d.HPWaterGBufferDepth << "\n";
+        out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7024,6 +7026,11 @@ private:
             writeProbe("DeferredOutput", ProbeTexture(dr.GetOutputTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetOutputTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_deferred.bmp");
+        }
+        if (dr.IsInitialized() && dr.GetHPWaterCompositeTexture() != 0) {
+            writeProbe("HPWaterComposite", ProbeTexture(dr.GetHPWaterCompositeTexture(), dr.GetWidth(), dr.GetHeight()));
+            SaveTextureBMP(dr.GetHPWaterCompositeTexture(), dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_composite.bmp");
         }
         if (dr.IsInitialized() && dr.HasHPWaterGBuffer()) {
             struct HPWaterProbeTarget {
@@ -7076,7 +7083,10 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u", d.HPWaterGBufferDrawn);
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d compositeTex=%u",
+            d.HPWaterGBufferDrawn,
+            d.HPWaterCompositeRan ? 1 : 0,
+            d.HPWaterCompositeTexture);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

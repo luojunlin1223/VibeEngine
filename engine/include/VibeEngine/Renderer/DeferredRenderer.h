@@ -24,6 +24,12 @@
  *   RT0 (RGBA16F): Water normal.xyz encoded to [0,1] + roughness
  *   RT1 (RGBA16F): Scatter color.rgb + thickness
  *   RT2 (RGBA16F): Absorption color.rgb + foam
+ *
+ * HPWater composite:
+ *   Reads the opaque scene color/depth plus HPWater surface data/depth and
+ *   writes a resolved water composite texture. This mirrors the reference
+ *   HPWater split where refraction consumes the water G-buffer instead of
+ *   shading water as generic opaque geometry.
  */
 #pragma once
 
@@ -87,8 +93,20 @@ public:
     /// Reads G-buffer textures and computes PBR lighting.
     void LightingPass();
 
+    /// Composite HPWater over the lit scene using dedicated water G-buffer data.
+    bool CompositeHPWater(float nearClip, float farClip, float refractionStrength);
+
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
+
+    /// Get the raw deferred lighting texture before HPWater composite.
+    uint32_t GetLightingTexture() const;
+
+    /// Get the HPWater composite texture.
+    uint32_t GetHPWaterCompositeTexture() const;
+
+    /// Whether the current output texture is the HPWater composite.
+    bool IsHPWaterCompositeValid() const { return m_HPWaterCompositeValid; }
 
     /// Get G-buffer depth texture (for SSAO, post-processing, etc.)
     uint32_t GetDepthTexture() const;
@@ -136,6 +154,7 @@ public:
 
 private:
     void CreateLightingFBO();
+    void CreateHPWaterCompositeFBO();
     void CreateHPWaterGBuffer();
     void ClearHPWaterGBuffer();
 
@@ -152,9 +171,14 @@ private:
     // Dedicated HPWater surface payloads (separate from generic opaque G-buffer).
     std::shared_ptr<Framebuffer> m_HPWaterGBuffer;
 
+    // HPWater final composite output.
+    std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
+    bool m_HPWaterCompositeValid = false;
+
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
     std::shared_ptr<Shader> m_HPWaterGBufferShader;
+    std::shared_ptr<Shader> m_HPWaterCompositeShader;
     std::shared_ptr<Shader> m_LightingShader;
     std::shared_ptr<Shader> m_DebugShader;
 
