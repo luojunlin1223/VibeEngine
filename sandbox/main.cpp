@@ -6292,6 +6292,8 @@ private:
                 ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
                 ImGui::DragFloat("Caustic Scale", &w.CausticScale, 0.1f, 0.1f, 128.0f, "%.2f");
                 ImGui::DragFloat("Caustic Depth Fade", &w.CausticDepthFade, 0.1f, 0.1f, 500.0f, "%.2f");
+                ImGui::Checkbox("RGB Caustic", &w.CausticRGBDispersion);
+                ImGui::SliderFloat("Caustic Dispersion", &w.CausticDispersionStrength, 0.0f, 2.0f, "%.3f");
                 ImGui::Checkbox("Caustic Filter", &w.CausticFilterEnabled);
                 ImGui::DragFloat("Caustic Filter Radius", &w.CausticFilterRadius, 0.05f, 0.25f, 8.0f, "%.2f");
                 ImGui::DragFloat("Caustic Depth Sigma", &w.CausticFilterDepthSigma, 0.0001f, 0.00001f, 0.05f, "%.5f");
@@ -7075,6 +7077,8 @@ private:
         out << "HPWaterCausticStrength: " << d.HPWaterCausticStrength << "\n";
         out << "HPWaterCausticScale: " << d.HPWaterCausticScale << "\n";
         out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
+        out << "HPWaterCausticRGBDispersion: " << d.HPWaterCausticRGBDispersion << "\n";
+        out << "HPWaterCausticDispersionStrength: " << d.HPWaterCausticDispersionStrength << "\n";
         out << "HPWaterCausticFilterRadius: " << d.HPWaterCausticFilterRadius << "\n";
         out << "HPWaterCausticFilterDepthSigma: " << d.HPWaterCausticFilterDepthSigma << "\n";
         out << "HPWaterCausticVolumeStrength: " << d.HPWaterCausticVolumeStrength << "\n";
@@ -7326,7 +7330,7 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f filterRadius=%.2f volume=%.3f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
@@ -7336,6 +7340,8 @@ private:
             d.HPWaterCausticStrength,
             d.HPWaterCausticScale,
             d.HPWaterCausticDepthFade,
+            d.HPWaterCausticRGBDispersion ? 1 : 0,
+            d.HPWaterCausticDispersionStrength,
             d.HPWaterCausticFilterRadius,
             d.HPWaterCausticVolumeStrength);
         ImGui::Text("HPWater fluid: ran=%d valid=%d res=%u height=%u speed=%.3f damping=%.3f",

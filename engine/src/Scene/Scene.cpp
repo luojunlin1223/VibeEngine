@@ -1345,6 +1345,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterCausticStrength = 0.0f;
     float hpWaterCausticScale = 12.0f;
     float hpWaterCausticDepthFade = 20.0f;
+    bool hpWaterCausticRGBDispersion = false;
+    float hpWaterCausticDispersionStrength = 0.0f;
     bool hpWaterCausticFilterEnabled = false;
     float hpWaterCausticFilterRadius = 1.35f;
     float hpWaterCausticFilterDepthSigma = 0.0025f;
@@ -1474,6 +1476,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterCausticStrength = std::max(hpWaterCausticStrength, water->CausticStrength);
                 hpWaterCausticScale = std::max(hpWaterCausticScale, water->CausticScale);
                 hpWaterCausticDepthFade = std::max(hpWaterCausticDepthFade, water->CausticDepthFade);
+                hpWaterCausticRGBDispersion = hpWaterCausticRGBDispersion || water->CausticRGBDispersion;
+                hpWaterCausticDispersionStrength = std::max(
+                    hpWaterCausticDispersionStrength, water->CausticDispersionStrength);
                 hpWaterCausticFilterEnabled = hpWaterCausticFilterEnabled || water->CausticFilterEnabled;
                 hpWaterCausticFilterRadius = std::max(hpWaterCausticFilterRadius, water->CausticFilterRadius);
                 hpWaterCausticFilterDepthSigma = std::max(hpWaterCausticFilterDepthSigma, water->CausticFilterDepthSigma);
@@ -1876,6 +1881,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
         m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
+        m_RenderDiagnostics.HPWaterCausticRGBDispersion = hpWaterCausticRGBDispersion;
+        m_RenderDiagnostics.HPWaterCausticDispersionStrength = hpWaterCausticDispersionStrength;
         m_RenderDiagnostics.HPWaterCausticFilterRadius = hpWaterCausticFilterRadius;
         m_RenderDiagnostics.HPWaterCausticFilterDepthSigma = hpWaterCausticFilterDepthSigma;
         m_RenderDiagnostics.HPWaterCausticVolumeStrength = hpWaterCausticVolumeStrength;
@@ -1902,7 +1909,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                          lightIntensity,
                                                          hpWaterCausticStrength,
                                                          hpWaterCausticScale,
-                                                         hpWaterCausticDepthFade);
+                                                         hpWaterCausticDepthFade,
+                                                         hpWaterCausticRGBDispersion,
+                                                         hpWaterCausticDispersionStrength);
         m_RenderDiagnostics.HPWaterCausticFilterRan =
             m_RenderDiagnostics.HPWaterCausticRan &&
             hpWaterCausticFilterEnabled &&

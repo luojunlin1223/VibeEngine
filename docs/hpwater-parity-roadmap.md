@@ -16,7 +16,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterVolumeTemporal.shader` performs a first low-resolution temporal reprojection/history blend before spatial filtering.
 - `HPWaterVolumeFilter.shader` performs the first multi-iteration depth-aware a-trous-style spatial filter over the half-resolution volume buffers.
 - `HPWaterVolumeUpsample.shader` resolves filtered half-resolution volume buffers into full-resolution joint-bilateral volume textures.
-- `HPWaterCaustic.shader` performs a first full-resolution caustic energy accumulation from HPWater normals, thickness, absorption, mask, scene depth, and directional light parameters.
+- `HPWaterCaustic.shader` performs a first full-resolution caustic energy accumulation from HPWater normals, thickness, absorption, mask, scene depth, and directional light parameters, including a serialized single-channel/RGB dispersion mode inspired by HPWater's `_Is_Use_RGB_Caustic` and `_CausticDispersionStrength` controls.
 - `HPWaterCausticFilter.shader` performs a first edge-aware caustic denoise/filter pass using caustic energy, HPWater depth, and the explicit water mask.
 - `HPWaterVolume.shader` can inject filtered caustic energy into the directional in-scattering term so caustics affect volumetric water lighting, not only the final surface composite.
 - `HPWaterFluidDynamics.shader` performs a first GPU ping-pong wave equation update into an R16F height texture, and `HPWaterGBuffer.shader` samples that texture for fluid normal and foam contribution.
@@ -73,7 +73,7 @@ HPWater caustics are a separate compute-driven pipeline:
 - Supports single-channel and RGB dispersion modes.
 - Applies denoise / filtering and passes caustic data into deferred water lighting.
 
-VibeEngine now has the first caustic resource slice: `HPWaterCaustic.shader` writes a full-resolution RGBA16F caustic texture, `HPWaterCausticFilter.shader` performs a two-pass edge-aware denoise/filter, `HPWaterComposite.shader` consumes the filtered texture when available, `HPWaterVolume.shader` injects filtered caustic energy into volume scattering, and diagnostics export both `render_diagnostics_hpwater_caustic.bmp` and `render_diagnostics_hpwater_caustic_filtered.bmp`. This is intentionally not full HPWater parity yet; the directional-light cascade atlas capture, compute/atomic accumulation, and RGB dispersion stages remain pending.
+VibeEngine now has the first caustic resource slice: `HPWaterCaustic.shader` writes a full-resolution RGBA16F caustic texture, supports a screen-space single-channel/RGB dispersion mode, `HPWaterCausticFilter.shader` performs a two-pass edge-aware denoise/filter, `HPWaterComposite.shader` consumes the filtered texture when available, `HPWaterVolume.shader` injects filtered caustic energy into volume scattering, and diagnostics export both `render_diagnostics_hpwater_caustic.bmp` and `render_diagnostics_hpwater_caustic_filtered.bmp`. This is intentionally not full HPWater parity yet; the directional-light cascade atlas capture, compute/atomic accumulation, and true HPWater RGB spectral ray marching through separate caustic buffers remain pending.
 
 ### Fluid Dynamics
 

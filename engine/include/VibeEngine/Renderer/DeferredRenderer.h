@@ -159,7 +159,9 @@ public:
                                    float lightIntensity,
                                    float strength,
                                    float scale,
-                                   float depthFade);
+                                   float depthFade,
+                                   bool rgbDispersion,
+                                   float dispersionStrength);
 
     /// Denoise/filter HPWater caustic energy before composite and volume lighting.
     bool FilterHPWaterCaustics(float radius,
