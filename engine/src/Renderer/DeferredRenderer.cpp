@@ -172,7 +172,10 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
     FramebufferSpec compositeSpec;
     compositeSpec.Width = m_Width;
     compositeSpec.Height = m_Height;
-    compositeSpec.HDR = true;
+    compositeSpec.ColorFormats = {
+        { GL_RGBA16F }, // RT0: Final HPWater composite color
+        { GL_RGBA16F }, // RT1: Refract UV.xy + scene depth + normalized thickness
+    };
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
 }
@@ -370,6 +373,11 @@ uint32_t DeferredRenderer::GetLightingTexture() const {
 uint32_t DeferredRenderer::GetHPWaterCompositeTexture() const {
     if (!m_HPWaterCompositeFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterRefractionDataTexture() const {
+    if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 2) return 0;
+    return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(1));
 }
 
 uint32_t DeferredRenderer::GetDepthTexture() const {

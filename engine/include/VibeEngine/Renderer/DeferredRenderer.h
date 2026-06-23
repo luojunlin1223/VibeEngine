@@ -30,6 +30,11 @@
  *   writes a resolved water composite texture. This mirrors the reference
  *   HPWater split where refraction consumes the water G-buffer instead of
  *   shading water as generic opaque geometry.
+ *
+ * HPWater refraction data:
+ *   RT1 of the composite FBO stores refractUV.xy + refractedDepth + normalized
+ *   water thickness. Later volumetric passes can reconstruct the refracted
+ *   world position from UV/depth once inverse VP data is wired into the pass.
  */
 #pragma once
 
@@ -105,6 +110,9 @@ public:
     /// Get the HPWater composite texture.
     uint32_t GetHPWaterCompositeTexture() const;
 
+    /// Get the HPWater precomputed refraction payload texture.
+    uint32_t GetHPWaterRefractionDataTexture() const;
+
     /// Whether the current output texture is the HPWater composite.
     bool IsHPWaterCompositeValid() const { return m_HPWaterCompositeValid; }
 
@@ -171,7 +179,7 @@ private:
     // Dedicated HPWater surface payloads (separate from generic opaque G-buffer).
     std::shared_ptr<Framebuffer> m_HPWaterGBuffer;
 
-    // HPWater final composite output.
+    // HPWater final composite output and precomputed refraction payload.
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     bool m_HPWaterCompositeValid = false;
 

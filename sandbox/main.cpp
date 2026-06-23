@@ -6998,6 +6998,7 @@ private:
         out << "HPWaterGBuffer2: " << d.HPWaterGBuffer2 << "\n";
         out << "HPWaterGBufferDepth: " << d.HPWaterGBufferDepth << "\n";
         out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
+        out << "HPWaterRefractionDataTexture: " << d.HPWaterRefractionDataTexture << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7031,6 +7032,11 @@ private:
             writeProbe("HPWaterComposite", ProbeTexture(dr.GetHPWaterCompositeTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetHPWaterCompositeTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_composite.bmp");
+        }
+        if (dr.IsInitialized() && dr.GetHPWaterRefractionDataTexture() != 0) {
+            writeProbe("HPWaterRefractionData", ProbeTexture(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight()));
+            SaveTextureBMP(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_data.bmp");
         }
         if (dr.IsInitialized() && dr.HasHPWaterGBuffer()) {
             struct HPWaterProbeTarget {
@@ -7083,10 +7089,11 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d compositeTex=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d compositeTex=%u refractData=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
-            d.HPWaterCompositeTexture);
+            d.HPWaterCompositeTexture,
+            d.HPWaterRefractionDataTexture);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

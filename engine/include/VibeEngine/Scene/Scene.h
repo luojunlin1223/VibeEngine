@@ -183,6 +183,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterGBuffer2 = 0;
     uint32_t HPWaterGBufferDepth = 0;
     uint32_t HPWaterCompositeTexture = 0;
+    uint32_t HPWaterRefractionDataTexture = 0;
 
     bool DeferredInitialized = false;
     bool LightingPassRan = false;

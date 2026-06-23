@@ -34,6 +34,7 @@ void main() {
 #ifdef FRAGMENT
 layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 RefractData;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -113,6 +114,7 @@ void main() {
 
     if (waterDepth >= 0.9999) {
         FragColor = sceneColor;
+        RefractData = vec4(v_UV, 1.0, 0.0);
         return;
     }
 
@@ -121,6 +123,7 @@ void main() {
     // Preserve foreground opaque objects. GL depth is smaller when closer.
     if (sceneDepth < waterDepth - 0.00005) {
         FragColor = sceneColor;
+        RefractData = vec4(v_UV, sceneDepth, 0.0);
         return;
     }
 
@@ -153,6 +156,7 @@ void main() {
     float refractedSceneDepth = texture(u_SceneDepth, refractUV).r;
     if (refractedSceneDepth < waterDepth - 0.00005) {
         refractUV = v_UV;
+        refractedSceneDepth = sceneDepth;
     }
 
     vec3 refractedColor = texture(u_SceneColor, refractUV).rgb;
@@ -169,6 +173,7 @@ void main() {
     float waterAlpha = clamp(0.28 + normalizedThickness * 0.62 + foam * 0.45, 0.0, 0.92);
 
     FragColor = vec4(mix(sceneColor.rgb, waterColor, waterAlpha), sceneColor.a);
+    RefractData = vec4(refractUV, refractedSceneDepth, normalizedThickness);
 }
 #endif
 
