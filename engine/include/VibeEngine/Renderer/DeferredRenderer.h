@@ -38,10 +38,10 @@
  *
  * HPWater volume data:
  *   Half-resolution MRT targets store volumetric in-scattering, transmittance,
- *   and refracted linear depth. Composite samples them with depth-aware
- *   upsampling. The dataflow now mirrors the reference HPWater volume path:
+ *   and refracted linear depth. A full-resolution joint bilateral upsample
+ *   resolves the filtered low-res buffers before composite. The dataflow now mirrors the reference HPWater volume path:
  *   low-res accumulation -> temporal reprojection/history -> a-trous spatial
- *   filtering -> full-res composite.
+ *   filtering -> full-res upsample -> full-res composite.
  */
 #pragma once
 
@@ -127,6 +127,9 @@ public:
     /// Run multi-iteration depth-aware a-trous filtering over low-resolution HPWater volume buffers.
     bool FilterHPWaterVolume();
 
+    /// Resolve filtered low-resolution HPWater volume buffers into full-resolution textures.
+    bool UpsampleHPWaterVolume(float nearClip, float farClip);
+
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
 
@@ -153,6 +156,7 @@ public:
     uint32_t GetHPWaterVolumeFilterIterations() const { return m_HPWaterVolumeFilterIterations; }
     bool IsHPWaterVolumeTemporalValid() const { return m_HPWaterVolumeTemporalValid; }
     bool HasHPWaterVolumeHistory() const { return m_HPWaterVolumeHistoryValid; }
+    bool IsHPWaterVolumeUpsampledValid() const { return m_HPWaterVolumeUpsampledValid; }
     void InvalidateHPWaterVolumeHistory();
 
     /// Whether the current output texture is the HPWater composite.
@@ -180,6 +184,7 @@ public:
     uint32_t GetHPWaterVolumeHeight() const;
     uint32_t GetHPWaterVolumeFilteredTexture(int index) const;
     uint32_t GetHPWaterVolumeHistoryTexture(int index) const;
+    uint32_t GetHPWaterVolumeUpsampledTexture(int index) const;
 
     /// Bind G-buffer textures to specified texture units for the lighting shader.
     void BindGBufferTextures(int startUnit = 0);
@@ -241,10 +246,12 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterVolumeHistoryFBO;
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFilteredFBO;
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFilterScratchFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterVolumeUpsampledFBO;
     bool m_HPWaterVolumeValid = false;
     bool m_HPWaterVolumeTemporalValid = false;
     bool m_HPWaterVolumeHistoryValid = false;
     bool m_HPWaterVolumeFilteredValid = false;
+    bool m_HPWaterVolumeUpsampledValid = false;
     uint32_t m_HPWaterVolumeFilterIterations = 0;
 
     // Shaders
@@ -254,6 +261,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterVolumeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeTemporalShader;
     std::shared_ptr<Shader> m_HPWaterVolumeFilterShader;
+    std::shared_ptr<Shader> m_HPWaterVolumeUpsampleShader;
     std::shared_ptr<Shader> m_LightingShader;
     std::shared_ptr<Shader> m_DebugShader;
 

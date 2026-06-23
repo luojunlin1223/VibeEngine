@@ -7015,6 +7015,11 @@ private:
         out << "HPWaterVolumeFilteredColorTexture: " << d.HPWaterVolumeFilteredColorTexture << "\n";
         out << "HPWaterVolumeFilteredTransmittanceTexture: " << d.HPWaterVolumeFilteredTransmittanceTexture << "\n";
         out << "HPWaterVolumeFilteredDepthTexture: " << d.HPWaterVolumeFilteredDepthTexture << "\n";
+        out << "HPWaterVolumeUpsampleRan: " << d.HPWaterVolumeUpsampleRan << "\n";
+        out << "HPWaterVolumeUpsampledColorTexture: " << d.HPWaterVolumeUpsampledColorTexture << "\n";
+        out << "HPWaterVolumeUpsampledTransmittanceTexture: " << d.HPWaterVolumeUpsampledTransmittanceTexture << "\n";
+        out << "HPWaterVolumeUpsampledDepthTexture: " << d.HPWaterVolumeUpsampledDepthTexture << "\n";
+        out << "HPWaterVolumeUpsampledSize: " << d.HPWaterVolumeUpsampledWidth << "x" << d.HPWaterVolumeUpsampledHeight << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7084,6 +7089,25 @@ private:
                     std::filesystem::path(VE_PROJECT_ROOT) / target.FileName);
             }
         }
+        if (dr.IsInitialized() && d.HPWaterVolumeUpsampledWidth > 0 && d.HPWaterVolumeUpsampledHeight > 0) {
+            struct HPWaterUpsampledProbeTarget {
+                const char* Name;
+                const char* FileName;
+                uint32_t TextureID;
+            };
+            const HPWaterUpsampledProbeTarget upsampledTargets[] = {
+                { "HPWaterVolumeUpsampledColor", "render_diagnostics_hpwater_volume_upsampled_color.bmp", d.HPWaterVolumeUpsampledColorTexture },
+                { "HPWaterVolumeUpsampledTransmittance", "render_diagnostics_hpwater_volume_upsampled_transmittance.bmp", d.HPWaterVolumeUpsampledTransmittanceTexture },
+                { "HPWaterVolumeUpsampledDepth", "render_diagnostics_hpwater_volume_upsampled_depth.bmp", d.HPWaterVolumeUpsampledDepthTexture },
+            };
+            for (const auto& target : upsampledTargets) {
+                if (target.TextureID == 0)
+                    continue;
+                writeProbe(target.Name, ProbeTexture(target.TextureID, d.HPWaterVolumeUpsampledWidth, d.HPWaterVolumeUpsampledHeight));
+                SaveTextureBMP(target.TextureID, d.HPWaterVolumeUpsampledWidth, d.HPWaterVolumeUpsampledHeight,
+                    std::filesystem::path(VE_PROJECT_ROOT) / target.FileName);
+            }
+        }
         if (dr.IsInitialized() && dr.HasHPWaterGBuffer()) {
             struct HPWaterProbeTarget {
                 const char* Name;
@@ -7135,7 +7159,7 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d temporal=%d history=%d filter=%d/%u compositeTex=%u refractWorld=%u refractMeta=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d temporal=%d history=%d filter=%d/%u upsample=%d compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
             d.HPWaterVolumeRan ? 1 : 0,
@@ -7143,6 +7167,7 @@ private:
             d.HPWaterVolumeHistoryValid ? 1 : 0,
             d.HPWaterVolumeFilterRan ? 1 : 0,
             d.HPWaterVolumeFilterIterations,
+            d.HPWaterVolumeUpsampleRan ? 1 : 0,
             d.HPWaterCompositeTexture,
             d.HPWaterRefractionDataTexture,
             d.HPWaterRefractionMetaTexture);
@@ -7156,6 +7181,12 @@ private:
             d.HPWaterVolumeFilteredColorTexture,
             d.HPWaterVolumeFilteredTransmittanceTexture,
             d.HPWaterVolumeFilteredDepthTexture);
+        ImGui::Text("HPWater volume upsampled: %ux%u color=%u trans=%u depth=%u",
+            d.HPWaterVolumeUpsampledWidth,
+            d.HPWaterVolumeUpsampledHeight,
+            d.HPWaterVolumeUpsampledColorTexture,
+            d.HPWaterVolumeUpsampledTransmittanceTexture,
+            d.HPWaterVolumeUpsampledDepthTexture);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

@@ -1122,6 +1122,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeFilteredColorTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(0);
     m_RenderDiagnostics.HPWaterVolumeFilteredTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(1);
     m_RenderDiagnostics.HPWaterVolumeFilteredDepthTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(2);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledColorTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(0);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(1);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledDepthTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(2);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledWidth = m_DeferredRenderer.GetWidth();
+    m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1697,6 +1702,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_RenderDiagnostics.HPWaterVolumeRan && m_DeferredRenderer.FilterHPWaterVolume();
         m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
         m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
+        m_RenderDiagnostics.HPWaterVolumeUpsampleRan =
+            m_RenderDiagnostics.HPWaterVolumeFilterRan &&
+            m_DeferredRenderer.UpsampleHPWaterVolume(nearClip, farClip);
         m_RenderDiagnostics.HPWaterCompositeRan =
             m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
@@ -1725,6 +1733,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeFilteredColorTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(0);
     m_RenderDiagnostics.HPWaterVolumeFilteredTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(1);
     m_RenderDiagnostics.HPWaterVolumeFilteredDepthTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(2);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledColorTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(0);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(1);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledDepthTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(2);
+    m_RenderDiagnostics.HPWaterVolumeUpsampledWidth = m_DeferredRenderer.GetWidth();
+    m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
 }
 

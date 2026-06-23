@@ -13,6 +13,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterVolume.shader` performs a first half-resolution volume accumulation pass for in-scattering, transmittance, and refracted depth.
 - `HPWaterVolumeTemporal.shader` performs a first low-resolution temporal reprojection/history blend before spatial filtering.
 - `HPWaterVolumeFilter.shader` performs the first multi-iteration depth-aware a-trous-style spatial filter over the half-resolution volume buffers.
+- `HPWaterVolumeUpsample.shader` resolves filtered half-resolution volume buffers into full-resolution joint-bilateral volume textures.
 - `DeferredRenderer` exports HPWater GBuffer, refraction, volume, and final composite diagnostics.
 - The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots.
 
@@ -40,7 +41,7 @@ HPWater generates a full-resolution refraction texture where:
 - It can use either a cheaper normal-offset path or ray marching.
 - The ray marching path uses the scene depth pyramid excluding water, exponential stepping, IGN jitter, and a max cross distance.
 
-VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation is the normal-offset path; the depth-pyramid ray-marched path is still pending.
+VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation uses a fixed-step screen-space ray march from the water normal and scene depth. The depth-pyramid / Hi-Z accelerated ray-marched path is still pending.
 
 ### Volumetric Water Lighting
 
@@ -53,7 +54,7 @@ HPWater uses low-resolution volumetric accumulation, then filters and composites
 - Depth-aware joint bilateral upsampling.
 - Final composite with full-resolution specular lighting and refraction.
 
-VibeEngine now has the first half-resolution `HPWaterVolume.shader` accumulation target with in-scattering, transmittance, and refracted depth, plus a first temporal reprojection/history pass and a three-iteration depth-aware a-trous-style spatial filter. Explicit motion-vector input, stronger velocity/depth validation, and a fuller depth-aware upsample remain pending.
+VibeEngine now has the first half-resolution `HPWaterVolume.shader` accumulation target with in-scattering, transmittance, and refracted depth, plus a first temporal reprojection/history pass, a three-iteration depth-aware a-trous-style spatial filter, and a full-resolution joint-bilateral upsample pass. Explicit motion-vector input, stronger velocity/depth validation, and a closer HPWater neighborhood-clamping model remain pending.
 
 ### Caustics
 
@@ -118,7 +119,8 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
    - Done: add composite into scene color.
    - Done: add first temporal history/reprojection pass for low-resolution volume buffers.
    - Done: add three-iteration depth-aware a-trous-style spatial filtering.
-   - Pending: add explicit motion-vector input, stronger depth rejection, and HPWater-style depth-aware upsample.
+   - Done: add a full-resolution joint-bilateral depth-aware upsample pass.
+   - Pending: add explicit motion-vector input, stronger depth rejection, and HPWater-style neighborhood clamping.
 
 5. GPU fluid dynamics
    - Add top-down height capture passes.
