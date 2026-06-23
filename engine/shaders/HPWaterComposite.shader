@@ -43,10 +43,14 @@ uniform sampler2D u_HPWaterNormalRoughness;
 uniform sampler2D u_HPWaterScatterThickness;
 uniform sampler2D u_HPWaterAbsorptionFoam;
 uniform sampler2D u_HPWaterDepth;
+uniform sampler2D u_HPWaterVolumeColor;
+uniform sampler2D u_HPWaterVolumeTransmittance;
+uniform sampler2D u_HPWaterVolumeDepth;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
 uniform float u_RefractionStrength;
+uniform int u_HPWaterVolumeEnabled;
 uniform mat4 u_InverseViewProjection;
 
 float LinearizeDepth(float depth) {
@@ -118,6 +122,56 @@ vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float scen
     return bestUV;
 }
 
+struct VolumeSample {
+    vec3 color;
+    vec3 transmittance;
+    float weight;
+};
+
+VolumeSample SampleHPWaterVolume(vec2 uv, float sceneLinearDepth) {
+    ivec2 volumeSize = textureSize(u_HPWaterVolumeColor, 0);
+    vec2 volumeTexel = 1.0 / vec2(max(volumeSize, ivec2(1)));
+    vec2 volumePixel = uv * vec2(volumeSize) - vec2(0.5);
+    ivec2 basePixel = ivec2(floor(volumePixel));
+    vec2 fracPixel = fract(volumePixel);
+
+    vec3 colorAccum = vec3(0.0);
+    vec3 transAccum = vec3(0.0);
+    float totalWeight = 0.0;
+
+    for (int y = 0; y <= 1; ++y) {
+        for (int x = 0; x <= 1; ++x) {
+            ivec2 p = clamp(basePixel + ivec2(x, y), ivec2(0), volumeSize - ivec2(1));
+            vec2 sampleUV = (vec2(p) + vec2(0.5)) * volumeTexel;
+            vec4 volumeColor = texture(u_HPWaterVolumeColor, sampleUV);
+            vec4 transmittance = texture(u_HPWaterVolumeTransmittance, sampleUV);
+            vec4 volumeDepth = texture(u_HPWaterVolumeDepth, sampleUV);
+
+            float bilinearWeight = ((x == 0) ? (1.0 - fracPixel.x) : fracPixel.x) *
+                ((y == 0) ? (1.0 - fracPixel.y) : fracPixel.y);
+            float depthWeight = 1.0 / (abs(volumeDepth.r - sceneLinearDepth) + 0.18);
+            float validWeight = step(0.001, volumeColor.a + transmittance.a + volumeDepth.a);
+            float w = bilinearWeight * depthWeight * validWeight;
+
+            colorAccum += volumeColor.rgb * w;
+            transAccum += transmittance.rgb * w;
+            totalWeight += w;
+        }
+    }
+
+    VolumeSample result;
+    if (totalWeight > 0.00001) {
+        result.color = colorAccum / totalWeight;
+        result.transmittance = clamp(transAccum / totalWeight, vec3(0.0), vec3(1.0));
+        result.weight = clamp(totalWeight, 0.0, 1.0);
+    } else {
+        result.color = vec3(0.0);
+        result.transmittance = vec3(1.0);
+        result.weight = 0.0;
+    }
+    return result;
+}
+
 void main() {
     vec4 sceneColor = texture(u_SceneColor, v_UV);
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
@@ -176,9 +230,19 @@ void main() {
     float worldDepth = refractedSceneDepth >= 0.9999 ? waterDepth : refractedSceneDepth;
     vec3 refractedWorldPos = ReconstructWorldPosition(refractUV, worldDepth);
     float rayLength = length(refractedWorldPos - waterWorldPos);
-    vec3 transmittance = exp(-absorptionColor * (0.35 + normalizedThickness * 2.35));
-    vec3 bodyColor = refractedColor * transmittance +
-        scatterColor * (vec3(1.0) - transmittance) * (0.45 + 0.35 * normalizedThickness);
+    vec3 fallbackTransmittance = exp(-absorptionColor * (0.35 + normalizedThickness * 2.35));
+    vec3 fallbackBodyColor = refractedColor * fallbackTransmittance +
+        scatterColor * (vec3(1.0) - fallbackTransmittance) * (0.45 + 0.35 * normalizedThickness);
+
+    vec3 bodyColor = fallbackBodyColor;
+    if (u_HPWaterVolumeEnabled == 1) {
+        float refractedLinearDepth = refractedSceneDepth >= 0.9999
+            ? waterLinear + depthTintDistance
+            : LinearizeDepth(refractedSceneDepth);
+        VolumeSample volume = SampleHPWaterVolume(v_UV, refractedLinearDepth);
+        vec3 volumeBody = refractedColor * volume.transmittance + volume.color;
+        bodyColor = mix(fallbackBodyColor, volumeBody, volume.weight);
+    }
 
     float fresnel = pow(clamp(1.0 - max(N.y, 0.0), 0.0, 1.0), 2.0);
     vec3 skyTint = mix(scatterColor, vec3(0.78, 0.88, 0.98), 0.55);

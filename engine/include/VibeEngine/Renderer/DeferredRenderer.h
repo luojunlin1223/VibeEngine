@@ -35,6 +35,12 @@
  *   RT1 of the composite FBO stores refractedWorldPos.xyz + rayLength.
  *   RT2 stores refractUV.xy + refractedDepth + normalized water thickness for
  *   diagnostics and future depth-pyramid integration.
+ *
+ * HPWater volume data:
+ *   Half-resolution MRT targets store volumetric in-scattering, transmittance,
+ *   and refracted linear depth. Composite samples them with depth-aware
+ *   upsampling, matching the reference HPWater low-res volume -> full-res
+ *   composite dataflow before temporal/a-trous filtering is ported.
  */
 #pragma once
 
@@ -104,6 +110,15 @@ public:
                           float refractionStrength,
                           const glm::mat4& inverseViewProjection);
 
+    /// Accumulate low-resolution HPWater volume lighting from refraction data.
+    bool AccumulateHPWaterVolume(float nearClip,
+                                 float farClip,
+                                 const glm::vec3& lightDir,
+                                 const glm::vec3& lightColor,
+                                 float lightIntensity,
+                                 const glm::vec3& cameraPosition,
+                                 const glm::mat4& inverseViewProjection);
+
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
 
@@ -118,6 +133,12 @@ public:
 
     /// Get the HPWater refraction metadata texture.
     uint32_t GetHPWaterRefractionMetaTexture() const;
+
+    /// Get HPWater low-resolution volume texture ID by index.
+    uint32_t GetHPWaterVolumeTexture(int index) const;
+
+    /// Whether the current HPWater volume accumulation is valid.
+    bool IsHPWaterVolumeValid() const { return m_HPWaterVolumeValid; }
 
     /// Whether the current output texture is the HPWater composite.
     bool IsHPWaterCompositeValid() const { return m_HPWaterCompositeValid; }
@@ -140,6 +161,8 @@ public:
     /// Get the output framebuffer width/height.
     uint32_t GetWidth() const { return m_Width; }
     uint32_t GetHeight() const { return m_Height; }
+    uint32_t GetHPWaterVolumeWidth() const;
+    uint32_t GetHPWaterVolumeHeight() const;
 
     /// Bind G-buffer textures to specified texture units for the lighting shader.
     void BindGBufferTextures(int startUnit = 0);
@@ -169,8 +192,10 @@ public:
 private:
     void CreateLightingFBO();
     void CreateHPWaterCompositeFBO();
+    void CreateHPWaterVolumeFBO();
     void CreateHPWaterGBuffer();
     void ClearHPWaterGBuffer();
+    static uint32_t GetHalfResolution(uint32_t value);
 
     uint32_t m_Width = 0;
     uint32_t m_Height = 0;
@@ -189,10 +214,15 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     bool m_HPWaterCompositeValid = false;
 
+    // Low-resolution HPWater volume accumulation targets.
+    std::shared_ptr<Framebuffer> m_HPWaterVolumeFBO;
+    bool m_HPWaterVolumeValid = false;
+
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
     std::shared_ptr<Shader> m_HPWaterGBufferShader;
     std::shared_ptr<Shader> m_HPWaterCompositeShader;
+    std::shared_ptr<Shader> m_HPWaterVolumeShader;
     std::shared_ptr<Shader> m_LightingShader;
     std::shared_ptr<Shader> m_DebugShader;
 

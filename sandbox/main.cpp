@@ -7000,6 +7000,11 @@ private:
         out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
         out << "HPWaterRefractionDataTexture: " << d.HPWaterRefractionDataTexture << "\n";
         out << "HPWaterRefractionMetaTexture: " << d.HPWaterRefractionMetaTexture << "\n";
+        out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
+        out << "HPWaterVolumeColorTexture: " << d.HPWaterVolumeColorTexture << "\n";
+        out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
+        out << "HPWaterVolumeDepthTexture: " << d.HPWaterVolumeDepthTexture << "\n";
+        out << "HPWaterVolumeSize: " << d.HPWaterVolumeWidth << "x" << d.HPWaterVolumeHeight << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7043,6 +7048,25 @@ private:
             writeProbe("HPWaterRefractionMeta", ProbeTexture(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_meta.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
+            struct HPWaterVolumeProbeTarget {
+                const char* Name;
+                const char* FileName;
+                uint32_t TextureID;
+            };
+            const HPWaterVolumeProbeTarget volumeTargets[] = {
+                { "HPWaterVolumeColor", "render_diagnostics_hpwater_volume_color.bmp", d.HPWaterVolumeColorTexture },
+                { "HPWaterVolumeTransmittance", "render_diagnostics_hpwater_volume_transmittance.bmp", d.HPWaterVolumeTransmittanceTexture },
+                { "HPWaterVolumeDepth", "render_diagnostics_hpwater_volume_depth.bmp", d.HPWaterVolumeDepthTexture },
+            };
+            for (const auto& target : volumeTargets) {
+                if (target.TextureID == 0)
+                    continue;
+                writeProbe(target.Name, ProbeTexture(target.TextureID, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight));
+                SaveTextureBMP(target.TextureID, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight,
+                    std::filesystem::path(VE_PROJECT_ROOT) / target.FileName);
+            }
         }
         if (dr.IsInitialized() && dr.HasHPWaterGBuffer()) {
             struct HPWaterProbeTarget {
@@ -7095,12 +7119,19 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d compositeTex=%u refractWorld=%u refractMeta=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
+            d.HPWaterVolumeRan ? 1 : 0,
             d.HPWaterCompositeTexture,
             d.HPWaterRefractionDataTexture,
             d.HPWaterRefractionMetaTexture);
+        ImGui::Text("HPWater volume: %ux%u color=%u trans=%u depth=%u",
+            d.HPWaterVolumeWidth,
+            d.HPWaterVolumeHeight,
+            d.HPWaterVolumeColorTexture,
+            d.HPWaterVolumeTransmittanceTexture,
+            d.HPWaterVolumeDepthTexture);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

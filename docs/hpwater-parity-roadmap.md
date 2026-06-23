@@ -2,15 +2,17 @@
 
 Source target: https://github.com/AshenOneArt/HPWater, inspected at upstream commit `1253e5b`.
 
-This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation is only the first visible slice: a dynamic HPWater component, CPU wave mesh updates, water flags in the existing GBuffer, and a simplified deferred lighting branch. It is not feature-complete.
+This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a dedicated water GBuffer, a full-resolution refraction payload, and a first half-resolution volumetric accumulation/composite path. It is not feature-complete.
 
 ## Current VibeEngine Coverage
 
 - `HPWaterComponent` creates a runtime water mesh and simulates a visible wave field on CPU.
 - `Water.shader` provides a visible HPWater-inspired surface material.
-- `GBuffer.shader` marks water pixels and stores minimal water payload.
-- `DeferredLighting.shader` applies water-specific Fresnel, absorption, sky reflection, roughness, and simple scattering.
-- The editor can create, edit, serialize, and diagnose HPWater entities.
+- `HPWaterGBuffer.shader` renders water into a dedicated three-target resource set: normal/roughness, scatter/thickness, and absorption/foam.
+- `HPWaterComposite.shader` performs the first full-resolution refraction payload generation and final water composite.
+- `HPWaterVolume.shader` performs a first half-resolution volume accumulation pass for in-scattering, transmittance, and refracted depth.
+- `DeferredRenderer` exports HPWater GBuffer, refraction, volume, and final composite diagnostics.
+- The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots.
 
 ## HPWater Source Features Not Yet Ported
 
@@ -24,7 +26,7 @@ HPWater renders water into a dedicated 3-target GBuffer:
 - Water depth is written into the main prepass depth so later screen-space passes can distinguish water surface depth from scene depth.
 - Stencil marks water pixels for later full-screen passes.
 
-VibeEngine currently stores only a compact water payload in the existing GBuffer. This must become a dedicated HPWater resource set so refraction, volume, and caustics can read the same data.
+VibeEngine now has the dedicated three-target HPWater GBuffer and diagnostics. It does not yet use a real stencil path, so later passes still rely on the water mask encoded in the HPWater buffers.
 
 ### Refraction Buffer
 
@@ -36,7 +38,7 @@ HPWater generates a full-resolution refraction texture where:
 - It can use either a cheaper normal-offset path or ray marching.
 - The ray marching path uses the scene depth pyramid excluding water, exponential stepping, IGN jitter, and a max cross distance.
 
-VibeEngine does not have this pass yet.
+VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation is the normal-offset path; the depth-pyramid ray-marched path is still pending.
 
 ### Volumetric Water Lighting
 
@@ -49,7 +51,7 @@ HPWater uses low-resolution volumetric accumulation, then filters and composites
 - Depth-aware joint bilateral upsampling.
 - Final composite with full-resolution specular lighting and refraction.
 
-VibeEngine currently does only a single-pass approximation in deferred lighting.
+VibeEngine now has the first half-resolution `HPWaterVolume.shader` accumulation target with in-scattering, transmittance, and refracted depth. Temporal reprojection, a-trous filtering, and a fuller depth-aware upsample remain pending.
 
 ### Caustics
 
@@ -94,25 +96,25 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 ## Porting Order
 
 1. Dedicated HPWater resources
-   - Add explicit HPWater render resources and diagnostics.
-   - Add water mask/stencil equivalent.
-   - Split water payload from the regular GBuffer path.
+   - Done: explicit HPWater render resources and diagnostics.
+   - Pending: real stencil or equivalent GPU-side mask for later passes.
+   - Done: split water payload from the regular GBuffer path.
 
 2. Dedicated HPWater GBuffer pass
-   - Render water into three dedicated textures.
-   - Preserve main scene depth and water depth semantics needed by later passes.
-   - Add debug views for the three water buffers.
+   - Done: render water into three dedicated textures.
+   - Done: preserve water depth and expose it to refraction/volume passes.
+   - Done: export readback diagnostics for the three water buffers.
 
 3. Refraction pass
-   - Add full-resolution refraction UV/depth/mask buffer.
-   - First implement normal-offset refraction.
+   - Done: add full-resolution refraction UV/depth/mask buffer.
+   - Done: first implement normal-offset refraction.
    - Then add ray-marched refraction against a scene depth pyramid.
 
 4. Volumetric pass
-   - Add low-resolution water volume accumulation.
-   - Add transmittance and volume depth buffers.
-   - Add composite into scene color.
-   - Add temporal history, a-trous filtering, and depth-aware upsample.
+   - Done: add low-resolution water volume accumulation.
+   - Done: add transmittance and volume depth buffers.
+   - Done: add composite into scene color.
+   - Pending: add temporal history, a-trous filtering, and HPWater-style depth-aware upsample.
 
 5. GPU fluid dynamics
    - Add top-down height capture passes.

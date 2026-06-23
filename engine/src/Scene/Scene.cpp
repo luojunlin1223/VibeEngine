@@ -1109,6 +1109,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
+    m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
+    m_RenderDiagnostics.HPWaterVolumeTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(1);
+    m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
+    m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
+    m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1663,6 +1668,17 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
     if (m_RenderDiagnostics.HPWaterGBufferDrawn > 0) {
         glm::mat4 inverseViewProjection = glm::inverse(viewProjection);
+        // First composite pass generates the full-resolution refraction payload
+        // consumed by the low-resolution HPWater volume pass.
+        m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
+        m_RenderDiagnostics.HPWaterVolumeRan =
+            m_DeferredRenderer.AccumulateHPWaterVolume(nearClip,
+                                                       farClip,
+                                                       lightDir,
+                                                       lightColor,
+                                                       lightIntensity,
+                                                       cameraPos,
+                                                       inverseViewProjection);
         m_RenderDiagnostics.HPWaterCompositeRan =
             m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
@@ -1672,6 +1688,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
+    m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
+    m_RenderDiagnostics.HPWaterVolumeTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(1);
+    m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
+    m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
+    m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
     m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
 }
 
