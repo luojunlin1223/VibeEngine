@@ -286,9 +286,13 @@ public:
     bool IsHPWaterVolumeTemporalMotionReprojectionEnabled() const {
         return m_HPWaterVolumeTemporalMotionReprojectionEnabled;
     }
+    bool IsHPWaterVolumeExplicitMotionVectorEnabled() const {
+        return m_HPWaterVolumeExplicitMotionVectorEnabled;
+    }
     float GetHPWaterVolumeTemporalNeighborhoodClampStrength() const {
         return m_HPWaterVolumeTemporalNeighborhoodClampStrength;
     }
+    uint32_t GetHPWaterVolumeMotionVectorTexture() const;
     bool IsHPWaterVolumeUpsampledValid() const { return m_HPWaterVolumeUpsampledValid; }
     void InvalidateHPWaterVolumeHistory();
 
@@ -402,6 +406,8 @@ private:
     void DestroyHPWaterFGDLUT();
     void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
+    bool BuildHPWaterVolumeMotionVectors(const glm::mat4& currentViewProjection,
+                                         const glm::mat4& previousViewProjection);
     void CommitHPWaterVolumeHistory();
     bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
                                     const std::shared_ptr<Framebuffer>& outputFBO,
@@ -454,6 +460,7 @@ private:
 
     // Low-resolution HPWater volume accumulation targets.
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterVolumeMotionVectorFBO;
     std::shared_ptr<Framebuffer> m_HPWaterVolumeTemporalFBO;
     std::shared_ptr<Framebuffer> m_HPWaterVolumeHistoryFBO;
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFilteredFBO;
@@ -467,6 +474,7 @@ private:
     uint32_t m_HPWaterVolumeFilterIterations = 0;
     bool m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
+    bool m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     float m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
 
     // Full-resolution caustic energy consumed by the HPWater composite pass.
@@ -517,6 +525,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterMaskShader;
     std::shared_ptr<Shader> m_HPWaterCompositeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeShader;
+    std::shared_ptr<Shader> m_HPWaterVolumeMotionVectorShader;
     std::shared_ptr<Shader> m_HPWaterVolumeTemporalShader;
     std::shared_ptr<Shader> m_HPWaterVolumeFilterShader;
     std::shared_ptr<Shader> m_HPWaterVolumeUpsampleShader;

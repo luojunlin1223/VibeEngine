@@ -45,10 +45,12 @@ uniform sampler2D u_HistoryColor;
 uniform sampler2D u_HistoryTransmittance;
 uniform sampler2D u_HistoryDepth;
 uniform sampler2D u_HPWaterRefractionWorldData;
+uniform sampler2D u_VolumeMotionVector;
 
 uniform mat4 u_CurrentViewProjection;
 uniform mat4 u_PreviousViewProjection;
 uniform int u_HistoryValid;
+uniform int u_MotionVectorValid;
 uniform float u_HistoryBlend;
 uniform float u_DepthRejectionThreshold;
 uniform float u_VelocityRejectionScale;
@@ -176,7 +178,10 @@ void main() {
         currentUV = v_UV;
     }
 
-    vec2 velocityPixels = (historyUV - currentUV) * vec2(textureSize(u_CurrentColor, 0));
+    vec2 motionVectorUV = u_MotionVectorValid == 1
+        ? texture(u_VolumeMotionVector, v_UV).rg
+        : (historyUV - currentUV);
+    vec2 velocityPixels = motionVectorUV * vec2(textureSize(u_CurrentColor, 0));
     float velocity = length(velocityPixels);
     float velocityWeight = exp(-velocity * max(u_VelocityRejectionScale, 0.0) * 0.01);
 

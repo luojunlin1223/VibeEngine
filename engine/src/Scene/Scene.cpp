@@ -1130,6 +1130,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeTemporalNeighborhoodClampEnabled();
     m_RenderDiagnostics.HPWaterVolumeTemporalMotionReprojectionEnabled =
         m_DeferredRenderer.IsHPWaterVolumeTemporalMotionReprojectionEnabled();
+    m_RenderDiagnostics.HPWaterVolumeExplicitMotionVectorEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
+        m_DeferredRenderer.GetHPWaterVolumeMotionVectorTexture();
     m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =
         m_DeferredRenderer.GetHPWaterVolumeTemporalNeighborhoodClampStrength();
     m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
@@ -2306,6 +2310,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeTemporalNeighborhoodClampEnabled();
     m_RenderDiagnostics.HPWaterVolumeTemporalMotionReprojectionEnabled =
         m_DeferredRenderer.IsHPWaterVolumeTemporalMotionReprojectionEnabled();
+    m_RenderDiagnostics.HPWaterVolumeExplicitMotionVectorEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
+        m_DeferredRenderer.GetHPWaterVolumeMotionVectorTexture();
     m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =
         m_DeferredRenderer.GetHPWaterVolumeTemporalNeighborhoodClampStrength();
     m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();

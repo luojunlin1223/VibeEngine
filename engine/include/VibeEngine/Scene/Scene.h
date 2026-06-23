@@ -231,6 +231,8 @@ struct RenderDiagnostics {
     bool HPWaterVolumeTemporalRan = false;
     bool HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     bool HPWaterVolumeTemporalMotionReprojectionEnabled = false;
+    bool HPWaterVolumeExplicitMotionVectorEnabled = false;
+    uint32_t HPWaterVolumeMotionVectorTexture = 0;
     float HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     bool HPWaterVolumeHistoryValid = false;
     uint32_t HPWaterVolumeHistoryColorTexture = 0;
