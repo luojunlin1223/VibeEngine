@@ -6286,6 +6286,15 @@ private:
                 ImGui::DragFloat("Refraction Thickness Offset",
                     &w.RefractionThicknessOffset, 0.01f, 0.01f, 8.0f, "%.2f");
                 ImGui::Checkbox("Refraction Jitter", &w.RefractionJitter);
+                ImGui::SeparatorText("Fluid Dynamics");
+                ImGui::Checkbox("Fluid Dynamics", &w.FluidDynamicsEnabled);
+                int fluidResolution = w.FluidResolution;
+                if (ImGui::DragInt("Fluid Resolution", &fluidResolution, 1, 16, 1024))
+                    w.FluidResolution = std::clamp(fluidResolution, 16, 1024);
+                ImGui::SliderFloat("Fluid Wave Speed", &w.FluidWaveSpeed, 0.0f, 2.0f, "%.3f");
+                ImGui::SliderFloat("Fluid Damping", &w.FluidDamping, 0.0f, 0.98f, "%.3f");
+                ImGui::DragFloat("Fluid Impulse Radius", &w.FluidImpulseRadius, 0.25f, 1.0f, 128.0f, "%.2f");
+                ImGui::DragFloat("Fluid Impulse Strength", &w.FluidImpulseStrength, 0.001f, -1.0f, 1.0f, "%.3f");
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::HPWaterComponent>();
             ImGui::Separator();
@@ -7040,6 +7049,12 @@ private:
         out << "HPWaterVolumeUpsampledTransmittanceTexture: " << d.HPWaterVolumeUpsampledTransmittanceTexture << "\n";
         out << "HPWaterVolumeUpsampledDepthTexture: " << d.HPWaterVolumeUpsampledDepthTexture << "\n";
         out << "HPWaterVolumeUpsampledSize: " << d.HPWaterVolumeUpsampledWidth << "x" << d.HPWaterVolumeUpsampledHeight << "\n";
+        out << "HPWaterFluidDynamicsRan: " << d.HPWaterFluidDynamicsRan << "\n";
+        out << "HPWaterFluidDynamicsValid: " << d.HPWaterFluidDynamicsValid << "\n";
+        out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
+        out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
+        out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";
+        out << "HPWaterFluidDamping: " << d.HPWaterFluidDamping << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7096,6 +7111,12 @@ private:
             writeProbe("HPWaterMask", ProbeTexture(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight));
             SaveTextureBMP(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_mask.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterFluidHeightTexture != 0 && d.HPWaterFluidResolution > 0) {
+            writeProbe("HPWaterFluidHeight",
+                ProbeTexture(d.HPWaterFluidHeightTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution));
+            SaveTextureBMP(d.HPWaterFluidHeightTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_fluid_height.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
             struct HPWaterVolumeProbeTarget {
@@ -7237,6 +7258,13 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
+        ImGui::Text("HPWater fluid: ran=%d valid=%d res=%u height=%u speed=%.3f damping=%.3f",
+            d.HPWaterFluidDynamicsRan ? 1 : 0,
+            d.HPWaterFluidDynamicsValid ? 1 : 0,
+            d.HPWaterFluidResolution,
+            d.HPWaterFluidHeightTexture,
+            d.HPWaterFluidWaveSpeed,
+            d.HPWaterFluidDamping);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

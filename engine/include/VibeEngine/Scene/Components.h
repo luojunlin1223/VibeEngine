@@ -404,6 +404,13 @@ struct HPWaterComponent {
     float RefractionThicknessOffset = 0.5f;
     bool  RefractionJitter = true;
 
+    bool  FluidDynamicsEnabled = true;
+    int   FluidResolution = 128;
+    float FluidWaveSpeed = 1.0f;
+    float FluidDamping = 0.018f;
+    float FluidImpulseRadius = 5.0f;
+    float FluidImpulseStrength = 0.035f;
+
     std::shared_ptr<VertexArray> _Mesh;
     std::shared_ptr<VertexBuffer> _VertexBuffer;
     std::shared_ptr<IndexBuffer> _IndexBuffer;

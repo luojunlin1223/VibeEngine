@@ -1336,6 +1336,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterRefractionThicknessOffset = 0.01f;
     uint32_t hpWaterRefractionSampleCount = 4;
     bool hpWaterRefractionJitter = false;
+    bool hpWaterFluidEnabled = false;
+    uint32_t hpWaterFluidResolution = 128;
+    float hpWaterFluidWaveSpeed = 1.0f;
+    float hpWaterFluidDamping = 0.018f;
+    float hpWaterFluidSourceU = -1.0f;
+    float hpWaterFluidSourceV = -1.0f;
+    float hpWaterFluidSourceIntensity = 0.0f;
+    float hpWaterFluidSourceRadius = 5.0f;
+    glm::vec3 hpWaterFluidBoxCenter(0.0f);
+    glm::vec3 hpWaterFluidBoxSize(1.0f);
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     transparentEntities.reserve(view.size_hint() / 4);
@@ -1433,6 +1443,28 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     hpWaterRefractionSampleCount,
                     static_cast<uint32_t>(std::clamp(water->RefractionSampleCount, 4, 64)));
                 hpWaterRefractionJitter = hpWaterRefractionJitter || water->RefractionJitter;
+                if (!hpWaterFluidEnabled && water->FluidDynamicsEnabled) {
+                    hpWaterFluidEnabled = true;
+                    hpWaterFluidResolution = static_cast<uint32_t>(
+                        std::clamp(water->FluidResolution, 16, 1024));
+                    hpWaterFluidWaveSpeed = water->FluidWaveSpeed;
+                    hpWaterFluidDamping = water->FluidDamping;
+                    hpWaterFluidSourceRadius = water->FluidImpulseRadius;
+                    hpWaterFluidSourceIntensity = water->AutoImpulse ? water->FluidImpulseStrength : 0.0f;
+                    if (water->AutoImpulse) {
+                        const float t = water->_OceanTime + static_cast<float>(m_RenderDiagnostics.FrameIndex) * 0.017f;
+                        hpWaterFluidSourceU = 0.5f + 0.26f * std::sin(t * 1.91f);
+                        hpWaterFluidSourceV = 0.5f + 0.32f * std::cos(t * 1.37f);
+                    }
+                    hpWaterFluidBoxCenter = glm::vec3(model[3]);
+                    const float sx = glm::length(glm::vec3(model[0]));
+                    const float sy = glm::length(glm::vec3(model[1]));
+                    const float sz = glm::length(glm::vec3(model[2]));
+                    hpWaterFluidBoxSize = glm::vec3(
+                        std::max(water->WorldSizeX * sx, 0.001f),
+                        std::max((std::abs(water->HeightScale) * 4.0f + std::abs(water->BaseHeight) + 1.0f) * sy, 0.001f),
+                        std::max(water->WorldSizeZ * sz, 0.001f));
+                }
             }
             m_RenderDiagnostics.HPWaterQueued++;
             continue;
@@ -1536,6 +1568,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
     m_DeferredRenderer.EndGeometryPass();
 
+    if (hpWaterFluidEnabled) {
+        m_RenderDiagnostics.HPWaterFluidDynamicsRan =
+            m_DeferredRenderer.UpdateHPWaterFluidDynamics(hpWaterFluidResolution,
+                                                          hpWaterFluidWaveSpeed,
+                                                          hpWaterFluidDamping,
+                                                          hpWaterFluidSourceU,
+                                                          hpWaterFluidSourceV,
+                                                          hpWaterFluidSourceIntensity,
+                                                          hpWaterFluidSourceRadius,
+                                                          hpWaterFluidBoxCenter,
+                                                          hpWaterFluidBoxSize);
+    }
+
     if (!hpWaterEntities.empty()) {
         auto hpWaterShader = m_DeferredRenderer.GetHPWaterGBufferShader();
         if (hpWaterShader) {
@@ -1572,6 +1617,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterShader->SetFloat("u_HPThickness", water->DepthTintDistance);
                 hpWaterShader->SetFloat("u_HPHeightScale", water->HeightScale);
                 hpWaterShader->SetFloat("u_HPBaseHeight", water->BaseHeight);
+                const bool fluidValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid() && water->FluidDynamicsEnabled;
+                glActiveTexture(GL_TEXTURE8);
+                glBindTexture(GL_TEXTURE_2D, fluidValid
+                    ? static_cast<GLuint>(m_DeferredRenderer.GetHPWaterFluidHeightTexture())
+                    : 0);
+                hpWaterShader->SetInt("u_HPFluidHeightTexture", 8);
+                hpWaterShader->SetInt("u_HPFluidDynamicsEnabled", fluidValid ? 1 : 0);
+                hpWaterShader->SetVec3("u_HPFluidBoxCenter", m_DeferredRenderer.GetHPWaterFluidBoxCenter());
+                hpWaterShader->SetVec3("u_HPFluidBoxSize", m_DeferredRenderer.GetHPWaterFluidBoxSize());
+                hpWaterShader->SetFloat("u_HPFluidHeightScale", water->HeightScale);
 
                 RenderCommand::DrawIndexed(drawVAO);
                 m_RenderDiagnostics.HPWaterGBufferDrawn++;
@@ -1789,6 +1844,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledDepthTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(2);
     m_RenderDiagnostics.HPWaterVolumeUpsampledWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterFluidDynamicsValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
+    m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
+    m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
+    m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;
+    m_RenderDiagnostics.HPWaterFluidDamping = hpWaterFluidDamping;
     m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
 }
 

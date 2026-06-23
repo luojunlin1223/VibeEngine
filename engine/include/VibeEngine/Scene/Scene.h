@@ -221,6 +221,12 @@ struct RenderDiagnostics {
     uint32_t HPWaterVolumeUpsampledDepthTexture = 0;
     uint32_t HPWaterVolumeUpsampledWidth = 0;
     uint32_t HPWaterVolumeUpsampledHeight = 0;
+    bool HPWaterFluidDynamicsRan = false;
+    bool HPWaterFluidDynamicsValid = false;
+    uint32_t HPWaterFluidHeightTexture = 0;
+    uint32_t HPWaterFluidResolution = 0;
+    float HPWaterFluidWaveSpeed = 0.0f;
+    float HPWaterFluidDamping = 0.0f;
 
     bool DeferredInitialized = false;
     bool LightingPassRan = false;

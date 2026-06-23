@@ -149,6 +149,18 @@ public:
     /// Resolve filtered low-resolution HPWater volume buffers into full-resolution textures.
     bool UpsampleHPWaterVolume(float nearClip, float farClip);
 
+    /// Step HPWater's GPU fluid height field. This is the OpenGL ping-pong
+    /// equivalent of HPWater's compute wave equation texture path.
+    bool UpdateHPWaterFluidDynamics(uint32_t resolution,
+                                    float waveSpeed,
+                                    float damping,
+                                    float sourceU,
+                                    float sourceV,
+                                    float sourceIntensity,
+                                    float sourceRadiusPixels,
+                                    const glm::vec3& boxCenter,
+                                    const glm::vec3& boxSize);
+
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
 
@@ -214,6 +226,12 @@ public:
     uint32_t GetHPWaterVolumeHistoryTexture(int index) const;
     uint32_t GetHPWaterVolumeUpsampledTexture(int index) const;
 
+    uint32_t GetHPWaterFluidHeightTexture() const;
+    uint32_t GetHPWaterFluidResolution() const { return m_HPWaterFluidResolution; }
+    bool IsHPWaterFluidDynamicsValid() const { return m_HPWaterFluidValid; }
+    glm::vec3 GetHPWaterFluidBoxCenter() const { return m_HPWaterFluidBoxCenter; }
+    glm::vec3 GetHPWaterFluidBoxSize() const { return m_HPWaterFluidBoxSize; }
+
     /// Bind G-buffer textures to specified texture units for the lighting shader.
     void BindGBufferTextures(int startUnit = 0);
 
@@ -246,7 +264,9 @@ private:
     void CreateHPWaterGBuffer();
     void CreateHPWaterMaskFBO();
     void CreateHPWaterDepthPyramid();
+    void CreateHPWaterFluidFBO(uint32_t resolution);
     void DestroyHPWaterDepthPyramid();
+    void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
     void CommitHPWaterVolumeHistory();
     bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
@@ -295,6 +315,16 @@ private:
     bool m_HPWaterVolumeUpsampledValid = false;
     uint32_t m_HPWaterVolumeFilterIterations = 0;
 
+    // HPWater FluidDynamics wave height ping-pong textures.
+    std::shared_ptr<Framebuffer> m_HPWaterFluidCurrentFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterFluidPreviousFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterFluidNextFBO;
+    bool m_HPWaterFluidValid = false;
+    bool m_HPWaterFluidInitialized = false;
+    uint32_t m_HPWaterFluidResolution = 0;
+    glm::vec3 m_HPWaterFluidBoxCenter = glm::vec3(0.0f);
+    glm::vec3 m_HPWaterFluidBoxSize = glm::vec3(1.0f);
+
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
     std::shared_ptr<Shader> m_HPWaterGBufferShader;
@@ -305,6 +335,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterVolumeFilterShader;
     std::shared_ptr<Shader> m_HPWaterVolumeUpsampleShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
+    std::shared_ptr<Shader> m_HPWaterFluidShader;
     std::shared_ptr<Shader> m_LightingShader;
     std::shared_ptr<Shader> m_DebugShader;
 

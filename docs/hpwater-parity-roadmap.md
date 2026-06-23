@@ -2,7 +2,7 @@
 
 Source target: https://github.com/AshenOneArt/HPWater, inspected at upstream commit `1253e5b`.
 
-This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, and a first half-resolution volumetric accumulation/composite path. It is not feature-complete.
+This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, and a first half-resolution volumetric accumulation/composite path. It is not feature-complete.
 
 ## Current VibeEngine Coverage
 
@@ -16,6 +16,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterVolumeTemporal.shader` performs a first low-resolution temporal reprojection/history blend before spatial filtering.
 - `HPWaterVolumeFilter.shader` performs the first multi-iteration depth-aware a-trous-style spatial filter over the half-resolution volume buffers.
 - `HPWaterVolumeUpsample.shader` resolves filtered half-resolution volume buffers into full-resolution joint-bilateral volume textures.
+- `HPWaterFluidDynamics.shader` performs a first GPU ping-pong wave equation update into an R16F height texture, and `HPWaterGBuffer.shader` samples that texture for fluid normal and foam contribution.
 - `DeferredRenderer` exports HPWater GBuffer, explicit water mask, scene-depth pyramid, refraction, volume, and final composite diagnostics.
 - The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots.
 
@@ -81,7 +82,7 @@ HPWater includes a GPU wave equation system:
 - Compute wave propagation with obstacle boundaries, edge damping, and impulse sources.
 - Global wave height texture for water shaders.
 
-VibeEngine currently has a CPU wave equation and procedural spectrum waves, but not the GPU height-texture pipeline.
+VibeEngine now has a first GPU height-texture pipeline: a persistent R16F ping-pong wave equation pass, serialized component controls, Render Debugger/diagnostic export, and GBuffer sampling for fluid normals/foam. This is currently implemented as an OpenGL fullscreen pass rather than a compute shader because the engine does not yet expose a compute abstraction. HPWater's top-down water/scene height capture and obstacle-boundary inputs remain pending; the existing CPU mesh/spectrum path is still kept as the geometry fallback.
 
 ### BSDF / Light Loop
 
@@ -128,8 +129,10 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
    - Pending: add explicit motion-vector input, stronger depth rejection, and HPWater-style neighborhood clamping.
 
 5. GPU fluid dynamics
-   - Add top-down height capture passes.
-   - Add OpenGL compute ping-pong wave equation textures.
+   - Done: add persistent R16F ping-pong wave equation height textures and diagnostics.
+   - Done: feed the current GPU fluid height texture into HPWater GBuffer normal/foam evaluation.
+   - Pending: add top-down water height and scene height capture passes.
+   - Pending: replace the fullscreen ping-pong implementation with an OpenGL compute backend once the engine has compute shader support.
    - Keep the current CPU simulation as a fallback.
 
 6. Caustics
@@ -150,6 +153,6 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 - The refraction buffer changes when water normals change and remains masked to water pixels.
 - Water volume color/transmittance changes with absorption and scatter settings.
 - Caustics appear under shallow waves and change with directional light direction.
-- Interactive impulses propagate around obstacles.
+- Interactive GPU fluid impulses produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; obstacle-aware propagation remains pending until top-down scene height capture exists.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
 - The final image stays valid with water enabled, disabled, above camera, below camera, and outside the frustum.

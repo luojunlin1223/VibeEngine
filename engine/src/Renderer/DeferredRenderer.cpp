@@ -155,6 +155,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterDepthPyramid.shader");
     }
 
+    m_HPWaterFluidShader = Shader::CreateFromFile("shaders/HPWaterFluidDynamics.shader");
+    if (!m_HPWaterFluidShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterFluidDynamics.shader");
+    }
+
     m_LightingShader = Shader::CreateFromFile("shaders/DeferredLighting.shader");
     if (!m_LightingShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load DeferredLighting.shader");
@@ -187,6 +192,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeFilteredFBO.reset();
     m_HPWaterVolumeFilterScratchFBO.reset();
     m_HPWaterVolumeUpsampledFBO.reset();
+    m_HPWaterFluidCurrentFBO.reset();
+    m_HPWaterFluidPreviousFBO.reset();
+    m_HPWaterFluidNextFBO.reset();
     m_GBufferShader.reset();
     m_HPWaterGBufferShader.reset();
     m_HPWaterMaskShader.reset();
@@ -196,6 +204,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeFilterShader.reset();
     m_HPWaterVolumeUpsampleShader.reset();
     m_HPWaterDepthPyramidShader.reset();
+    m_HPWaterFluidShader.reset();
     m_LightingShader.reset();
     m_DebugShader.reset();
     m_HPWaterCompositeValid = false;
@@ -206,6 +215,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterDepthPyramidValid = false;
+    m_HPWaterFluidValid = false;
+    m_HPWaterFluidInitialized = false;
+    m_HPWaterFluidResolution = 0;
     m_HPWaterVolumeFilterIterations = 0;
 
     if (m_QuadVAO) {
@@ -326,6 +338,58 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeFilterIterations = 0;
 }
 
+void DeferredRenderer::CreateHPWaterFluidFBO(uint32_t resolution) {
+    resolution = std::clamp(resolution, 16u, 1024u);
+    if (m_HPWaterFluidCurrentFBO && m_HPWaterFluidPreviousFBO && m_HPWaterFluidNextFBO &&
+        m_HPWaterFluidResolution == resolution) {
+        return;
+    }
+
+    FramebufferSpec fluidSpec;
+    fluidSpec.Width = resolution;
+    fluidSpec.Height = resolution;
+    fluidSpec.ColorFormats = {
+        { GL_R16F },
+    };
+    m_HPWaterFluidCurrentFBO = Framebuffer::Create(fluidSpec);
+    m_HPWaterFluidPreviousFBO = Framebuffer::Create(fluidSpec);
+    m_HPWaterFluidNextFBO = Framebuffer::Create(fluidSpec);
+    m_HPWaterFluidResolution = resolution;
+    ClearHPWaterFluidFBOs();
+}
+
+void DeferredRenderer::ClearHPWaterFluidFBOs() {
+    const std::shared_ptr<Framebuffer> targets[] = {
+        m_HPWaterFluidCurrentFBO,
+        m_HPWaterFluidPreviousFBO,
+        m_HPWaterFluidNextFBO,
+    };
+
+    GLboolean previousDepthMask = GL_TRUE;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+    const bool previousDepthTest = glIsEnabled(GL_DEPTH_TEST) == GL_TRUE;
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    for (const auto& fbo : targets) {
+        if (!fbo)
+            continue;
+        fbo->Bind();
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        fbo->Unbind();
+    }
+
+    if (previousDepthTest)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
+    glDepthMask(previousDepthMask);
+
+    m_HPWaterFluidValid = false;
+    m_HPWaterFluidInitialized = true;
+}
+
 void DeferredRenderer::CreateHPWaterGBuffer() {
     FramebufferSpec waterSpec;
     waterSpec.Width = m_Width;
@@ -390,6 +454,8 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
         m_HPWaterVolumeUpsampledFBO->Resize(width, height);
 
     CreateHPWaterDepthPyramid();
+    if (m_HPWaterFluidResolution > 0)
+        CreateHPWaterFluidFBO(m_HPWaterFluidResolution);
 
     m_HPWaterCompositeValid = false;
     m_HPWaterMaskValid = false;
@@ -1012,6 +1078,76 @@ bool DeferredRenderer::UpsampleHPWaterVolume(float nearClip, float farClip) {
     return true;
 }
 
+bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
+                                                  float waveSpeed,
+                                                  float damping,
+                                                  float sourceU,
+                                                  float sourceV,
+                                                  float sourceIntensity,
+                                                  float sourceRadiusPixels,
+                                                  const glm::vec3& boxCenter,
+                                                  const glm::vec3& boxSize) {
+    if (!m_HPWaterFluidShader || m_QuadVAO == 0) {
+        m_HPWaterFluidValid = false;
+        return false;
+    }
+
+    resolution = std::clamp(resolution, 16u, 1024u);
+    CreateHPWaterFluidFBO(resolution);
+    if (!m_HPWaterFluidCurrentFBO || !m_HPWaterFluidPreviousFBO || !m_HPWaterFluidNextFBO) {
+        m_HPWaterFluidValid = false;
+        return false;
+    }
+
+    GLint previousViewport[4] = {};
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    GLboolean previousDepthMask = GL_TRUE;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+    const bool previousDepthTest = glIsEnabled(GL_DEPTH_TEST) == GL_TRUE;
+
+    m_HPWaterFluidNextFBO->Bind();
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    m_HPWaterFluidShader->Bind();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterFluidCurrentFBO->GetColorAttachmentID()));
+    m_HPWaterFluidShader->SetInt("u_WaveHeightCurrent", 0);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterFluidPreviousFBO->GetColorAttachmentID()));
+    m_HPWaterFluidShader->SetInt("u_WaveHeightPrevious", 1);
+
+    m_HPWaterFluidShader->SetFloat("u_WaveSpeed", std::clamp(waveSpeed, 0.0f, 2.0f));
+    m_HPWaterFluidShader->SetFloat("u_DampingFactor", std::clamp(damping, 0.0f, 0.98f));
+    m_HPWaterFluidShader->SetFloat("u_WaveSourceIntensity", std::clamp(sourceIntensity, -1.0f, 1.0f));
+    m_HPWaterFluidShader->SetFloat("u_WaveSourceRadius", std::max(sourceRadiusPixels, 1.0f));
+    m_HPWaterFluidShader->SetVec3("u_WaveSourceUV", glm::vec3(sourceU, sourceV, 0.0f));
+
+    glBindVertexArray(m_QuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    if (previousDepthTest)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
+    glDepthMask(previousDepthMask);
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+
+    m_HPWaterFluidNextFBO->Unbind();
+
+    auto oldPrevious = m_HPWaterFluidPreviousFBO;
+    m_HPWaterFluidPreviousFBO = m_HPWaterFluidCurrentFBO;
+    m_HPWaterFluidCurrentFBO = m_HPWaterFluidNextFBO;
+    m_HPWaterFluidNextFBO = oldPrevious;
+
+    m_HPWaterFluidBoxCenter = boxCenter;
+    m_HPWaterFluidBoxSize = glm::max(boxSize, glm::vec3(0.001f));
+    m_HPWaterFluidValid = true;
+    return true;
+}
+
 uint32_t DeferredRenderer::GetOutputTexture() const {
     if (m_HPWaterCompositeValid && m_HPWaterCompositeFBO)
         return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID());
@@ -1062,6 +1198,11 @@ uint32_t DeferredRenderer::GetHPWaterVolumeHistoryTexture(int index) const {
 uint32_t DeferredRenderer::GetHPWaterVolumeUpsampledTexture(int index) const {
     if (!m_HPWaterVolumeUpsampledFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterVolumeUpsampledFBO->GetColorAttachmentID(index));
+}
+
+uint32_t DeferredRenderer::GetHPWaterFluidHeightTexture() const {
+    if (!m_HPWaterFluidCurrentFBO) return 0;
+    return static_cast<uint32_t>(m_HPWaterFluidCurrentFBO->GetColorAttachmentID());
 }
 
 uint32_t DeferredRenderer::GetHPWaterVolumeWidth() const {
