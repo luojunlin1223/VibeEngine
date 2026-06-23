@@ -46,10 +46,13 @@ uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterRefractionWorldData;
 uniform sampler2D u_HPWaterRefractionMeta;
 uniform sampler2D u_HPWaterMask;
+uniform sampler2D u_HPWaterCaustic;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
 uniform int u_HPWaterMaskEnabled;
+uniform int u_HPWaterCausticEnabled;
+uniform float u_CausticVolumeStrength;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
@@ -136,6 +139,12 @@ void main() {
 
     vec3 directLight = u_LightColor * max(u_LightIntensity, 0.0) *
         (0.18 + 0.82 * NdotL) * (0.75 + 0.25 * normalizedThickness);
+    if (u_HPWaterCausticEnabled == 1) {
+        vec4 caustic = texture(u_HPWaterCaustic, v_UV);
+        float causticWeight = clamp(caustic.a, 0.0, 1.0) *
+            (0.25 + 0.75 * normalizedThickness);
+        directLight += caustic.rgb * causticWeight * clamp(u_CausticVolumeStrength, 0.0, 4.0);
+    }
     vec3 directScatter = directLight * (vec3(1.0) - transmittance) *
         scatteringAlbedo * (phase * 2.6);
 

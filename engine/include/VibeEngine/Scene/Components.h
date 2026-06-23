@@ -408,6 +408,11 @@ struct HPWaterComponent {
     float CausticStrength = 1.0f;
     float CausticScale = 12.0f;
     float CausticDepthFade = 20.0f;
+    bool  CausticFilterEnabled = true;
+    float CausticFilterRadius = 1.35f;
+    float CausticFilterDepthSigma = 0.0025f;
+    int   CausticFilterIterations = 2;
+    float CausticVolumeStrength = 0.45f;
 
     bool  FluidDynamicsEnabled = true;
     int   FluidResolution = 128;

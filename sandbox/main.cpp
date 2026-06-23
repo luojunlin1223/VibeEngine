@@ -1105,6 +1105,7 @@ void main() { FragColor = texture(u_Source, v_UV); }
 
         DrawSceneManagerPanel();
         DrawTransitionOverlay();
+        MaybeAutoExportRenderDiagnostics();
 
     }
 
@@ -6291,6 +6292,13 @@ private:
                 ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
                 ImGui::DragFloat("Caustic Scale", &w.CausticScale, 0.1f, 0.1f, 128.0f, "%.2f");
                 ImGui::DragFloat("Caustic Depth Fade", &w.CausticDepthFade, 0.1f, 0.1f, 500.0f, "%.2f");
+                ImGui::Checkbox("Caustic Filter", &w.CausticFilterEnabled);
+                ImGui::DragFloat("Caustic Filter Radius", &w.CausticFilterRadius, 0.05f, 0.25f, 8.0f, "%.2f");
+                ImGui::DragFloat("Caustic Depth Sigma", &w.CausticFilterDepthSigma, 0.0001f, 0.00001f, 0.05f, "%.5f");
+                int causticFilterIterations = w.CausticFilterIterations;
+                if (ImGui::SliderInt("Caustic Filter Iterations", &causticFilterIterations, 1, 2))
+                    w.CausticFilterIterations = std::clamp(causticFilterIterations, 1, 2);
+                ImGui::SliderFloat("Caustic Volume", &w.CausticVolumeStrength, 0.0f, 4.0f, "%.3f");
                 ImGui::SeparatorText("Fluid Dynamics");
                 ImGui::Checkbox("Fluid Dynamics", &w.FluidDynamicsEnabled);
                 int fluidResolution = w.FluidResolution;
@@ -7060,9 +7068,16 @@ private:
         out << "HPWaterCausticRan: " << d.HPWaterCausticRan << "\n";
         out << "HPWaterCausticValid: " << d.HPWaterCausticValid << "\n";
         out << "HPWaterCausticTexture: " << d.HPWaterCausticTexture << "\n";
+        out << "HPWaterCausticFilterRan: " << d.HPWaterCausticFilterRan << "\n";
+        out << "HPWaterCausticFilteredValid: " << d.HPWaterCausticFilteredValid << "\n";
+        out << "HPWaterCausticFilteredTexture: " << d.HPWaterCausticFilteredTexture << "\n";
+        out << "HPWaterCausticFilterIterations: " << d.HPWaterCausticFilterIterations << "\n";
         out << "HPWaterCausticStrength: " << d.HPWaterCausticStrength << "\n";
         out << "HPWaterCausticScale: " << d.HPWaterCausticScale << "\n";
         out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
+        out << "HPWaterCausticFilterRadius: " << d.HPWaterCausticFilterRadius << "\n";
+        out << "HPWaterCausticFilterDepthSigma: " << d.HPWaterCausticFilterDepthSigma << "\n";
+        out << "HPWaterCausticVolumeStrength: " << d.HPWaterCausticVolumeStrength << "\n";
         out << "HPWaterFluidDynamicsRan: " << d.HPWaterFluidDynamicsRan << "\n";
         out << "HPWaterFluidDynamicsValid: " << d.HPWaterFluidDynamicsValid << "\n";
         out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
@@ -7135,6 +7150,13 @@ private:
             writeProbe("HPWaterCaustic", ProbeTexture(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight));
             SaveTextureBMP(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterCausticFilteredTexture != 0 &&
+            d.ViewportWidth > 0 && d.ViewportHeight > 0) {
+            writeProbe("HPWaterCausticFiltered",
+                ProbeTexture(d.HPWaterCausticFilteredTexture, d.ViewportWidth, d.ViewportHeight));
+            SaveTextureBMP(d.HPWaterCausticFilteredTexture, d.ViewportWidth, d.ViewportHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_filtered.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterFluidHeightTexture != 0 && d.HPWaterFluidResolution > 0) {
             writeProbe("HPWaterFluidHeight",
@@ -7218,6 +7240,22 @@ private:
         }
     }
 
+    void MaybeAutoExportRenderDiagnostics() {
+        if (!m_AutoExportRenderDiagnostics || !m_Scene)
+            return;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        if (d.HPWaterEntities == 0 || d.FrameIndex <= 8)
+            return;
+
+        const uint64_t exportInterval = m_LastAutoRenderDiagnosticFrame == 0 ? 30 : 120;
+        if (d.FrameIndex - m_LastAutoRenderDiagnosticFrame <= exportInterval)
+            return;
+
+        WriteRenderDiagnosticsFile();
+        m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
+    }
+
     void DrawRenderDebuggerPanel() {
         if (!m_ShowRenderDebugger) return;
         ImGui::Begin("Render Debugger", &m_ShowRenderDebugger);
@@ -7288,13 +7326,18 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u strength=%.3f scale=%.2f depthFade=%.2f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f filterRadius=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
+            d.HPWaterCausticFilteredValid ? 1 : 0,
+            d.HPWaterCausticFilterIterations,
+            d.HPWaterCausticFilteredTexture,
             d.HPWaterCausticStrength,
             d.HPWaterCausticScale,
-            d.HPWaterCausticDepthFade);
+            d.HPWaterCausticDepthFade,
+            d.HPWaterCausticFilterRadius,
+            d.HPWaterCausticVolumeStrength);
         ImGui::Text("HPWater fluid: ran=%d valid=%d res=%u height=%u speed=%.3f damping=%.3f",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,
@@ -7316,13 +7359,6 @@ private:
             d.HPWaterGBufferDepth);
 
         ImGui::Checkbox("Auto export when HPWater exists", &m_AutoExportRenderDiagnostics);
-        if (m_AutoExportRenderDiagnostics &&
-            d.HPWaterEntities > 0 &&
-            d.FrameIndex > 8 &&
-            d.FrameIndex - m_LastAutoRenderDiagnosticFrame > 120) {
-            WriteRenderDiagnosticsFile();
-            m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
-        }
 
         if (ImGui::Button("Export Render Diagnostics")) {
             WriteRenderDiagnosticsFile();

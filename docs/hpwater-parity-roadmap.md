@@ -2,7 +2,7 @@
 
 Source target: https://github.com/AshenOneArt/HPWater, inspected at upstream commit `1253e5b`.
 
-This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, a first half-resolution volumetric accumulation/composite path, and a first full-resolution caustic energy texture consumed by the water composite. It is not feature-complete.
+This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, a half-resolution volumetric accumulation/filter/composite path, and a full-resolution caustic energy texture that can be filtered and consumed by both water composite and volume lighting. It is not feature-complete.
 
 ## Current VibeEngine Coverage
 
@@ -17,9 +17,11 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterVolumeFilter.shader` performs the first multi-iteration depth-aware a-trous-style spatial filter over the half-resolution volume buffers.
 - `HPWaterVolumeUpsample.shader` resolves filtered half-resolution volume buffers into full-resolution joint-bilateral volume textures.
 - `HPWaterCaustic.shader` performs a first full-resolution caustic energy accumulation from HPWater normals, thickness, absorption, mask, scene depth, and directional light parameters.
+- `HPWaterCausticFilter.shader` performs a first edge-aware caustic denoise/filter pass using caustic energy, HPWater depth, and the explicit water mask.
+- `HPWaterVolume.shader` can inject filtered caustic energy into the directional in-scattering term so caustics affect volumetric water lighting, not only the final surface composite.
 - `HPWaterFluidDynamics.shader` performs a first GPU ping-pong wave equation update into an R16F height texture, and `HPWaterGBuffer.shader` samples that texture for fluid normal and foam contribution.
 - `DeferredRenderer` exports HPWater GBuffer, explicit water mask, scene-depth pyramid, refraction, volume, caustic, and final composite diagnostics.
-- The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots.
+- The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots or the Render Debugger panel being open.
 
 ## HPWater Source Features Not Yet Ported
 
@@ -71,7 +73,7 @@ HPWater caustics are a separate compute-driven pipeline:
 - Supports single-channel and RGB dispersion modes.
 - Applies denoise / filtering and passes caustic data into deferred water lighting.
 
-VibeEngine now has the first caustic resource slice: `HPWaterCaustic.shader` writes a full-resolution RGBA16F caustic texture, `HPWaterComposite.shader` consumes it, and diagnostics export `render_diagnostics_hpwater_caustic.bmp`. This is intentionally not full HPWater parity yet; the directional-light cascade atlas capture, compute/atomic accumulation, RGB dispersion, and denoise/filter stages remain pending.
+VibeEngine now has the first caustic resource slice: `HPWaterCaustic.shader` writes a full-resolution RGBA16F caustic texture, `HPWaterCausticFilter.shader` performs a two-pass edge-aware denoise/filter, `HPWaterComposite.shader` consumes the filtered texture when available, `HPWaterVolume.shader` injects filtered caustic energy into volume scattering, and diagnostics export both `render_diagnostics_hpwater_caustic.bmp` and `render_diagnostics_hpwater_caustic_filtered.bmp`. This is intentionally not full HPWater parity yet; the directional-light cascade atlas capture, compute/atomic accumulation, and RGB dispersion stages remain pending.
 
 ### Fluid Dynamics
 
@@ -140,10 +142,12 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 6. Caustics
    - Done: add a first full-resolution caustic energy texture and feed it into surface composite.
    - Done: export caustic texture diagnostics for automated validation.
+   - Done: add an edge-aware caustic filter/denoise pass and filtered caustic diagnostics.
+   - Done: feed filtered caustic energy into HPWater volume lighting.
    - Pending: add directional-light cascade water atlas capture.
    - Pending: add compute caustic accumulation with atomic irradiance writes.
    - Pending: add single-channel mode first, then RGB dispersion.
-   - Pending: add HPWater-style denoise/filtering and feed caustic data into volume lighting.
+   - Pending: replace the screen-space caustic approximation with HPWater-style light-space cascade caustics.
 
 7. BSDF parity
    - Port HPWater's macro scattering, thin-layer SSS, backlit transmission, and forward-scatter blur.
@@ -156,7 +160,8 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 - A scene with `HPWaterOcean` builds a valid HPWater scene-depth pyramid with more than one mip.
 - The refraction buffer changes when water normals change and remains masked to water pixels.
 - Water volume color/transmittance changes with absorption and scatter settings.
-- Caustics appear under shallow waves, change with directional light direction, and produce a non-empty `render_diagnostics_hpwater_caustic.bmp`.
+- Caustics appear under shallow waves, change with directional light direction, and produce non-empty `render_diagnostics_hpwater_caustic.bmp` and `render_diagnostics_hpwater_caustic_filtered.bmp`.
+- Filtered caustics remain valid in `render_diagnostics.txt` (`HPWaterCausticFilterRan=1`, `HPWaterCausticFilteredValid=1`) and feed volume lighting through `HPWaterCausticVolumeStrength`.
 - Interactive GPU fluid impulses produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; overlapping non-water meshes produce a valid `render_diagnostics_hpwater_fluid_obstacle.bmp`.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
 - The final image stays valid with water enabled, disabled, above camera, below camera, and outside the frustum.

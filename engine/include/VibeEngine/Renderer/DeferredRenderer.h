@@ -138,7 +138,8 @@ public:
                                  const glm::vec3& lightColor,
                                  float lightIntensity,
                                  const glm::vec3& cameraPosition,
-                                 const glm::mat4& inverseViewProjection);
+                                 const glm::mat4& inverseViewProjection,
+                                 float causticVolumeStrength);
 
     /// Reproject and blend low-resolution HPWater volume data with previous frame history.
     bool TemporalFilterHPWaterVolume(const glm::mat4& currentViewProjection,
@@ -159,6 +160,11 @@ public:
                                    float strength,
                                    float scale,
                                    float depthFade);
+
+    /// Denoise/filter HPWater caustic energy before composite and volume lighting.
+    bool FilterHPWaterCaustics(float radius,
+                               float depthSigma,
+                               int iterations);
 
     /// Step HPWater's GPU fluid height field. This is the OpenGL ping-pong
     /// equivalent of HPWater's compute wave equation texture path.
@@ -245,6 +251,9 @@ public:
     uint32_t GetHPWaterVolumeUpsampledTexture(int index) const;
     uint32_t GetHPWaterCausticTexture() const;
     bool IsHPWaterCausticValid() const { return m_HPWaterCausticValid; }
+    uint32_t GetHPWaterCausticFilteredTexture() const;
+    bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
+    uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
 
     uint32_t GetHPWaterFluidHeightTexture() const;
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
@@ -296,6 +305,11 @@ private:
     bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
                                     const std::shared_ptr<Framebuffer>& outputFBO,
                                     float stride);
+    bool RunHPWaterCausticFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
+                                     const std::shared_ptr<Framebuffer>& outputFBO,
+                                     float stride,
+                                     float radius,
+                                     float depthSigma);
     static uint32_t GetHalfResolution(uint32_t value);
 
     uint32_t m_Width = 0;
@@ -341,7 +355,11 @@ private:
 
     // Full-resolution caustic energy consumed by the HPWater composite pass.
     std::shared_ptr<Framebuffer> m_HPWaterCausticFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterCausticFilteredFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterCausticFilterScratchFBO;
     bool m_HPWaterCausticValid = false;
+    bool m_HPWaterCausticFilteredValid = false;
+    uint32_t m_HPWaterCausticFilterIterations = 0;
 
     // HPWater FluidDynamics wave height ping-pong textures.
     std::shared_ptr<Framebuffer> m_HPWaterFluidCurrentFBO;
@@ -366,6 +384,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterVolumeFilterShader;
     std::shared_ptr<Shader> m_HPWaterVolumeUpsampleShader;
     std::shared_ptr<Shader> m_HPWaterCausticShader;
+    std::shared_ptr<Shader> m_HPWaterCausticFilterShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
     std::shared_ptr<Shader> m_LightingShader;

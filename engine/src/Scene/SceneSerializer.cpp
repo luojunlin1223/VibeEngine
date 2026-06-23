@@ -599,6 +599,11 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "CausticStrength" << YAML::Value << w.CausticStrength;
         out << YAML::Key << "CausticScale" << YAML::Value << w.CausticScale;
         out << YAML::Key << "CausticDepthFade" << YAML::Value << w.CausticDepthFade;
+        out << YAML::Key << "CausticFilterEnabled" << YAML::Value << w.CausticFilterEnabled;
+        out << YAML::Key << "CausticFilterRadius" << YAML::Value << w.CausticFilterRadius;
+        out << YAML::Key << "CausticFilterDepthSigma" << YAML::Value << w.CausticFilterDepthSigma;
+        out << YAML::Key << "CausticFilterIterations" << YAML::Value << w.CausticFilterIterations;
+        out << YAML::Key << "CausticVolumeStrength" << YAML::Value << w.CausticVolumeStrength;
         out << YAML::Key << "FluidDynamicsEnabled" << YAML::Value << w.FluidDynamicsEnabled;
         out << YAML::Key << "FluidResolution" << YAML::Value << w.FluidResolution;
         out << YAML::Key << "FluidWaveSpeed" << YAML::Value << w.FluidWaveSpeed;
@@ -1574,6 +1579,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["CausticStrength"]) w.CausticStrength = wNode["CausticStrength"].as<float>();
                 if (wNode["CausticScale"]) w.CausticScale = wNode["CausticScale"].as<float>();
                 if (wNode["CausticDepthFade"]) w.CausticDepthFade = wNode["CausticDepthFade"].as<float>();
+                if (wNode["CausticFilterEnabled"]) w.CausticFilterEnabled = wNode["CausticFilterEnabled"].as<bool>();
+                if (wNode["CausticFilterRadius"]) w.CausticFilterRadius = wNode["CausticFilterRadius"].as<float>();
+                if (wNode["CausticFilterDepthSigma"]) w.CausticFilterDepthSigma = wNode["CausticFilterDepthSigma"].as<float>();
+                if (wNode["CausticFilterIterations"]) w.CausticFilterIterations = wNode["CausticFilterIterations"].as<int>();
+                if (wNode["CausticVolumeStrength"]) w.CausticVolumeStrength = wNode["CausticVolumeStrength"].as<float>();
                 if (wNode["FluidDynamicsEnabled"]) w.FluidDynamicsEnabled = wNode["FluidDynamicsEnabled"].as<bool>();
                 if (wNode["FluidResolution"]) w.FluidResolution = wNode["FluidResolution"].as<int>();
                 if (wNode["FluidWaveSpeed"]) w.FluidWaveSpeed = wNode["FluidWaveSpeed"].as<float>();
@@ -1589,6 +1599,10 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.CausticStrength = std::clamp(w.CausticStrength, 0.0f, 8.0f);
                 w.CausticScale = std::clamp(w.CausticScale, 0.1f, 128.0f);
                 w.CausticDepthFade = std::clamp(w.CausticDepthFade, 0.1f, 500.0f);
+                w.CausticFilterRadius = std::clamp(w.CausticFilterRadius, 0.25f, 8.0f);
+                w.CausticFilterDepthSigma = std::clamp(w.CausticFilterDepthSigma, 0.00001f, 0.05f);
+                w.CausticFilterIterations = std::clamp(w.CausticFilterIterations, 1, 2);
+                w.CausticVolumeStrength = std::clamp(w.CausticVolumeStrength, 0.0f, 4.0f);
                 w.FluidResolution = std::clamp(w.FluidResolution, 16, 1024);
                 w.FluidWaveSpeed = std::clamp(w.FluidWaveSpeed, 0.0f, 2.0f);
                 w.FluidDamping = std::clamp(w.FluidDamping, 0.0f, 0.98f);

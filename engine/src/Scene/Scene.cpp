@@ -1136,6 +1136,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
     m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
+    m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
+    m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
+    m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1342,6 +1345,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterCausticStrength = 0.0f;
     float hpWaterCausticScale = 12.0f;
     float hpWaterCausticDepthFade = 20.0f;
+    bool hpWaterCausticFilterEnabled = false;
+    float hpWaterCausticFilterRadius = 1.35f;
+    float hpWaterCausticFilterDepthSigma = 0.0025f;
+    int hpWaterCausticFilterIterations = 1;
+    float hpWaterCausticVolumeStrength = 0.0f;
     bool hpWaterFluidEnabled = false;
     uint32_t hpWaterFluidResolution = 128;
     float hpWaterFluidWaveSpeed = 1.0f;
@@ -1466,6 +1474,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterCausticStrength = std::max(hpWaterCausticStrength, water->CausticStrength);
                 hpWaterCausticScale = std::max(hpWaterCausticScale, water->CausticScale);
                 hpWaterCausticDepthFade = std::max(hpWaterCausticDepthFade, water->CausticDepthFade);
+                hpWaterCausticFilterEnabled = hpWaterCausticFilterEnabled || water->CausticFilterEnabled;
+                hpWaterCausticFilterRadius = std::max(hpWaterCausticFilterRadius, water->CausticFilterRadius);
+                hpWaterCausticFilterDepthSigma = std::max(hpWaterCausticFilterDepthSigma, water->CausticFilterDepthSigma);
+                hpWaterCausticFilterIterations = std::max(
+                    hpWaterCausticFilterIterations,
+                    std::clamp(water->CausticFilterIterations, 1, 2));
+                hpWaterCausticVolumeStrength = std::max(
+                    hpWaterCausticVolumeStrength, water->CausticVolumeStrength);
                 if (!hpWaterFluidEnabled && water->FluidDynamicsEnabled) {
                     hpWaterFluidEnabled = true;
                     hpWaterFluidResolution = static_cast<uint32_t>(
@@ -1860,6 +1876,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
         m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
+        m_RenderDiagnostics.HPWaterCausticFilterRadius = hpWaterCausticFilterRadius;
+        m_RenderDiagnostics.HPWaterCausticFilterDepthSigma = hpWaterCausticFilterDepthSigma;
+        m_RenderDiagnostics.HPWaterCausticVolumeStrength = hpWaterCausticVolumeStrength;
         const uint32_t hpWaterFrameIndex = static_cast<uint32_t>(m_RenderDiagnostics.FrameIndex & 0xffffffffULL);
         m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
         m_RenderDiagnostics.HPWaterMaskRan = m_DeferredRenderer.BuildHPWaterMask();
@@ -1874,6 +1893,22 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterRefractionJitter,
                                             hpWaterFrameIndex,
                                             inverseViewProjection);
+        m_RenderDiagnostics.HPWaterCausticRan =
+            hpWaterCausticsEnabled &&
+            m_DeferredRenderer.AccumulateHPWaterCaustics(nearClip,
+                                                         farClip,
+                                                         lightDir,
+                                                         lightColor,
+                                                         lightIntensity,
+                                                         hpWaterCausticStrength,
+                                                         hpWaterCausticScale,
+                                                         hpWaterCausticDepthFade);
+        m_RenderDiagnostics.HPWaterCausticFilterRan =
+            m_RenderDiagnostics.HPWaterCausticRan &&
+            hpWaterCausticFilterEnabled &&
+            m_DeferredRenderer.FilterHPWaterCaustics(hpWaterCausticFilterRadius,
+                                                     hpWaterCausticFilterDepthSigma,
+                                                     hpWaterCausticFilterIterations);
         m_RenderDiagnostics.HPWaterVolumeRan =
             m_DeferredRenderer.AccumulateHPWaterVolume(nearClip,
                                                        farClip,
@@ -1881,7 +1916,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        lightColor,
                                                        lightIntensity,
                                                        cameraPos,
-                                                       inverseViewProjection);
+                                                       inverseViewProjection,
+                                                       hpWaterCausticVolumeStrength);
         const glm::mat4 previousWaterVP = m_HasPreviousHPWaterViewProjection
             ? m_PreviousHPWaterViewProjection
             : viewProjection;
@@ -1895,16 +1931,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterVolumeUpsampleRan =
             m_RenderDiagnostics.HPWaterVolumeFilterRan &&
             m_DeferredRenderer.UpsampleHPWaterVolume(nearClip, farClip);
-        m_RenderDiagnostics.HPWaterCausticRan =
-            hpWaterCausticsEnabled &&
-            m_DeferredRenderer.AccumulateHPWaterCaustics(nearClip,
-                                                         farClip,
-                                                         lightDir,
-                                                         lightColor,
-                                                         lightIntensity,
-                                                         hpWaterCausticStrength,
-                                                         hpWaterCausticScale,
-                                                         hpWaterCausticDepthFade);
         m_RenderDiagnostics.HPWaterCompositeRan =
             m_DeferredRenderer.CompositeHPWater(nearClip,
                                                 farClip,
@@ -1955,6 +1981,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
     m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
+    m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
+    m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
+    m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
     m_RenderDiagnostics.HPWaterFluidDynamicsValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
