@@ -1280,6 +1280,11 @@ private:
             water.WaveSpeed = 12.0f;
             water.Damping = 0.020f;
             water.EdgeAbsorptionWidth = 0.14f;
+            water.SpectrumWaves = true;
+            water.SpectrumAmplitude = 0.32f;
+            water.SpectrumWindAngle = 28.0f;
+            water.SpectrumTimeScale = 1.0f;
+            water.Choppiness = 0.18f;
             water.AutoImpulse = true;
             water.ImpulseRadius = 8.5f;
             water.ImpulseStrength = 0.035f;
@@ -6257,6 +6262,11 @@ private:
                 ImGui::SliderFloat("Damping", &w.Damping, 0.0f, 0.5f, "%.3f");
                 if (ImGui::DragFloat("Height Scale", &w.HeightScale, 0.01f, 0.0f, 10.0f)) w._NeedsRebuild = true;
                 ImGui::SliderFloat("Edge Absorption", &w.EdgeAbsorptionWidth, 0.0f, 0.5f, "%.3f");
+                ImGui::Checkbox("Spectrum Waves", &w.SpectrumWaves);
+                ImGui::DragFloat("Spectrum Amplitude", &w.SpectrumAmplitude, 0.01f, 0.0f, 10.0f, "%.3f");
+                ImGui::DragFloat("Spectrum Wind Angle", &w.SpectrumWindAngle, 1.0f, -360.0f, 360.0f, "%.1f");
+                ImGui::DragFloat("Spectrum Time Scale", &w.SpectrumTimeScale, 0.01f, 0.0f, 10.0f, "%.3f");
+                ImGui::SliderFloat("Choppiness", &w.Choppiness, 0.0f, 2.0f, "%.3f");
                 ImGui::Checkbox("Auto Impulse", &w.AutoImpulse);
                 ImGui::DragFloat("Impulse Interval", &w.AutoImpulseInterval, 0.05f, 0.05f, 20.0f);
                 ImGui::DragFloat("Impulse Radius", &w.ImpulseRadius, 0.1f, 0.1f, 100.0f);

@@ -572,6 +572,11 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "Damping" << YAML::Value << w.Damping;
         out << YAML::Key << "HeightScale" << YAML::Value << w.HeightScale;
         out << YAML::Key << "EdgeAbsorptionWidth" << YAML::Value << w.EdgeAbsorptionWidth;
+        out << YAML::Key << "SpectrumWaves" << YAML::Value << w.SpectrumWaves;
+        out << YAML::Key << "SpectrumAmplitude" << YAML::Value << w.SpectrumAmplitude;
+        out << YAML::Key << "SpectrumWindAngle" << YAML::Value << w.SpectrumWindAngle;
+        out << YAML::Key << "SpectrumTimeScale" << YAML::Value << w.SpectrumTimeScale;
+        out << YAML::Key << "Choppiness" << YAML::Value << w.Choppiness;
         out << YAML::Key << "AutoImpulse" << YAML::Value << w.AutoImpulse;
         out << YAML::Key << "AutoImpulseInterval" << YAML::Value << w.AutoImpulseInterval;
         out << YAML::Key << "ImpulseRadius" << YAML::Value << w.ImpulseRadius;
@@ -1525,6 +1530,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["Damping"])             w.Damping = wNode["Damping"].as<float>();
                 if (wNode["HeightScale"])         w.HeightScale = wNode["HeightScale"].as<float>();
                 if (wNode["EdgeAbsorptionWidth"]) w.EdgeAbsorptionWidth = wNode["EdgeAbsorptionWidth"].as<float>();
+                if (wNode["SpectrumWaves"])       w.SpectrumWaves = wNode["SpectrumWaves"].as<bool>();
+                if (wNode["SpectrumAmplitude"])   w.SpectrumAmplitude = wNode["SpectrumAmplitude"].as<float>();
+                if (wNode["SpectrumWindAngle"])   w.SpectrumWindAngle = wNode["SpectrumWindAngle"].as<float>();
+                if (wNode["SpectrumTimeScale"])   w.SpectrumTimeScale = wNode["SpectrumTimeScale"].as<float>();
+                if (wNode["Choppiness"])          w.Choppiness = wNode["Choppiness"].as<float>();
                 if (wNode["AutoImpulse"])         w.AutoImpulse = wNode["AutoImpulse"].as<bool>();
                 if (wNode["AutoImpulseInterval"]) w.AutoImpulseInterval = wNode["AutoImpulseInterval"].as<float>();
                 if (wNode["ImpulseRadius"])       w.ImpulseRadius = wNode["ImpulseRadius"].as<float>();

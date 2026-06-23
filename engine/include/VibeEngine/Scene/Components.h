@@ -381,6 +381,12 @@ struct HPWaterComponent {
     float HeightScale = 0.55f;
     float EdgeAbsorptionWidth = 0.10f;
 
+    bool  SpectrumWaves = true;
+    float SpectrumAmplitude = 0.28f;
+    float SpectrumWindAngle = 35.0f;
+    float SpectrumTimeScale = 1.0f;
+    float Choppiness = 0.12f;
+
     bool  AutoImpulse = true;
     float AutoImpulseInterval = 1.25f;
     float ImpulseRadius = 7.0f;
@@ -404,6 +410,7 @@ struct HPWaterComponent {
     std::vector<uint32_t> _Indices;
     float _Accumulator = 0.0f;
     float _ImpulseTimer = 0.0f;
+    float _OceanTime = 0.0f;
     bool _NeedsRebuild = true;
 
     HPWaterComponent() = default;

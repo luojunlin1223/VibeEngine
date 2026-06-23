@@ -78,6 +78,13 @@ uniform float u_OcclusionStrength;
 uniform vec4  u_EmissionColor;
 uniform float u_Cutoff;
 
+uniform int   u_IsWaterSurface;
+uniform vec3  u_WaterAbsorptionColor;
+uniform vec3  u_WaterFoamColor;
+uniform float u_WaterFoamIntensity;
+uniform float u_WaterHeightScale;
+uniform float u_WaterBaseHeight;
+
 // Material textures
 uniform sampler2D u_MainTex;
 uniform sampler2D u_MetallicGlossMap;
@@ -169,11 +176,25 @@ void main() {
     if (u_HasEmissionMap == 1)
         emission *= texture(u_EmissionMap, v_TexCoord).rgb;
 
+    float materialFlag = 0.0;
+    if (u_IsWaterSurface == 1) {
+        metallic = 0.0;
+        roughness = clamp(roughness, 0.015, 0.75);
+
+        float slope = clamp(1.0 - N.y, 0.0, 1.0);
+        float heightSignal = clamp(abs(v_FragPos.y - u_WaterBaseHeight) / max(abs(u_WaterHeightScale), 0.001), 0.0, 1.0);
+        float foam = smoothstep(0.32, 0.86, slope + heightSignal * 0.45) * clamp(u_WaterFoamIntensity, 0.0, 2.0);
+
+        baseColor.rgb = mix(baseColor.rgb, u_WaterFoamColor, clamp(foam, 0.0, 1.0));
+        emission = max(u_WaterAbsorptionColor, vec3(0.0));
+        materialFlag = 1.0;
+    }
+
     // ── Write G-Buffer ───────────────────────────────────────────────
     gPositionMetallic = vec4(v_FragPos, metallic);
     gNormalRoughness  = vec4(N, roughness); // RGBA16F stores [-1,1] directly
     gAlbedoAO         = vec4(baseColor.rgb, ao);
-    gEmissionFlags    = vec4(emission, 0.0); // flags=0 for standard lit
+    gEmissionFlags    = vec4(emission, materialFlag);
 }
 #endif
 

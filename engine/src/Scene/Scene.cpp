@@ -102,6 +102,51 @@ static size_t HPWaterIndex(int x, int z, int resolution) {
     return static_cast<size_t>(z * resolution + x);
 }
 
+struct HPWaterSpectrumSample {
+    float Height = 0.0f;
+    float Dx = 0.0f;
+    float Dz = 0.0f;
+    float ChopX = 0.0f;
+    float ChopZ = 0.0f;
+};
+
+static HPWaterSpectrumSample SampleHPWaterSpectrum(const HPWaterComponent& water, float localX, float localZ) {
+    HPWaterSpectrumSample sample;
+    if (!water.SpectrumWaves || water.SpectrumAmplitude <= 0.0f)
+        return sample;
+
+    constexpr float pi = 3.14159265358979323846f;
+    constexpr float twoPi = pi * 2.0f;
+    constexpr float gravity = 9.81f;
+    const float windRad = water.SpectrumWindAngle * pi / 180.0f;
+    const glm::vec2 wind = glm::normalize(glm::vec2(std::cos(windRad), std::sin(windRad)));
+    const glm::vec2 side(-wind.y, wind.x);
+    const float domain = std::max(std::max(water.WorldSizeX, water.WorldSizeZ), 1.0f);
+
+    static const float wavelengthFactors[] = { 0.62f, 0.41f, 0.29f, 0.19f, 0.13f, 0.085f, 0.057f, 0.039f };
+    static const float directionOffsets[] = { 0.00f, 0.24f, -0.31f, 0.52f, -0.58f, 0.77f, -0.91f, 1.13f };
+    static const float phaseOffsets[] = { 0.0f, 1.7f, 3.1f, 4.6f, 2.4f, 5.2f, 0.9f, 3.9f };
+
+    for (int i = 0; i < 8; ++i) {
+        glm::vec2 dir = glm::normalize(wind + side * directionOffsets[i]);
+        const float wavelength = std::max(domain * wavelengthFactors[i], 0.25f);
+        const float k = twoPi / wavelength;
+        const float omega = std::sqrt(gravity * k);
+        const float amplitude = water.SpectrumAmplitude * std::pow(0.58f, static_cast<float>(i));
+        const float phase = k * (dir.x * localX + dir.y * localZ) + omega * water._OceanTime + phaseOffsets[i];
+        const float s = std::sin(phase);
+        const float c = std::cos(phase);
+
+        sample.Height += s * amplitude;
+        sample.Dx += c * amplitude * k * dir.x;
+        sample.Dz += c * amplitude * k * dir.y;
+        sample.ChopX += c * amplitude * water.Choppiness * dir.x;
+        sample.ChopZ += c * amplitude * water.Choppiness * dir.y;
+    }
+
+    return sample;
+}
+
 static void AddHPWaterImpulse(HPWaterComponent& water, float u, float v, float radiusWorld, float strength) {
     const int n = ClampHPWaterResolution(water.Resolution);
     if (water._Current.size() != static_cast<size_t>(n * n))
@@ -173,9 +218,11 @@ static void RebuildHPWaterMesh(HPWaterComponent& water, MeshRendererComponent* m
         if (!meshRenderer->Mat || meshRenderer->Mat->GetName() != "Water")
             meshRenderer->Mat = MaterialLibrary::Get("Water");
         meshRenderer->CastShadows = false;
+        const float spectrumExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude, 0.0f) * 2.5f : 0.0f;
+        const float chopExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude * water.Choppiness, 0.0f) * 3.0f : 0.0f;
         meshRenderer->LocalBounds = {
-            glm::vec3(-water.WorldSizeX * 0.5f, water.BaseHeight - water.HeightScale * 2.0f, -water.WorldSizeZ * 0.5f),
-            glm::vec3( water.WorldSizeX * 0.5f, water.BaseHeight + water.HeightScale * 2.0f,  water.WorldSizeZ * 0.5f)
+            glm::vec3(-water.WorldSizeX * 0.5f - chopExtent, water.BaseHeight - water.HeightScale * 2.0f - spectrumExtent, -water.WorldSizeZ * 0.5f - chopExtent),
+            glm::vec3( water.WorldSizeX * 0.5f + chopExtent, water.BaseHeight + water.HeightScale * 2.0f + spectrumExtent,  water.WorldSizeZ * 0.5f + chopExtent)
         };
     }
 
@@ -199,17 +246,26 @@ static void UploadHPWaterMesh(HPWaterComponent& water) {
             const float h = water._Current[HPWaterIndex(x, z, n)];
             const float hx = water._Current[HPWaterIndex(xr, z, n)] - water._Current[HPWaterIndex(xl, z, n)];
             const float hz = water._Current[HPWaterIndex(x, zu, n)] - water._Current[HPWaterIndex(x, zd, n)];
-            const glm::vec3 normal = glm::normalize(glm::vec3(
-                -hx * water.HeightScale / std::max(dx * 2.0f, 0.001f),
-                 1.0f,
-                -hz * water.HeightScale / std::max(dz * 2.0f, 0.001f)));
-
             const float u = static_cast<float>(x) / static_cast<float>(std::max(1, n - 1));
             const float v = static_cast<float>(z) / static_cast<float>(std::max(1, n - 1));
+            const float localX = (u - 0.5f) * water.WorldSizeX;
+            const float localZ = (v - 0.5f) * water.WorldSizeZ;
+            const HPWaterSpectrumSample spectrum = SampleHPWaterSpectrum(water, localX, localZ);
+            const float dHdx =
+                hx * water.HeightScale / std::max(dx * 2.0f, 0.001f) +
+                spectrum.Dx;
+            const float dHdz =
+                hz * water.HeightScale / std::max(dz * 2.0f, 0.001f) +
+                spectrum.Dz;
+            const glm::vec3 normal = glm::normalize(glm::vec3(
+                -dHdx,
+                 1.0f,
+                -dHdz));
+
             const size_t base = HPWaterIndex(x, z, n) * 11;
-            water._Vertices[base + 0] = (u - 0.5f) * water.WorldSizeX;
-            water._Vertices[base + 1] = water.BaseHeight + h * water.HeightScale;
-            water._Vertices[base + 2] = (v - 0.5f) * water.WorldSizeZ;
+            water._Vertices[base + 0] = localX + spectrum.ChopX;
+            water._Vertices[base + 1] = water.BaseHeight + h * water.HeightScale + spectrum.Height;
+            water._Vertices[base + 2] = localZ + spectrum.ChopZ;
             water._Vertices[base + 3] = normal.x;
             water._Vertices[base + 4] = normal.y;
             water._Vertices[base + 5] = normal.z;
@@ -268,6 +324,8 @@ static void UpdateHPWaterComponent(HPWaterComponent& water, MeshRendererComponen
     if (water._NeedsRebuild || !water._Mesh || water._Current.size() != static_cast<size_t>(desiredResolution * desiredResolution))
         RebuildHPWaterMesh(water, meshRenderer);
 
+    water._OceanTime += std::max(deltaTime, 0.0f) * std::max(water.SpectrumTimeScale, 0.0f);
+
     constexpr float fixedDt = 1.0f / 60.0f;
     water._Accumulator = std::min(water._Accumulator + std::max(deltaTime, 0.0f), 0.2f);
     int steps = 0;
@@ -290,9 +348,11 @@ static void UpdateHPWaterComponent(HPWaterComponent& water, MeshRendererComponen
     UploadHPWaterMesh(water);
     if (meshRenderer) {
         meshRenderer->Mesh = water._Mesh;
+        const float spectrumExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude, 0.0f) * 2.5f : 0.0f;
+        const float chopExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude * water.Choppiness, 0.0f) * 3.0f : 0.0f;
         meshRenderer->LocalBounds = {
-            glm::vec3(-water.WorldSizeX * 0.5f, water.BaseHeight - water.HeightScale * 2.0f, -water.WorldSizeZ * 0.5f),
-            glm::vec3( water.WorldSizeX * 0.5f, water.BaseHeight + water.HeightScale * 2.0f,  water.WorldSizeZ * 0.5f)
+            glm::vec3(-water.WorldSizeX * 0.5f - chopExtent, water.BaseHeight - water.HeightScale * 2.0f - spectrumExtent, -water.WorldSizeZ * 0.5f - chopExtent),
+            glm::vec3( water.WorldSizeX * 0.5f + chopExtent, water.BaseHeight + water.HeightScale * 2.0f + spectrumExtent,  water.WorldSizeZ * 0.5f + chopExtent)
         };
     }
 }
@@ -1353,6 +1413,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         gbufferShader->SetFloat("u_OcclusionStrength", 1.0f);
         gbufferShader->SetVec4("u_EmissionColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         gbufferShader->SetFloat("u_Cutoff", 0.0f);
+        gbufferShader->SetInt("u_IsWaterSurface", 0);
+        gbufferShader->SetVec3("u_WaterAbsorptionColor", glm::vec3(0.0f));
+        gbufferShader->SetVec3("u_WaterFoamColor", glm::vec3(1.0f));
+        gbufferShader->SetFloat("u_WaterFoamIntensity", 0.0f);
+        gbufferShader->SetFloat("u_WaterHeightScale", 1.0f);
+        gbufferShader->SetFloat("u_WaterBaseHeight", 0.0f);
         gbufferShader->SetInt("u_UseTexture", 0);
         gbufferShader->SetInt("u_HasMainTex", 0);
         gbufferShader->SetInt("u_HasMetallicGlossMap", 0);
@@ -1419,6 +1485,18 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             gbufferShader->SetFloat("u_AO", 1.0f);
             gbufferShader->SetInt("u_HasMainTex", 0);
             gbufferShader->SetInt("u_UseTexture", 0);
+            gbufferShader->SetInt("u_IsWaterSurface", 1);
+            gbufferShader->SetVec3("u_WaterAbsorptionColor", glm::vec3(
+                water->AbsorptionColor[0],
+                water->AbsorptionColor[1],
+                water->AbsorptionColor[2]));
+            gbufferShader->SetVec3("u_WaterFoamColor", glm::vec3(
+                water->FoamColor[0],
+                water->FoamColor[1],
+                water->FoamColor[2]));
+            gbufferShader->SetFloat("u_WaterFoamIntensity", water->FoamIntensity);
+            gbufferShader->SetFloat("u_WaterHeightScale", water->HeightScale);
+            gbufferShader->SetFloat("u_WaterBaseHeight", water->BaseHeight);
         }
 
         glEnable(GL_CULL_FACE);

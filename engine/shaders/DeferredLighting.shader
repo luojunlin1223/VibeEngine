@@ -94,6 +94,42 @@ vec3 ComputeIndirectLighting(vec3 N, vec3 V, vec3 albedo,
     return (diffuseGI + specularGI) * ao;
 }
 
+vec3 ComputeWaterLighting(vec3 fragPos, vec3 N, vec3 V, vec3 scatterColor,
+                          vec3 absorptionColor, float roughness, float ao,
+                          float directionalShadow, float viewDepth) {
+    vec3 L = normalize(u_LightDir);
+    vec3 H = normalize(V + L);
+    vec3 waterF0 = vec3(0.0204); // IOR 1.33
+
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float grazing = pow(clamp(1.0 - NdotV, 0.0, 1.0), 2.0);
+
+    vec3 F = FresnelSchlickRoughness(NdotV, waterF0, roughness);
+    float D = DistributionGGX(N, H, roughness);
+    float G = GeometrySmith(N, V, L, roughness);
+    vec3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
+    specular *= u_LightColor * u_LightIntensity * NdotL * directionalShadow;
+
+    float opticalDepth = mix(1.25, 18.0, grazing);
+    opticalDepth *= mix(0.70, 1.35, clamp(viewDepth / 180.0, 0.0, 1.0));
+    vec3 transmittance = exp(-max(absorptionColor, vec3(0.0001)) * opticalDepth);
+    vec3 deepColor = scatterColor * (0.22 + 0.78 * transmittance);
+
+    vec3 forwardScatter = scatterColor * u_LightColor * u_LightIntensity *
+        (0.08 + 0.42 * NdotL) * directionalShadow;
+
+    vec3 indirectBody = vec3(0.0);
+    vec3 skyReflection = vec3(0.0);
+    if (u_IndirectLightingEnabled == 1) {
+        vec3 R = reflect(-V, N);
+        indirectBody = scatterColor * SampleIndirectSky(N) * u_IndirectDiffuseIntensity * 0.22 * ao;
+        skyReflection = SampleIndirectSky(R) * F * (0.35 + u_SkyReflectionIntensity * 2.35);
+    }
+
+    return deepColor * 0.45 + forwardScatter + specular + indirectBody + skyReflection;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────
 
 void main() {
@@ -110,6 +146,7 @@ void main() {
     vec3  albedo    = albedoAO.rgb;
     float ao        = albedoAO.a;
     vec3  emission  = emissionFlags.rgb;
+    bool  isWater   = emissionFlags.a > 0.5;
 
     // Skip sky pixels (no geometry)
     if (length(normRoughness.xyz) < 0.01) {
@@ -177,8 +214,15 @@ void main() {
     }
 
     // ── Ambient + Occlusion ──────────────────────────────────────────
-    vec3 indirect = ComputeIndirectLighting(N, V, albedo, metallic, roughness, ao, F0);
-    vec3 color = indirect + Lo + emission;
+    vec3 color;
+    if (isWater) {
+        vec3 absorptionColor = max(emissionFlags.rgb, vec3(0.0001));
+        color = ComputeWaterLighting(fragPos, N, V, albedo, absorptionColor,
+                                     roughness, ao, directionalShadow, viewDepth);
+    } else {
+        vec3 indirect = ComputeIndirectLighting(N, V, albedo, metallic, roughness, ao, F0);
+        color = indirect + Lo + emission;
+    }
 
     FragColor = vec4(color, 1.0);
 }
