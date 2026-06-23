@@ -8,11 +8,22 @@
  * Transparent objects must still be rendered with the forward pipeline
  * after the deferred lighting pass.
  *
+ * HPWater parity note:
+ * HPWater uses a separate water G-buffer in the reference Unity pipeline. Keep
+ * that surface data separate from the generic opaque G-buffer so refraction,
+ * volumetric water lighting, caustics, and fluid simulation passes can evolve
+ * without overloading the material flags attachment.
+ *
  * G-Buffer layout:
  *   RT0 (RGBA16F): WorldPosition.xyz + Metallic
  *   RT1 (RGBA16F): Normal.xyz (encoded [0,1]) + Roughness
  *   RT2 (RGBA8):   Albedo.rgb + AO
  *   RT3 (RGBA8):   Emission.rgb + Flags
+ *
+ * HPWater G-Buffer layout:
+ *   RT0 (RGBA16F): Water normal.xyz + roughness
+ *   RT1 (RGBA16F): Scatter color.rgb + thickness
+ *   RT2 (RGBA16F): Absorption color.rgb + foam
  */
 #pragma once
 
@@ -34,7 +45,10 @@ enum class GBufferDebugView {
     Roughness,
     AO,
     Emission,
-    Depth
+    Depth,
+    HPWaterNormalRoughness,
+    HPWaterScatterThickness,
+    HPWaterAbsorptionFoam
 };
 
 class DeferredRenderer {
@@ -70,12 +84,27 @@ public:
     /// Get G-buffer depth texture (for SSAO, post-processing, etc.)
     uint32_t GetDepthTexture() const;
 
+    /// Get HPWater surface data texture ID by index.
+    uint32_t GetHPWaterGBufferTexture(int index) const;
+
+    /// Get HPWater depth texture.
+    uint32_t GetHPWaterDepthTexture() const;
+
+    /// Number of HPWater G-buffer color attachments.
+    int GetHPWaterGBufferAttachmentCount() const;
+
+    /// Whether the dedicated HPWater G-buffer exists.
+    bool HasHPWaterGBuffer() const { return m_HPWaterGBuffer != nullptr; }
+
     /// Get the output framebuffer width/height.
     uint32_t GetWidth() const { return m_Width; }
     uint32_t GetHeight() const { return m_Height; }
 
     /// Bind G-buffer textures to specified texture units for the lighting shader.
     void BindGBufferTextures(int startUnit = 0);
+
+    /// Bind HPWater G-buffer textures to specified texture units.
+    void BindHPWaterGBufferTextures(int startUnit = 8);
 
     /// Get the lighting shader (for setting uniforms externally).
     std::shared_ptr<Shader> GetLightingShader() const { return m_LightingShader; }
@@ -98,6 +127,8 @@ public:
 
 private:
     void CreateLightingFBO();
+    void CreateHPWaterGBuffer();
+    void ClearHPWaterGBuffer();
 
     uint32_t m_Width = 0;
     uint32_t m_Height = 0;
@@ -108,6 +139,9 @@ private:
 
     // Lighting output FBO (single RGBA16F attachment)
     std::shared_ptr<Framebuffer> m_LightingFBO;
+
+    // Dedicated HPWater surface payloads (separate from generic opaque G-buffer).
+    std::shared_ptr<Framebuffer> m_HPWaterGBuffer;
 
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;

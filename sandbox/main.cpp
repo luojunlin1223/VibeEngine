@@ -6989,6 +6989,12 @@ private:
         out << "HPWaterQueued: " << d.HPWaterQueued << "\n";
         out << "HPWaterDrawn: " << d.HPWaterDrawn << "\n";
         out << "HPWaterCulled: " << d.HPWaterCulled << "\n";
+        out << "HPWaterGBufferInitialized: " << d.HPWaterGBufferInitialized << "\n";
+        out << "HPWaterGBufferAttachmentCount: " << d.HPWaterGBufferAttachmentCount << "\n";
+        out << "HPWaterGBuffer0: " << d.HPWaterGBuffer0 << "\n";
+        out << "HPWaterGBuffer1: " << d.HPWaterGBuffer1 << "\n";
+        out << "HPWaterGBuffer2: " << d.HPWaterGBuffer2 << "\n";
+        out << "HPWaterGBufferDepth: " << d.HPWaterGBufferDepth << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7017,6 +7023,25 @@ private:
             writeProbe("DeferredOutput", ProbeTexture(dr.GetOutputTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetOutputTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_deferred.bmp");
+        }
+        if (dr.IsInitialized() && dr.HasHPWaterGBuffer()) {
+            struct HPWaterProbeTarget {
+                const char* Name;
+                const char* FileName;
+                uint32_t TextureID;
+            };
+            const HPWaterProbeTarget hpWaterTargets[] = {
+                { "HPWaterNormalRoughness", "render_diagnostics_hpwater_normal_roughness.bmp", dr.GetHPWaterGBufferTexture(0) },
+                { "HPWaterScatterThickness", "render_diagnostics_hpwater_scatter_thickness.bmp", dr.GetHPWaterGBufferTexture(1) },
+                { "HPWaterAbsorptionFoam", "render_diagnostics_hpwater_absorption_foam.bmp", dr.GetHPWaterGBufferTexture(2) },
+            };
+            for (const auto& target : hpWaterTargets) {
+                if (target.TextureID == 0)
+                    continue;
+                writeProbe(target.Name, ProbeTexture(target.TextureID, dr.GetWidth(), dr.GetHeight()));
+                SaveTextureBMP(target.TextureID, dr.GetWidth(), dr.GetHeight(),
+                    std::filesystem::path(VE_PROJECT_ROOT) / target.FileName);
+            }
         }
         if (m_PostProcessedTexture != 0 && m_Framebuffer) {
             writeProbe("PostProcessedTexture", ProbeTexture(m_PostProcessedTexture, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight()));
@@ -7050,6 +7075,13 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
+        ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
+            d.HPWaterGBufferInitialized ? 1 : 0,
+            d.HPWaterGBufferAttachmentCount,
+            d.HPWaterGBuffer0,
+            d.HPWaterGBuffer1,
+            d.HPWaterGBuffer2,
+            d.HPWaterGBufferDepth);
 
         ImGui::Checkbox("Auto export when HPWater exists", &m_AutoExportRenderDiagnostics);
         if (m_AutoExportRenderDiagnostics &&
@@ -7079,11 +7111,13 @@ private:
         if (ImGui::CollapsingHeader("Render Pipeline", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::TextDisabled("Pipeline: Deferred");
             ImGui::TextDisabled("G-Buffer MRT: Position, Normal, Albedo, Emission");
+            ImGui::TextDisabled("HPWater MRT: Normal, Scatter, Absorption");
             ImGui::TextDisabled("Transparent objects use forward pass");
 
             const char* debugViews[] = { "None", "Position", "Normals", "Albedo",
-                "Metallic", "Roughness", "AO", "Emission", "Depth" };
-            ImGui::Combo("G-Buffer Debug", &ps.GBufferDebugView, debugViews, 9);
+                "Metallic", "Roughness", "AO", "Emission", "Depth",
+                "HPWater Normal/Roughness", "HPWater Scatter/Thickness", "HPWater Absorption/Foam" };
+            ImGui::Combo("G-Buffer Debug", &ps.GBufferDebugView, debugViews, 12);
         }
 
         if (ImGui::CollapsingHeader("HDR / Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen)) {

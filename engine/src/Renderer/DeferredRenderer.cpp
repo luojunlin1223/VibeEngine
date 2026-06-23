@@ -26,7 +26,10 @@ uniform sampler2D u_GNormalRoughness;
 uniform sampler2D u_GAlbedoAO;
 uniform sampler2D u_GEmissionFlags;
 uniform sampler2D u_DepthTexture;
-uniform int u_DebugMode; // 1=Pos, 2=Normal, 3=Albedo, 4=Metallic, 5=Roughness, 6=AO, 7=Emission, 8=Depth
+uniform sampler2D u_HPWaterNormalRoughness;
+uniform sampler2D u_HPWaterScatterThickness;
+uniform sampler2D u_HPWaterAbsorptionFoam;
+uniform int u_DebugMode; // 1..8 generic G-buffer, 9..11 HPWater G-buffer
 
 void main() {
     vec4 posMetallic   = texture(u_GPositionMetallic, v_UV);
@@ -65,6 +68,12 @@ void main() {
         float far = 1000.0;
         float linearDepth = (2.0 * near) / (far + near - depth * (far - near));
         result = vec3(linearDepth);
+    } else if (u_DebugMode == 9) {
+        result = texture(u_HPWaterNormalRoughness, v_UV).xyz;
+    } else if (u_DebugMode == 10) {
+        result = texture(u_HPWaterScatterThickness, v_UV).rgb;
+    } else if (u_DebugMode == 11) {
+        result = texture(u_HPWaterAbsorptionFoam, v_UV).rgb;
     }
 
     FragColor = vec4(result, 1.0);
@@ -88,6 +97,7 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         { GL_RGBA8   }, // RT3: Emission + Flags
     };
     m_GBuffer = Framebuffer::Create(gbufferSpec);
+    CreateHPWaterGBuffer();
 
     // ── Create lighting output FBO ──
     CreateLightingFBO();
@@ -120,6 +130,7 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
 void DeferredRenderer::Shutdown() {
     m_GBuffer.reset();
     m_LightingFBO.reset();
+    m_HPWaterGBuffer.reset();
     m_GBufferShader.reset();
     m_LightingShader.reset();
     m_DebugShader.reset();
@@ -141,6 +152,18 @@ void DeferredRenderer::CreateLightingFBO() {
     m_LightingFBO = Framebuffer::Create(lightSpec);
 }
 
+void DeferredRenderer::CreateHPWaterGBuffer() {
+    FramebufferSpec waterSpec;
+    waterSpec.Width = m_Width;
+    waterSpec.Height = m_Height;
+    waterSpec.ColorFormats = {
+        { GL_RGBA16F }, // RT0: Water normal + roughness
+        { GL_RGBA16F }, // RT1: Scatter color + thickness
+        { GL_RGBA16F }, // RT2: Absorption color + foam
+    };
+    m_HPWaterGBuffer = Framebuffer::Create(waterSpec);
+}
+
 void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     if (width == 0 || height == 0 || width > 8192 || height > 8192) return;
     if (width == m_Width && height == m_Height) return;
@@ -153,10 +176,23 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
 
     if (m_LightingFBO)
         m_LightingFBO->Resize(width, height);
+
+    if (m_HPWaterGBuffer)
+        m_HPWaterGBuffer->Resize(width, height);
+}
+
+void DeferredRenderer::ClearHPWaterGBuffer() {
+    if (!m_HPWaterGBuffer) return;
+
+    m_HPWaterGBuffer->Bind();
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void DeferredRenderer::BeginGeometryPass() {
     if (!m_GBuffer) return;
+
+    ClearHPWaterGBuffer();
 
     m_GBuffer->Bind();
 
@@ -233,6 +269,30 @@ uint32_t DeferredRenderer::GetDepthTexture() const {
     return static_cast<uint32_t>(m_GBuffer->GetDepthAttachmentID());
 }
 
+uint32_t DeferredRenderer::GetHPWaterGBufferTexture(int index) const {
+    if (!m_HPWaterGBuffer) return 0;
+    return static_cast<uint32_t>(m_HPWaterGBuffer->GetColorAttachmentID(index));
+}
+
+uint32_t DeferredRenderer::GetHPWaterDepthTexture() const {
+    if (!m_HPWaterGBuffer) return 0;
+    return static_cast<uint32_t>(m_HPWaterGBuffer->GetDepthAttachmentID());
+}
+
+int DeferredRenderer::GetHPWaterGBufferAttachmentCount() const {
+    if (!m_HPWaterGBuffer) return 0;
+    return m_HPWaterGBuffer->GetColorAttachmentCount();
+}
+
+void DeferredRenderer::BindHPWaterGBufferTextures(int startUnit) {
+    if (!m_HPWaterGBuffer) return;
+
+    for (int i = 0; i < m_HPWaterGBuffer->GetColorAttachmentCount(); ++i) {
+        glActiveTexture(GL_TEXTURE0 + startUnit + i);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterGBuffer->GetColorAttachmentID(i)));
+    }
+}
+
 void DeferredRenderer::BeginForwardPass() {
     if (!m_LightingFBO || !m_GBuffer) return;
 
@@ -302,6 +362,11 @@ void DeferredRenderer::DebugVisualize(GBufferDebugView view) {
     glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_GBuffer->GetDepthAttachmentID()));
     m_DebugShader->SetInt("u_DepthTexture", 4);
+
+    BindHPWaterGBufferTextures(5);
+    m_DebugShader->SetInt("u_HPWaterNormalRoughness", 5);
+    m_DebugShader->SetInt("u_HPWaterScatterThickness", 6);
+    m_DebugShader->SetInt("u_HPWaterAbsorptionFoam", 7);
 
     m_DebugShader->SetInt("u_DebugMode", static_cast<int>(view));
 

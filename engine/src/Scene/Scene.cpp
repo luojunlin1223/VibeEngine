@@ -1099,6 +1099,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.Resize(viewportWidth, viewportHeight);
     }
     m_RenderDiagnostics.DeferredInitialized = m_DeferredRenderer.IsInitialized();
+    m_RenderDiagnostics.HPWaterGBufferInitialized = m_DeferredRenderer.HasHPWaterGBuffer();
+    m_RenderDiagnostics.HPWaterGBufferAttachmentCount =
+        static_cast<uint32_t>(m_DeferredRenderer.GetHPWaterGBufferAttachmentCount());
+    m_RenderDiagnostics.HPWaterGBuffer0 = m_DeferredRenderer.GetHPWaterGBufferTexture(0);
+    m_RenderDiagnostics.HPWaterGBuffer1 = m_DeferredRenderer.GetHPWaterGBufferTexture(1);
+    m_RenderDiagnostics.HPWaterGBuffer2 = m_DeferredRenderer.GetHPWaterGBufferTexture(2);
+    m_RenderDiagnostics.HPWaterGBufferDepth = m_DeferredRenderer.GetHPWaterDepthTexture();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {

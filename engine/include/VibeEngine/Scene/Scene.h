@@ -155,7 +155,7 @@ struct RenderPipelineSettings {
     float ShadowCascadeBlendWidth = 0.1f;
 
     // Deferred debug
-    int  GBufferDebugView = 0; // 0=None, 1..8 = GBufferDebugView enum
+    int  GBufferDebugView = 0; // 0=None, 1..11 = GBufferDebugView enum
 };
 
 struct RenderDiagnostics {
@@ -174,6 +174,12 @@ struct RenderDiagnostics {
     uint32_t HPWaterQueued = 0;
     uint32_t HPWaterDrawn = 0;
     uint32_t HPWaterCulled = 0;
+    bool HPWaterGBufferInitialized = false;
+    uint32_t HPWaterGBufferAttachmentCount = 0;
+    uint32_t HPWaterGBuffer0 = 0;
+    uint32_t HPWaterGBuffer1 = 0;
+    uint32_t HPWaterGBuffer2 = 0;
+    uint32_t HPWaterGBufferDepth = 0;
 
     bool DeferredInitialized = false;
     bool LightingPassRan = false;
