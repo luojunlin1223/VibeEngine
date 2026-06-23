@@ -259,6 +259,9 @@ public:
     bool IsHPWaterDepthPyramidValid() const { return m_HPWaterDepthPyramidValid; }
     uint32_t GetHPWaterSceneColorMipCount() const { return m_HPWaterSceneColorMipCount; }
     bool IsHPWaterSceneColorMipValid() const { return m_HPWaterSceneColorMipValid; }
+    uint32_t GetHPWaterFGDLUTTexture() const { return m_HPWaterFGDLUTTexture; }
+    uint32_t GetHPWaterFGDLUTResolution() const { return m_HPWaterFGDLUTResolution; }
+    bool IsHPWaterFGDLUTValid() const { return m_HPWaterFGDLUTValid; }
 
     /// Get HPWater explicit coverage mask texture.
     uint32_t GetHPWaterMaskTexture() const;
@@ -369,6 +372,7 @@ private:
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterCausticFBO();
     void CreateHPWaterCausticComputeTexture();
+    void CreateHPWaterFGDLUT();
     void CreateHPWaterCausticAtlasFBO(uint32_t tileResolution);
     void CreateHPWaterGBuffer();
     void CreateHPWaterMaskFBO();
@@ -384,6 +388,7 @@ private:
     void EndHPWaterFluidHeightCaptureTarget();
     void DestroyHPWaterDepthPyramid();
     void DestroyHPWaterCausticComputeTexture();
+    void DestroyHPWaterFGDLUT();
     void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
     void CommitHPWaterVolumeHistory();
@@ -426,6 +431,9 @@ private:
     bool m_HPWaterCompositeValid = false;
     uint32_t m_HPWaterSceneColorMipCount = 1;
     bool m_HPWaterSceneColorMipValid = false;
+    uint32_t m_HPWaterFGDLUTTexture = 0;
+    uint32_t m_HPWaterFGDLUTResolution = 128;
+    bool m_HPWaterFGDLUTValid = false;
 
     // HPWater opaque scene-depth pyramid for Hi-Z assisted refraction.
     uint32_t m_HPWaterDepthPyramidTexture = 0;

@@ -7071,6 +7071,9 @@ private:
         out << "HPWaterForwardScatterStrength: " << d.HPWaterForwardScatterStrength << "\n";
         out << "HPWaterSpecularFGDStrength: " << d.HPWaterSpecularFGDStrength << "\n";
         out << "HPWaterGGXEnergyCompensation: " << d.HPWaterGGXEnergyCompensation << "\n";
+        out << "HPWaterPreintegratedFGDLUTValid: " << d.HPWaterPreintegratedFGDLUTValid << "\n";
+        out << "HPWaterPreintegratedFGDLUTTexture: " << d.HPWaterPreintegratedFGDLUTTexture << "\n";
+        out << "HPWaterPreintegratedFGDLUTResolution: " << d.HPWaterPreintegratedFGDLUTResolution << "\n";
         out << "HPWaterLightLoopInputsValid: " << d.HPWaterLightLoopInputsValid << "\n";
         out << "HPWaterSkyReflectionIntensity: " << d.HPWaterSkyReflectionIntensity << "\n";
         out << "HPWaterIndirectDiffuseIntensity: " << d.HPWaterIndirectDiffuseIntensity << "\n";
@@ -7400,14 +7403,16 @@ private:
             d.HPWaterRefractionThicknessOffset,
             d.HPWaterRefractionSampleCount,
             d.HPWaterRefractionJitterEnabled ? 1 : 0);
-        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f fgd=%.3f energy=%.3f",
+        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f fgd=%.3f energy=%.3f lut=%d/%u",
             d.HPWaterEnvironmentReflectionIntensity,
             d.HPWaterMacroScatterStrength,
             d.HPWaterThinSSSStrength,
             d.HPWaterBacklitTransmissionStrength,
             d.HPWaterForwardScatterStrength,
             d.HPWaterSpecularFGDStrength,
-            d.HPWaterGGXEnergyCompensation);
+            d.HPWaterGGXEnergyCompensation,
+            d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
+            d.HPWaterPreintegratedFGDLUTResolution);
         ImGui::Text("HPWater light loop: valid=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSkyReflectionIntensity,

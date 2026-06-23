@@ -11,6 +11,8 @@
 #include "VibeEngine/Core/Log.h"
 #include <glad/gl.h>
 #include <algorithm>
+#include <cmath>
+#include <vector>
 
 namespace VE {
 
@@ -22,6 +24,66 @@ static uint32_t CalculateMipCount(uint32_t width, uint32_t height) {
         ++mipCount;
     }
     return mipCount;
+}
+
+static float RadicalInverseVdC(uint32_t bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return static_cast<float>(bits) * 2.3283064365386963e-10f;
+}
+
+static glm::vec2 Hammersley(uint32_t i, uint32_t sampleCount) {
+    return glm::vec2(static_cast<float>(i) / static_cast<float>(sampleCount), RadicalInverseVdC(i));
+}
+
+static glm::vec3 ImportanceSampleGGX(const glm::vec2& xi, float roughness) {
+    constexpr float pi = 3.14159265358979323846f;
+    const float a = roughness * roughness;
+    const float phi = 2.0f * pi * xi.x;
+    const float cosTheta = std::sqrt((1.0f - xi.y) / (1.0f + (a * a - 1.0f) * xi.y));
+    const float sinTheta = std::sqrt(std::max(1.0f - cosTheta * cosTheta, 0.0f));
+    return glm::vec3(std::cos(phi) * sinTheta, std::sin(phi) * sinTheta, cosTheta);
+}
+
+static float GeometrySchlickGGXIBL(float nDotV, float roughness) {
+    const float a = roughness;
+    const float k = (a * a) * 0.5f;
+    return nDotV / std::max(nDotV * (1.0f - k) + k, 0.0001f);
+}
+
+static float GeometrySmithIBL(float nDotV, float nDotL, float roughness) {
+    return GeometrySchlickGGXIBL(nDotV, roughness) * GeometrySchlickGGXIBL(nDotL, roughness);
+}
+
+static glm::vec2 IntegrateBRDF(float nDotV, float roughness) {
+    constexpr uint32_t sampleCount = 128;
+    const glm::vec3 v(std::sqrt(std::max(1.0f - nDotV * nDotV, 0.0f)), 0.0f, nDotV);
+    float a = 0.0f;
+    float b = 0.0f;
+
+    for (uint32_t i = 0; i < sampleCount; ++i) {
+        const glm::vec2 xi = Hammersley(i, sampleCount);
+        const glm::vec3 h = ImportanceSampleGGX(xi, roughness);
+        const glm::vec3 l = glm::normalize(2.0f * glm::dot(v, h) * h - v);
+
+        const float nDotL = std::max(l.z, 0.0f);
+        const float nDotH = std::max(h.z, 0.0f);
+        const float vDotH = std::max(glm::dot(v, h), 0.0f);
+
+        if (nDotL > 0.0f) {
+            const float g = GeometrySmithIBL(nDotV, nDotL, roughness);
+            const float gVis = (g * vDotH) / std::max(nDotH * nDotV, 0.0001f);
+            const float fc = std::pow(1.0f - vDotH, 5.0f);
+            a += (1.0f - fc) * gVis;
+            b += fc * gVis;
+        }
+    }
+
+    const float invSampleCount = 1.0f / static_cast<float>(sampleCount);
+    return glm::vec2(a * invSampleCount, b * invSampleCount);
 }
 
 // ── Debug visualization fragment shader ─────────────────────────────
@@ -117,6 +179,7 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
     CreateHPWaterVolumeFBO();
     CreateHPWaterCausticFBO();
     CreateHPWaterCausticComputeTexture();
+    CreateHPWaterFGDLUT();
     CreateHPWaterDepthPyramid();
 
     // ── Load G-Buffer shader ──
@@ -225,6 +288,7 @@ void DeferredRenderer::Shutdown() {
     DestroyHPWaterFluidObstacleTexture();
     DestroyHPWaterFluidHeightFieldTextures();
     DestroyHPWaterCausticComputeTexture();
+    DestroyHPWaterFGDLUT();
 
     m_GBuffer.reset();
     m_LightingFBO.reset();
@@ -275,6 +339,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
+    m_HPWaterFGDLUTValid = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
     m_HPWaterCausticAtlasTileResolution = 0;
@@ -370,6 +435,53 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
     glBindTexture(GL_TEXTURE_2D, 0);
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
+}
+
+void DeferredRenderer::DestroyHPWaterFGDLUT() {
+    if (m_HPWaterFGDLUTTexture != 0) {
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_HPWaterFGDLUTTexture);
+        glDeleteTextures(1, &m_HPWaterFGDLUTTexture);
+        m_HPWaterFGDLUTTexture = 0;
+    }
+    m_HPWaterFGDLUTValid = false;
+}
+
+void DeferredRenderer::CreateHPWaterFGDLUT() {
+    DestroyHPWaterFGDLUT();
+
+    const uint32_t resolution = std::clamp(m_HPWaterFGDLUTResolution, 32u, 512u);
+    m_HPWaterFGDLUTResolution = resolution;
+
+    std::vector<float> pixels(static_cast<size_t>(resolution) * static_cast<size_t>(resolution) * 2u);
+    for (uint32_t y = 0; y < resolution; ++y) {
+        const float roughness = (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution);
+        for (uint32_t x = 0; x < resolution; ++x) {
+            const float nDotV = (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution);
+            const glm::vec2 brdf = IntegrateBRDF(nDotV, roughness);
+            const size_t index = (static_cast<size_t>(y) * resolution + x) * 2u;
+            pixels[index + 0u] = brdf.x;
+            pixels[index + 1u] = brdf.y;
+        }
+    }
+
+    glGenTextures(1, &m_HPWaterFGDLUTTexture);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_HPWaterFGDLUTTexture);
+    glBindTexture(GL_TEXTURE_2D, m_HPWaterFGDLUTTexture);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RG16F,
+                 static_cast<GLsizei>(resolution),
+                 static_cast<GLsizei>(resolution),
+                 0,
+                 GL_RG,
+                 GL_FLOAT,
+                 pixels.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    m_HPWaterFGDLUTValid = true;
 }
 
 void DeferredRenderer::CreateHPWaterCausticAtlasFBO(uint32_t tileResolution) {
@@ -1265,6 +1377,11 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetInt("u_HasReflectionProbe", reflectionProbeValid ? 1 : 0);
     m_HPWaterCompositeShader->SetFloat("u_ReflectionProbeIntensity",
         reflectionProbeValid ? std::clamp(reflectionProbeIntensity, 0.0f, 4.0f) : 0.0f);
+
+    glActiveTexture(GL_TEXTURE14);
+    glBindTexture(GL_TEXTURE_2D, m_HPWaterFGDLUTValid ? m_HPWaterFGDLUTTexture : 0);
+    m_HPWaterCompositeShader->SetInt("u_PreintegratedFGDLUT", 14);
+    m_HPWaterCompositeShader->SetInt("u_PreintegratedFGDLUTEnabled", m_HPWaterFGDLUTValid ? 1 : 0);
 
     m_HPWaterCompositeShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterCompositeShader->SetFloat("u_FarClip", farClip);

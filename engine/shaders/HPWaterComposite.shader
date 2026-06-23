@@ -50,6 +50,7 @@ uniform sampler2D u_HPWaterVolumeTransmittance;
 uniform sampler2D u_HPWaterVolumeDepth;
 uniform sampler2D u_HPWaterCaustic;
 uniform sampler2D u_SkyTexture;
+uniform sampler2D u_PreintegratedFGDLUT;
 uniform samplerCube u_ReflectionProbe;
 
 uniform float u_NearClip;
@@ -79,6 +80,7 @@ uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
 uniform int u_HasSkyTexture;
 uniform int u_HasReflectionProbe;
+uniform int u_PreintegratedFGDLUTEnabled;
 uniform int u_HPWaterDepthPyramidMipCount;
 uniform int u_SceneColorMipEnabled;
 uniform int u_SceneColorMipCount;
@@ -171,7 +173,9 @@ vec2 EnvBRDFApprox(float roughness, float NdotV) {
 }
 
 vec3 ApplyFGD(vec3 fresnel, vec3 F0, float roughness, float NdotV) {
-    vec2 brdf = EnvBRDFApprox(roughness, NdotV);
+    vec2 brdf = u_PreintegratedFGDLUTEnabled == 1
+        ? texture(u_PreintegratedFGDLUT, vec2(clamp(NdotV, 0.0, 1.0), clamp(roughness, 0.0, 1.0))).rg
+        : EnvBRDFApprox(roughness, NdotV);
     vec3 splitSum = clamp(F0 * brdf.x + vec3(brdf.y), vec3(0.0), vec3(1.0));
     return mix(fresnel, splitSum, clamp(u_SpecularFGDStrength, 0.0, 1.0));
 }

@@ -1116,6 +1116,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterDepthPyramidMipCount = m_DeferredRenderer.GetHPWaterDepthPyramidMipCount();
     m_RenderDiagnostics.HPWaterDepthPyramidWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterDepthPyramidHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterPreintegratedFGDLUTValid = m_DeferredRenderer.IsHPWaterFGDLUTValid();
+    m_RenderDiagnostics.HPWaterPreintegratedFGDLUTTexture = m_DeferredRenderer.GetHPWaterFGDLUTTexture();
+    m_RenderDiagnostics.HPWaterPreintegratedFGDLUTResolution = m_DeferredRenderer.GetHPWaterFGDLUTResolution();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
     m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
