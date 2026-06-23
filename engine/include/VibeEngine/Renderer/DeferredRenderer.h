@@ -34,7 +34,9 @@
  * HPWater refraction data:
  *   RT1 of the composite FBO stores refractedWorldPos.xyz + rayLength.
  *   RT2 stores refractUV.xy + refractedDepth + normalized water thickness for
- *   diagnostics and future depth-pyramid integration.
+ *   diagnostics. Refraction marches against a dedicated opaque scene-depth
+ *   pyramid so the water pass can evolve toward HPWater's Hi-Z path without
+ *   modifying the generic deferred depth buffer.
  *
  * HPWater volume data:
  *   Half-resolution MRT targets store volumetric in-scattering, transmittance,
@@ -111,6 +113,9 @@ public:
                           float refractionStrength,
                           const glm::mat4& inverseViewProjection);
 
+    /// Build the opaque scene-depth pyramid used by HPWater refraction.
+    bool BuildHPWaterDepthPyramid();
+
     /// Accumulate low-resolution HPWater volume lighting from refraction data.
     bool AccumulateHPWaterVolume(float nearClip,
                                  float farClip,
@@ -144,6 +149,11 @@ public:
 
     /// Get the HPWater refraction metadata texture.
     uint32_t GetHPWaterRefractionMetaTexture() const;
+
+    /// Get HPWater opaque scene-depth pyramid texture.
+    uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
+    uint32_t GetHPWaterDepthPyramidMipCount() const { return m_HPWaterDepthPyramidMipCount; }
+    bool IsHPWaterDepthPyramidValid() const { return m_HPWaterDepthPyramidValid; }
 
     /// Get HPWater low-resolution volume texture ID by index.
     uint32_t GetHPWaterVolumeTexture(int index) const;
@@ -216,6 +226,8 @@ private:
     void CreateHPWaterCompositeFBO();
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterGBuffer();
+    void CreateHPWaterDepthPyramid();
+    void DestroyHPWaterDepthPyramid();
     void ClearHPWaterGBuffer();
     void CommitHPWaterVolumeHistory();
     bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
@@ -240,6 +252,12 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     bool m_HPWaterCompositeValid = false;
 
+    // HPWater opaque scene-depth pyramid for Hi-Z assisted refraction.
+    uint32_t m_HPWaterDepthPyramidTexture = 0;
+    uint32_t m_HPWaterDepthPyramidFBO = 0;
+    uint32_t m_HPWaterDepthPyramidMipCount = 0;
+    bool m_HPWaterDepthPyramidValid = false;
+
     // Low-resolution HPWater volume accumulation targets.
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFBO;
     std::shared_ptr<Framebuffer> m_HPWaterVolumeTemporalFBO;
@@ -262,6 +280,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterVolumeTemporalShader;
     std::shared_ptr<Shader> m_HPWaterVolumeFilterShader;
     std::shared_ptr<Shader> m_HPWaterVolumeUpsampleShader;
+    std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_LightingShader;
     std::shared_ptr<Shader> m_DebugShader;
 

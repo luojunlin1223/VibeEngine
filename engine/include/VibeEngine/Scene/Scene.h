@@ -185,6 +185,11 @@ struct RenderDiagnostics {
     uint32_t HPWaterCompositeTexture = 0;
     uint32_t HPWaterRefractionDataTexture = 0;
     uint32_t HPWaterRefractionMetaTexture = 0;
+    bool HPWaterDepthPyramidRan = false;
+    uint32_t HPWaterDepthPyramidTexture = 0;
+    uint32_t HPWaterDepthPyramidMipCount = 0;
+    uint32_t HPWaterDepthPyramidWidth = 0;
+    uint32_t HPWaterDepthPyramidHeight = 0;
     bool HPWaterVolumeRan = false;
     uint32_t HPWaterVolumeColorTexture = 0;
     uint32_t HPWaterVolumeTransmittanceTexture = 0;

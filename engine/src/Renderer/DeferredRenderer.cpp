@@ -104,6 +104,7 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
     CreateLightingFBO();
     CreateHPWaterCompositeFBO();
     CreateHPWaterVolumeFBO();
+    CreateHPWaterDepthPyramid();
 
     // ── Load G-Buffer shader ──
     m_GBufferShader = Shader::CreateFromFile("shaders/GBuffer.shader");
@@ -143,6 +144,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterVolumeUpsample.shader");
     }
 
+    m_HPWaterDepthPyramidShader = Shader::CreateFromFile("shaders/HPWaterDepthPyramid.shader");
+    if (!m_HPWaterDepthPyramidShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterDepthPyramid.shader");
+    }
+
     m_LightingShader = Shader::CreateFromFile("shaders/DeferredLighting.shader");
     if (!m_LightingShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load DeferredLighting.shader");
@@ -162,6 +168,8 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
 }
 
 void DeferredRenderer::Shutdown() {
+    DestroyHPWaterDepthPyramid();
+
     m_GBuffer.reset();
     m_LightingFBO.reset();
     m_HPWaterGBuffer.reset();
@@ -179,6 +187,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeTemporalShader.reset();
     m_HPWaterVolumeFilterShader.reset();
     m_HPWaterVolumeUpsampleShader.reset();
+    m_HPWaterDepthPyramidShader.reset();
     m_LightingShader.reset();
     m_DebugShader.reset();
     m_HPWaterCompositeValid = false;
@@ -187,6 +196,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
 
     if (m_QuadVAO) {
@@ -217,6 +227,57 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
     };
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
+}
+
+void DeferredRenderer::DestroyHPWaterDepthPyramid() {
+    if (m_HPWaterDepthPyramidTexture != 0) {
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_HPWaterDepthPyramidTexture);
+        glDeleteTextures(1, &m_HPWaterDepthPyramidTexture);
+        m_HPWaterDepthPyramidTexture = 0;
+    }
+
+    if (m_HPWaterDepthPyramidFBO != 0) {
+        VE_GPU_UNTRACK(GPUResourceType::Framebuffer, m_HPWaterDepthPyramidFBO);
+        glDeleteFramebuffers(1, &m_HPWaterDepthPyramidFBO);
+        m_HPWaterDepthPyramidFBO = 0;
+    }
+
+    m_HPWaterDepthPyramidMipCount = 0;
+    m_HPWaterDepthPyramidValid = false;
+}
+
+void DeferredRenderer::CreateHPWaterDepthPyramid() {
+    DestroyHPWaterDepthPyramid();
+
+    if (m_Width == 0 || m_Height == 0)
+        return;
+
+    uint32_t maxDim = std::max(m_Width, m_Height);
+    m_HPWaterDepthPyramidMipCount = 1;
+    while (maxDim > 1) {
+        maxDim /= 2u;
+        ++m_HPWaterDepthPyramidMipCount;
+    }
+
+    glGenTextures(1, &m_HPWaterDepthPyramidTexture);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_HPWaterDepthPyramidTexture);
+    glBindTexture(GL_TEXTURE_2D, m_HPWaterDepthPyramidTexture);
+    glTexStorage2D(GL_TEXTURE_2D,
+                   static_cast<GLsizei>(m_HPWaterDepthPyramidMipCount),
+                   GL_R32F,
+                   static_cast<GLsizei>(m_Width),
+                   static_cast<GLsizei>(m_Height));
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(m_HPWaterDepthPyramidMipCount - 1u));
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glGenFramebuffers(1, &m_HPWaterDepthPyramidFBO);
+    VE_GPU_TRACK(GPUResourceType::Framebuffer, m_HPWaterDepthPyramidFBO);
+    m_HPWaterDepthPyramidValid = false;
 }
 
 uint32_t DeferredRenderer::GetHalfResolution(uint32_t value) {
@@ -305,12 +366,15 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     if (m_HPWaterVolumeUpsampledFBO)
         m_HPWaterVolumeUpsampledFBO->Resize(width, height);
 
+    CreateHPWaterDepthPyramid();
+
     m_HPWaterCompositeValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeTemporalValid = false;
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
 }
 
@@ -382,6 +446,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
 
     m_LightingFBO->Bind();
@@ -411,6 +476,84 @@ void DeferredRenderer::LightingPass() {
     glDepthMask(GL_TRUE);
 
     m_LightingFBO->Unbind();
+}
+
+bool DeferredRenderer::BuildHPWaterDepthPyramid() {
+    if (!m_HPWaterDepthPyramidShader || !m_GBuffer || m_HPWaterDepthPyramidTexture == 0 ||
+        m_HPWaterDepthPyramidFBO == 0 || m_HPWaterDepthPyramidMipCount == 0 || m_QuadVAO == 0) {
+        m_HPWaterDepthPyramidValid = false;
+        return false;
+    }
+
+    GLint previousViewport[4] = {};
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    GLint previousDrawFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFBO);
+    GLint previousReadFBO = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFBO);
+    GLboolean previousDepthMask = GL_TRUE;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+    const bool previousDepthTest = glIsEnabled(GL_DEPTH_TEST) == GL_TRUE;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, m_HPWaterDepthPyramidFBO);
+    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    glReadBuffer(GL_NONE);
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    m_HPWaterDepthPyramidShader->Bind();
+    m_HPWaterDepthPyramidShader->SetInt("u_SourceDepth", 0);
+
+    bool buildOk = true;
+    glBindVertexArray(m_QuadVAO);
+    for (uint32_t mip = 0; mip < m_HPWaterDepthPyramidMipCount; ++mip) {
+        const uint32_t mipWidth = std::max(1u, m_Width >> mip);
+        const uint32_t mipHeight = std::max(1u, m_Height >> mip);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER,
+                               GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D,
+                               m_HPWaterDepthPyramidTexture,
+                               static_cast<GLint>(mip));
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            VE_ENGINE_WARN("DeferredRenderer: HPWater depth pyramid FBO incomplete at mip {}", mip);
+            buildOk = false;
+            break;
+        }
+
+        glViewport(0, 0, static_cast<GLsizei>(mipWidth), static_cast<GLsizei>(mipHeight));
+        glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        if (mip == 0) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_GBuffer->GetDepthAttachmentID()));
+            m_HPWaterDepthPyramidShader->SetInt("u_FirstMip", 1);
+            m_HPWaterDepthPyramidShader->SetInt("u_SourceMip", 0);
+        } else {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, m_HPWaterDepthPyramidTexture);
+            m_HPWaterDepthPyramidShader->SetInt("u_FirstMip", 0);
+            m_HPWaterDepthPyramidShader->SetInt("u_SourceMip", static_cast<int>(mip - 1u));
+        }
+
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_FRAMEBUFFER_BARRIER_BIT);
+    }
+    glBindVertexArray(0);
+
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(previousDrawFBO));
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previousReadFBO));
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+    if (previousDepthTest)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
+    glDepthMask(previousDepthMask);
+
+    m_HPWaterDepthPyramidValid = buildOk && m_HPWaterDepthPyramidMipCount > 0;
+    return m_HPWaterDepthPyramidValid;
 }
 
 bool DeferredRenderer::CompositeHPWater(float nearClip,
@@ -469,12 +612,21 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeDepth", 8);
     }
 
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D, m_HPWaterDepthPyramidValid
+        ? m_HPWaterDepthPyramidTexture
+        : static_cast<GLuint>(m_GBuffer->GetDepthAttachmentID()));
+    m_HPWaterCompositeShader->SetInt("u_HPWaterDepthPyramid", 9);
+
     m_HPWaterCompositeShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterCompositeShader->SetFloat("u_FarClip", farClip);
     m_HPWaterCompositeShader->SetFloat("u_RefractionStrength", refractionStrength);
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",
         (m_HPWaterVolumeValid || m_HPWaterVolumeFilteredValid || m_HPWaterVolumeUpsampledValid) ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_HPWaterDepthPyramidEnabled", m_HPWaterDepthPyramidValid ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_HPWaterDepthPyramidMipCount",
+        static_cast<int>(m_HPWaterDepthPyramidMipCount));
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);

@@ -7000,6 +7000,10 @@ private:
         out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
         out << "HPWaterRefractionDataTexture: " << d.HPWaterRefractionDataTexture << "\n";
         out << "HPWaterRefractionMetaTexture: " << d.HPWaterRefractionMetaTexture << "\n";
+        out << "HPWaterDepthPyramidRan: " << d.HPWaterDepthPyramidRan << "\n";
+        out << "HPWaterDepthPyramidTexture: " << d.HPWaterDepthPyramidTexture << "\n";
+        out << "HPWaterDepthPyramidMipCount: " << d.HPWaterDepthPyramidMipCount << "\n";
+        out << "HPWaterDepthPyramidSize: " << d.HPWaterDepthPyramidWidth << "x" << d.HPWaterDepthPyramidHeight << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
         out << "HPWaterVolumeColorTexture: " << d.HPWaterVolumeColorTexture << "\n";
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
@@ -7063,6 +7067,13 @@ private:
             writeProbe("HPWaterRefractionMeta", ProbeTexture(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_meta.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterDepthPyramidTexture != 0 &&
+            d.HPWaterDepthPyramidWidth > 0 && d.HPWaterDepthPyramidHeight > 0) {
+            writeProbe("HPWaterDepthPyramidMip0",
+                ProbeTexture(d.HPWaterDepthPyramidTexture, d.HPWaterDepthPyramidWidth, d.HPWaterDepthPyramidHeight));
+            SaveTextureBMP(d.HPWaterDepthPyramidTexture, d.HPWaterDepthPyramidWidth, d.HPWaterDepthPyramidHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_depth_pyramid.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
             struct HPWaterVolumeProbeTarget {
@@ -7159,9 +7170,11 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d temporal=%d history=%d filter=%d/%u upsample=%d compositeTex=%u refractWorld=%u refractMeta=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d hiz=%d/%u volume=%d temporal=%d history=%d filter=%d/%u upsample=%d compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
+            d.HPWaterDepthPyramidRan ? 1 : 0,
+            d.HPWaterDepthPyramidMipCount,
             d.HPWaterVolumeRan ? 1 : 0,
             d.HPWaterVolumeTemporalRan ? 1 : 0,
             d.HPWaterVolumeHistoryValid ? 1 : 0,
@@ -7171,6 +7184,10 @@ private:
             d.HPWaterCompositeTexture,
             d.HPWaterRefractionDataTexture,
             d.HPWaterRefractionMetaTexture);
+        ImGui::Text("HPWater depth pyramid: %ux%u tex=%u",
+            d.HPWaterDepthPyramidWidth,
+            d.HPWaterDepthPyramidHeight,
+            d.HPWaterDepthPyramidTexture);
         ImGui::Text("HPWater volume raw: %ux%u color=%u trans=%u depth=%u",
             d.HPWaterVolumeWidth,
             d.HPWaterVolumeHeight,
