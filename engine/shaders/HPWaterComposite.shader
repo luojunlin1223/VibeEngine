@@ -55,6 +55,10 @@ uniform float u_FarClip;
 uniform float u_RefractionStrength;
 uniform float u_MaxRefractionCrossDistance;
 uniform float u_RefractionThicknessOffset;
+uniform float u_EnvironmentReflectionIntensity;
+uniform float u_ThinSSSStrength;
+uniform float u_BacklitTransmissionStrength;
+uniform float u_ForwardScatterStrength;
 uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
@@ -64,6 +68,8 @@ uniform int u_RefractionSampleCount;
 uniform int u_RefractionJitterEnabled;
 uniform int u_FrameIndex;
 uniform mat4 u_InverseViewProjection;
+
+const float PI = 3.14159265358979323846;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -97,6 +103,18 @@ float RefractionStepJitter(vec2 uv) {
     ivec2 sceneSize = textureSize(u_SceneDepth, 0);
     vec2 pixel = uv * vec2(max(sceneSize, ivec2(1)));
     return InterleavedGradientNoise(pixel, u_FrameIndex);
+}
+
+float SchlickFresnel(float cosTheta, float f0) {
+    float f = clamp(1.0 - cosTheta, 0.0, 1.0);
+    float f2 = f * f;
+    return f0 + (1.0 - f0) * f2 * f2 * f;
+}
+
+float HenyeyGreenstein(float cosTheta, float g) {
+    float g2 = g * g;
+    float denom = max(1.0 + g2 - 2.0 * g * cosTheta, 0.001);
+    return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
 }
 
 float SampleSceneDepth(vec2 uv, float lod) {
@@ -317,9 +335,27 @@ void main() {
         bodyColor = mix(fallbackBodyColor, volumeBody, volume.weight);
     }
 
-    float fresnel = pow(clamp(1.0 - max(N.y, 0.0), 0.0, 1.0), 2.0);
+    vec3 approxV = normalize(vec3(0.0, 1.0, 1.0));
+    vec3 approxL = normalize(vec3(-0.35, 0.82, 0.44));
+    float NdotV = clamp(dot(N, approxV), 0.0, 1.0);
+    float NdotL = clamp(dot(N, approxL), 0.0, 1.0);
+    float lightViewAlignment = clamp(dot(-approxV, approxL), -1.0, 1.0);
+    float backlit = pow(clamp(lightViewAlignment * 0.5 + 0.5, 0.0, 1.0), 1.5) *
+        smoothstep(0.0, 0.7, 1.0 - NdotL);
+    float fresnel = SchlickFresnel(NdotV, 0.02037);
     vec3 skyTint = mix(scatterColor, vec3(0.78, 0.88, 0.98), 0.55);
-    vec3 reflected = skyTint * (0.08 + 0.40 * fresnel);
+    vec3 reflected = skyTint * (0.02 + 0.78 * fresnel) *
+        clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *
+        (1.0 - roughness * 0.45);
+    float forwardPhase = HenyeyGreenstein(lightViewAlignment, 0.72);
+    vec3 forwardScatter = scatterColor * forwardPhase * normalizedThickness *
+        clamp(u_ForwardScatterStrength, 0.0, 3.0) * 0.18;
+    vec3 thinSSS = scatterColor * (vec3(1.0) - fallbackTransmittance) *
+        (0.18 + 0.82 * (1.0 - normalizedThickness)) *
+        clamp(u_ThinSSSStrength, 0.0, 3.0);
+    vec3 backTransmission = scatterColor * backlit * (0.12 + 0.88 * normalizedThickness) *
+        clamp(u_BacklitTransmissionStrength, 0.0, 3.0);
+    bodyColor += forwardScatter + thinSSS + backTransmission;
 
     if (u_HPWaterCausticEnabled == 1) {
         vec4 caustic = texture(u_HPWaterCaustic, v_UV);

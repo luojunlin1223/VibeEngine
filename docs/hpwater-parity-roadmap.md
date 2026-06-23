@@ -2,7 +2,7 @@
 
 Source target: https://github.com/AshenOneArt/HPWater, inspected at upstream commit `1253e5b`.
 
-This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture driven by an OpenGL compute wave update, HPWater-style top-down water/scene height-field resources for fluid obstacle boundaries, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, a half-resolution volumetric accumulation/filter/composite path, a full-resolution caustic energy texture that can be filtered and consumed by both water composite and volume lighting, a directional-light cascade water atlas capture pass, and the first OpenGL compute caustic irradiance pass. It is not feature-complete.
+This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture driven by an OpenGL compute wave update, HPWater-style top-down water/scene height-field resources for fluid obstacle boundaries, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, a half-resolution volumetric accumulation/filter/composite path, a full-resolution caustic energy texture that can be filtered and consumed by both water composite and volume lighting, a directional-light cascade water atlas capture pass, the first OpenGL compute caustic irradiance pass, and serialized BSDF controls for environment reflection, macro scatter, thin SSS, backlit transmission, and forward scatter. It is not feature-complete.
 
 ## Current VibeEngine Coverage
 
@@ -24,6 +24,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterVolume.shader` can inject filtered caustic energy into the directional in-scattering term so caustics affect volumetric water lighting, not only the final surface composite.
 - `HPWaterFluidHeightCapture.shader` captures the first top-down R16F water-height and scene-height inputs used by fluid dynamics. The water target is initialized to the ocean surface height and the scene target rasterizes opaque mesh footprints with per-object top height, using max blending to form an obstacle height field.
 - `HPWaterFluidDynamics.comp` performs the primary GPU ping-pong wave equation update into an R16F height texture, with `HPWaterFluidDynamics.shader` kept as a fullscreen fallback. It now consumes HPWater-style normalized water-height and scene-height textures first, then falls back to the older R8 obstacle mask if the height fields are unavailable. `HPWaterGBuffer.shader` samples the fluid height texture for fluid normal and foam contribution.
+- `HPWaterComposite.shader` and `HPWaterVolume.shader` expose the first HPWater-style BSDF/scatter controls: Schlick Fresnel using water IOR 1.33, environment reflection intensity, macro volume scatter strength, thin-layer SSS, backlit transmission, and forward scattering. These are serialized on `HPWaterComponent` and exported in render diagnostics.
 - `DeferredRenderer` exports HPWater GBuffer, explicit water mask, scene-depth pyramid, refraction, volume, caustic, and final composite diagnostics.
 - The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots or the Render Debugger panel being open.
 
@@ -104,7 +105,7 @@ HPWater's BSDF is more detailed than the current VibeEngine approximation:
 - Caustic contribution and volumetric transmittance.
 - Indirect lighting strength and environment contribution controlled by global HPWater parameters.
 
-VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, and a simple directional scatter term.
+VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air-to-water IOR of 1.33, environment reflection intensity is serialized, the composite pass adds thin-layer SSS, backlit transmission, and forward scatter terms, and the low-resolution volume pass exposes macro scatter strength. This is still not HDRP/HPWater parity: preintegrated FGD, GGX energy compensation, real reflected environment/probe sampling, camera-color mip forward-scatter blur, and a true light-loop integration remain pending.
 
 ## Porting Order
 
@@ -157,8 +158,10 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
    - Pending: replace the screen-space caustic approximation with HPWater-style light-space cascade caustics.
 
 7. BSDF parity
-   - Port HPWater's macro scattering, thin-layer SSS, backlit transmission, and forward-scatter blur.
-   - Connect sky/environment reflection as the reflection-probe fallback until a full HDRP-style light loop exists.
+   - Done: add serialized macro scattering, thin-layer SSS, backlit transmission, forward scatter, and environment reflection controls.
+   - Done: route the controls through `DeferredRenderer`, `HPWaterComposite.shader`, `HPWaterVolume.shader`, Render Debugger, and `render_diagnostics.txt`.
+   - Pending: replace the approximate terms with HPWater/HDRP-style GGX, preintegrated FGD, energy compensation, camera-color mip forward-scatter blur, and real probe/sky environment sampling.
+   - Pending: connect sky/environment reflection as the reflection-probe fallback until a full HDRP-style light loop exists.
 
 ## Acceptance Checks
 
@@ -172,5 +175,6 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 - Compute caustic irradiance runs when caustics are enabled, produces a non-empty `render_diagnostics_hpwater_caustic_compute_irradiance.bmp`, and reports `HPWaterCausticComputeRan=1` and `HPWaterCausticComputeValid=1`.
 - Filtered caustics remain valid in `render_diagnostics.txt` (`HPWaterCausticFilterRan=1`, `HPWaterCausticFilteredValid=1`) and feed volume lighting through `HPWaterCausticVolumeStrength`.
 - Interactive GPU fluid impulses run through the compute backend (`HPWaterFluidComputeRan=1`) and produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; overlapping non-water meshes produce valid `render_diagnostics_hpwater_fluid_obstacle.bmp`, `render_diagnostics_hpwater_fluid_water_height.bmp`, and `render_diagnostics_hpwater_fluid_scene_height.bmp`, with `HPWaterFluidHeightCaptureRan=1`, `HPWaterFluidHeightCaptureValid=1`, and `HPWaterFluidHeightFieldValid=1`.
+- BSDF controls are serialized and visible in diagnostics (`HPWaterEnvironmentReflectionIntensity`, `HPWaterMacroScatterStrength`, `HPWaterThinSSSStrength`, `HPWaterBacklitTransmissionStrength`, and `HPWaterForwardScatterStrength`), and changing them affects composite/volume lighting without disabling the HPWater passes.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
 - The final image stays valid with water enabled, disabled, above camera, below camera, and outside the frustum.

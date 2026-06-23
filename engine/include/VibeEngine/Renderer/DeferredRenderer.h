@@ -136,6 +136,10 @@ public:
                           int refractionSampleCount,
                           bool refractionJitter,
                           uint32_t frameIndex,
+                          float environmentReflectionIntensity,
+                          float thinSSSStrength,
+                          float backlitTransmissionStrength,
+                          float forwardScatterStrength,
                           const glm::mat4& inverseViewProjection);
 
     /// Build the opaque scene-depth pyramid used by HPWater refraction.
@@ -152,6 +156,7 @@ public:
                                  float lightIntensity,
                                  const glm::vec3& cameraPosition,
                                  const glm::mat4& inverseViewProjection,
+                                 float macroScatterStrength,
                                  float causticVolumeStrength);
 
     /// Reproject and blend low-resolution HPWater volume data with previous frame history.

@@ -1355,6 +1355,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterRefractionThicknessOffset = 0.01f;
     uint32_t hpWaterRefractionSampleCount = 4;
     bool hpWaterRefractionJitter = false;
+    float hpWaterEnvironmentReflectionIntensity = 0.0f;
+    float hpWaterMacroScatterStrength = 0.0f;
+    float hpWaterThinSSSStrength = 0.0f;
+    float hpWaterBacklitTransmissionStrength = 0.0f;
+    float hpWaterForwardScatterStrength = 0.0f;
     bool hpWaterCausticsEnabled = false;
     float hpWaterCausticStrength = 0.0f;
     float hpWaterCausticScale = 12.0f;
@@ -1500,6 +1505,21 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     hpWaterRefractionSampleCount,
                     static_cast<uint32_t>(std::clamp(water->RefractionSampleCount, 4, 64)));
                 hpWaterRefractionJitter = hpWaterRefractionJitter || water->RefractionJitter;
+                hpWaterEnvironmentReflectionIntensity = std::max(
+                    hpWaterEnvironmentReflectionIntensity,
+                    water->EnvironmentReflectionIntensity);
+                hpWaterMacroScatterStrength = std::max(
+                    hpWaterMacroScatterStrength,
+                    water->MacroScatterStrength);
+                hpWaterThinSSSStrength = std::max(
+                    hpWaterThinSSSStrength,
+                    water->ThinSSSStrength);
+                hpWaterBacklitTransmissionStrength = std::max(
+                    hpWaterBacklitTransmissionStrength,
+                    water->BacklitTransmissionStrength);
+                hpWaterForwardScatterStrength = std::max(
+                    hpWaterForwardScatterStrength,
+                    water->ForwardScatterStrength);
                 hpWaterCausticsEnabled = hpWaterCausticsEnabled || water->CausticsEnabled;
                 hpWaterCausticStrength = std::max(hpWaterCausticStrength, water->CausticStrength);
                 hpWaterCausticScale = std::max(hpWaterCausticScale, water->CausticScale);
@@ -2055,6 +2075,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterRefractionThicknessOffset = hpWaterRefractionThicknessOffset;
         m_RenderDiagnostics.HPWaterRefractionSampleCount = hpWaterRefractionSampleCount;
         m_RenderDiagnostics.HPWaterRefractionJitterEnabled = hpWaterRefractionJitter;
+        m_RenderDiagnostics.HPWaterEnvironmentReflectionIntensity = hpWaterEnvironmentReflectionIntensity;
+        m_RenderDiagnostics.HPWaterMacroScatterStrength = hpWaterMacroScatterStrength;
+        m_RenderDiagnostics.HPWaterThinSSSStrength = hpWaterThinSSSStrength;
+        m_RenderDiagnostics.HPWaterBacklitTransmissionStrength = hpWaterBacklitTransmissionStrength;
+        m_RenderDiagnostics.HPWaterForwardScatterStrength = hpWaterForwardScatterStrength;
         m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
         m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
@@ -2079,6 +2104,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             static_cast<int>(hpWaterRefractionSampleCount),
                                             hpWaterRefractionJitter,
                                             hpWaterFrameIndex,
+                                            hpWaterEnvironmentReflectionIntensity,
+                                            hpWaterThinSSSStrength,
+                                            hpWaterBacklitTransmissionStrength,
+                                            hpWaterForwardScatterStrength,
                                             inverseViewProjection);
         m_RenderDiagnostics.HPWaterCausticRan =
             hpWaterCausticsEnabled &&
@@ -2106,6 +2135,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        lightIntensity,
                                                        cameraPos,
                                                        inverseViewProjection,
+                                                       hpWaterMacroScatterStrength,
                                                        hpWaterCausticVolumeStrength);
         const glm::mat4 previousWaterVP = m_HasPreviousHPWaterViewProjection
             ? m_PreviousHPWaterViewProjection
@@ -2129,6 +2159,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 static_cast<int>(hpWaterRefractionSampleCount),
                                                 hpWaterRefractionJitter,
                                                 hpWaterFrameIndex,
+                                                hpWaterEnvironmentReflectionIntensity,
+                                                hpWaterThinSSSStrength,
+                                                hpWaterBacklitTransmissionStrength,
+                                                hpWaterForwardScatterStrength,
                                                 inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;

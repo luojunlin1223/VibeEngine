@@ -53,6 +53,7 @@ uniform float u_FarClip;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform float u_CausticVolumeStrength;
+uniform float u_MacroScatterStrength;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
@@ -136,6 +137,7 @@ void main() {
     vec3 extinction = max(absorptionCoeff + scatterCoeff, vec3(0.0001));
     vec3 transmittance = exp(-extinction * rayLength);
     vec3 scatteringAlbedo = scatterCoeff / extinction;
+    float macroScatter = clamp(u_MacroScatterStrength, 0.0, 4.0);
 
     vec3 directLight = u_LightColor * max(u_LightIntensity, 0.0) *
         (0.18 + 0.82 * NdotL) * (0.75 + 0.25 * normalizedThickness);
@@ -146,14 +148,14 @@ void main() {
         directLight += caustic.rgb * causticWeight * clamp(u_CausticVolumeStrength, 0.0, 4.0);
     }
     vec3 directScatter = directLight * (vec3(1.0) - transmittance) *
-        scatteringAlbedo * (phase * 2.6);
+        scatteringAlbedo * (phase * 2.6) * macroScatter;
 
     vec3 refractedSceneColor = texture(u_SceneColor, clamp(refractMeta.xy, vec2(0.001), vec2(0.999))).rgb;
     float sceneScatterAmount = Luminance(vec3(1.0) - transmittance) *
         (0.10 + 0.45 * normalizedThickness);
-    vec3 sceneInScatter = refractedSceneColor * scatterColor * sceneScatterAmount;
+    vec3 sceneInScatter = refractedSceneColor * scatterColor * sceneScatterAmount * macroScatter;
 
-    vec3 ambientScatter = scatterColor * (0.025 + 0.12 * normalizedThickness);
+    vec3 ambientScatter = scatterColor * (0.025 + 0.12 * normalizedThickness) * macroScatter;
     vec3 volumeColor = directScatter + sceneInScatter + ambientScatter;
     volumeColor = mix(volumeColor, vec3(0.96, 0.98, 1.0), foam * 0.35);
 

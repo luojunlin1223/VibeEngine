@@ -1132,6 +1132,10 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         int refractionSampleCount,
                                         bool refractionJitter,
                                         uint32_t frameIndex,
+                                        float environmentReflectionIntensity,
+                                        float thinSSSStrength,
+                                        float backlitTransmissionStrength,
+                                        float forwardScatterStrength,
                                         const glm::mat4& inverseViewProjection) {
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
@@ -1217,6 +1221,14 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetInt("u_RefractionSampleCount", std::clamp(refractionSampleCount, 4, 64));
     m_HPWaterCompositeShader->SetInt("u_RefractionJitterEnabled", refractionJitter ? 1 : 0);
     m_HPWaterCompositeShader->SetInt("u_FrameIndex", static_cast<int>(frameIndex & 0x7fffffffU));
+    m_HPWaterCompositeShader->SetFloat("u_EnvironmentReflectionIntensity",
+        std::clamp(environmentReflectionIntensity, 0.0f, 3.0f));
+    m_HPWaterCompositeShader->SetFloat("u_ThinSSSStrength",
+        std::clamp(thinSSSStrength, 0.0f, 3.0f));
+    m_HPWaterCompositeShader->SetFloat("u_BacklitTransmissionStrength",
+        std::clamp(backlitTransmissionStrength, 0.0f, 3.0f));
+    m_HPWaterCompositeShader->SetFloat("u_ForwardScatterStrength",
+        std::clamp(forwardScatterStrength, 0.0f, 3.0f));
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",
         (m_HPWaterVolumeValid || m_HPWaterVolumeFilteredValid || m_HPWaterVolumeUpsampledValid) ? 1 : 0);
@@ -1245,6 +1257,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                                float lightIntensity,
                                                const glm::vec3& cameraPosition,
                                                const glm::mat4& inverseViewProjection,
+                                               float macroScatterStrength,
                                                float causticVolumeStrength) {
     if (!m_HPWaterVolumeShader || !m_HPWaterVolumeFBO || !m_HPWaterCompositeFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
@@ -1306,6 +1319,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetFloat("u_LightIntensity", lightIntensity);
     m_HPWaterVolumeShader->SetVec3("u_CameraPosition", cameraPosition);
     m_HPWaterVolumeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
+    m_HPWaterVolumeShader->SetFloat("u_MacroScatterStrength",
+        std::clamp(macroScatterStrength, 0.0f, 4.0f));
     m_HPWaterVolumeShader->SetInt("u_HPWaterMaskEnabled", m_HPWaterMaskValid ? 1 : 0);
     m_HPWaterVolumeShader->SetInt("u_HPWaterCausticEnabled", causticVolumeValid ? 1 : 0);
     m_HPWaterVolumeShader->SetFloat("u_CausticVolumeStrength",

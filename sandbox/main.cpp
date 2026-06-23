@@ -6287,6 +6287,12 @@ private:
                 ImGui::DragFloat("Refraction Thickness Offset",
                     &w.RefractionThicknessOffset, 0.01f, 0.01f, 8.0f, "%.2f");
                 ImGui::Checkbox("Refraction Jitter", &w.RefractionJitter);
+                ImGui::SeparatorText("BSDF");
+                ImGui::SliderFloat("Environment Reflection", &w.EnvironmentReflectionIntensity, 0.0f, 3.0f, "%.3f");
+                ImGui::SliderFloat("Macro Scatter", &w.MacroScatterStrength, 0.0f, 4.0f, "%.3f");
+                ImGui::SliderFloat("Thin SSS", &w.ThinSSSStrength, 0.0f, 3.0f, "%.3f");
+                ImGui::SliderFloat("Backlit Transmission", &w.BacklitTransmissionStrength, 0.0f, 3.0f, "%.3f");
+                ImGui::SliderFloat("Forward Scatter", &w.ForwardScatterStrength, 0.0f, 3.0f, "%.3f");
                 ImGui::SeparatorText("Caustics");
                 ImGui::Checkbox("Caustics", &w.CausticsEnabled);
                 ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
@@ -7051,6 +7057,11 @@ private:
         out << "HPWaterRefractionThicknessOffset: " << d.HPWaterRefractionThicknessOffset << "\n";
         out << "HPWaterRefractionSampleCount: " << d.HPWaterRefractionSampleCount << "\n";
         out << "HPWaterRefractionJitterEnabled: " << d.HPWaterRefractionJitterEnabled << "\n";
+        out << "HPWaterEnvironmentReflectionIntensity: " << d.HPWaterEnvironmentReflectionIntensity << "\n";
+        out << "HPWaterMacroScatterStrength: " << d.HPWaterMacroScatterStrength << "\n";
+        out << "HPWaterThinSSSStrength: " << d.HPWaterThinSSSStrength << "\n";
+        out << "HPWaterBacklitTransmissionStrength: " << d.HPWaterBacklitTransmissionStrength << "\n";
+        out << "HPWaterForwardScatterStrength: " << d.HPWaterForwardScatterStrength << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
         out << "HPWaterVolumeColorTexture: " << d.HPWaterVolumeColorTexture << "\n";
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
@@ -7369,6 +7380,12 @@ private:
             d.HPWaterRefractionThicknessOffset,
             d.HPWaterRefractionSampleCount,
             d.HPWaterRefractionJitterEnabled ? 1 : 0);
+        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f",
+            d.HPWaterEnvironmentReflectionIntensity,
+            d.HPWaterMacroScatterStrength,
+            d.HPWaterThinSSSStrength,
+            d.HPWaterBacklitTransmissionStrength,
+            d.HPWaterForwardScatterStrength);
         ImGui::Text("HPWater volume raw: %ux%u color=%u trans=%u depth=%u",
             d.HPWaterVolumeWidth,
             d.HPWaterVolumeHeight,

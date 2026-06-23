@@ -595,6 +595,11 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "MaxRefractionCrossDistance" << YAML::Value << w.MaxRefractionCrossDistance;
         out << YAML::Key << "RefractionThicknessOffset" << YAML::Value << w.RefractionThicknessOffset;
         out << YAML::Key << "RefractionJitter" << YAML::Value << w.RefractionJitter;
+        out << YAML::Key << "EnvironmentReflectionIntensity" << YAML::Value << w.EnvironmentReflectionIntensity;
+        out << YAML::Key << "MacroScatterStrength" << YAML::Value << w.MacroScatterStrength;
+        out << YAML::Key << "ThinSSSStrength" << YAML::Value << w.ThinSSSStrength;
+        out << YAML::Key << "BacklitTransmissionStrength" << YAML::Value << w.BacklitTransmissionStrength;
+        out << YAML::Key << "ForwardScatterStrength" << YAML::Value << w.ForwardScatterStrength;
         out << YAML::Key << "CausticsEnabled" << YAML::Value << w.CausticsEnabled;
         out << YAML::Key << "CausticStrength" << YAML::Value << w.CausticStrength;
         out << YAML::Key << "CausticScale" << YAML::Value << w.CausticScale;
@@ -1579,6 +1584,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["MaxRefractionCrossDistance"]) w.MaxRefractionCrossDistance = wNode["MaxRefractionCrossDistance"].as<float>();
                 if (wNode["RefractionThicknessOffset"]) w.RefractionThicknessOffset = wNode["RefractionThicknessOffset"].as<float>();
                 if (wNode["RefractionJitter"]) w.RefractionJitter = wNode["RefractionJitter"].as<bool>();
+                if (wNode["EnvironmentReflectionIntensity"]) w.EnvironmentReflectionIntensity = wNode["EnvironmentReflectionIntensity"].as<float>();
+                if (wNode["MacroScatterStrength"]) w.MacroScatterStrength = wNode["MacroScatterStrength"].as<float>();
+                if (wNode["ThinSSSStrength"]) w.ThinSSSStrength = wNode["ThinSSSStrength"].as<float>();
+                if (wNode["BacklitTransmissionStrength"]) w.BacklitTransmissionStrength = wNode["BacklitTransmissionStrength"].as<float>();
+                if (wNode["ForwardScatterStrength"]) w.ForwardScatterStrength = wNode["ForwardScatterStrength"].as<float>();
                 if (wNode["CausticsEnabled"]) w.CausticsEnabled = wNode["CausticsEnabled"].as<bool>();
                 if (wNode["CausticStrength"]) w.CausticStrength = wNode["CausticStrength"].as<float>();
                 if (wNode["CausticScale"]) w.CausticScale = wNode["CausticScale"].as<float>();
@@ -1604,6 +1614,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.RefractionSampleCount = std::clamp(w.RefractionSampleCount, 4, 64);
                 w.MaxRefractionCrossDistance = std::clamp(w.MaxRefractionCrossDistance, 0.1f, 200.0f);
                 w.RefractionThicknessOffset = std::clamp(w.RefractionThicknessOffset, 0.01f, 8.0f);
+                w.EnvironmentReflectionIntensity = std::clamp(w.EnvironmentReflectionIntensity, 0.0f, 3.0f);
+                w.MacroScatterStrength = std::clamp(w.MacroScatterStrength, 0.0f, 4.0f);
+                w.ThinSSSStrength = std::clamp(w.ThinSSSStrength, 0.0f, 3.0f);
+                w.BacklitTransmissionStrength = std::clamp(w.BacklitTransmissionStrength, 0.0f, 3.0f);
+                w.ForwardScatterStrength = std::clamp(w.ForwardScatterStrength, 0.0f, 3.0f);
                 w.CausticStrength = std::clamp(w.CausticStrength, 0.0f, 8.0f);
                 w.CausticScale = std::clamp(w.CausticScale, 0.1f, 128.0f);
                 w.CausticDepthFade = std::clamp(w.CausticDepthFade, 0.1f, 500.0f);

@@ -403,6 +403,11 @@ struct HPWaterComponent {
     float MaxRefractionCrossDistance = 20.0f;
     float RefractionThicknessOffset = 0.5f;
     bool  RefractionJitter = true;
+    float EnvironmentReflectionIntensity = 0.85f;
+    float MacroScatterStrength = 1.0f;
+    float ThinSSSStrength = 0.35f;
+    float BacklitTransmissionStrength = 0.45f;
+    float ForwardScatterStrength = 0.65f;
 
     bool  CausticsEnabled = true;
     float CausticStrength = 1.0f;

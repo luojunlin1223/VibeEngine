@@ -199,6 +199,11 @@ struct RenderDiagnostics {
     float HPWaterRefractionThicknessOffset = 0.0f;
     uint32_t HPWaterRefractionSampleCount = 0;
     bool HPWaterRefractionJitterEnabled = false;
+    float HPWaterEnvironmentReflectionIntensity = 0.0f;
+    float HPWaterMacroScatterStrength = 0.0f;
+    float HPWaterThinSSSStrength = 0.0f;
+    float HPWaterBacklitTransmissionStrength = 0.0f;
+    float HPWaterForwardScatterStrength = 0.0f;
     bool HPWaterVolumeRan = false;
     uint32_t HPWaterVolumeColorTexture = 0;
     uint32_t HPWaterVolumeTransmittanceTexture = 0;
