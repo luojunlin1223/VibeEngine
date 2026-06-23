@@ -66,6 +66,7 @@
 #include <memory>
 #include <cstdint>
 #include <vector>
+#include <array>
 
 namespace VE {
 
@@ -193,6 +194,9 @@ public:
                                    const glm::vec3& lightDir,
                                    const glm::vec3& lightColor,
                                    float lightIntensity,
+                                   const glm::mat4& inverseViewProjection,
+                                   const std::array<glm::mat4, 4>& waterCascadeVP,
+                                   const std::array<float, 4>& waterCascadeSplits,
                                    float strength,
                                    float scale,
                                    float depthFade,
@@ -423,6 +427,9 @@ private:
                                             float farClip,
                                             const glm::vec3& lightDir,
                                             float lightIntensity,
+                                            const glm::mat4& inverseViewProjection,
+                                            const std::array<glm::mat4, 4>& waterCascadeVP,
+                                            const std::array<float, 4>& waterCascadeSplits,
                                             float strength,
                                             float scale,
                                             float depthFade,

@@ -2177,6 +2177,15 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         const uint32_t hpWaterFrameIndex = static_cast<uint32_t>(m_RenderDiagnostics.FrameIndex & 0xffffffffULL);
         m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
         m_RenderDiagnostics.HPWaterMaskRan = m_DeferredRenderer.BuildHPWaterMask();
+        std::array<glm::mat4, 4> hpWaterCascadeVP{};
+        std::array<float, 4> hpWaterCascadeSplits{};
+        if (m_ShadowMap.IsInitialized()) {
+            const auto& splits = m_ShadowMap.GetCascadeSplitDistances();
+            for (int i = 0; i < ShadowMap::NUM_CASCADES; ++i) {
+                hpWaterCascadeVP[static_cast<size_t>(i)] = m_ShadowMap.GetLightViewProjection(i);
+                hpWaterCascadeSplits[static_cast<size_t>(i)] = splits[static_cast<size_t>(i)];
+            }
+        }
         // First composite pass generates the full-resolution refraction payload
         // consumed by the low-resolution HPWater volume pass.
         m_DeferredRenderer.CompositeHPWater(nearClip,
@@ -2217,6 +2226,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                          lightDir,
                                                          lightColor,
                                                          lightIntensity,
+                                                         inverseViewProjection,
+                                                         hpWaterCascadeVP,
+                                                         hpWaterCascadeSplits,
                                                          hpWaterCausticStrength,
                                                          hpWaterCausticScale,
                                                          hpWaterCausticDepthFade,

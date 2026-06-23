@@ -12,6 +12,7 @@
 #include <glad/gl.h>
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 namespace VE {
@@ -1902,6 +1903,9 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
                                                  const glm::vec3& lightDir,
                                                  const glm::vec3& lightColor,
                                                  float lightIntensity,
+                                                 const glm::mat4& inverseViewProjection,
+                                                 const std::array<glm::mat4, 4>& waterCascadeVP,
+                                                 const std::array<float, 4>& waterCascadeSplits,
                                                  float strength,
                                                  float scale,
                                                  float depthFade,
@@ -1932,7 +1936,8 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
 
     const bool computeIrradianceValid =
         RunHPWaterCausticComputeIrradiance(
-            nearClip, farClip, lightDir, lightIntensity, strength, scale, depthFade,
+            nearClip, farClip, lightDir, lightIntensity, inverseViewProjection,
+            waterCascadeVP, waterCascadeSplits, strength, scale, depthFade,
             rgbDispersion, dispersionStrength);
 
     m_HPWaterCausticFBO->Bind();
@@ -2024,6 +2029,9 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
                                                           float farClip,
                                                           const glm::vec3& lightDir,
                                                           float lightIntensity,
+                                                          const glm::mat4& inverseViewProjection,
+                                                          const std::array<glm::mat4, 4>& waterCascadeVP,
+                                                          const std::array<float, 4>& waterCascadeSplits,
                                                           float strength,
                                                           float scale,
                                                           float depthFade,
@@ -2114,6 +2122,13 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeShader->SetFloat("u_FarClip", farClip);
     m_HPWaterCausticComputeShader->SetVec3("u_LightDir", lightDir);
     m_HPWaterCausticComputeShader->SetFloat("u_LightIntensity", lightIntensity);
+    m_HPWaterCausticComputeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
+    for (int i = 0; i < 4; ++i) {
+        m_HPWaterCausticComputeShader->SetMat4("u_WaterCascadeVP[" + std::to_string(i) + "]",
+                                               waterCascadeVP[static_cast<size_t>(i)]);
+        m_HPWaterCausticComputeShader->SetFloat("u_WaterCascadeSplits[" + std::to_string(i) + "]",
+                                                waterCascadeSplits[static_cast<size_t>(i)]);
+    }
     m_HPWaterCausticComputeShader->SetFloat("u_CausticStrength", std::clamp(strength, 0.0f, 8.0f));
     m_HPWaterCausticComputeShader->SetFloat("u_CausticScale", std::clamp(scale, 0.1f, 128.0f));
     m_HPWaterCausticComputeShader->SetFloat("u_CausticDepthFade", std::clamp(depthFade, 0.1f, 500.0f));
