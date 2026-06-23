@@ -140,6 +140,16 @@ public:
                           float thinSSSStrength,
                           float backlitTransmissionStrength,
                           float forwardScatterStrength,
+                          const glm::vec3& cameraPosition,
+                          const glm::vec3& lightDir,
+                          const glm::vec3& lightColor,
+                          float lightIntensity,
+                          const glm::vec3& indirectSkyColor,
+                          const glm::vec3& indirectGroundColor,
+                          const glm::vec3& indirectTint,
+                          bool indirectLightingEnabled,
+                          float indirectDiffuseIntensity,
+                          float skyReflectionIntensity,
                           const glm::mat4& inverseViewProjection);
 
     /// Build the opaque scene-depth pyramid used by HPWater refraction.

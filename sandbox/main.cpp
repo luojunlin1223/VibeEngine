@@ -7062,6 +7062,10 @@ private:
         out << "HPWaterThinSSSStrength: " << d.HPWaterThinSSSStrength << "\n";
         out << "HPWaterBacklitTransmissionStrength: " << d.HPWaterBacklitTransmissionStrength << "\n";
         out << "HPWaterForwardScatterStrength: " << d.HPWaterForwardScatterStrength << "\n";
+        out << "HPWaterLightLoopInputsValid: " << d.HPWaterLightLoopInputsValid << "\n";
+        out << "HPWaterSkyReflectionIntensity: " << d.HPWaterSkyReflectionIntensity << "\n";
+        out << "HPWaterIndirectDiffuseIntensity: " << d.HPWaterIndirectDiffuseIntensity << "\n";
+        out << "HPWaterDirectionalLightIntensity: " << d.HPWaterDirectionalLightIntensity << "\n";
         out << "HPWaterForwardScatterMipEnabled: " << d.HPWaterForwardScatterMipEnabled << "\n";
         out << "HPWaterForwardScatterMipCount: " << d.HPWaterForwardScatterMipCount << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
@@ -7388,6 +7392,11 @@ private:
             d.HPWaterThinSSSStrength,
             d.HPWaterBacklitTransmissionStrength,
             d.HPWaterForwardScatterStrength);
+        ImGui::Text("HPWater light loop: valid=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+            d.HPWaterLightLoopInputsValid ? 1 : 0,
+            d.HPWaterSkyReflectionIntensity,
+            d.HPWaterIndirectDiffuseIntensity,
+            d.HPWaterDirectionalLightIntensity);
         ImGui::Text("HPWater forward scatter mips: enabled=%d count=%u",
             d.HPWaterForwardScatterMipEnabled ? 1 : 0,
             d.HPWaterForwardScatterMipCount);

@@ -59,6 +59,16 @@ uniform float u_EnvironmentReflectionIntensity;
 uniform float u_ThinSSSStrength;
 uniform float u_BacklitTransmissionStrength;
 uniform float u_ForwardScatterStrength;
+uniform vec3 u_ViewPos;
+uniform vec3 u_LightDir;
+uniform vec3 u_LightColor;
+uniform float u_LightIntensity;
+uniform vec3 u_IndirectSkyColor;
+uniform vec3 u_IndirectGroundColor;
+uniform vec3 u_IndirectTint;
+uniform int u_IndirectLightingEnabled;
+uniform float u_IndirectDiffuseIntensity;
+uniform float u_SkyReflectionIntensity;
 uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
@@ -117,6 +127,37 @@ float HenyeyGreenstein(float cosTheta, float g) {
     float g2 = g * g;
     float denom = max(1.0 + g2 - 2.0 * g * cosTheta, 0.001);
     return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
+}
+
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    return a2 / max(PI * denom * denom, 0.0001);
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotV / max(NdotV * (1.0 - k) + k, 0.0001);
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+}
+
+vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) *
+        pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 SampleIndirectSky(vec3 dir) {
+    float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+    return mix(u_IndirectGroundColor, u_IndirectSkyColor, t) * u_IndirectTint;
 }
 
 float SampleSceneDepth(vec2 uv, float lod) {
@@ -346,30 +387,50 @@ void main() {
         bodyColor = mix(fallbackBodyColor, volumeBody, volume.weight);
     }
 
-    vec3 approxV = normalize(vec3(0.0, 1.0, 1.0));
-    vec3 approxL = normalize(vec3(-0.35, 0.82, 0.44));
-    float NdotV = clamp(dot(N, approxV), 0.0, 1.0);
-    float NdotL = clamp(dot(N, approxL), 0.0, 1.0);
-    float lightViewAlignment = clamp(dot(-approxV, approxL), -1.0, 1.0);
+    vec3 viewDelta = u_ViewPos - waterWorldPos;
+    vec3 V = length(viewDelta) > 0.0001 ? normalize(viewDelta) : vec3(0.0, 1.0, 0.0);
+    vec3 L = length(u_LightDir) > 0.0001 ? normalize(u_LightDir) : normalize(vec3(-0.35, 0.82, 0.44));
+    vec3 H = length(V + L) > 0.0001 ? normalize(V + L) : N;
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
+    float NdotL = clamp(dot(N, L), 0.0, 1.0);
+    float lightViewAlignment = clamp(dot(-V, L), -1.0, 1.0);
     float backlit = pow(clamp(lightViewAlignment * 0.5 + 0.5, 0.0, 1.0), 1.5) *
         smoothstep(0.0, 0.7, 1.0 - NdotL);
     float fresnel = SchlickFresnel(NdotV, 0.02037);
-    vec3 skyTint = mix(scatterColor, vec3(0.78, 0.88, 0.98), 0.55);
-    vec3 reflected = skyTint * (0.02 + 0.78 * fresnel) *
-        clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *
-        (1.0 - roughness * 0.45);
+    vec3 F0 = vec3(0.02037);
+    vec3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
+    float D = DistributionGGX(N, H, roughness);
+    float G = GeometrySmith(N, V, L, roughness);
+    vec3 directSpecular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
+    directSpecular *= u_LightColor * max(u_LightIntensity, 0.0) * NdotL;
+
+    vec3 skyReflection = vec3(0.0);
+    vec3 indirectBody = vec3(0.0);
+    if (u_IndirectLightingEnabled == 1) {
+        vec3 R = reflect(-V, N);
+        float roughnessFade = mix(1.0, 0.25, roughness);
+        skyReflection = SampleIndirectSky(R) * F *
+            (0.35 + clamp(u_SkyReflectionIntensity, 0.0, 4.0) * 2.35) *
+            clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *
+            roughnessFade;
+        indirectBody = scatterColor * SampleIndirectSky(N) *
+            clamp(u_IndirectDiffuseIntensity, 0.0, 4.0) *
+            (0.08 + 0.18 * normalizedThickness);
+    }
+    vec3 reflected = skyReflection + directSpecular * clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0);
     float forwardPhase = HenyeyGreenstein(lightViewAlignment, 0.72);
     float forwardStrength = clamp(u_ForwardScatterStrength, 0.0, 3.0);
     float forwardBlurLOD = mix(1.0, 5.5, normalizedThickness) * (0.35 + 0.65 * (1.0 - roughness));
     vec3 forwardBlur = SampleSceneColorBlurred(refractUV, forwardBlurLOD);
-    vec3 forwardScatter = (scatterColor * forwardPhase * 0.16 +
+    vec3 directWaterLight = u_LightColor * max(u_LightIntensity, 0.0);
+    vec3 forwardScatter = (scatterColor * directWaterLight * forwardPhase * 0.08 +
         forwardBlur * scatterColor * 0.22) * normalizedThickness * forwardStrength;
     vec3 thinSSS = scatterColor * (vec3(1.0) - fallbackTransmittance) *
         (0.18 + 0.82 * (1.0 - normalizedThickness)) *
         clamp(u_ThinSSSStrength, 0.0, 3.0);
-    vec3 backTransmission = scatterColor * backlit * (0.12 + 0.88 * normalizedThickness) *
+    vec3 backTransmission = scatterColor * directWaterLight * backlit * (0.12 + 0.88 * normalizedThickness) *
         clamp(u_BacklitTransmissionStrength, 0.0, 3.0);
-    bodyColor += forwardScatter + thinSSS + backTransmission;
+    bodyColor += forwardScatter + thinSSS + backTransmission + indirectBody;
 
     if (u_HPWaterCausticEnabled == 1) {
         vec4 caustic = texture(u_HPWaterCaustic, v_UV);

@@ -161,8 +161,9 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
    - Done: add serialized macro scattering, thin-layer SSS, backlit transmission, forward scatter, and environment reflection controls.
    - Done: route the controls through `DeferredRenderer`, `HPWaterComposite.shader`, `HPWaterVolume.shader`, Render Debugger, and `render_diagnostics.txt`.
    - Done: generate a camera-color mip chain for the HPWater composite and use it for thickness-driven forward-scatter blur.
-   - Pending: replace the approximate terms with HPWater/HDRP-style GGX, preintegrated FGD, energy compensation, exact forward-scatter weighting, and real probe/sky environment sampling.
-   - Pending: connect sky/environment reflection as the reflection-probe fallback until a full HDRP-style light loop exists.
+   - Done: feed HPWater composite from the scene light-loop inputs: camera position, directional light, sky/ground indirect colors, indirect intensity, and sky reflection intensity.
+   - Done: connect the current sky-gradient environment as the reflection-probe fallback until real cubemap/probe resources exist.
+   - Pending: replace the remaining approximate terms with HPWater/HDRP-style preintegrated FGD, GGX energy compensation, exact forward-scatter weighting, real cubemap/probe sampling, and full light-loop parity.
 
 ## Acceptance Checks
 
@@ -178,5 +179,6 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
 - Interactive GPU fluid impulses run through the compute backend (`HPWaterFluidComputeRan=1`) and produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; overlapping non-water meshes produce valid `render_diagnostics_hpwater_fluid_obstacle.bmp`, `render_diagnostics_hpwater_fluid_water_height.bmp`, and `render_diagnostics_hpwater_fluid_scene_height.bmp`, with `HPWaterFluidHeightCaptureRan=1`, `HPWaterFluidHeightCaptureValid=1`, and `HPWaterFluidHeightFieldValid=1`.
 - BSDF controls are serialized and visible in diagnostics (`HPWaterEnvironmentReflectionIntensity`, `HPWaterMacroScatterStrength`, `HPWaterThinSSSStrength`, `HPWaterBacklitTransmissionStrength`, and `HPWaterForwardScatterStrength`), and changing them affects composite/volume lighting without disabling the HPWater passes.
 - Forward-scatter blur uses the generated scene-color mip chain and reports `HPWaterForwardScatterMipEnabled=1` with more than one mip when HPWater composite runs.
+- HPWater composite consumes scene light-loop inputs and reports `HPWaterLightLoopInputsValid=1`, plus sky reflection, indirect diffuse, and directional light intensities in `render_diagnostics.txt`.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
 - The final image stays valid with water enabled, disabled, above camera, below camera, and outside the frustum.

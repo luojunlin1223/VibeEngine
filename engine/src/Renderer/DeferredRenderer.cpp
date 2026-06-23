@@ -1146,6 +1146,16 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         float thinSSSStrength,
                                         float backlitTransmissionStrength,
                                         float forwardScatterStrength,
+                                        const glm::vec3& cameraPosition,
+                                        const glm::vec3& lightDir,
+                                        const glm::vec3& lightColor,
+                                        float lightIntensity,
+                                        const glm::vec3& indirectSkyColor,
+                                        const glm::vec3& indirectGroundColor,
+                                        const glm::vec3& indirectTint,
+                                        bool indirectLightingEnabled,
+                                        float indirectDiffuseIntensity,
+                                        float skyReflectionIntensity,
                                         const glm::mat4& inverseViewProjection) {
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
@@ -1254,6 +1264,21 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         std::clamp(backlitTransmissionStrength, 0.0f, 3.0f));
     m_HPWaterCompositeShader->SetFloat("u_ForwardScatterStrength",
         std::clamp(forwardScatterStrength, 0.0f, 3.0f));
+    const glm::vec3 safeLightDir = glm::length(lightDir) > 0.0001f
+        ? glm::normalize(lightDir)
+        : glm::normalize(glm::vec3(-0.35f, 0.82f, 0.44f));
+    m_HPWaterCompositeShader->SetVec3("u_ViewPos", cameraPosition);
+    m_HPWaterCompositeShader->SetVec3("u_LightDir", safeLightDir);
+    m_HPWaterCompositeShader->SetVec3("u_LightColor", lightColor);
+    m_HPWaterCompositeShader->SetFloat("u_LightIntensity", std::max(lightIntensity, 0.0f));
+    m_HPWaterCompositeShader->SetVec3("u_IndirectSkyColor", indirectSkyColor);
+    m_HPWaterCompositeShader->SetVec3("u_IndirectGroundColor", indirectGroundColor);
+    m_HPWaterCompositeShader->SetVec3("u_IndirectTint", indirectTint);
+    m_HPWaterCompositeShader->SetInt("u_IndirectLightingEnabled", indirectLightingEnabled ? 1 : 0);
+    m_HPWaterCompositeShader->SetFloat("u_IndirectDiffuseIntensity",
+        std::clamp(indirectDiffuseIntensity, 0.0f, 4.0f));
+    m_HPWaterCompositeShader->SetFloat("u_SkyReflectionIntensity",
+        std::clamp(skyReflectionIntensity, 0.0f, 4.0f));
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",
         (m_HPWaterVolumeValid || m_HPWaterVolumeFilteredValid || m_HPWaterVolumeUpsampledValid) ? 1 : 0);

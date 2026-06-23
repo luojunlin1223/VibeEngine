@@ -2082,6 +2082,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterThinSSSStrength = hpWaterThinSSSStrength;
         m_RenderDiagnostics.HPWaterBacklitTransmissionStrength = hpWaterBacklitTransmissionStrength;
         m_RenderDiagnostics.HPWaterForwardScatterStrength = hpWaterForwardScatterStrength;
+        m_RenderDiagnostics.HPWaterLightLoopInputsValid = true;
+        m_RenderDiagnostics.HPWaterSkyReflectionIntensity = ps.SkyReflectionIntensity;
+        m_RenderDiagnostics.HPWaterIndirectDiffuseIntensity =
+            ps.IndirectLightingEnabled ? ps.IndirectDiffuseIntensity : 0.0f;
+        m_RenderDiagnostics.HPWaterDirectionalLightIntensity = lightIntensity;
         m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
         m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
@@ -2110,6 +2115,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterThinSSSStrength,
                                             hpWaterBacklitTransmissionStrength,
                                             hpWaterForwardScatterStrength,
+                                            cameraPos,
+                                            lightDir,
+                                            lightColor,
+                                            lightIntensity,
+                                            indirectSkyColor,
+                                            indirectGroundColor,
+                                            indirectTint,
+                                            ps.IndirectLightingEnabled,
+                                            ps.IndirectDiffuseIntensity,
+                                            ps.SkyReflectionIntensity,
                                             inverseViewProjection);
         m_RenderDiagnostics.HPWaterCausticRan =
             hpWaterCausticsEnabled &&
@@ -2165,6 +2180,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterThinSSSStrength,
                                                 hpWaterBacklitTransmissionStrength,
                                                 hpWaterForwardScatterStrength,
+                                                cameraPos,
+                                                lightDir,
+                                                lightColor,
+                                                lightIntensity,
+                                                indirectSkyColor,
+                                                indirectGroundColor,
+                                                indirectTint,
+                                                ps.IndirectLightingEnabled,
+                                                ps.IndirectDiffuseIntensity,
+                                                ps.SkyReflectionIntensity,
                                                 inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
