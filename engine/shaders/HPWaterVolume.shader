@@ -1,7 +1,7 @@
 // VibeEngine ShaderLab - HPWater low-resolution volume pass
 // Accumulates water in-scattering/transmittance from the dedicated HPWater
-// G-buffer and precomputed refraction payload. This is the first OpenGL
-// counterpart to HPWaterVolumeDeferred.compute before temporal/a-trous filters.
+// G-buffer and precomputed refraction payload. Temporal reprojection and
+// a-trous filtering are handled by the follow-up HPWater volume passes.
 
 Shader "VibeEngine/HPWaterVolume" {
     Properties {

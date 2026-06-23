@@ -191,6 +191,11 @@ struct RenderDiagnostics {
     uint32_t HPWaterVolumeDepthTexture = 0;
     uint32_t HPWaterVolumeWidth = 0;
     uint32_t HPWaterVolumeHeight = 0;
+    bool HPWaterVolumeTemporalRan = false;
+    bool HPWaterVolumeHistoryValid = false;
+    uint32_t HPWaterVolumeHistoryColorTexture = 0;
+    uint32_t HPWaterVolumeHistoryTransmittanceTexture = 0;
+    uint32_t HPWaterVolumeHistoryDepthTexture = 0;
     bool HPWaterVolumeFilterRan = false;
     uint32_t HPWaterVolumeFilterIterations = 0;
     uint32_t HPWaterVolumeFilteredColorTexture = 0;
@@ -329,6 +334,8 @@ private:
     // Deferred rendering
     DeferredRenderer m_DeferredRenderer;
     ShadowMap m_ShadowMap;
+    glm::mat4 m_PreviousHPWaterViewProjection = glm::mat4(1.0f);
+    bool m_HasPreviousHPWaterViewProjection = false;
 
     // Deferred entity deletion queue (flushed at end of OnUpdate)
     std::vector<entt::entity> m_PendingDestroy;

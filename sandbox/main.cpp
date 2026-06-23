@@ -7005,6 +7005,11 @@ private:
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
         out << "HPWaterVolumeDepthTexture: " << d.HPWaterVolumeDepthTexture << "\n";
         out << "HPWaterVolumeSize: " << d.HPWaterVolumeWidth << "x" << d.HPWaterVolumeHeight << "\n";
+        out << "HPWaterVolumeTemporalRan: " << d.HPWaterVolumeTemporalRan << "\n";
+        out << "HPWaterVolumeHistoryValid: " << d.HPWaterVolumeHistoryValid << "\n";
+        out << "HPWaterVolumeHistoryColorTexture: " << d.HPWaterVolumeHistoryColorTexture << "\n";
+        out << "HPWaterVolumeHistoryTransmittanceTexture: " << d.HPWaterVolumeHistoryTransmittanceTexture << "\n";
+        out << "HPWaterVolumeHistoryDepthTexture: " << d.HPWaterVolumeHistoryDepthTexture << "\n";
         out << "HPWaterVolumeFilterRan: " << d.HPWaterVolumeFilterRan << "\n";
         out << "HPWaterVolumeFilterIterations: " << d.HPWaterVolumeFilterIterations << "\n";
         out << "HPWaterVolumeFilteredColorTexture: " << d.HPWaterVolumeFilteredColorTexture << "\n";
@@ -7064,6 +7069,9 @@ private:
                 { "HPWaterVolumeColor", "render_diagnostics_hpwater_volume_color.bmp", d.HPWaterVolumeColorTexture },
                 { "HPWaterVolumeTransmittance", "render_diagnostics_hpwater_volume_transmittance.bmp", d.HPWaterVolumeTransmittanceTexture },
                 { "HPWaterVolumeDepth", "render_diagnostics_hpwater_volume_depth.bmp", d.HPWaterVolumeDepthTexture },
+                { "HPWaterVolumeHistoryColor", "render_diagnostics_hpwater_volume_history_color.bmp", d.HPWaterVolumeHistoryColorTexture },
+                { "HPWaterVolumeHistoryTransmittance", "render_diagnostics_hpwater_volume_history_transmittance.bmp", d.HPWaterVolumeHistoryTransmittanceTexture },
+                { "HPWaterVolumeHistoryDepth", "render_diagnostics_hpwater_volume_history_depth.bmp", d.HPWaterVolumeHistoryDepthTexture },
                 { "HPWaterVolumeFilteredColor", "render_diagnostics_hpwater_volume_filtered_color.bmp", d.HPWaterVolumeFilteredColorTexture },
                 { "HPWaterVolumeFilteredTransmittance", "render_diagnostics_hpwater_volume_filtered_transmittance.bmp", d.HPWaterVolumeFilteredTransmittanceTexture },
                 { "HPWaterVolumeFilteredDepth", "render_diagnostics_hpwater_volume_filtered_depth.bmp", d.HPWaterVolumeFilteredDepthTexture },
@@ -7127,10 +7135,12 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d filter=%d/%u compositeTex=%u refractWorld=%u refractMeta=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d temporal=%d history=%d filter=%d/%u compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
             d.HPWaterVolumeRan ? 1 : 0,
+            d.HPWaterVolumeTemporalRan ? 1 : 0,
+            d.HPWaterVolumeHistoryValid ? 1 : 0,
             d.HPWaterVolumeFilterRan ? 1 : 0,
             d.HPWaterVolumeFilterIterations,
             d.HPWaterCompositeTexture,

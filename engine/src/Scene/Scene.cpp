@@ -1114,6 +1114,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
     m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
     m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
+    m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
+    m_RenderDiagnostics.HPWaterVolumeHistoryColorTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(0);
+    m_RenderDiagnostics.HPWaterVolumeHistoryTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(1);
+    m_RenderDiagnostics.HPWaterVolumeHistoryDepthTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(2);
     m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
     m_RenderDiagnostics.HPWaterVolumeFilteredColorTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(0);
     m_RenderDiagnostics.HPWaterVolumeFilteredTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(1);
@@ -1683,13 +1687,26 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        lightIntensity,
                                                        cameraPos,
                                                        inverseViewProjection);
+        const glm::mat4 previousWaterVP = m_HasPreviousHPWaterViewProjection
+            ? m_PreviousHPWaterViewProjection
+            : viewProjection;
+        m_RenderDiagnostics.HPWaterVolumeTemporalRan =
+            m_RenderDiagnostics.HPWaterVolumeRan &&
+            m_DeferredRenderer.TemporalFilterHPWaterVolume(viewProjection, previousWaterVP);
         m_RenderDiagnostics.HPWaterVolumeFilterRan =
             m_RenderDiagnostics.HPWaterVolumeRan && m_DeferredRenderer.FilterHPWaterVolume();
+        m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
         m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
         m_RenderDiagnostics.HPWaterCompositeRan =
             m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
+
+        m_PreviousHPWaterViewProjection = viewProjection;
+        m_HasPreviousHPWaterViewProjection = true;
+    } else {
+        m_HasPreviousHPWaterViewProjection = false;
+        m_DeferredRenderer.InvalidateHPWaterVolumeHistory();
     }
 
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
@@ -1700,6 +1717,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
     m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
     m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
+    m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
+    m_RenderDiagnostics.HPWaterVolumeHistoryColorTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(0);
+    m_RenderDiagnostics.HPWaterVolumeHistoryTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(1);
+    m_RenderDiagnostics.HPWaterVolumeHistoryDepthTexture = m_DeferredRenderer.GetHPWaterVolumeHistoryTexture(2);
     m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
     m_RenderDiagnostics.HPWaterVolumeFilteredColorTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(0);
     m_RenderDiagnostics.HPWaterVolumeFilteredTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(1);

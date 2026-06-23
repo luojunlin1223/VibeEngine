@@ -128,6 +128,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterVolume.shader");
     }
 
+    m_HPWaterVolumeTemporalShader = Shader::CreateFromFile("shaders/HPWaterVolumeTemporal.shader");
+    if (!m_HPWaterVolumeTemporalShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterVolumeTemporal.shader");
+    }
+
     m_HPWaterVolumeFilterShader = Shader::CreateFromFile("shaders/HPWaterVolumeFilter.shader");
     if (!m_HPWaterVolumeFilterShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterVolumeFilter.shader");
@@ -157,17 +162,22 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterGBuffer.reset();
     m_HPWaterCompositeFBO.reset();
     m_HPWaterVolumeFBO.reset();
+    m_HPWaterVolumeTemporalFBO.reset();
+    m_HPWaterVolumeHistoryFBO.reset();
     m_HPWaterVolumeFilteredFBO.reset();
     m_HPWaterVolumeFilterScratchFBO.reset();
     m_GBufferShader.reset();
     m_HPWaterGBufferShader.reset();
     m_HPWaterCompositeShader.reset();
     m_HPWaterVolumeShader.reset();
+    m_HPWaterVolumeTemporalShader.reset();
     m_HPWaterVolumeFilterShader.reset();
     m_LightingShader.reset();
     m_DebugShader.reset();
     m_HPWaterCompositeValid = false;
     m_HPWaterVolumeValid = false;
+    m_HPWaterVolumeTemporalValid = false;
+    m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeFilterIterations = 0;
 
@@ -215,9 +225,13 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
         { GL_RGBA16F }, // RT2: refracted linear depth + thickness diagnostics
     };
     m_HPWaterVolumeFBO = Framebuffer::Create(volumeSpec);
+    m_HPWaterVolumeTemporalFBO = Framebuffer::Create(volumeSpec);
+    m_HPWaterVolumeHistoryFBO = Framebuffer::Create(volumeSpec);
     m_HPWaterVolumeFilteredFBO = Framebuffer::Create(volumeSpec);
     m_HPWaterVolumeFilterScratchFBO = Framebuffer::Create(volumeSpec);
     m_HPWaterVolumeValid = false;
+    m_HPWaterVolumeTemporalValid = false;
+    m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeFilterIterations = 0;
 }
@@ -256,6 +270,12 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     if (m_HPWaterVolumeFBO)
         m_HPWaterVolumeFBO->Resize(GetHalfResolution(width), GetHalfResolution(height));
 
+    if (m_HPWaterVolumeTemporalFBO)
+        m_HPWaterVolumeTemporalFBO->Resize(GetHalfResolution(width), GetHalfResolution(height));
+
+    if (m_HPWaterVolumeHistoryFBO)
+        m_HPWaterVolumeHistoryFBO->Resize(GetHalfResolution(width), GetHalfResolution(height));
+
     if (m_HPWaterVolumeFilteredFBO)
         m_HPWaterVolumeFilteredFBO->Resize(GetHalfResolution(width), GetHalfResolution(height));
 
@@ -264,6 +284,8 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
 
     m_HPWaterCompositeValid = false;
     m_HPWaterVolumeValid = false;
+    m_HPWaterVolumeTemporalValid = false;
+    m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeFilterIterations = 0;
 }
@@ -498,9 +520,90 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
 
     m_HPWaterVolumeFBO->Unbind();
     m_HPWaterVolumeValid = true;
+    m_HPWaterVolumeTemporalValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeFilterIterations = 0;
     return true;
+}
+
+bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewProjection,
+                                                   const glm::mat4& previousViewProjection) {
+    if (!m_HPWaterVolumeTemporalShader || !m_HPWaterVolumeFBO || !m_HPWaterVolumeTemporalFBO ||
+        !m_HPWaterVolumeHistoryFBO || !m_HPWaterCompositeFBO || !m_HPWaterVolumeValid || m_QuadVAO == 0) {
+        m_HPWaterVolumeTemporalValid = false;
+        return false;
+    }
+
+    m_HPWaterVolumeTemporalFBO->Bind();
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    m_HPWaterVolumeTemporalShader->Bind();
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(0)));
+    m_HPWaterVolumeTemporalShader->SetInt("u_CurrentColor", 0);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(1)));
+    m_HPWaterVolumeTemporalShader->SetInt("u_CurrentTransmittance", 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeFBO->GetColorAttachmentID(2)));
+    m_HPWaterVolumeTemporalShader->SetInt("u_CurrentDepth", 2);
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeHistoryFBO->GetColorAttachmentID(0)));
+    m_HPWaterVolumeTemporalShader->SetInt("u_HistoryColor", 3);
+
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeHistoryFBO->GetColorAttachmentID(1)));
+    m_HPWaterVolumeTemporalShader->SetInt("u_HistoryTransmittance", 4);
+
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterVolumeHistoryFBO->GetColorAttachmentID(2)));
+    m_HPWaterVolumeTemporalShader->SetInt("u_HistoryDepth", 5);
+
+    glActiveTexture(GL_TEXTURE6);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterCompositeFBO->GetColorAttachmentID(1)));
+    m_HPWaterVolumeTemporalShader->SetInt("u_HPWaterRefractionWorldData", 6);
+
+    m_HPWaterVolumeTemporalShader->SetMat4("u_CurrentViewProjection", currentViewProjection);
+    m_HPWaterVolumeTemporalShader->SetMat4("u_PreviousViewProjection", previousViewProjection);
+    m_HPWaterVolumeTemporalShader->SetInt("u_HistoryValid", m_HPWaterVolumeHistoryValid ? 1 : 0);
+    m_HPWaterVolumeTemporalShader->SetFloat("u_HistoryBlend", 0.88f);
+    m_HPWaterVolumeTemporalShader->SetFloat("u_DepthRejectionThreshold", 0.035f);
+    m_HPWaterVolumeTemporalShader->SetFloat("u_VelocityRejectionScale", 9.0f);
+
+    glBindVertexArray(m_QuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+
+    m_HPWaterVolumeTemporalFBO->Unbind();
+    m_HPWaterVolumeTemporalValid = true;
+    m_HPWaterVolumeFilteredValid = false;
+    m_HPWaterVolumeFilterIterations = 0;
+    return true;
+}
+
+void DeferredRenderer::CommitHPWaterVolumeHistory() {
+    if (!m_HPWaterVolumeTemporalValid || !m_HPWaterVolumeTemporalFBO || !m_HPWaterVolumeHistoryFBO)
+        return;
+
+    std::swap(m_HPWaterVolumeHistoryFBO, m_HPWaterVolumeTemporalFBO);
+    m_HPWaterVolumeHistoryValid = true;
+    m_HPWaterVolumeTemporalValid = false;
+}
+
+void DeferredRenderer::InvalidateHPWaterVolumeHistory() {
+    m_HPWaterVolumeTemporalValid = false;
+    m_HPWaterVolumeHistoryValid = false;
 }
 
 bool DeferredRenderer::RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
@@ -552,8 +655,11 @@ bool DeferredRenderer::FilterHPWaterVolume() {
     }
 
     m_HPWaterVolumeFilterIterations = 0;
+    const auto filterInput = m_HPWaterVolumeTemporalValid && m_HPWaterVolumeTemporalFBO
+        ? m_HPWaterVolumeTemporalFBO
+        : m_HPWaterVolumeFBO;
 
-    if (!RunHPWaterVolumeFilterPass(m_HPWaterVolumeFBO, m_HPWaterVolumeFilteredFBO, 1.0f))
+    if (!RunHPWaterVolumeFilterPass(filterInput, m_HPWaterVolumeFilteredFBO, 1.0f))
         return false;
     ++m_HPWaterVolumeFilterIterations;
 
@@ -566,6 +672,8 @@ bool DeferredRenderer::FilterHPWaterVolume() {
     ++m_HPWaterVolumeFilterIterations;
 
     m_HPWaterVolumeFilteredValid = m_HPWaterVolumeFilterIterations == 3;
+    if (m_HPWaterVolumeFilteredValid)
+        CommitHPWaterVolumeHistory();
     return m_HPWaterVolumeFilteredValid;
 }
 
@@ -604,6 +712,11 @@ uint32_t DeferredRenderer::GetHPWaterVolumeTexture(int index) const {
 uint32_t DeferredRenderer::GetHPWaterVolumeFilteredTexture(int index) const {
     if (!m_HPWaterVolumeFilteredFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterVolumeFilteredFBO->GetColorAttachmentID(index));
+}
+
+uint32_t DeferredRenderer::GetHPWaterVolumeHistoryTexture(int index) const {
+    if (!m_HPWaterVolumeHistoryFBO) return 0;
+    return static_cast<uint32_t>(m_HPWaterVolumeHistoryFBO->GetColorAttachmentID(index));
 }
 
 uint32_t DeferredRenderer::GetHPWaterVolumeWidth() const {
