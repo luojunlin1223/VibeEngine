@@ -182,6 +182,10 @@ struct RenderDiagnostics {
     uint32_t HPWaterGBuffer1 = 0;
     uint32_t HPWaterGBuffer2 = 0;
     uint32_t HPWaterGBufferDepth = 0;
+    bool HPWaterMaskRan = false;
+    uint32_t HPWaterMaskTexture = 0;
+    uint32_t HPWaterMaskWidth = 0;
+    uint32_t HPWaterMaskHeight = 0;
     uint32_t HPWaterCompositeTexture = 0;
     uint32_t HPWaterRefractionDataTexture = 0;
     uint32_t HPWaterRefractionMetaTexture = 0;

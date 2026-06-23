@@ -2,20 +2,21 @@
 
 Source target: https://github.com/AshenOneArt/HPWater, inspected at upstream commit `1253e5b`.
 
-This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a dedicated water GBuffer, a scene-depth pyramid for refraction, a full-resolution refraction payload, and a first half-resolution volumetric accumulation/composite path. It is not feature-complete.
+This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, and a first half-resolution volumetric accumulation/composite path. It is not feature-complete.
 
 ## Current VibeEngine Coverage
 
 - `HPWaterComponent` creates a runtime water mesh and simulates a visible wave field on CPU.
 - `Water.shader` provides a visible HPWater-inspired surface material.
 - `HPWaterGBuffer.shader` renders water into a dedicated three-target resource set: normal/roughness, scatter/thickness, and absorption/foam.
+- `HPWaterMask.shader` builds a full-resolution R8 water coverage mask from the dedicated HPWater depth buffer as the current OpenGL equivalent of HPWater's stencil isolation.
 - `HPWaterDepthPyramid.shader` builds an opaque scene-depth mip chain for HPWater refraction.
 - `HPWaterComposite.shader` performs the first Hi-Z-assisted full-resolution refraction payload generation and final water composite, including HPWater-style frame-indexed IGN step jitter and tunable max refraction cross distance / thickness offset controls.
 - `HPWaterVolume.shader` performs a first half-resolution volume accumulation pass for in-scattering, transmittance, and refracted depth.
 - `HPWaterVolumeTemporal.shader` performs a first low-resolution temporal reprojection/history blend before spatial filtering.
 - `HPWaterVolumeFilter.shader` performs the first multi-iteration depth-aware a-trous-style spatial filter over the half-resolution volume buffers.
 - `HPWaterVolumeUpsample.shader` resolves filtered half-resolution volume buffers into full-resolution joint-bilateral volume textures.
-- `DeferredRenderer` exports HPWater GBuffer, scene-depth pyramid, refraction, volume, and final composite diagnostics.
+- `DeferredRenderer` exports HPWater GBuffer, explicit water mask, scene-depth pyramid, refraction, volume, and final composite diagnostics.
 - The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots.
 
 ## HPWater Source Features Not Yet Ported
@@ -30,7 +31,7 @@ HPWater renders water into a dedicated 3-target GBuffer:
 - Water depth is written into the main prepass depth so later screen-space passes can distinguish water surface depth from scene depth.
 - Stencil marks water pixels for later full-screen passes.
 
-VibeEngine now has the dedicated three-target HPWater GBuffer and diagnostics. It does not yet use a real stencil path, so later passes still rely on the water mask encoded in the HPWater buffers.
+VibeEngine now has the dedicated three-target HPWater GBuffer and diagnostics. It also generates a dedicated full-resolution R8 HPWater mask texture from the HPWater depth buffer and uses it as the GPU-side pass-isolation equivalent of HPWater's stencil path. A real platform stencil path can still be added later if exact stencil parity is needed.
 
 ### Refraction Buffer
 
@@ -42,7 +43,7 @@ HPWater generates a full-resolution refraction texture where:
 - It can use either a cheaper normal-offset path or ray marching.
 - The ray marching path uses the scene depth pyramid excluding water, exponential stepping, IGN jitter, and a max cross distance.
 
-VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid and uses coarse mip sampling with mip-0 binary refinement for the screen-space refraction march. The march now has HPWater-style frame-indexed IGN step jitter plus serialized controls for sample count, max refraction cross distance, and thickness offset. Real stencil isolation and closer full 3D NDC ray parity remain pending.
+VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid and uses coarse mip sampling with mip-0 binary refinement for the screen-space refraction march. The march now has HPWater-style frame-indexed IGN step jitter plus serialized controls for sample count, max refraction cross distance, and thickness offset. Refraction, volume accumulation, and volume upsample now share the explicit HPWater mask. Closer full 3D NDC ray parity remains pending.
 
 ### Volumetric Water Lighting
 
@@ -101,7 +102,7 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 
 1. Dedicated HPWater resources
    - Done: explicit HPWater render resources and diagnostics.
-   - Pending: real stencil or equivalent GPU-side mask for later passes.
+   - Done: add a full-resolution R8 HPWater coverage mask as the GPU-side stencil-equivalent resource for later passes.
    - Done: split water payload from the regular GBuffer path.
 
 2. Dedicated HPWater GBuffer pass
@@ -114,7 +115,8 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
    - Done: first implement normal-offset refraction.
    - Done: add a dedicated opaque scene-depth pyramid for Hi-Z-assisted ray-marched refraction.
    - Done: add HPWater-style IGN step jitter and max-cross-distance / thickness controls.
-   - Pending: add stencil/mask isolation and closer full 3D NDC ray parity.
+   - Done: route refraction through the explicit HPWater mask.
+   - Pending: closer full 3D NDC ray parity.
 
 4. Volumetric pass
    - Done: add low-resolution water volume accumulation.
@@ -143,6 +145,7 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 ## Acceptance Checks
 
 - A scene with `HPWaterOcean` produces non-empty HPWater GBuffer textures.
+- A scene with `HPWaterOcean` produces a non-empty HPWater mask texture and exports `render_diagnostics_hpwater_mask.bmp`.
 - A scene with `HPWaterOcean` builds a valid HPWater scene-depth pyramid with more than one mip.
 - The refraction buffer changes when water normals change and remains masked to water pixels.
 - Water volume color/transmittance changes with absorption and scatter settings.

@@ -45,9 +45,11 @@ uniform sampler2D u_HPWaterAbsorptionFoam;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterRefractionWorldData;
 uniform sampler2D u_HPWaterRefractionMeta;
+uniform sampler2D u_HPWaterMask;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
+uniform int u_HPWaterMaskEnabled;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
@@ -91,8 +93,11 @@ void main() {
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
     vec4 refractData = texture(u_HPWaterRefractionWorldData, v_UV);
     vec4 refractMeta = texture(u_HPWaterRefractionMeta, v_UV);
+    float waterMask = u_HPWaterMaskEnabled == 1
+        ? texture(u_HPWaterMask, v_UV).r
+        : (waterDepth < 0.9999 ? 1.0 : 0.0);
 
-    if (waterDepth >= 0.9999 || refractMeta.w <= 0.0001) {
+    if (waterMask < 0.5 || waterDepth >= 0.9999 || refractMeta.w <= 0.0001) {
         VolumeColor = vec4(0.0);
         VolumeTransmittance = vec4(1.0, 1.0, 1.0, 0.0);
         VolumeDepth = vec4(0.0);

@@ -44,6 +44,12 @@
  *   resolves the filtered low-res buffers before composite. The dataflow now mirrors the reference HPWater volume path:
  *   low-res accumulation -> temporal reprojection/history -> a-trous spatial
  *   filtering -> full-res upsample -> full-res composite.
+ *
+ * HPWater mask:
+ *   HPWater's Unity path relies on stencil to isolate water pixels in later
+ *   fullscreen passes. VibeEngine currently uses an explicit R8 water mask
+ *   texture generated from the dedicated HPWater depth buffer as the equivalent
+ *   GPU-side pass-isolation resource.
  */
 #pragma once
 
@@ -121,6 +127,9 @@ public:
     /// Build the opaque scene-depth pyramid used by HPWater refraction.
     bool BuildHPWaterDepthPyramid();
 
+    /// Build the explicit full-resolution HPWater coverage mask.
+    bool BuildHPWaterMask();
+
     /// Accumulate low-resolution HPWater volume lighting from refraction data.
     bool AccumulateHPWaterVolume(float nearClip,
                                  float farClip,
@@ -159,6 +168,10 @@ public:
     uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
     uint32_t GetHPWaterDepthPyramidMipCount() const { return m_HPWaterDepthPyramidMipCount; }
     bool IsHPWaterDepthPyramidValid() const { return m_HPWaterDepthPyramidValid; }
+
+    /// Get HPWater explicit coverage mask texture.
+    uint32_t GetHPWaterMaskTexture() const;
+    bool IsHPWaterMaskValid() const { return m_HPWaterMaskValid; }
 
     /// Get HPWater low-resolution volume texture ID by index.
     uint32_t GetHPWaterVolumeTexture(int index) const;
@@ -231,6 +244,7 @@ private:
     void CreateHPWaterCompositeFBO();
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterGBuffer();
+    void CreateHPWaterMaskFBO();
     void CreateHPWaterDepthPyramid();
     void DestroyHPWaterDepthPyramid();
     void ClearHPWaterGBuffer();
@@ -252,6 +266,10 @@ private:
 
     // Dedicated HPWater surface payloads (separate from generic opaque G-buffer).
     std::shared_ptr<Framebuffer> m_HPWaterGBuffer;
+
+    // Explicit full-resolution HPWater coverage mask.
+    std::shared_ptr<Framebuffer> m_HPWaterMaskFBO;
+    bool m_HPWaterMaskValid = false;
 
     // HPWater final composite output and precomputed refraction payload.
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
@@ -280,6 +298,7 @@ private:
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
     std::shared_ptr<Shader> m_HPWaterGBufferShader;
+    std::shared_ptr<Shader> m_HPWaterMaskShader;
     std::shared_ptr<Shader> m_HPWaterCompositeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeTemporalShader;

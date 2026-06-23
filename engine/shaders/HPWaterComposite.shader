@@ -44,6 +44,7 @@ uniform sampler2D u_HPWaterNormalRoughness;
 uniform sampler2D u_HPWaterScatterThickness;
 uniform sampler2D u_HPWaterAbsorptionFoam;
 uniform sampler2D u_HPWaterDepth;
+uniform sampler2D u_HPWaterMask;
 uniform sampler2D u_HPWaterVolumeColor;
 uniform sampler2D u_HPWaterVolumeTransmittance;
 uniform sampler2D u_HPWaterVolumeDepth;
@@ -56,6 +57,7 @@ uniform float u_RefractionThicknessOffset;
 uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
 uniform int u_HPWaterDepthPyramidMipCount;
+uniform int u_HPWaterMaskEnabled;
 uniform int u_RefractionSampleCount;
 uniform int u_RefractionJitterEnabled;
 uniform int u_FrameIndex;
@@ -242,8 +244,11 @@ VolumeSample SampleHPWaterVolume(vec2 uv, float sceneLinearDepth) {
 void main() {
     vec4 sceneColor = texture(u_SceneColor, v_UV);
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
+    float waterMask = u_HPWaterMaskEnabled == 1
+        ? texture(u_HPWaterMask, v_UV).r
+        : (waterDepth < 0.9999 ? 1.0 : 0.0);
 
-    if (waterDepth >= 0.9999) {
+    if (waterMask < 0.5 || waterDepth >= 0.9999) {
         FragColor = sceneColor;
         RefractData = vec4(0.0);
         RefractMeta = vec4(v_UV, 1.0, 0.0);

@@ -5,6 +5,50 @@
 
 namespace VE {
 
+namespace {
+void GetTextureUploadFormat(GLenum internalFormat, GLenum& format, GLenum& type) {
+    format = GL_RGBA;
+    type = GL_UNSIGNED_BYTE;
+
+    switch (internalFormat) {
+        case GL_R8:
+            format = GL_RED;
+            type = GL_UNSIGNED_BYTE;
+            break;
+        case GL_R16F:
+        case GL_R32F:
+            format = GL_RED;
+            type = GL_FLOAT;
+            break;
+        case GL_RG8:
+            format = GL_RG;
+            type = GL_UNSIGNED_BYTE;
+            break;
+        case GL_RG16F:
+        case GL_RG32F:
+            format = GL_RG;
+            type = GL_FLOAT;
+            break;
+        case GL_RGB8:
+            format = GL_RGB;
+            type = GL_UNSIGNED_BYTE;
+            break;
+        case GL_RGB16F:
+        case GL_RGB32F:
+            format = GL_RGB;
+            type = GL_FLOAT;
+            break;
+        case GL_RGBA16F:
+        case GL_RGBA32F:
+            format = GL_RGBA;
+            type = GL_FLOAT;
+            break;
+        default:
+            break;
+    }
+}
+}
+
 OpenGLFramebuffer::OpenGLFramebuffer(const FramebufferSpec& spec)
     : m_Width(spec.Width), m_Height(spec.Height), m_HDR(spec.HDR),
       m_Samples(spec.Samples), m_Multisampled(spec.Samples > 1),
@@ -36,12 +80,9 @@ void OpenGLFramebuffer::Invalidate() {
             glBindTexture(GL_TEXTURE_2D, m_ColorAttachments[i]);
 
             GLenum internalFmt = m_ColorFormats[i].InternalFormat;
-            // Determine format and type from internal format
             GLenum format = GL_RGBA;
             GLenum type = GL_UNSIGNED_BYTE;
-            if (internalFmt == GL_RGBA16F || internalFmt == GL_RGBA32F) {
-                type = GL_FLOAT;
-            }
+            GetTextureUploadFormat(internalFmt, format, type);
 
             glTexImage2D(GL_TEXTURE_2D, 0, internalFmt, m_Width, m_Height, 0,
                          format, type, nullptr);

@@ -1106,6 +1106,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterGBuffer1 = m_DeferredRenderer.GetHPWaterGBufferTexture(1);
     m_RenderDiagnostics.HPWaterGBuffer2 = m_DeferredRenderer.GetHPWaterGBufferTexture(2);
     m_RenderDiagnostics.HPWaterGBufferDepth = m_DeferredRenderer.GetHPWaterDepthTexture();
+    m_RenderDiagnostics.HPWaterMaskTexture = m_DeferredRenderer.GetHPWaterMaskTexture();
+    m_RenderDiagnostics.HPWaterMaskWidth = m_DeferredRenderer.GetWidth();
+    m_RenderDiagnostics.HPWaterMaskHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
@@ -1705,6 +1708,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterRefractionJitterEnabled = hpWaterRefractionJitter;
         const uint32_t hpWaterFrameIndex = static_cast<uint32_t>(m_RenderDiagnostics.FrameIndex & 0xffffffffULL);
         m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
+        m_RenderDiagnostics.HPWaterMaskRan = m_DeferredRenderer.BuildHPWaterMask();
         // First composite pass generates the full-resolution refraction payload
         // consumed by the low-resolution HPWater volume pass.
         m_DeferredRenderer.CompositeHPWater(nearClip,
@@ -1760,6 +1764,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
+    m_RenderDiagnostics.HPWaterMaskTexture = m_DeferredRenderer.GetHPWaterMaskTexture();
+    m_RenderDiagnostics.HPWaterMaskWidth = m_DeferredRenderer.GetWidth();
+    m_RenderDiagnostics.HPWaterMaskHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterDepthPyramidTexture = m_DeferredRenderer.GetHPWaterDepthPyramidTexture();
     m_RenderDiagnostics.HPWaterDepthPyramidMipCount = m_DeferredRenderer.GetHPWaterDepthPyramidMipCount();
     m_RenderDiagnostics.HPWaterDepthPyramidWidth = m_DeferredRenderer.GetWidth();

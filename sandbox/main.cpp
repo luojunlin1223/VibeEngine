@@ -7005,6 +7005,9 @@ private:
         out << "HPWaterGBuffer1: " << d.HPWaterGBuffer1 << "\n";
         out << "HPWaterGBuffer2: " << d.HPWaterGBuffer2 << "\n";
         out << "HPWaterGBufferDepth: " << d.HPWaterGBufferDepth << "\n";
+        out << "HPWaterMaskRan: " << d.HPWaterMaskRan << "\n";
+        out << "HPWaterMaskTexture: " << d.HPWaterMaskTexture << "\n";
+        out << "HPWaterMaskSize: " << d.HPWaterMaskWidth << "x" << d.HPWaterMaskHeight << "\n";
         out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
         out << "HPWaterRefractionDataTexture: " << d.HPWaterRefractionDataTexture << "\n";
         out << "HPWaterRefractionMetaTexture: " << d.HPWaterRefractionMetaTexture << "\n";
@@ -7087,6 +7090,12 @@ private:
                 ProbeTexture(d.HPWaterDepthPyramidTexture, d.HPWaterDepthPyramidWidth, d.HPWaterDepthPyramidHeight));
             SaveTextureBMP(d.HPWaterDepthPyramidTexture, d.HPWaterDepthPyramidWidth, d.HPWaterDepthPyramidHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_depth_pyramid.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterMaskTexture != 0 &&
+            d.HPWaterMaskWidth > 0 && d.HPWaterMaskHeight > 0) {
+            writeProbe("HPWaterMask", ProbeTexture(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight));
+            SaveTextureBMP(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_mask.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
             struct HPWaterVolumeProbeTarget {
@@ -7183,9 +7192,10 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d hiz=%d/%u volume=%d temporal=%d history=%d filter=%d/%u upsample=%d compositeTex=%u refractWorld=%u refractMeta=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d mask=%d hiz=%d/%u volume=%d temporal=%d history=%d filter=%d/%u upsample=%d compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
+            d.HPWaterMaskRan ? 1 : 0,
             d.HPWaterDepthPyramidRan ? 1 : 0,
             d.HPWaterDepthPyramidMipCount,
             d.HPWaterVolumeRan ? 1 : 0,
@@ -7201,6 +7211,10 @@ private:
             d.HPWaterDepthPyramidWidth,
             d.HPWaterDepthPyramidHeight,
             d.HPWaterDepthPyramidTexture);
+        ImGui::Text("HPWater mask: %ux%u tex=%u",
+            d.HPWaterMaskWidth,
+            d.HPWaterMaskHeight,
+            d.HPWaterMaskTexture);
         ImGui::Text("HPWater refraction: strength=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
             d.HPWaterRefractionStrength,
             d.HPWaterMaxRefractionCrossDistance,
