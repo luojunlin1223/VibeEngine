@@ -208,6 +208,11 @@ struct RenderDiagnostics {
     float HPWaterSkyReflectionIntensity = 0.0f;
     float HPWaterIndirectDiffuseIntensity = 0.0f;
     float HPWaterDirectionalLightIntensity = 0.0f;
+    bool HPWaterSkyTextureReflectionBound = false;
+    uint32_t HPWaterSkyTexture = 0;
+    bool HPWaterReflectionProbeBound = false;
+    uint32_t HPWaterReflectionProbeTexture = 0;
+    float HPWaterReflectionProbeIntensity = 0.0f;
     bool HPWaterForwardScatterMipEnabled = false;
     uint32_t HPWaterForwardScatterMipCount = 0;
     bool HPWaterVolumeRan = false;

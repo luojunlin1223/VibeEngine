@@ -6,6 +6,7 @@ PipelineSettings:
   SkyEnabled: true
   SkyTopColor: [0.419999987, 0.680000007, 0.920000017]
   SkyBottomColor: [0.899999976, 0.920000017, 0.959999979]
+  SkyTexturePath: Assets/Skybox/Sky_Sunny.hdr
   IndirectLightingEnabled: true
   IndirectDiffuseIntensity: 0.349999994
   SkyReflectionIntensity: 0.200000003

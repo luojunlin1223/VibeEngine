@@ -24,7 +24,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterVolume.shader` can inject filtered caustic energy into the directional in-scattering term so caustics affect volumetric water lighting, not only the final surface composite.
 - `HPWaterFluidHeightCapture.shader` captures the first top-down R16F water-height and scene-height inputs used by fluid dynamics. The water target is initialized to the ocean surface height and the scene target rasterizes opaque mesh footprints with per-object top height, using max blending to form an obstacle height field.
 - `HPWaterFluidDynamics.comp` performs the primary GPU ping-pong wave equation update into an R16F height texture, with `HPWaterFluidDynamics.shader` kept as a fullscreen fallback. It now consumes HPWater-style normalized water-height and scene-height textures first, then falls back to the older R8 obstacle mask if the height fields are unavailable. `HPWaterGBuffer.shader` samples the fluid height texture for fluid normal and foam contribution.
-- `HPWaterComposite.shader` and `HPWaterVolume.shader` expose the first HPWater-style BSDF/scatter controls: Schlick Fresnel using water IOR 1.33, environment reflection intensity, macro volume scatter strength, thin-layer SSS, backlit transmission, and forward scattering. These are serialized on `HPWaterComponent` and exported in render diagnostics.
+- `HPWaterComposite.shader` and `HPWaterVolume.shader` expose the first HPWater-style BSDF/scatter controls: Schlick Fresnel using water IOR 1.33, environment reflection intensity, macro volume scatter strength, thin-layer SSS, backlit transmission, and forward scattering. The composite pass now samples the active sky texture as an equirectangular reflection source, can consume the nearest baked reflection-probe cubemap when one is available, and falls back to the sky/ground gradient when no environment texture exists. These controls and bindings are serialized or exported in render diagnostics.
 - `DeferredRenderer` exports HPWater GBuffer, explicit water mask, scene-depth pyramid, refraction, volume, caustic, and final composite diagnostics.
 - The editor can create, edit, serialize, and diagnose HPWater entities, and auto-export readback BMPs without relying on user screenshots or the Render Debugger panel being open.
 
@@ -105,7 +105,7 @@ HPWater's BSDF is more detailed than the current VibeEngine approximation:
 - Caustic contribution and volumetric transmittance.
 - Indirect lighting strength and environment contribution controlled by global HPWater parameters.
 
-VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air-to-water IOR of 1.33, environment reflection intensity is serialized, the composite pass adds thin-layer SSS, backlit transmission, forward scatter terms, and camera-color mip forward-scatter blur, and the low-resolution volume pass exposes macro scatter strength. This is still not HDRP/HPWater parity: preintegrated FGD, GGX energy compensation, exact forward-scatter weighting, real reflected environment/probe sampling, and a true light-loop integration remain pending.
+VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air-to-water IOR of 1.33, environment reflection intensity is serialized, the composite pass adds thin-layer SSS, backlit transmission, forward scatter terms, camera-color mip forward-scatter blur, active sky-texture reflection, and nearest baked reflection-probe sampling when available, and the low-resolution volume pass exposes macro scatter strength. This is still not HDRP/HPWater parity: preintegrated FGD, GGX energy compensation, exact forward-scatter weighting, HDRP-style filtered/probe-blended environment sampling, and fuller light-loop parity remain pending.
 
 ## Porting Order
 
@@ -162,8 +162,9 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
    - Done: route the controls through `DeferredRenderer`, `HPWaterComposite.shader`, `HPWaterVolume.shader`, Render Debugger, and `render_diagnostics.txt`.
    - Done: generate a camera-color mip chain for the HPWater composite and use it for thickness-driven forward-scatter blur.
    - Done: feed HPWater composite from the scene light-loop inputs: camera position, directional light, sky/ground indirect colors, indirect intensity, and sky reflection intensity.
-   - Done: connect the current sky-gradient environment as the reflection-probe fallback until real cubemap/probe resources exist.
-   - Pending: replace the remaining approximate terms with HPWater/HDRP-style preintegrated FGD, GGX energy compensation, exact forward-scatter weighting, real cubemap/probe sampling, and full light-loop parity.
+   - Done: connect the current sky-gradient environment as the reflection fallback.
+   - Done: feed HPWater composite with the active equirectangular sky texture and the nearest baked reflection-probe cubemap when available, with diagnostics for both sources.
+   - Pending: replace the remaining approximate terms with HPWater/HDRP-style preintegrated FGD, GGX energy compensation, exact forward-scatter weighting, HDRP-style filtered/probe-blended environment sampling, and full light-loop parity.
 
 ## Acceptance Checks
 
@@ -180,5 +181,6 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
 - BSDF controls are serialized and visible in diagnostics (`HPWaterEnvironmentReflectionIntensity`, `HPWaterMacroScatterStrength`, `HPWaterThinSSSStrength`, `HPWaterBacklitTransmissionStrength`, and `HPWaterForwardScatterStrength`), and changing them affects composite/volume lighting without disabling the HPWater passes.
 - Forward-scatter blur uses the generated scene-color mip chain and reports `HPWaterForwardScatterMipEnabled=1` with more than one mip when HPWater composite runs.
 - HPWater composite consumes scene light-loop inputs and reports `HPWaterLightLoopInputsValid=1`, plus sky reflection, indirect diffuse, and directional light intensities in `render_diagnostics.txt`.
+- HPWater composite reports environment reflection inputs in `render_diagnostics.txt`; the launcher scene binds `HPWaterSkyTextureReflectionBound=1` through `Assets/Skybox/Sky_Sunny.hdr`, while `HPWaterReflectionProbeBound` becomes 1 when a baked probe is available.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
 - The final image stays valid with water enabled, disabled, above camera, below camera, and outside the frustum.

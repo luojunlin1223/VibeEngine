@@ -49,6 +49,8 @@ uniform sampler2D u_HPWaterVolumeColor;
 uniform sampler2D u_HPWaterVolumeTransmittance;
 uniform sampler2D u_HPWaterVolumeDepth;
 uniform sampler2D u_HPWaterCaustic;
+uniform sampler2D u_SkyTexture;
+uniform samplerCube u_ReflectionProbe;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
@@ -69,9 +71,12 @@ uniform vec3 u_IndirectTint;
 uniform int u_IndirectLightingEnabled;
 uniform float u_IndirectDiffuseIntensity;
 uniform float u_SkyReflectionIntensity;
+uniform float u_ReflectionProbeIntensity;
 uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
+uniform int u_HasSkyTexture;
+uniform int u_HasReflectionProbe;
 uniform int u_HPWaterDepthPyramidMipCount;
 uniform int u_SceneColorMipEnabled;
 uniform int u_SceneColorMipCount;
@@ -158,6 +163,37 @@ vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
 vec3 SampleIndirectSky(vec3 dir) {
     float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
     return mix(u_IndirectGroundColor, u_IndirectSkyColor, t) * u_IndirectTint;
+}
+
+vec2 DirectionToEquirectUV(vec3 dir) {
+    vec3 d = normalize(dir);
+    float u = atan(d.z, d.x) / (2.0 * PI) + 0.5;
+    float v = asin(clamp(d.y, -1.0, 1.0)) / PI + 0.5;
+    return vec2(u, v);
+}
+
+vec3 SampleSkyTexture(vec3 dir, float roughness) {
+    vec2 uv = DirectionToEquirectUV(dir);
+    int levels = textureQueryLevels(u_SkyTexture);
+    float maxMip = float(max(levels - 1, 0));
+    float lod = clamp(roughness * maxMip, 0.0, maxMip);
+    return textureLod(u_SkyTexture, uv, lod).rgb * u_IndirectTint;
+}
+
+vec3 SampleEnvironment(vec3 dir, vec3 fallbackDir, float roughness, bool diffuseSample) {
+    if (u_HasReflectionProbe == 1) {
+        int levels = textureQueryLevels(u_ReflectionProbe);
+        float maxMip = float(max(levels - 1, 0));
+        float lod = diffuseSample ? maxMip : clamp(roughness * maxMip, 0.0, maxMip);
+        return textureLod(u_ReflectionProbe, normalize(dir), lod).rgb;
+    }
+
+    if (u_HasSkyTexture == 1) {
+        float skyRoughness = diffuseSample ? 1.0 : roughness;
+        return SampleSkyTexture(dir, skyRoughness);
+    }
+
+    return SampleIndirectSky(fallbackDir);
 }
 
 float SampleSceneDepth(vec2 uv, float lod) {
@@ -409,11 +445,16 @@ void main() {
     if (u_IndirectLightingEnabled == 1) {
         vec3 R = reflect(-V, N);
         float roughnessFade = mix(1.0, 0.25, roughness);
-        skyReflection = SampleIndirectSky(R) * F *
-            (0.35 + clamp(u_SkyReflectionIntensity, 0.0, 4.0) * 2.35) *
+        vec3 environmentSpecular = SampleEnvironment(R, R, roughness, false);
+        vec3 environmentDiffuse = SampleEnvironment(N, N, 1.0, true);
+        float environmentIntensity = u_HasReflectionProbe == 1
+            ? clamp(u_ReflectionProbeIntensity, 0.0, 4.0)
+            : clamp(u_SkyReflectionIntensity, 0.0, 4.0);
+        skyReflection = environmentSpecular * F *
+            (0.35 + environmentIntensity * 2.35) *
             clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *
             roughnessFade;
-        indirectBody = scatterColor * SampleIndirectSky(N) *
+        indirectBody = scatterColor * environmentDiffuse *
             clamp(u_IndirectDiffuseIntensity, 0.0, 4.0) *
             (0.08 + 0.18 * normalizedThickness);
     }

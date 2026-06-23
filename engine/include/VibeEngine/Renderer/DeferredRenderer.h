@@ -150,6 +150,10 @@ public:
                           bool indirectLightingEnabled,
                           float indirectDiffuseIntensity,
                           float skyReflectionIntensity,
+                          uint32_t skyTexture,
+                          uint32_t reflectionProbeTexture,
+                          bool hasReflectionProbe,
+                          float reflectionProbeIntensity,
                           const glm::mat4& inverseViewProjection);
 
     /// Build the opaque scene-depth pyramid used by HPWater refraction.
