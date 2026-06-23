@@ -7006,6 +7006,7 @@ private:
         out << "HPWaterVolumeDepthTexture: " << d.HPWaterVolumeDepthTexture << "\n";
         out << "HPWaterVolumeSize: " << d.HPWaterVolumeWidth << "x" << d.HPWaterVolumeHeight << "\n";
         out << "HPWaterVolumeFilterRan: " << d.HPWaterVolumeFilterRan << "\n";
+        out << "HPWaterVolumeFilterIterations: " << d.HPWaterVolumeFilterIterations << "\n";
         out << "HPWaterVolumeFilteredColorTexture: " << d.HPWaterVolumeFilteredColorTexture << "\n";
         out << "HPWaterVolumeFilteredTransmittanceTexture: " << d.HPWaterVolumeFilteredTransmittanceTexture << "\n";
         out << "HPWaterVolumeFilteredDepthTexture: " << d.HPWaterVolumeFilteredDepthTexture << "\n";
@@ -7126,11 +7127,12 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d filter=%d compositeTex=%u refractWorld=%u refractMeta=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d volume=%d filter=%d/%u compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
             d.HPWaterVolumeRan ? 1 : 0,
             d.HPWaterVolumeFilterRan ? 1 : 0,
+            d.HPWaterVolumeFilterIterations,
             d.HPWaterCompositeTexture,
             d.HPWaterRefractionDataTexture,
             d.HPWaterRefractionMetaTexture);

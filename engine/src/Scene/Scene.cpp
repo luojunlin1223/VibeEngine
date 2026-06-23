@@ -1114,6 +1114,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
     m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
     m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
+    m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
     m_RenderDiagnostics.HPWaterVolumeFilteredColorTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(0);
     m_RenderDiagnostics.HPWaterVolumeFilteredTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(1);
     m_RenderDiagnostics.HPWaterVolumeFilteredDepthTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(2);
@@ -1684,6 +1685,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        inverseViewProjection);
         m_RenderDiagnostics.HPWaterVolumeFilterRan =
             m_RenderDiagnostics.HPWaterVolumeRan && m_DeferredRenderer.FilterHPWaterVolume();
+        m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
         m_RenderDiagnostics.HPWaterCompositeRan =
             m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
@@ -1698,6 +1700,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
     m_RenderDiagnostics.HPWaterVolumeWidth = m_DeferredRenderer.GetHPWaterVolumeWidth();
     m_RenderDiagnostics.HPWaterVolumeHeight = m_DeferredRenderer.GetHPWaterVolumeHeight();
+    m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
     m_RenderDiagnostics.HPWaterVolumeFilteredColorTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(0);
     m_RenderDiagnostics.HPWaterVolumeFilteredTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(1);
     m_RenderDiagnostics.HPWaterVolumeFilteredDepthTexture = m_DeferredRenderer.GetHPWaterVolumeFilteredTexture(2);

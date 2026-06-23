@@ -119,7 +119,7 @@ public:
                                  const glm::vec3& cameraPosition,
                                  const glm::mat4& inverseViewProjection);
 
-    /// Run the first depth-aware spatial filter over the low-resolution HPWater volume buffers.
+    /// Run multi-iteration depth-aware a-trous filtering over low-resolution HPWater volume buffers.
     bool FilterHPWaterVolume();
 
     /// Get the lit output texture ID for post-processing.
@@ -145,6 +145,7 @@ public:
 
     /// Whether the filtered HPWater volume buffers are valid for composite.
     bool IsHPWaterVolumeFilteredValid() const { return m_HPWaterVolumeFilteredValid; }
+    uint32_t GetHPWaterVolumeFilterIterations() const { return m_HPWaterVolumeFilterIterations; }
 
     /// Whether the current output texture is the HPWater composite.
     bool IsHPWaterCompositeValid() const { return m_HPWaterCompositeValid; }
@@ -202,6 +203,9 @@ private:
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterGBuffer();
     void ClearHPWaterGBuffer();
+    bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
+                                    const std::shared_ptr<Framebuffer>& outputFBO,
+                                    float stride);
     static uint32_t GetHalfResolution(uint32_t value);
 
     uint32_t m_Width = 0;
@@ -224,8 +228,10 @@ private:
     // Low-resolution HPWater volume accumulation targets.
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFBO;
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFilteredFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterVolumeFilterScratchFBO;
     bool m_HPWaterVolumeValid = false;
     bool m_HPWaterVolumeFilteredValid = false;
+    uint32_t m_HPWaterVolumeFilterIterations = 0;
 
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
