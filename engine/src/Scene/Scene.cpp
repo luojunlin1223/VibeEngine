@@ -1346,10 +1346,20 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterFluidSourceRadius = 5.0f;
     glm::vec3 hpWaterFluidBoxCenter(0.0f);
     glm::vec3 hpWaterFluidBoxSize(1.0f);
+    bool hpWaterFluidObstaclesEnabled = false;
+    float hpWaterFluidObstaclePadding = 1.0f;
+    float hpWaterFluidObstacleHeightRange = 4.0f;
+    float hpWaterFluidSurfaceY = 0.0f;
+    struct HPWaterFluidObstacleCandidate {
+        glm::vec3 Min;
+        glm::vec3 Max;
+    };
+    std::vector<HPWaterFluidObstacleCandidate> hpWaterFluidObstacleCandidates;
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     transparentEntities.reserve(view.size_hint() / 4);
     hpWaterEntities.reserve(4);
+    hpWaterFluidObstacleCandidates.reserve(view.size_hint());
 
     for (auto entityID : view) {
         if (!IsEntityActiveInHierarchy(entityID)) continue;
@@ -1365,6 +1375,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         if (!mr.Mesh || !mr.Mat) continue;
 
         glm::mat4 model = GetWorldTransform(entityID);
+        glm::vec3 worldMin( std::numeric_limits<float>::max());
+        glm::vec3 worldMax(-std::numeric_limits<float>::max());
 
         // ── Frustum cull ──
         {
@@ -1381,8 +1393,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             }
 
             const AABB& localAABB = mr.LocalBounds;
-            glm::vec3 worldMin( std::numeric_limits<float>::max());
-            glm::vec3 worldMax(-std::numeric_limits<float>::max());
             for (int i = 0; i < 8; ++i) {
                 glm::vec3 corner(
                     (i & 1) ? localAABB.Max.x : localAABB.Min.x,
@@ -1393,6 +1403,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 worldMin = glm::min(worldMin, worldCorner);
                 worldMax = glm::max(worldMax, worldCorner);
             }
+
+            if (!isHPWater)
+                hpWaterFluidObstacleCandidates.push_back({ worldMin, worldMax });
 
             if (!frustum.TestAABB(worldMin, worldMax)) {
                 stats.CulledObjects++;
@@ -1451,6 +1464,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     hpWaterFluidDamping = water->FluidDamping;
                     hpWaterFluidSourceRadius = water->FluidImpulseRadius;
                     hpWaterFluidSourceIntensity = water->AutoImpulse ? water->FluidImpulseStrength : 0.0f;
+                    hpWaterFluidObstaclesEnabled = water->FluidObstaclesEnabled;
+                    hpWaterFluidObstaclePadding = std::max(water->FluidObstaclePadding, 0.0f);
+                    hpWaterFluidObstacleHeightRange = std::max(water->FluidObstacleHeightRange, 0.0f);
                     if (water->AutoImpulse) {
                         const float t = water->_OceanTime + static_cast<float>(m_RenderDiagnostics.FrameIndex) * 0.017f;
                         hpWaterFluidSourceU = 0.5f + 0.26f * std::sin(t * 1.91f);
@@ -1460,6 +1476,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     const float sx = glm::length(glm::vec3(model[0]));
                     const float sy = glm::length(glm::vec3(model[1]));
                     const float sz = glm::length(glm::vec3(model[2]));
+                    hpWaterFluidSurfaceY = hpWaterFluidBoxCenter.y + water->BaseHeight * sy;
                     hpWaterFluidBoxSize = glm::vec3(
                         std::max(water->WorldSizeX * sx, 0.001f),
                         std::max((std::abs(water->HeightScale) * 4.0f + std::abs(water->BaseHeight) + 1.0f) * sy, 0.001f),
@@ -1569,6 +1586,75 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_DeferredRenderer.EndGeometryPass();
 
     if (hpWaterFluidEnabled) {
+        std::vector<uint8_t> obstacleMask(
+            static_cast<size_t>(hpWaterFluidResolution) * static_cast<size_t>(hpWaterFluidResolution), 0);
+        uint32_t obstacleCount = 0;
+        uint32_t obstaclePixels = 0;
+
+        if (hpWaterFluidObstaclesEnabled) {
+            const float halfX = hpWaterFluidBoxSize.x * 0.5f;
+            const float halfZ = hpWaterFluidBoxSize.z * 0.5f;
+            const float waterMinX = hpWaterFluidBoxCenter.x - halfX;
+            const float waterMinZ = hpWaterFluidBoxCenter.z - halfZ;
+            const float waterMaxX = hpWaterFluidBoxCenter.x + halfX;
+            const float waterMaxZ = hpWaterFluidBoxCenter.z + halfZ;
+            const float invX = hpWaterFluidBoxSize.x > 0.0001f ? 1.0f / hpWaterFluidBoxSize.x : 0.0f;
+            const float invZ = hpWaterFluidBoxSize.z > 0.0001f ? 1.0f / hpWaterFluidBoxSize.z : 0.0f;
+            const float belowTolerance = 0.25f;
+
+            for (const auto& obstacle : hpWaterFluidObstacleCandidates) {
+                if (obstacle.Max.y < hpWaterFluidSurfaceY - belowTolerance ||
+                    obstacle.Min.y > hpWaterFluidSurfaceY + hpWaterFluidObstacleHeightRange) {
+                    continue;
+                }
+
+                const float paddedMinX = obstacle.Min.x - hpWaterFluidObstaclePadding;
+                const float paddedMaxX = obstacle.Max.x + hpWaterFluidObstaclePadding;
+                const float paddedMinZ = obstacle.Min.z - hpWaterFluidObstaclePadding;
+                const float paddedMaxZ = obstacle.Max.z + hpWaterFluidObstaclePadding;
+
+                if (paddedMaxX < waterMinX || paddedMinX > waterMaxX ||
+                    paddedMaxZ < waterMinZ || paddedMinZ > waterMaxZ) {
+                    continue;
+                }
+
+                int x0 = static_cast<int>(std::floor((paddedMinX - waterMinX) * invX * static_cast<float>(hpWaterFluidResolution)));
+                int x1 = static_cast<int>(std::ceil ((paddedMaxX - waterMinX) * invX * static_cast<float>(hpWaterFluidResolution)));
+                int z0 = static_cast<int>(std::floor((paddedMinZ - waterMinZ) * invZ * static_cast<float>(hpWaterFluidResolution)));
+                int z1 = static_cast<int>(std::ceil ((paddedMaxZ - waterMinZ) * invZ * static_cast<float>(hpWaterFluidResolution)));
+
+                x0 = std::clamp(x0, 0, static_cast<int>(hpWaterFluidResolution) - 1);
+                x1 = std::clamp(x1, 0, static_cast<int>(hpWaterFluidResolution) - 1);
+                z0 = std::clamp(z0, 0, static_cast<int>(hpWaterFluidResolution) - 1);
+                z1 = std::clamp(z1, 0, static_cast<int>(hpWaterFluidResolution) - 1);
+                if (x1 < x0 || z1 < z0)
+                    continue;
+
+                bool wroteAnyPixel = false;
+                for (int z = z0; z <= z1; ++z) {
+                    for (int x = x0; x <= x1; ++x) {
+                        const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(hpWaterFluidResolution) +
+                                           static_cast<size_t>(x);
+                        if (obstacleMask[idx] == 0) {
+                            obstacleMask[idx] = 255;
+                            ++obstaclePixels;
+                            wroteAnyPixel = true;
+                        }
+                    }
+                }
+
+                if (wroteAnyPixel)
+                    ++obstacleCount;
+            }
+        }
+
+        m_RenderDiagnostics.HPWaterFluidObstacleCount = obstacleCount;
+        m_RenderDiagnostics.HPWaterFluidObstaclePixels = obstaclePixels;
+        m_RenderDiagnostics.HPWaterFluidObstacleValid =
+            m_DeferredRenderer.UploadHPWaterFluidObstacleMask(hpWaterFluidResolution,
+                                                              obstacleMask,
+                                                              hpWaterFluidBoxCenter,
+                                                              hpWaterFluidBoxSize);
         m_RenderDiagnostics.HPWaterFluidDynamicsRan =
             m_DeferredRenderer.UpdateHPWaterFluidDynamics(hpWaterFluidResolution,
                                                           hpWaterFluidWaveSpeed,
@@ -1849,6 +1935,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
     m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;
     m_RenderDiagnostics.HPWaterFluidDamping = hpWaterFluidDamping;
+    m_RenderDiagnostics.HPWaterFluidObstacleValid = m_DeferredRenderer.IsHPWaterFluidObstacleValid();
+    m_RenderDiagnostics.HPWaterFluidObstacleTexture = m_DeferredRenderer.GetHPWaterFluidObstacleTexture();
     m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
 }
 

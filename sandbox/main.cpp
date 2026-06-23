@@ -6295,6 +6295,9 @@ private:
                 ImGui::SliderFloat("Fluid Damping", &w.FluidDamping, 0.0f, 0.98f, "%.3f");
                 ImGui::DragFloat("Fluid Impulse Radius", &w.FluidImpulseRadius, 0.25f, 1.0f, 128.0f, "%.2f");
                 ImGui::DragFloat("Fluid Impulse Strength", &w.FluidImpulseStrength, 0.001f, -1.0f, 1.0f, "%.3f");
+                ImGui::Checkbox("Fluid Obstacles", &w.FluidObstaclesEnabled);
+                ImGui::DragFloat("Obstacle Padding", &w.FluidObstaclePadding, 0.1f, 0.0f, 20.0f, "%.2f");
+                ImGui::DragFloat("Obstacle Height Range", &w.FluidObstacleHeightRange, 0.1f, 0.0f, 50.0f, "%.2f");
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::HPWaterComponent>();
             ImGui::Separator();
@@ -7055,6 +7058,10 @@ private:
         out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
         out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";
         out << "HPWaterFluidDamping: " << d.HPWaterFluidDamping << "\n";
+        out << "HPWaterFluidObstacleValid: " << d.HPWaterFluidObstacleValid << "\n";
+        out << "HPWaterFluidObstacleTexture: " << d.HPWaterFluidObstacleTexture << "\n";
+        out << "HPWaterFluidObstacleCount: " << d.HPWaterFluidObstacleCount << "\n";
+        out << "HPWaterFluidObstaclePixels: " << d.HPWaterFluidObstaclePixels << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7117,6 +7124,12 @@ private:
                 ProbeTexture(d.HPWaterFluidHeightTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution));
             SaveTextureBMP(d.HPWaterFluidHeightTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_fluid_height.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterFluidObstacleTexture != 0 && d.HPWaterFluidResolution > 0) {
+            writeProbe("HPWaterFluidObstacle",
+                ProbeTexture(d.HPWaterFluidObstacleTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution));
+            SaveTextureBMP(d.HPWaterFluidObstacleTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_fluid_obstacle.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
             struct HPWaterVolumeProbeTarget {
@@ -7265,6 +7278,11 @@ private:
             d.HPWaterFluidHeightTexture,
             d.HPWaterFluidWaveSpeed,
             d.HPWaterFluidDamping);
+        ImGui::Text("HPWater fluid obstacles: valid=%d texture=%u count=%u pixels=%u",
+            d.HPWaterFluidObstacleValid ? 1 : 0,
+            d.HPWaterFluidObstacleTexture,
+            d.HPWaterFluidObstacleCount,
+            d.HPWaterFluidObstaclePixels);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

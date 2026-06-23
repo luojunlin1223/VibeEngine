@@ -410,6 +410,9 @@ struct HPWaterComponent {
     float FluidDamping = 0.018f;
     float FluidImpulseRadius = 5.0f;
     float FluidImpulseStrength = 0.035f;
+    bool  FluidObstaclesEnabled = true;
+    float FluidObstaclePadding = 1.0f;
+    float FluidObstacleHeightRange = 4.0f;
 
     std::shared_ptr<VertexArray> _Mesh;
     std::shared_ptr<VertexBuffer> _VertexBuffer;

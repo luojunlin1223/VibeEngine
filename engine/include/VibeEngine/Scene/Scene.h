@@ -227,6 +227,10 @@ struct RenderDiagnostics {
     uint32_t HPWaterFluidResolution = 0;
     float HPWaterFluidWaveSpeed = 0.0f;
     float HPWaterFluidDamping = 0.0f;
+    bool HPWaterFluidObstacleValid = false;
+    uint32_t HPWaterFluidObstacleTexture = 0;
+    uint32_t HPWaterFluidObstacleCount = 0;
+    uint32_t HPWaterFluidObstaclePixels = 0;
 
     bool DeferredInitialized = false;
     bool LightingPassRan = false;

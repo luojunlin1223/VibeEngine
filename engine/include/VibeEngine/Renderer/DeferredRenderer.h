@@ -58,6 +58,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <cstdint>
+#include <vector>
 
 namespace VE {
 
@@ -161,6 +162,13 @@ public:
                                     const glm::vec3& boxCenter,
                                     const glm::vec3& boxSize);
 
+    /// Upload the top-down scene obstacle mask consumed by HPWater fluid dynamics.
+    /// Pixels are R8, 0 = free water and 255 = solid scene obstacle.
+    bool UploadHPWaterFluidObstacleMask(uint32_t resolution,
+                                        const std::vector<uint8_t>& maskPixels,
+                                        const glm::vec3& boxCenter,
+                                        const glm::vec3& boxSize);
+
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
 
@@ -227,8 +235,10 @@ public:
     uint32_t GetHPWaterVolumeUpsampledTexture(int index) const;
 
     uint32_t GetHPWaterFluidHeightTexture() const;
+    uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
     uint32_t GetHPWaterFluidResolution() const { return m_HPWaterFluidResolution; }
     bool IsHPWaterFluidDynamicsValid() const { return m_HPWaterFluidValid; }
+    bool IsHPWaterFluidObstacleValid() const { return m_HPWaterFluidObstacleValid; }
     glm::vec3 GetHPWaterFluidBoxCenter() const { return m_HPWaterFluidBoxCenter; }
     glm::vec3 GetHPWaterFluidBoxSize() const { return m_HPWaterFluidBoxSize; }
 
@@ -265,6 +275,7 @@ private:
     void CreateHPWaterMaskFBO();
     void CreateHPWaterDepthPyramid();
     void CreateHPWaterFluidFBO(uint32_t resolution);
+    void DestroyHPWaterFluidObstacleTexture();
     void DestroyHPWaterDepthPyramid();
     void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
@@ -321,6 +332,9 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterFluidNextFBO;
     bool m_HPWaterFluidValid = false;
     bool m_HPWaterFluidInitialized = false;
+    bool m_HPWaterFluidObstacleValid = false;
+    uint32_t m_HPWaterFluidObstacleTexture = 0;
+    uint32_t m_HPWaterFluidObstacleResolution = 0;
     uint32_t m_HPWaterFluidResolution = 0;
     glm::vec3 m_HPWaterFluidBoxCenter = glm::vec3(0.0f);
     glm::vec3 m_HPWaterFluidBoxSize = glm::vec3(1.0f);

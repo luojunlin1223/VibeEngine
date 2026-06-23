@@ -82,7 +82,7 @@ HPWater includes a GPU wave equation system:
 - Compute wave propagation with obstacle boundaries, edge damping, and impulse sources.
 - Global wave height texture for water shaders.
 
-VibeEngine now has a first GPU height-texture pipeline: a persistent R16F ping-pong wave equation pass, serialized component controls, Render Debugger/diagnostic export, and GBuffer sampling for fluid normals/foam. This is currently implemented as an OpenGL fullscreen pass rather than a compute shader because the engine does not yet expose a compute abstraction. HPWater's top-down water/scene height capture and obstacle-boundary inputs remain pending; the existing CPU mesh/spectrum path is still kept as the geometry fallback.
+VibeEngine now has a first GPU height-texture pipeline: a persistent R16F ping-pong wave equation pass, serialized component controls, Render Debugger/diagnostic export, and GBuffer sampling for fluid normals/foam. It also has the first obstacle-boundary input: Scene mesh world AABBs are rasterized into a per-ocean R8 obstacle mask and the wave pass damps/blocks propagation at those pixels. This is currently implemented as OpenGL fullscreen passes plus CPU obstacle rasterization because the engine does not yet expose a compute abstraction or HPWater's virtual top-down height capture. HPWater's true top-down water/scene height textures remain pending; the existing CPU mesh/spectrum path is still kept as the geometry fallback.
 
 ### BSDF / Light Loop
 
@@ -131,7 +131,8 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 5. GPU fluid dynamics
    - Done: add persistent R16F ping-pong wave equation height textures and diagnostics.
    - Done: feed the current GPU fluid height texture into HPWater GBuffer normal/foam evaluation.
-   - Pending: add top-down water height and scene height capture passes.
+   - Done: add a first R8 obstacle mask by rasterizing non-water mesh AABBs over the ocean XZ footprint.
+   - Pending: replace the AABB mask with HPWater-style top-down water height and scene height capture passes.
    - Pending: replace the fullscreen ping-pong implementation with an OpenGL compute backend once the engine has compute shader support.
    - Keep the current CPU simulation as a fallback.
 
@@ -153,6 +154,6 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 - The refraction buffer changes when water normals change and remains masked to water pixels.
 - Water volume color/transmittance changes with absorption and scatter settings.
 - Caustics appear under shallow waves and change with directional light direction.
-- Interactive GPU fluid impulses produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; obstacle-aware propagation remains pending until top-down scene height capture exists.
+- Interactive GPU fluid impulses produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; overlapping non-water meshes produce a valid `render_diagnostics_hpwater_fluid_obstacle.bmp`.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
 - The final image stays valid with water enabled, disabled, above camera, below camera, and outside the frustum.
