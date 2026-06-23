@@ -591,6 +591,10 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "Roughness" << YAML::Value << w.Roughness;
         out << YAML::Key << "RefractionStrength" << YAML::Value << w.RefractionStrength;
         out << YAML::Key << "DepthTintDistance" << YAML::Value << w.DepthTintDistance;
+        out << YAML::Key << "RefractionSampleCount" << YAML::Value << w.RefractionSampleCount;
+        out << YAML::Key << "MaxRefractionCrossDistance" << YAML::Value << w.MaxRefractionCrossDistance;
+        out << YAML::Key << "RefractionThicknessOffset" << YAML::Value << w.RefractionThicknessOffset;
+        out << YAML::Key << "RefractionJitter" << YAML::Value << w.RefractionJitter;
         out << YAML::EndMap;
     }
 
@@ -1549,6 +1553,13 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["Roughness"])           w.Roughness = wNode["Roughness"].as<float>();
                 if (wNode["RefractionStrength"])  w.RefractionStrength = wNode["RefractionStrength"].as<float>();
                 if (wNode["DepthTintDistance"])   w.DepthTintDistance = wNode["DepthTintDistance"].as<float>();
+                if (wNode["RefractionSampleCount"]) w.RefractionSampleCount = wNode["RefractionSampleCount"].as<int>();
+                if (wNode["MaxRefractionCrossDistance"]) w.MaxRefractionCrossDistance = wNode["MaxRefractionCrossDistance"].as<float>();
+                if (wNode["RefractionThicknessOffset"]) w.RefractionThicknessOffset = wNode["RefractionThicknessOffset"].as<float>();
+                if (wNode["RefractionJitter"]) w.RefractionJitter = wNode["RefractionJitter"].as<bool>();
+                w.RefractionSampleCount = std::clamp(w.RefractionSampleCount, 4, 64);
+                w.MaxRefractionCrossDistance = std::clamp(w.MaxRefractionCrossDistance, 0.1f, 200.0f);
+                w.RefractionThicknessOffset = std::clamp(w.RefractionThicknessOffset, 0.01f, 8.0f);
                 w._NeedsRebuild = true;
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize HPWaterComponent: {}", e.what());

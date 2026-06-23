@@ -1328,7 +1328,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     };
     std::vector<VisibleEntity> transparentEntities;
     std::vector<VisibleEntity> hpWaterEntities;
-    float hpWaterRefractionStrength = 0.16f;
+    float hpWaterRefractionStrength = 0.0f;
+    float hpWaterMaxRefractionCrossDistance = 0.1f;
+    float hpWaterRefractionThicknessOffset = 0.01f;
+    uint32_t hpWaterRefractionSampleCount = 4;
+    bool hpWaterRefractionJitter = false;
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     transparentEntities.reserve(view.size_hint() / 4);
@@ -1416,8 +1420,17 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         }
         if (isHPWater) {
             hpWaterEntities.push_back({ entityID, model, 0.0f });
-            if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID))
+            if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID)) {
                 hpWaterRefractionStrength = std::max(hpWaterRefractionStrength, water->RefractionStrength);
+                hpWaterMaxRefractionCrossDistance = std::max(
+                    hpWaterMaxRefractionCrossDistance, water->MaxRefractionCrossDistance);
+                hpWaterRefractionThicknessOffset = std::max(
+                    hpWaterRefractionThicknessOffset, water->RefractionThicknessOffset);
+                hpWaterRefractionSampleCount = std::max(
+                    hpWaterRefractionSampleCount,
+                    static_cast<uint32_t>(std::clamp(water->RefractionSampleCount, 4, 64)));
+                hpWaterRefractionJitter = hpWaterRefractionJitter || water->RefractionJitter;
+            }
             m_RenderDiagnostics.HPWaterQueued++;
             continue;
         }
@@ -1685,10 +1698,24 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
     if (m_RenderDiagnostics.HPWaterGBufferDrawn > 0) {
         glm::mat4 inverseViewProjection = glm::inverse(viewProjection);
+        m_RenderDiagnostics.HPWaterRefractionStrength = hpWaterRefractionStrength;
+        m_RenderDiagnostics.HPWaterMaxRefractionCrossDistance = hpWaterMaxRefractionCrossDistance;
+        m_RenderDiagnostics.HPWaterRefractionThicknessOffset = hpWaterRefractionThicknessOffset;
+        m_RenderDiagnostics.HPWaterRefractionSampleCount = hpWaterRefractionSampleCount;
+        m_RenderDiagnostics.HPWaterRefractionJitterEnabled = hpWaterRefractionJitter;
+        const uint32_t hpWaterFrameIndex = static_cast<uint32_t>(m_RenderDiagnostics.FrameIndex & 0xffffffffULL);
         m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
         // First composite pass generates the full-resolution refraction payload
         // consumed by the low-resolution HPWater volume pass.
-        m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
+        m_DeferredRenderer.CompositeHPWater(nearClip,
+                                            farClip,
+                                            hpWaterRefractionStrength,
+                                            hpWaterMaxRefractionCrossDistance,
+                                            hpWaterRefractionThicknessOffset,
+                                            static_cast<int>(hpWaterRefractionSampleCount),
+                                            hpWaterRefractionJitter,
+                                            hpWaterFrameIndex,
+                                            inverseViewProjection);
         m_RenderDiagnostics.HPWaterVolumeRan =
             m_DeferredRenderer.AccumulateHPWaterVolume(nearClip,
                                                        farClip,
@@ -1711,7 +1738,15 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_RenderDiagnostics.HPWaterVolumeFilterRan &&
             m_DeferredRenderer.UpsampleHPWaterVolume(nearClip, farClip);
         m_RenderDiagnostics.HPWaterCompositeRan =
-            m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
+            m_DeferredRenderer.CompositeHPWater(nearClip,
+                                                farClip,
+                                                hpWaterRefractionStrength,
+                                                hpWaterMaxRefractionCrossDistance,
+                                                hpWaterRefractionThicknessOffset,
+                                                static_cast<int>(hpWaterRefractionSampleCount),
+                                                hpWaterRefractionJitter,
+                                                hpWaterFrameIndex,
+                                                inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
 

@@ -10,7 +10,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `Water.shader` provides a visible HPWater-inspired surface material.
 - `HPWaterGBuffer.shader` renders water into a dedicated three-target resource set: normal/roughness, scatter/thickness, and absorption/foam.
 - `HPWaterDepthPyramid.shader` builds an opaque scene-depth mip chain for HPWater refraction.
-- `HPWaterComposite.shader` performs the first Hi-Z-assisted full-resolution refraction payload generation and final water composite.
+- `HPWaterComposite.shader` performs the first Hi-Z-assisted full-resolution refraction payload generation and final water composite, including HPWater-style frame-indexed IGN step jitter and tunable max refraction cross distance / thickness offset controls.
 - `HPWaterVolume.shader` performs a first half-resolution volume accumulation pass for in-scattering, transmittance, and refracted depth.
 - `HPWaterVolumeTemporal.shader` performs a first low-resolution temporal reprojection/history blend before spatial filtering.
 - `HPWaterVolumeFilter.shader` performs the first multi-iteration depth-aware a-trous-style spatial filter over the half-resolution volume buffers.
@@ -42,7 +42,7 @@ HPWater generates a full-resolution refraction texture where:
 - It can use either a cheaper normal-offset path or ray marching.
 - The ray marching path uses the scene depth pyramid excluding water, exponential stepping, IGN jitter, and a max cross distance.
 
-VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid and uses coarse mip sampling with mip-0 binary refinement for the screen-space refraction march. Real stencil isolation, IGN jitter, and closer HPWater parameter parity remain pending.
+VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid and uses coarse mip sampling with mip-0 binary refinement for the screen-space refraction march. The march now has HPWater-style frame-indexed IGN step jitter plus serialized controls for sample count, max refraction cross distance, and thickness offset. Real stencil isolation and closer full 3D NDC ray parity remain pending.
 
 ### Volumetric Water Lighting
 
@@ -113,7 +113,8 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
    - Done: add full-resolution refraction UV/depth/mask buffer.
    - Done: first implement normal-offset refraction.
    - Done: add a dedicated opaque scene-depth pyramid for Hi-Z-assisted ray-marched refraction.
-   - Pending: add HPWater-style jitter, stencil/mask isolation, and closer max-cross-distance controls.
+   - Done: add HPWater-style IGN step jitter and max-cross-distance / thickness controls.
+   - Pending: add stencil/mask isolation and closer full 3D NDC ray parity.
 
 4. Volumetric pass
    - Done: add low-resolution water volume accumulation.

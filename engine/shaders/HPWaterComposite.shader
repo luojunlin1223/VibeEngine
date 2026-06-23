@@ -51,9 +51,14 @@ uniform sampler2D u_HPWaterVolumeDepth;
 uniform float u_NearClip;
 uniform float u_FarClip;
 uniform float u_RefractionStrength;
+uniform float u_MaxRefractionCrossDistance;
+uniform float u_RefractionThicknessOffset;
 uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
 uniform int u_HPWaterDepthPyramidMipCount;
+uniform int u_RefractionSampleCount;
+uniform int u_RefractionJitterEnabled;
+uniform int u_FrameIndex;
 uniform mat4 u_InverseViewProjection;
 
 float LinearizeDepth(float depth) {
@@ -73,6 +78,21 @@ vec3 ReconstructWorldPosition(vec2 uv, float depth) {
 float ScreenEdgeFade(vec2 uv) {
     vec2 edge = min(uv, vec2(1.0) - uv);
     return clamp(min(edge.x, edge.y) * 8.0, 0.0, 1.0);
+}
+
+float InterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
+    const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+    vec2 scrolled = pixelPos + vec2(float(frameIndex & 63)) * vec2(5.588238, 5.588238);
+    return fract(magic.z * fract(dot(scrolled, magic.xy)));
+}
+
+float RefractionStepJitter(vec2 uv) {
+    if (u_RefractionJitterEnabled != 1) {
+        return 0.0;
+    }
+    ivec2 sceneSize = textureSize(u_SceneDepth, 0);
+    vec2 pixel = uv * vec2(max(sceneSize, ivec2(1)));
+    return InterleavedGradientNoise(pixel, u_FrameIndex);
 }
 
 float SampleSceneDepth(vec2 uv, float lod) {
@@ -105,17 +125,22 @@ vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float scen
         return uv;
     }
 
-    const int sampleCount = 16;
     const float expFactor = 8.0;
-    float maxCrossDistance = clamp(depthTintDistance, 0.5, 80.0);
-    float hitTolerance = max(0.25, maxCrossDistance * 0.025);
+    int sampleCount = clamp(u_RefractionSampleCount, 4, 64);
+    float maxCrossDistance = clamp(u_MaxRefractionCrossDistance, 0.1, 200.0);
+    float hitTolerance = clamp(u_RefractionThicknessOffset, 0.01, 8.0);
     vec2 bestUV = clamp(uv + rayDirection * maxTravel, vec2(0.001), vec2(0.999));
     bool hit = false;
     float previousD = 0.0;
+    float dither = RefractionStepJitter(uv);
+    float invSampleCount = 1.0 / float(sampleCount);
 
     for (int i = 1; i <= sampleCount; ++i) {
-        float linearStep = float(i) / float(sampleCount);
+        float linearStep = (float(i - 1) + dither) * invSampleCount;
         float d = (pow(expFactor, linearStep) - 1.0) / (expFactor - 1.0);
+        if (i == sampleCount) {
+            d = 1.0;
+        }
         vec2 sampleUV = clamp(uv + rayDirection * maxTravel * d, vec2(0.001), vec2(0.999));
         float sampleDepth = SampleSceneDepth(sampleUV, DepthPyramidLOD(d, maxTravel));
 
@@ -132,7 +157,7 @@ vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float scen
             continue;
         }
 
-        if (rayLinear >= sampleLinear - hitTolerance) {
+        if (abs(rayLinear - sampleLinear) <= hitTolerance || rayLinear >= sampleLinear) {
             float lo = previousD;
             float hi = d;
             for (int refine = 0; refine < 5; ++refine) {
@@ -143,7 +168,7 @@ vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float scen
                 float fineRayLinear = waterLinearDepth + maxCrossDistance * mid;
                 if (fineDepth < 0.9999 &&
                     fineLinear > waterLinearDepth + 0.02 &&
-                    fineRayLinear >= fineLinear - hitTolerance) {
+                    (abs(fineRayLinear - fineLinear) <= hitTolerance || fineRayLinear >= fineLinear)) {
                     hi = mid;
                 } else {
                     lo = mid;

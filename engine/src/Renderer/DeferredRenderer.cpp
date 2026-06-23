@@ -559,6 +559,11 @@ bool DeferredRenderer::BuildHPWaterDepthPyramid() {
 bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         float farClip,
                                         float refractionStrength,
+                                        float maxRefractionCrossDistance,
+                                        float refractionThicknessOffset,
+                                        int refractionSampleCount,
+                                        bool refractionJitter,
+                                        uint32_t frameIndex,
                                         const glm::mat4& inverseViewProjection) {
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
@@ -620,7 +625,14 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
 
     m_HPWaterCompositeShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterCompositeShader->SetFloat("u_FarClip", farClip);
-    m_HPWaterCompositeShader->SetFloat("u_RefractionStrength", refractionStrength);
+    m_HPWaterCompositeShader->SetFloat("u_RefractionStrength", std::clamp(refractionStrength, 0.0f, 2.0f));
+    m_HPWaterCompositeShader->SetFloat("u_MaxRefractionCrossDistance",
+        std::clamp(maxRefractionCrossDistance, 0.1f, 200.0f));
+    m_HPWaterCompositeShader->SetFloat("u_RefractionThicknessOffset",
+        std::clamp(refractionThicknessOffset, 0.01f, 8.0f));
+    m_HPWaterCompositeShader->SetInt("u_RefractionSampleCount", std::clamp(refractionSampleCount, 4, 64));
+    m_HPWaterCompositeShader->SetInt("u_RefractionJitterEnabled", refractionJitter ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_FrameIndex", static_cast<int>(frameIndex & 0x7fffffffU));
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",
         (m_HPWaterVolumeValid || m_HPWaterVolumeFilteredValid || m_HPWaterVolumeUpsampledValid) ? 1 : 0);

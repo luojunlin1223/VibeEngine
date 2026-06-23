@@ -399,6 +399,10 @@ struct HPWaterComponent {
     float Roughness = 0.06f;
     float RefractionStrength = 0.16f;
     float DepthTintDistance = 12.0f;
+    int   RefractionSampleCount = 16;
+    float MaxRefractionCrossDistance = 20.0f;
+    float RefractionThicknessOffset = 0.5f;
+    bool  RefractionJitter = true;
 
     std::shared_ptr<VertexArray> _Mesh;
     std::shared_ptr<VertexBuffer> _VertexBuffer;

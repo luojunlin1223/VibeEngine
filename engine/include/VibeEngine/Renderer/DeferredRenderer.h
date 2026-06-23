@@ -111,6 +111,11 @@ public:
     bool CompositeHPWater(float nearClip,
                           float farClip,
                           float refractionStrength,
+                          float maxRefractionCrossDistance,
+                          float refractionThicknessOffset,
+                          int refractionSampleCount,
+                          bool refractionJitter,
+                          uint32_t frameIndex,
                           const glm::mat4& inverseViewProjection);
 
     /// Build the opaque scene-depth pyramid used by HPWater refraction.

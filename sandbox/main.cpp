@@ -6278,6 +6278,14 @@ private:
                 ImGui::SliderFloat("Roughness", &w.Roughness, 0.01f, 0.75f, "%.3f");
                 ImGui::SliderFloat("Refraction", &w.RefractionStrength, 0.0f, 1.0f, "%.3f");
                 ImGui::DragFloat("Depth Tint Distance", &w.DepthTintDistance, 0.1f, 0.1f, 100.0f);
+                int refractionSamples = w.RefractionSampleCount;
+                if (ImGui::SliderInt("Refraction Samples", &refractionSamples, 4, 64))
+                    w.RefractionSampleCount = std::clamp(refractionSamples, 4, 64);
+                ImGui::DragFloat("Max Refraction Cross Distance",
+                    &w.MaxRefractionCrossDistance, 0.1f, 0.1f, 200.0f, "%.2f");
+                ImGui::DragFloat("Refraction Thickness Offset",
+                    &w.RefractionThicknessOffset, 0.01f, 0.01f, 8.0f, "%.2f");
+                ImGui::Checkbox("Refraction Jitter", &w.RefractionJitter);
             }
             if (removeC) m_SelectedEntity.RemoveComponent<VE::HPWaterComponent>();
             ImGui::Separator();
@@ -7004,6 +7012,11 @@ private:
         out << "HPWaterDepthPyramidTexture: " << d.HPWaterDepthPyramidTexture << "\n";
         out << "HPWaterDepthPyramidMipCount: " << d.HPWaterDepthPyramidMipCount << "\n";
         out << "HPWaterDepthPyramidSize: " << d.HPWaterDepthPyramidWidth << "x" << d.HPWaterDepthPyramidHeight << "\n";
+        out << "HPWaterRefractionStrength: " << d.HPWaterRefractionStrength << "\n";
+        out << "HPWaterMaxRefractionCrossDistance: " << d.HPWaterMaxRefractionCrossDistance << "\n";
+        out << "HPWaterRefractionThicknessOffset: " << d.HPWaterRefractionThicknessOffset << "\n";
+        out << "HPWaterRefractionSampleCount: " << d.HPWaterRefractionSampleCount << "\n";
+        out << "HPWaterRefractionJitterEnabled: " << d.HPWaterRefractionJitterEnabled << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
         out << "HPWaterVolumeColorTexture: " << d.HPWaterVolumeColorTexture << "\n";
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
@@ -7188,6 +7201,12 @@ private:
             d.HPWaterDepthPyramidWidth,
             d.HPWaterDepthPyramidHeight,
             d.HPWaterDepthPyramidTexture);
+        ImGui::Text("HPWater refraction: strength=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
+            d.HPWaterRefractionStrength,
+            d.HPWaterMaxRefractionCrossDistance,
+            d.HPWaterRefractionThicknessOffset,
+            d.HPWaterRefractionSampleCount,
+            d.HPWaterRefractionJitterEnabled ? 1 : 0);
         ImGui::Text("HPWater volume raw: %ux%u color=%u trans=%u depth=%u",
             d.HPWaterVolumeWidth,
             d.HPWaterVolumeHeight,
