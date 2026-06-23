@@ -61,6 +61,7 @@
 
 #include "VibeEngine/Renderer/Framebuffer.h"
 #include "VibeEngine/Renderer/Shader.h"
+#include "VibeEngine/Renderer/ComputeShader.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <cstdint>
@@ -262,6 +263,9 @@ public:
     uint32_t GetHPWaterVolumeUpsampledTexture(int index) const;
     uint32_t GetHPWaterCausticTexture() const;
     bool IsHPWaterCausticValid() const { return m_HPWaterCausticValid; }
+    uint32_t GetHPWaterCausticComputeIrradianceTexture() const { return m_HPWaterCausticComputeIrradianceTexture; }
+    bool IsHPWaterCausticComputeIrradianceValid() const { return m_HPWaterCausticComputeIrradianceValid; }
+    bool DidRunHPWaterCausticComputeIrradiance() const { return m_HPWaterCausticComputeIrradianceRan; }
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
     uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
@@ -315,6 +319,7 @@ private:
     void CreateHPWaterCompositeFBO();
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterCausticFBO();
+    void CreateHPWaterCausticComputeTexture();
     void CreateHPWaterCausticAtlasFBO(uint32_t tileResolution);
     void CreateHPWaterGBuffer();
     void CreateHPWaterMaskFBO();
@@ -322,6 +327,7 @@ private:
     void CreateHPWaterFluidFBO(uint32_t resolution);
     void DestroyHPWaterFluidObstacleTexture();
     void DestroyHPWaterDepthPyramid();
+    void DestroyHPWaterCausticComputeTexture();
     void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
     void CommitHPWaterVolumeHistory();
@@ -333,6 +339,13 @@ private:
                                      float stride,
                                      float radius,
                                      float depthSigma);
+    bool RunHPWaterCausticComputeIrradiance(float nearClip,
+                                            float farClip,
+                                            const glm::vec3& lightDir,
+                                            float lightIntensity,
+                                            float strength,
+                                            float scale,
+                                            float depthFade);
     static uint32_t GetHalfResolution(uint32_t value);
 
     uint32_t m_Width = 0;
@@ -383,6 +396,9 @@ private:
     bool m_HPWaterCausticValid = false;
     bool m_HPWaterCausticFilteredValid = false;
     uint32_t m_HPWaterCausticFilterIterations = 0;
+    uint32_t m_HPWaterCausticComputeIrradianceTexture = 0;
+    bool m_HPWaterCausticComputeIrradianceValid = false;
+    bool m_HPWaterCausticComputeIrradianceRan = false;
 
     // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
     std::shared_ptr<Framebuffer> m_HPWaterCausticAtlasFBO;
@@ -415,6 +431,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterCausticShader;
     std::shared_ptr<Shader> m_HPWaterCausticFilterShader;
     std::shared_ptr<Shader> m_HPWaterCausticAtlasShader;
+    std::shared_ptr<ComputeShader> m_HPWaterCausticComputeShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
     std::shared_ptr<Shader> m_LightingShader;

@@ -7074,6 +7074,9 @@ private:
         out << "HPWaterCausticRan: " << d.HPWaterCausticRan << "\n";
         out << "HPWaterCausticValid: " << d.HPWaterCausticValid << "\n";
         out << "HPWaterCausticTexture: " << d.HPWaterCausticTexture << "\n";
+        out << "HPWaterCausticComputeRan: " << d.HPWaterCausticComputeRan << "\n";
+        out << "HPWaterCausticComputeValid: " << d.HPWaterCausticComputeValid << "\n";
+        out << "HPWaterCausticComputeTexture: " << d.HPWaterCausticComputeTexture << "\n";
         out << "HPWaterCausticFilterRan: " << d.HPWaterCausticFilterRan << "\n";
         out << "HPWaterCausticFilteredValid: " << d.HPWaterCausticFilteredValid << "\n";
         out << "HPWaterCausticFilteredTexture: " << d.HPWaterCausticFilteredTexture << "\n";
@@ -7167,6 +7170,13 @@ private:
             writeProbe("HPWaterCaustic", ProbeTexture(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight));
             SaveTextureBMP(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterCausticComputeTexture != 0 &&
+            d.HPWaterCausticComputeValid && d.ViewportWidth > 0 && d.ViewportHeight > 0) {
+            writeProbe("HPWaterCausticComputeIrradiance",
+                ProbeTexture(d.HPWaterCausticComputeTexture, d.ViewportWidth, d.ViewportHeight));
+            SaveTextureBMP(d.HPWaterCausticComputeTexture, d.ViewportWidth, d.ViewportHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_compute_irradiance.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterCausticFilteredTexture != 0 &&
             d.ViewportWidth > 0 && d.ViewportHeight > 0) {
@@ -7355,10 +7365,13 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d tex=%u filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
+            d.HPWaterCausticComputeRan ? 1 : 0,
+            d.HPWaterCausticComputeValid ? 1 : 0,
+            d.HPWaterCausticComputeTexture,
             d.HPWaterCausticFilteredValid ? 1 : 0,
             d.HPWaterCausticFilterIterations,
             d.HPWaterCausticFilteredTexture,

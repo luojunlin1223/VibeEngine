@@ -2,7 +2,7 @@
 
 Source target: https://github.com/AshenOneArt/HPWater, inspected at upstream commit `1253e5b`.
 
-This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, a half-resolution volumetric accumulation/filter/composite path, a full-resolution caustic energy texture that can be filtered and consumed by both water composite and volume lighting, and a directional-light cascade water atlas capture pass for later HPWater-style caustic accumulation. It is not feature-complete.
+This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, a half-resolution volumetric accumulation/filter/composite path, a full-resolution caustic energy texture that can be filtered and consumed by both water composite and volume lighting, a directional-light cascade water atlas capture pass, and the first OpenGL compute caustic irradiance pass. It is not feature-complete.
 
 ## Current VibeEngine Coverage
 
@@ -19,7 +19,8 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterCaustic.shader` performs a first full-resolution caustic energy accumulation from HPWater normals, thickness, absorption, mask, scene depth, and directional light parameters, including a serialized single-channel/RGB dispersion mode inspired by HPWater's `_Is_Use_RGB_Caustic` and `_CausticDispersionStrength` controls.
 - `HPWaterCausticFilter.shader` performs a first edge-aware caustic denoise/filter pass using caustic energy, HPWater depth, and the explicit water mask.
 - `HPWaterCausticAtlas.shader` captures water-only surface payloads from the four directional-light cascade views into a 2x2 RGBA16F atlas, reusing the current CSM light view-projection matrices as the first HPWater-style light-space caustic input resource.
-- `HPWaterCaustic.shader` now consumes that atlas during full-resolution caustic accumulation, using atlas normal/depth gradients to modulate caustic focus until the original HPWater compute/atomic irradiance path is implemented.
+- `HPWaterCausticIrradiance.comp` is the first OpenGL compute slice of HPWater caustics: it writes a full-resolution R16F irradiance texture from the HPWater GBuffer, explicit mask, scene depth, light parameters, and the current light-space water atlas.
+- `HPWaterCaustic.shader` consumes the compute irradiance texture during full-resolution caustic accumulation while still retaining the previous fullscreen path as the visible fallback.
 - `HPWaterVolume.shader` can inject filtered caustic energy into the directional in-scattering term so caustics affect volumetric water lighting, not only the final surface composite.
 - `HPWaterFluidDynamics.shader` performs a first GPU ping-pong wave equation update into an R16F height texture, and `HPWaterGBuffer.shader` samples that texture for fluid normal and foam contribution.
 - `DeferredRenderer` exports HPWater GBuffer, explicit water mask, scene-depth pyramid, refraction, volume, caustic, and final composite diagnostics.
@@ -75,7 +76,7 @@ HPWater caustics are a separate compute-driven pipeline:
 - Supports single-channel and RGB dispersion modes.
 - Applies denoise / filtering and passes caustic data into deferred water lighting.
 
-VibeEngine now has the first caustic resource slices: `HPWaterCaustic.shader` writes a full-resolution RGBA16F caustic texture, supports a screen-space single-channel/RGB dispersion mode, consumes the light-space caustic atlas as an atlas-driven focus input, `HPWaterCausticFilter.shader` performs a two-pass edge-aware denoise/filter, `HPWaterComposite.shader` consumes the filtered texture when available, `HPWaterVolume.shader` injects filtered caustic energy into volume scattering, and `HPWaterCausticAtlas.shader` captures water-only payloads from all four directional-light cascade views into a 2x2 atlas. Diagnostics export `render_diagnostics_hpwater_caustic.bmp`, `render_diagnostics_hpwater_caustic_filtered.bmp`, and `render_diagnostics_hpwater_caustic_atlas.bmp`, and report whether the atlas was consumed by accumulation. This is intentionally not full HPWater parity yet; compute/atomic accumulation and true HPWater RGB spectral ray marching through separate caustic buffers remain pending.
+VibeEngine now has the first caustic resource slices: `HPWaterCaustic.shader` writes a full-resolution RGBA16F caustic texture, supports a screen-space single-channel/RGB dispersion mode, consumes a compute-generated R16F irradiance texture, `HPWaterCausticFilter.shader` performs a two-pass edge-aware denoise/filter, `HPWaterComposite.shader` consumes the filtered texture when available, `HPWaterVolume.shader` injects filtered caustic energy into volume scattering, and `HPWaterCausticAtlas.shader` captures water-only payloads from all four directional-light cascade views into a 2x2 atlas. `HPWaterCausticIrradiance.comp` is the first bridge toward HPWater's original compute path, but it is still not the full atomic RGB accumulation model. Diagnostics export `render_diagnostics_hpwater_caustic.bmp`, `render_diagnostics_hpwater_caustic_compute_irradiance.bmp`, `render_diagnostics_hpwater_caustic_filtered.bmp`, and `render_diagnostics_hpwater_caustic_atlas.bmp`, and report whether the atlas and compute irradiance path were consumed by accumulation. True HPWater light-space refraction/ray marching, shadow-depth atlas reads, atomic irradiance writes, and separate RGB spectral buffers remain pending.
 
 ### Fluid Dynamics
 
@@ -87,7 +88,7 @@ HPWater includes a GPU wave equation system:
 - Compute wave propagation with obstacle boundaries, edge damping, and impulse sources.
 - Global wave height texture for water shaders.
 
-VibeEngine now has a first GPU height-texture pipeline: a persistent R16F ping-pong wave equation pass, serialized component controls, Render Debugger/diagnostic export, and GBuffer sampling for fluid normals/foam. It also has the first obstacle-boundary input: Scene mesh world AABBs are rasterized into a per-ocean R8 obstacle mask and the wave pass damps/blocks propagation at those pixels. This is currently implemented as OpenGL fullscreen passes plus CPU obstacle rasterization because the engine does not yet expose a compute abstraction or HPWater's virtual top-down height capture. HPWater's true top-down water/scene height textures remain pending; the existing CPU mesh/spectrum path is still kept as the geometry fallback.
+VibeEngine now has a first GPU height-texture pipeline: a persistent R16F ping-pong wave equation pass, serialized component controls, Render Debugger/diagnostic export, and GBuffer sampling for fluid normals/foam. It also has the first obstacle-boundary input: Scene mesh world AABBs are rasterized into a per-ocean R8 obstacle mask and the wave pass damps/blocks propagation at those pixels. A minimal OpenGL compute shader abstraction now exists for HPWater caustics, so the fluid path can migrate from fullscreen ping-pong passes to compute next. HPWater's true top-down water/scene height textures remain pending; the existing CPU mesh/spectrum path is still kept as the geometry fallback.
 
 ### BSDF / Light Loop
 
@@ -147,7 +148,8 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
    - Done: add an edge-aware caustic filter/denoise pass and filtered caustic diagnostics.
    - Done: feed filtered caustic energy into HPWater volume lighting.
    - Done: add directional-light cascade water atlas capture and diagnostics.
-   - Pending: add compute caustic accumulation with atomic irradiance writes.
+   - Done: add the first OpenGL compute caustic irradiance pass and feed its R16F output into fullscreen caustic accumulation.
+   - Pending: replace the transitional compute irradiance model with HPWater-style atomic irradiance writes.
    - Pending: add single-channel mode first, then RGB dispersion.
    - Pending: replace the screen-space caustic approximation with HPWater-style light-space cascade caustics.
 
@@ -164,6 +166,7 @@ VibeEngine currently has basic Fresnel reflection, sky reflection, absorption, a
 - Water volume color/transmittance changes with absorption and scatter settings.
 - Caustics appear under shallow waves, change with directional light direction, and produce non-empty `render_diagnostics_hpwater_caustic.bmp` and `render_diagnostics_hpwater_caustic_filtered.bmp`.
 - Light-space caustic atlas capture runs when HPWater and shadows are enabled, produces a non-empty `render_diagnostics_hpwater_caustic_atlas.bmp`, and reports `HPWaterCausticAtlasRan=1`, `HPWaterCausticAtlasValid=1`, `HPWaterCausticAtlasConsumed=1`, and four cascade draws in `render_diagnostics.txt`.
+- Compute caustic irradiance runs when caustics are enabled, produces a non-empty `render_diagnostics_hpwater_caustic_compute_irradiance.bmp`, and reports `HPWaterCausticComputeRan=1` and `HPWaterCausticComputeValid=1`.
 - Filtered caustics remain valid in `render_diagnostics.txt` (`HPWaterCausticFilterRan=1`, `HPWaterCausticFilteredValid=1`) and feed volume lighting through `HPWaterCausticVolumeStrength`.
 - Interactive GPU fluid impulses produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; overlapping non-water meshes produce a valid `render_diagnostics_hpwater_fluid_obstacle.bmp`.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.

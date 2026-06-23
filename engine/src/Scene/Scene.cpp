@@ -1136,6 +1136,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
     m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
+    m_RenderDiagnostics.HPWaterCausticComputeTexture =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTexture();
+    m_RenderDiagnostics.HPWaterCausticComputeValid =
+        m_DeferredRenderer.IsHPWaterCausticComputeIrradianceValid();
+    m_RenderDiagnostics.HPWaterCausticComputeRan =
+        m_DeferredRenderer.DidRunHPWaterCausticComputeIrradiance();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
@@ -2046,6 +2052,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
     m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
+    m_RenderDiagnostics.HPWaterCausticComputeTexture =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTexture();
+    m_RenderDiagnostics.HPWaterCausticComputeValid =
+        m_DeferredRenderer.IsHPWaterCausticComputeIrradianceValid();
+    m_RenderDiagnostics.HPWaterCausticComputeRan =
+        m_DeferredRenderer.DidRunHPWaterCausticComputeIrradiance();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
