@@ -6999,6 +6999,7 @@ private:
         out << "HPWaterGBufferDepth: " << d.HPWaterGBufferDepth << "\n";
         out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
         out << "HPWaterRefractionDataTexture: " << d.HPWaterRefractionDataTexture << "\n";
+        out << "HPWaterRefractionMetaTexture: " << d.HPWaterRefractionMetaTexture << "\n";
 
         auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
             out << "\n[" << name << "]\n";
@@ -7034,9 +7035,14 @@ private:
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_composite.bmp");
         }
         if (dr.IsInitialized() && dr.GetHPWaterRefractionDataTexture() != 0) {
-            writeProbe("HPWaterRefractionData", ProbeTexture(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight()));
+            writeProbe("HPWaterRefractionWorldData", ProbeTexture(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight(),
-                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_data.bmp");
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_world_data.bmp");
+        }
+        if (dr.IsInitialized() && dr.GetHPWaterRefractionMetaTexture() != 0) {
+            writeProbe("HPWaterRefractionMeta", ProbeTexture(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight()));
+            SaveTextureBMP(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_meta.bmp");
         }
         if (dr.IsInitialized() && dr.HasHPWaterGBuffer()) {
             struct HPWaterProbeTarget {
@@ -7089,11 +7095,12 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d compositeTex=%u refractData=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
             d.HPWaterCompositeTexture,
-            d.HPWaterRefractionDataTexture);
+            d.HPWaterRefractionDataTexture,
+            d.HPWaterRefractionMetaTexture);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

@@ -35,6 +35,7 @@ void main() {
 layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 RefractData;
+layout(location = 2) out vec4 RefractMeta;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -46,11 +47,20 @@ uniform sampler2D u_HPWaterDepth;
 uniform float u_NearClip;
 uniform float u_FarClip;
 uniform float u_RefractionStrength;
+uniform mat4 u_InverseViewProjection;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
     return (2.0 * u_NearClip * u_FarClip) /
         max(u_FarClip + u_NearClip - z * (u_FarClip - u_NearClip), 0.0001);
+}
+
+vec3 ReconstructWorldPosition(vec2 uv, float depth) {
+    vec2 ndcXY = uv * 2.0 - 1.0;
+    float ndcZ = depth * 2.0 - 1.0;
+    vec4 world = u_InverseViewProjection * vec4(ndcXY, ndcZ, 1.0);
+    float invW = abs(world.w) > 0.00001 ? 1.0 / world.w : 0.0;
+    return world.xyz * invW;
 }
 
 float ScreenEdgeFade(vec2 uv) {
@@ -114,7 +124,8 @@ void main() {
 
     if (waterDepth >= 0.9999) {
         FragColor = sceneColor;
-        RefractData = vec4(v_UV, 1.0, 0.0);
+        RefractData = vec4(0.0);
+        RefractMeta = vec4(v_UV, 1.0, 0.0);
         return;
     }
 
@@ -123,7 +134,8 @@ void main() {
     // Preserve foreground opaque objects. GL depth is smaller when closer.
     if (sceneDepth < waterDepth - 0.00005) {
         FragColor = sceneColor;
-        RefractData = vec4(v_UV, sceneDepth, 0.0);
+        RefractData = vec4(0.0);
+        RefractMeta = vec4(v_UV, sceneDepth, 0.0);
         return;
     }
 
@@ -160,6 +172,10 @@ void main() {
     }
 
     vec3 refractedColor = texture(u_SceneColor, refractUV).rgb;
+    vec3 waterWorldPos = ReconstructWorldPosition(v_UV, waterDepth);
+    float worldDepth = refractedSceneDepth >= 0.9999 ? waterDepth : refractedSceneDepth;
+    vec3 refractedWorldPos = ReconstructWorldPosition(refractUV, worldDepth);
+    float rayLength = length(refractedWorldPos - waterWorldPos);
     vec3 transmittance = exp(-absorptionColor * (0.35 + normalizedThickness * 2.35));
     vec3 bodyColor = refractedColor * transmittance +
         scatterColor * (vec3(1.0) - transmittance) * (0.45 + 0.35 * normalizedThickness);
@@ -173,7 +189,8 @@ void main() {
     float waterAlpha = clamp(0.28 + normalizedThickness * 0.62 + foam * 0.45, 0.0, 0.92);
 
     FragColor = vec4(mix(sceneColor.rgb, waterColor, waterAlpha), sceneColor.a);
-    RefractData = vec4(refractUV, refractedSceneDepth, normalizedThickness);
+    RefractData = vec4(refractedWorldPos, rayLength);
+    RefractMeta = vec4(refractUV, refractedSceneDepth, normalizedThickness);
 }
 #endif
 

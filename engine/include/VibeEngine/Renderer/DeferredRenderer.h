@@ -32,9 +32,9 @@
  *   shading water as generic opaque geometry.
  *
  * HPWater refraction data:
- *   RT1 of the composite FBO stores refractUV.xy + refractedDepth + normalized
- *   water thickness. Later volumetric passes can reconstruct the refracted
- *   world position from UV/depth once inverse VP data is wired into the pass.
+ *   RT1 of the composite FBO stores refractedWorldPos.xyz + rayLength.
+ *   RT2 stores refractUV.xy + refractedDepth + normalized water thickness for
+ *   diagnostics and future depth-pyramid integration.
  */
 #pragma once
 
@@ -99,7 +99,10 @@ public:
     void LightingPass();
 
     /// Composite HPWater over the lit scene using dedicated water G-buffer data.
-    bool CompositeHPWater(float nearClip, float farClip, float refractionStrength);
+    bool CompositeHPWater(float nearClip,
+                          float farClip,
+                          float refractionStrength,
+                          const glm::mat4& inverseViewProjection);
 
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
@@ -112,6 +115,9 @@ public:
 
     /// Get the HPWater precomputed refraction payload texture.
     uint32_t GetHPWaterRefractionDataTexture() const;
+
+    /// Get the HPWater refraction metadata texture.
+    uint32_t GetHPWaterRefractionMetaTexture() const;
 
     /// Whether the current output texture is the HPWater composite.
     bool IsHPWaterCompositeValid() const { return m_HPWaterCompositeValid; }

@@ -1108,6 +1108,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterGBufferDepth = m_DeferredRenderer.GetHPWaterDepthTexture();
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
+    m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1661,14 +1662,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     }
 
     if (m_RenderDiagnostics.HPWaterGBufferDrawn > 0) {
+        glm::mat4 inverseViewProjection = glm::inverse(viewProjection);
         m_RenderDiagnostics.HPWaterCompositeRan =
-            m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength);
+            m_DeferredRenderer.CompositeHPWater(nearClip, farClip, hpWaterRefractionStrength, inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
     }
 
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
+    m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
     m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
 }
 

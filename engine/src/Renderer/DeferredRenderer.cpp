@@ -174,7 +174,8 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
     compositeSpec.Height = m_Height;
     compositeSpec.ColorFormats = {
         { GL_RGBA16F }, // RT0: Final HPWater composite color
-        { GL_RGBA16F }, // RT1: Refract UV.xy + scene depth + normalized thickness
+        { GL_RGBA16F }, // RT1: Refracted world position.xyz + ray length
+        { GL_RGBA16F }, // RT2: Refract UV.xy + scene depth + normalized thickness
     };
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
@@ -309,7 +310,10 @@ void DeferredRenderer::LightingPass() {
     m_LightingFBO->Unbind();
 }
 
-bool DeferredRenderer::CompositeHPWater(float nearClip, float farClip, float refractionStrength) {
+bool DeferredRenderer::CompositeHPWater(float nearClip,
+                                        float farClip,
+                                        float refractionStrength,
+                                        const glm::mat4& inverseViewProjection) {
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterCompositeValid = false;
@@ -345,6 +349,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip, float farClip, float ref
     m_HPWaterCompositeShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterCompositeShader->SetFloat("u_FarClip", farClip);
     m_HPWaterCompositeShader->SetFloat("u_RefractionStrength", refractionStrength);
+    m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -378,6 +383,11 @@ uint32_t DeferredRenderer::GetHPWaterCompositeTexture() const {
 uint32_t DeferredRenderer::GetHPWaterRefractionDataTexture() const {
     if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 2) return 0;
     return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(1));
+}
+
+uint32_t DeferredRenderer::GetHPWaterRefractionMetaTexture() const {
+    if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 3) return 0;
+    return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(2));
 }
 
 uint32_t DeferredRenderer::GetDepthTexture() const {
