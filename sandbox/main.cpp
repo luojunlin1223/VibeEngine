@@ -7108,8 +7108,12 @@ private:
         out << "HPWaterFluidObstacleValid: " << d.HPWaterFluidObstacleValid << "\n";
         out << "HPWaterFluidObstacleTexture: " << d.HPWaterFluidObstacleTexture << "\n";
         out << "HPWaterFluidHeightFieldValid: " << d.HPWaterFluidHeightFieldValid << "\n";
+        out << "HPWaterFluidHeightCaptureRan: " << d.HPWaterFluidHeightCaptureRan << "\n";
+        out << "HPWaterFluidHeightCaptureValid: " << d.HPWaterFluidHeightCaptureValid << "\n";
         out << "HPWaterFluidWaterHeightTexture: " << d.HPWaterFluidWaterHeightTexture << "\n";
         out << "HPWaterFluidSceneHeightTexture: " << d.HPWaterFluidSceneHeightTexture << "\n";
+        out << "HPWaterFluidWaterCaptureDraws: " << d.HPWaterFluidWaterCaptureDraws << "\n";
+        out << "HPWaterFluidSceneCaptureDraws: " << d.HPWaterFluidSceneCaptureDraws << "\n";
         out << "HPWaterFluidObstacleCount: " << d.HPWaterFluidObstacleCount << "\n";
         out << "HPWaterFluidObstaclePixels: " << d.HPWaterFluidObstaclePixels << "\n";
 
@@ -7422,10 +7426,14 @@ private:
             d.HPWaterFluidObstacleTexture,
             d.HPWaterFluidObstacleCount,
             d.HPWaterFluidObstaclePixels);
-        ImGui::Text("HPWater fluid height fields: valid=%d water=%u scene=%u",
+        ImGui::Text("HPWater fluid height fields: valid=%d capture=%d/%d water=%u scene=%u draws=%u/%u",
             d.HPWaterFluidHeightFieldValid ? 1 : 0,
+            d.HPWaterFluidHeightCaptureRan ? 1 : 0,
+            d.HPWaterFluidHeightCaptureValid ? 1 : 0,
             d.HPWaterFluidWaterHeightTexture,
-            d.HPWaterFluidSceneHeightTexture);
+            d.HPWaterFluidSceneHeightTexture,
+            d.HPWaterFluidWaterCaptureDraws,
+            d.HPWaterFluidSceneCaptureDraws);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

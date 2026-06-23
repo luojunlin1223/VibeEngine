@@ -187,6 +187,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterFluidDynamics.shader");
     }
 
+    m_HPWaterFluidHeightCaptureShader = Shader::CreateFromFile("shaders/HPWaterFluidHeightCapture.shader");
+    if (!m_HPWaterFluidHeightCaptureShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterFluidHeightCapture.shader");
+    }
+
     m_LightingShader = Shader::CreateFromFile("shaders/DeferredLighting.shader");
     if (!m_LightingShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load DeferredLighting.shader");
@@ -229,6 +234,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidCurrentFBO.reset();
     m_HPWaterFluidPreviousFBO.reset();
     m_HPWaterFluidNextFBO.reset();
+    m_HPWaterFluidWaterHeightFBO.reset();
+    m_HPWaterFluidSceneHeightFBO.reset();
     m_GBufferShader.reset();
     m_HPWaterGBufferShader.reset();
     m_HPWaterMaskShader.reset();
@@ -244,6 +251,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidComputeShader.reset();
     m_HPWaterDepthPyramidShader.reset();
     m_HPWaterFluidShader.reset();
+    m_HPWaterFluidHeightCaptureShader.reset();
     m_LightingShader.reset();
     m_DebugShader.reset();
     m_HPWaterCompositeValid = false;
@@ -266,8 +274,13 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidComputeRan = false;
     m_HPWaterFluidObstacleValid = false;
     m_HPWaterFluidHeightFieldValid = false;
+    m_HPWaterFluidHeightCaptureRan = false;
+    m_HPWaterFluidHeightCaptureValid = false;
+    m_HPWaterFluidWaterHeightCaptured = false;
+    m_HPWaterFluidSceneHeightCaptured = false;
     m_HPWaterFluidObstacleResolution = 0;
     m_HPWaterFluidHeightFieldResolution = 0;
+    m_HPWaterFluidHeightCaptureResolution = 0;
     m_HPWaterFluidResolution = 0;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
@@ -473,6 +486,28 @@ void DeferredRenderer::CreateHPWaterFluidFBO(uint32_t resolution) {
     ClearHPWaterFluidFBOs();
 }
 
+void DeferredRenderer::CreateHPWaterFluidHeightCaptureFBO(uint32_t resolution) {
+    resolution = std::clamp(resolution, 16u, 1024u);
+    if (m_HPWaterFluidWaterHeightFBO &&
+        m_HPWaterFluidSceneHeightFBO &&
+        m_HPWaterFluidHeightCaptureResolution == resolution) {
+        return;
+    }
+
+    FramebufferSpec heightSpec;
+    heightSpec.Width = resolution;
+    heightSpec.Height = resolution;
+    heightSpec.ColorFormats = {
+        { GL_R16F },
+    };
+    m_HPWaterFluidWaterHeightFBO = Framebuffer::Create(heightSpec);
+    m_HPWaterFluidSceneHeightFBO = Framebuffer::Create(heightSpec);
+    m_HPWaterFluidHeightCaptureResolution = resolution;
+    m_HPWaterFluidHeightCaptureValid = false;
+    m_HPWaterFluidWaterHeightCaptured = false;
+    m_HPWaterFluidSceneHeightCaptured = false;
+}
+
 void DeferredRenderer::DestroyHPWaterFluidObstacleTexture() {
     if (m_HPWaterFluidObstacleTexture != 0) {
         VE_GPU_UNTRACK(GPUResourceType::Texture, m_HPWaterFluidObstacleTexture);
@@ -495,7 +530,85 @@ void DeferredRenderer::DestroyHPWaterFluidHeightFieldTextures() {
         m_HPWaterFluidSceneHeightTexture = 0;
     }
     m_HPWaterFluidHeightFieldResolution = 0;
-    m_HPWaterFluidHeightFieldValid = false;
+    m_HPWaterFluidHeightFieldValid = m_HPWaterFluidHeightCaptureValid;
+}
+
+bool DeferredRenderer::BeginHPWaterFluidHeightCaptureTarget(const std::shared_ptr<Framebuffer>& target,
+                                                            uint32_t resolution,
+                                                            const glm::vec3& boxCenter,
+                                                            const glm::vec3& boxSize) {
+    if (!m_HPWaterFluidHeightCaptureShader)
+        return false;
+
+    resolution = std::clamp(resolution, 16u, 1024u);
+    CreateHPWaterFluidHeightCaptureFBO(resolution);
+    if (!target)
+        return false;
+
+    target->Bind();
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, static_cast<GLsizei>(resolution), static_cast<GLsizei>(resolution));
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_MAX);
+    glBlendFunc(GL_ONE, GL_ONE);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    m_HPWaterFluidHeightCaptureRan = true;
+    m_HPWaterFluidBoxCenter = boxCenter;
+    m_HPWaterFluidBoxSize = glm::max(boxSize, glm::vec3(0.001f));
+    return true;
+}
+
+void DeferredRenderer::EndHPWaterFluidHeightCaptureTarget() {
+    glBlendEquation(GL_FUNC_ADD);
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+bool DeferredRenderer::BeginHPWaterFluidWaterHeightCapture(uint32_t resolution,
+                                                           const glm::vec3& boxCenter,
+                                                           const glm::vec3& boxSize) {
+    CreateHPWaterFluidHeightCaptureFBO(resolution);
+    m_HPWaterFluidWaterHeightCaptured = false;
+    m_HPWaterFluidHeightCaptureValid = false;
+    return BeginHPWaterFluidHeightCaptureTarget(m_HPWaterFluidWaterHeightFBO,
+                                                resolution,
+                                                boxCenter,
+                                                boxSize);
+}
+
+bool DeferredRenderer::BeginHPWaterFluidSceneHeightCapture(uint32_t resolution,
+                                                           const glm::vec3& boxCenter,
+                                                           const glm::vec3& boxSize) {
+    CreateHPWaterFluidHeightCaptureFBO(resolution);
+    m_HPWaterFluidSceneHeightCaptured = false;
+    m_HPWaterFluidHeightCaptureValid = false;
+    return BeginHPWaterFluidHeightCaptureTarget(m_HPWaterFluidSceneHeightFBO,
+                                                resolution,
+                                                boxCenter,
+                                                boxSize);
+}
+
+void DeferredRenderer::EndHPWaterFluidWaterHeightCapture(bool valid) {
+    EndHPWaterFluidHeightCaptureTarget();
+    m_HPWaterFluidWaterHeightCaptured = valid;
+    m_HPWaterFluidHeightCaptureValid = m_HPWaterFluidWaterHeightCaptured && m_HPWaterFluidSceneHeightCaptured;
+    m_HPWaterFluidHeightFieldValid = m_HPWaterFluidHeightCaptureValid || m_HPWaterFluidHeightFieldValid;
+}
+
+void DeferredRenderer::EndHPWaterFluidSceneHeightCapture(bool valid) {
+    EndHPWaterFluidHeightCaptureTarget();
+    m_HPWaterFluidSceneHeightCaptured = valid;
+    m_HPWaterFluidHeightCaptureValid = m_HPWaterFluidWaterHeightCaptured && m_HPWaterFluidSceneHeightCaptured;
+    m_HPWaterFluidHeightFieldValid = m_HPWaterFluidHeightCaptureValid || m_HPWaterFluidHeightFieldValid;
 }
 
 bool DeferredRenderer::UploadHPWaterFluidObstacleMask(uint32_t resolution,
@@ -1748,6 +1861,9 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         const GLuint currentTexture = static_cast<GLuint>(m_HPWaterFluidCurrentFBO->GetColorAttachmentID());
         const GLuint previousTexture = static_cast<GLuint>(m_HPWaterFluidPreviousFBO->GetColorAttachmentID());
         const GLuint nextTexture = static_cast<GLuint>(m_HPWaterFluidNextFBO->GetColorAttachmentID());
+        const GLuint waterHeightTexture = static_cast<GLuint>(GetHPWaterFluidWaterHeightTexture());
+        const GLuint sceneHeightTexture = static_cast<GLuint>(GetHPWaterFluidSceneHeightTexture());
+        const bool heightFieldValid = IsHPWaterFluidHeightFieldValid();
 
         m_HPWaterFluidComputeShader->Bind();
         glBindImageTexture(0, currentTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16F);
@@ -1759,12 +1875,10 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
                       m_HPWaterFluidObstacleValid ? static_cast<GLuint>(m_HPWaterFluidObstacleTexture) : 0);
         m_HPWaterFluidComputeShader->SetInt("u_ObstacleMask", 0);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D,
-                      m_HPWaterFluidHeightFieldValid ? static_cast<GLuint>(m_HPWaterFluidWaterHeightTexture) : 0);
+        glBindTexture(GL_TEXTURE_2D, heightFieldValid ? waterHeightTexture : 0);
         m_HPWaterFluidComputeShader->SetInt("u_WaterHeightTexture", 1);
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D,
-                      m_HPWaterFluidHeightFieldValid ? static_cast<GLuint>(m_HPWaterFluidSceneHeightTexture) : 0);
+        glBindTexture(GL_TEXTURE_2D, heightFieldValid ? sceneHeightTexture : 0);
         m_HPWaterFluidComputeShader->SetInt("u_SceneHeightTexture", 2);
         m_HPWaterFluidComputeShader->SetFloat("u_WaveSpeed", std::clamp(waveSpeed, 0.0f, 2.0f));
         m_HPWaterFluidComputeShader->SetFloat("u_DampingFactor", std::clamp(damping, 0.0f, 0.98f));
@@ -1772,7 +1886,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeShader->SetFloat("u_WaveSourceRadius", std::max(sourceRadiusPixels, 1.0f));
         m_HPWaterFluidComputeShader->SetVec3("u_WaveSourceUV", glm::vec3(sourceU, sourceV, 0.0f));
         m_HPWaterFluidComputeShader->SetInt("u_ObstacleMaskEnabled", m_HPWaterFluidObstacleValid ? 1 : 0);
-        m_HPWaterFluidComputeShader->SetInt("u_HeightFieldEnabled", m_HPWaterFluidHeightFieldValid ? 1 : 0);
+        m_HPWaterFluidComputeShader->SetInt("u_HeightFieldEnabled", heightFieldValid ? 1 : 0);
         m_HPWaterFluidComputeShader->SetFloat("u_HeightObstacleEpsilon", 0.0005f);
 
         const uint32_t groupCount = (resolution + 15u) / 16u;
@@ -1825,14 +1939,16 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
                   m_HPWaterFluidObstacleValid ? static_cast<GLuint>(m_HPWaterFluidObstacleTexture) : 0);
     m_HPWaterFluidShader->SetInt("u_ObstacleMask", 2);
 
+    const GLuint waterHeightTexture = static_cast<GLuint>(GetHPWaterFluidWaterHeightTexture());
+    const GLuint sceneHeightTexture = static_cast<GLuint>(GetHPWaterFluidSceneHeightTexture());
+    const bool heightFieldValid = IsHPWaterFluidHeightFieldValid();
+
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D,
-                  m_HPWaterFluidHeightFieldValid ? static_cast<GLuint>(m_HPWaterFluidWaterHeightTexture) : 0);
+    glBindTexture(GL_TEXTURE_2D, heightFieldValid ? waterHeightTexture : 0);
     m_HPWaterFluidShader->SetInt("u_WaterHeightTexture", 3);
 
     glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D,
-                  m_HPWaterFluidHeightFieldValid ? static_cast<GLuint>(m_HPWaterFluidSceneHeightTexture) : 0);
+    glBindTexture(GL_TEXTURE_2D, heightFieldValid ? sceneHeightTexture : 0);
     m_HPWaterFluidShader->SetInt("u_SceneHeightTexture", 4);
 
     m_HPWaterFluidShader->SetFloat("u_WaveSpeed", std::clamp(waveSpeed, 0.0f, 2.0f));
@@ -1841,7 +1957,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     m_HPWaterFluidShader->SetFloat("u_WaveSourceRadius", std::max(sourceRadiusPixels, 1.0f));
     m_HPWaterFluidShader->SetVec3("u_WaveSourceUV", glm::vec3(sourceU, sourceV, 0.0f));
     m_HPWaterFluidShader->SetInt("u_ObstacleMaskEnabled", m_HPWaterFluidObstacleValid ? 1 : 0);
-    m_HPWaterFluidShader->SetInt("u_HeightFieldEnabled", m_HPWaterFluidHeightFieldValid ? 1 : 0);
+    m_HPWaterFluidShader->SetInt("u_HeightFieldEnabled", heightFieldValid ? 1 : 0);
     m_HPWaterFluidShader->SetFloat("u_HeightObstacleEpsilon", 0.0005f);
 
     glBindVertexArray(m_QuadVAO);
@@ -1954,6 +2070,18 @@ uint32_t DeferredRenderer::GetHPWaterCausticAtlasHeight() const {
 uint32_t DeferredRenderer::GetHPWaterFluidHeightTexture() const {
     if (!m_HPWaterFluidCurrentFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterFluidCurrentFBO->GetColorAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterFluidWaterHeightTexture() const {
+    if (m_HPWaterFluidHeightCaptureValid && m_HPWaterFluidWaterHeightFBO)
+        return static_cast<uint32_t>(m_HPWaterFluidWaterHeightFBO->GetColorAttachmentID());
+    return m_HPWaterFluidWaterHeightTexture;
+}
+
+uint32_t DeferredRenderer::GetHPWaterFluidSceneHeightTexture() const {
+    if (m_HPWaterFluidHeightCaptureValid && m_HPWaterFluidSceneHeightFBO)
+        return static_cast<uint32_t>(m_HPWaterFluidSceneHeightFBO->GetColorAttachmentID());
+    return m_HPWaterFluidSceneHeightTexture;
 }
 
 uint32_t DeferredRenderer::GetHPWaterVolumeWidth() const {

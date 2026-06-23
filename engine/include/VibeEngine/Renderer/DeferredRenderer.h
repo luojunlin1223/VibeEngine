@@ -120,6 +120,9 @@ public:
     /// Get the HPWater light-space caustic atlas shader.
     std::shared_ptr<Shader> GetHPWaterCausticAtlasShader() const { return m_HPWaterCausticAtlasShader; }
 
+    /// Get the HPWater top-down fluid height capture shader.
+    std::shared_ptr<Shader> GetHPWaterFluidHeightCaptureShader() const { return m_HPWaterFluidHeightCaptureShader; }
+
     /// Execute the deferred lighting pass (fullscreen quad).
     /// Reads G-buffer textures and computes PBR lighting.
     void LightingPass();
@@ -204,6 +207,15 @@ public:
                                         const std::vector<float>& sceneHeights,
                                         const glm::vec3& boxCenter,
                                         const glm::vec3& boxSize);
+
+    bool BeginHPWaterFluidWaterHeightCapture(uint32_t resolution,
+                                             const glm::vec3& boxCenter,
+                                             const glm::vec3& boxSize);
+    bool BeginHPWaterFluidSceneHeightCapture(uint32_t resolution,
+                                             const glm::vec3& boxCenter,
+                                             const glm::vec3& boxSize);
+    void EndHPWaterFluidWaterHeightCapture(bool valid);
+    void EndHPWaterFluidSceneHeightCapture(bool valid);
 
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
@@ -291,13 +303,15 @@ public:
 
     uint32_t GetHPWaterFluidHeightTexture() const;
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
-    uint32_t GetHPWaterFluidWaterHeightTexture() const { return m_HPWaterFluidWaterHeightTexture; }
-    uint32_t GetHPWaterFluidSceneHeightTexture() const { return m_HPWaterFluidSceneHeightTexture; }
+    uint32_t GetHPWaterFluidWaterHeightTexture() const;
+    uint32_t GetHPWaterFluidSceneHeightTexture() const;
     uint32_t GetHPWaterFluidResolution() const { return m_HPWaterFluidResolution; }
     bool IsHPWaterFluidDynamicsValid() const { return m_HPWaterFluidValid; }
     bool DidHPWaterFluidComputeRun() const { return m_HPWaterFluidComputeRan; }
     bool IsHPWaterFluidObstacleValid() const { return m_HPWaterFluidObstacleValid; }
     bool IsHPWaterFluidHeightFieldValid() const { return m_HPWaterFluidHeightFieldValid; }
+    bool DidHPWaterFluidHeightCaptureRun() const { return m_HPWaterFluidHeightCaptureRan; }
+    bool IsHPWaterFluidHeightCaptureValid() const { return m_HPWaterFluidHeightCaptureValid; }
     glm::vec3 GetHPWaterFluidBoxCenter() const { return m_HPWaterFluidBoxCenter; }
     glm::vec3 GetHPWaterFluidBoxSize() const { return m_HPWaterFluidBoxSize; }
 
@@ -337,8 +351,14 @@ private:
     void CreateHPWaterMaskFBO();
     void CreateHPWaterDepthPyramid();
     void CreateHPWaterFluidFBO(uint32_t resolution);
+    void CreateHPWaterFluidHeightCaptureFBO(uint32_t resolution);
     void DestroyHPWaterFluidObstacleTexture();
     void DestroyHPWaterFluidHeightFieldTextures();
+    bool BeginHPWaterFluidHeightCaptureTarget(const std::shared_ptr<Framebuffer>& target,
+                                              uint32_t resolution,
+                                              const glm::vec3& boxCenter,
+                                              const glm::vec3& boxSize);
+    void EndHPWaterFluidHeightCaptureTarget();
     void DestroyHPWaterDepthPyramid();
     void DestroyHPWaterCausticComputeTexture();
     void ClearHPWaterFluidFBOs();
@@ -423,16 +443,23 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterFluidCurrentFBO;
     std::shared_ptr<Framebuffer> m_HPWaterFluidPreviousFBO;
     std::shared_ptr<Framebuffer> m_HPWaterFluidNextFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterFluidWaterHeightFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterFluidSceneHeightFBO;
     bool m_HPWaterFluidValid = false;
     bool m_HPWaterFluidInitialized = false;
     bool m_HPWaterFluidComputeRan = false;
     bool m_HPWaterFluidObstacleValid = false;
     bool m_HPWaterFluidHeightFieldValid = false;
+    bool m_HPWaterFluidHeightCaptureRan = false;
+    bool m_HPWaterFluidHeightCaptureValid = false;
+    bool m_HPWaterFluidWaterHeightCaptured = false;
+    bool m_HPWaterFluidSceneHeightCaptured = false;
     uint32_t m_HPWaterFluidObstacleTexture = 0;
     uint32_t m_HPWaterFluidObstacleResolution = 0;
     uint32_t m_HPWaterFluidWaterHeightTexture = 0;
     uint32_t m_HPWaterFluidSceneHeightTexture = 0;
     uint32_t m_HPWaterFluidHeightFieldResolution = 0;
+    uint32_t m_HPWaterFluidHeightCaptureResolution = 0;
     uint32_t m_HPWaterFluidResolution = 0;
     glm::vec3 m_HPWaterFluidBoxCenter = glm::vec3(0.0f);
     glm::vec3 m_HPWaterFluidBoxSize = glm::vec3(1.0f);
@@ -453,6 +480,7 @@ private:
     std::shared_ptr<ComputeShader> m_HPWaterFluidComputeShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
+    std::shared_ptr<Shader> m_HPWaterFluidHeightCaptureShader;
     std::shared_ptr<Shader> m_LightingShader;
     std::shared_ptr<Shader> m_DebugShader;
 

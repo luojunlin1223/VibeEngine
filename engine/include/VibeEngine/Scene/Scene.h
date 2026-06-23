@@ -259,8 +259,12 @@ struct RenderDiagnostics {
     bool HPWaterFluidObstacleValid = false;
     uint32_t HPWaterFluidObstacleTexture = 0;
     bool HPWaterFluidHeightFieldValid = false;
+    bool HPWaterFluidHeightCaptureRan = false;
+    bool HPWaterFluidHeightCaptureValid = false;
     uint32_t HPWaterFluidWaterHeightTexture = 0;
     uint32_t HPWaterFluidSceneHeightTexture = 0;
+    uint32_t HPWaterFluidWaterCaptureDraws = 0;
+    uint32_t HPWaterFluidSceneCaptureDraws = 0;
     uint32_t HPWaterFluidObstacleCount = 0;
     uint32_t HPWaterFluidObstaclePixels = 0;
 
