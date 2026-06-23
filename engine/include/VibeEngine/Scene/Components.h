@@ -408,6 +408,8 @@ struct HPWaterComponent {
     float ThinSSSStrength = 0.35f;
     float BacklitTransmissionStrength = 0.45f;
     float ForwardScatterStrength = 0.65f;
+    float SpecularFGDStrength = 1.0f;
+    float GGXEnergyCompensation = 1.0f;
 
     bool  CausticsEnabled = true;
     float CausticStrength = 1.0f;

@@ -1362,6 +1362,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterThinSSSStrength = 0.0f;
     float hpWaterBacklitTransmissionStrength = 0.0f;
     float hpWaterForwardScatterStrength = 0.0f;
+    float hpWaterSpecularFGDStrength = 0.0f;
+    float hpWaterGGXEnergyCompensation = 0.0f;
     bool hpWaterCausticsEnabled = false;
     float hpWaterCausticStrength = 0.0f;
     float hpWaterCausticScale = 12.0f;
@@ -1522,6 +1524,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterForwardScatterStrength = std::max(
                     hpWaterForwardScatterStrength,
                     water->ForwardScatterStrength);
+                hpWaterSpecularFGDStrength = std::max(
+                    hpWaterSpecularFGDStrength,
+                    water->SpecularFGDStrength);
+                hpWaterGGXEnergyCompensation = std::max(
+                    hpWaterGGXEnergyCompensation,
+                    water->GGXEnergyCompensation);
                 hpWaterCausticsEnabled = hpWaterCausticsEnabled || water->CausticsEnabled;
                 hpWaterCausticStrength = std::max(hpWaterCausticStrength, water->CausticStrength);
                 hpWaterCausticScale = std::max(hpWaterCausticScale, water->CausticScale);
@@ -2082,6 +2090,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterThinSSSStrength = hpWaterThinSSSStrength;
         m_RenderDiagnostics.HPWaterBacklitTransmissionStrength = hpWaterBacklitTransmissionStrength;
         m_RenderDiagnostics.HPWaterForwardScatterStrength = hpWaterForwardScatterStrength;
+        m_RenderDiagnostics.HPWaterSpecularFGDStrength = hpWaterSpecularFGDStrength;
+        m_RenderDiagnostics.HPWaterGGXEnergyCompensation = hpWaterGGXEnergyCompensation;
         m_RenderDiagnostics.HPWaterLightLoopInputsValid = true;
         m_RenderDiagnostics.HPWaterSkyReflectionIntensity = ps.SkyReflectionIntensity;
         m_RenderDiagnostics.HPWaterIndirectDiffuseIntensity =
@@ -2146,6 +2156,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterThinSSSStrength,
                                             hpWaterBacklitTransmissionStrength,
                                             hpWaterForwardScatterStrength,
+                                            hpWaterSpecularFGDStrength,
+                                            hpWaterGGXEnergyCompensation,
                                             cameraPos,
                                             lightDir,
                                             lightColor,
@@ -2215,6 +2227,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterThinSSSStrength,
                                                 hpWaterBacklitTransmissionStrength,
                                                 hpWaterForwardScatterStrength,
+                                                hpWaterSpecularFGDStrength,
+                                                hpWaterGGXEnergyCompensation,
                                                 cameraPos,
                                                 lightDir,
                                                 lightColor,

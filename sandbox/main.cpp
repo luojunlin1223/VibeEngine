@@ -1292,6 +1292,8 @@ private:
             water.ScatterColor = { 0.035f, 0.28f, 0.36f };
             water.AbsorptionColor = { 0.020f, 0.060f, 0.090f };
             water.FoamIntensity = 0.18f;
+            water.SpecularFGDStrength = 1.0f;
+            water.GGXEnergyCompensation = 1.0f;
 
             auto& mr = waterEntity.AddComponent<VE::MeshRendererComponent>();
             mr.Mat = VE::MaterialLibrary::Get("Water");
@@ -1300,6 +1302,9 @@ private:
         } else {
             if (!waterEntity.HasComponent<VE::HPWaterComponent>())
                 waterEntity.AddComponent<VE::HPWaterComponent>();
+            auto& water = waterEntity.GetComponent<VE::HPWaterComponent>();
+            water.SpecularFGDStrength = std::clamp(water.SpecularFGDStrength, 0.0f, 1.0f);
+            water.GGXEnergyCompensation = std::clamp(water.GGXEnergyCompensation, 0.0f, 2.0f);
             auto& mr = waterEntity.HasComponent<VE::MeshRendererComponent>()
                 ? waterEntity.GetComponent<VE::MeshRendererComponent>()
                 : waterEntity.AddComponent<VE::MeshRendererComponent>();
@@ -6293,6 +6298,8 @@ private:
                 ImGui::SliderFloat("Thin SSS", &w.ThinSSSStrength, 0.0f, 3.0f, "%.3f");
                 ImGui::SliderFloat("Backlit Transmission", &w.BacklitTransmissionStrength, 0.0f, 3.0f, "%.3f");
                 ImGui::SliderFloat("Forward Scatter", &w.ForwardScatterStrength, 0.0f, 3.0f, "%.3f");
+                ImGui::SliderFloat("Specular FGD", &w.SpecularFGDStrength, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("GGX Energy Compensation", &w.GGXEnergyCompensation, 0.0f, 2.0f, "%.3f");
                 ImGui::SeparatorText("Caustics");
                 ImGui::Checkbox("Caustics", &w.CausticsEnabled);
                 ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
@@ -7062,6 +7069,8 @@ private:
         out << "HPWaterThinSSSStrength: " << d.HPWaterThinSSSStrength << "\n";
         out << "HPWaterBacklitTransmissionStrength: " << d.HPWaterBacklitTransmissionStrength << "\n";
         out << "HPWaterForwardScatterStrength: " << d.HPWaterForwardScatterStrength << "\n";
+        out << "HPWaterSpecularFGDStrength: " << d.HPWaterSpecularFGDStrength << "\n";
+        out << "HPWaterGGXEnergyCompensation: " << d.HPWaterGGXEnergyCompensation << "\n";
         out << "HPWaterLightLoopInputsValid: " << d.HPWaterLightLoopInputsValid << "\n";
         out << "HPWaterSkyReflectionIntensity: " << d.HPWaterSkyReflectionIntensity << "\n";
         out << "HPWaterIndirectDiffuseIntensity: " << d.HPWaterIndirectDiffuseIntensity << "\n";
@@ -7391,12 +7400,14 @@ private:
             d.HPWaterRefractionThicknessOffset,
             d.HPWaterRefractionSampleCount,
             d.HPWaterRefractionJitterEnabled ? 1 : 0);
-        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f",
+        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f fgd=%.3f energy=%.3f",
             d.HPWaterEnvironmentReflectionIntensity,
             d.HPWaterMacroScatterStrength,
             d.HPWaterThinSSSStrength,
             d.HPWaterBacklitTransmissionStrength,
-            d.HPWaterForwardScatterStrength);
+            d.HPWaterForwardScatterStrength,
+            d.HPWaterSpecularFGDStrength,
+            d.HPWaterGGXEnergyCompensation);
         ImGui::Text("HPWater light loop: valid=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSkyReflectionIntensity,
