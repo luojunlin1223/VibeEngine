@@ -88,7 +88,6 @@ struct TransformComponent {
 };
 
 struct DirectionalLightComponent {
-    std::array<float, 3> Direction = { 0.3f, 1.0f, 0.5f }; // world-space direction (auto-normalized)
     std::array<float, 3> Color    = { 1.0f, 1.0f, 1.0f };
     float Intensity = 1.0f;
 

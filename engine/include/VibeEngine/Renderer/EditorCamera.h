@@ -52,9 +52,9 @@ public:
 
     // Setters for restoring saved state
     void SetPosition2D(const glm::vec2& pos) { m_Position2D = pos; RecalculateMatrix(); }
-    void SetZoom(float z) { m_Zoom = z; RecalculateMatrix(); }
+    void SetZoom(float z);
     void SetFocalPoint(const glm::vec3& fp) { m_FocalPoint = fp; RecalculatePosition3D(); RecalculateMatrix(); }
-    void SetDistance(float d) { m_Distance = d; RecalculatePosition3D(); RecalculateMatrix(); }
+    void SetDistance(float d);
     void SetYaw(float y) { m_Yaw = y; RecalculatePosition3D(); RecalculateMatrix(); }
     void SetPitch(float p) { m_Pitch = p; RecalculatePosition3D(); RecalculateMatrix(); }
     void SetFlySpeed(float s) { m_FlySpeed = s; }
@@ -85,7 +85,7 @@ private:
     float m_Pitch =  30.0f;  // degrees
     float m_FOV   = 45.0f;   // degrees
     float m_NearClip = 0.1f;
-    float m_FarClip  = 1000.0f;
+    float m_FarClip  = 1000000.0f;
     glm::vec3 m_Position3D = { 0.0f, 0.0f, 0.0f };
 
     // Fly-through speed

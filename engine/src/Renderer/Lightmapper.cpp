@@ -115,9 +115,7 @@ std::shared_ptr<Texture2D> Lightmapper::BakeEntity(
         for (auto e : lightView) {
             if (!scene.IsEntityActiveInHierarchy(e)) continue;
             auto& dl = lightView.get<DirectionalLightComponent>(e);
-            glm::vec3 dir(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
-            float len = glm::length(dir);
-            if (len > 0.0001f) dirLightDir = dir / len;
+            dirLightDir = scene.GetEntityForward(e);
             dirLightColor = glm::vec3(dl.Color[0], dl.Color[1], dl.Color[2]);
             dirLightIntensity = dl.Intensity;
             break;

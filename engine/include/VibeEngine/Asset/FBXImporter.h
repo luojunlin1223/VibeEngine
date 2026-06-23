@@ -27,6 +27,11 @@ struct FBXImportSettings {
     bool ImportAnimations = true;
 
     // Read-only mesh info (populated after import)
+    float SourceUnitMeters = 1.0f;
+    float ImportedUnitMeters = 1.0f;
+    float BoundsSizeX = 0.0f;
+    float BoundsSizeY = 0.0f;
+    float BoundsSizeZ = 0.0f;
     uint32_t VertexCount = 0;
     uint32_t TriangleCount = 0;
     uint32_t SubMeshCount = 0;

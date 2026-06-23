@@ -1,0 +1,240 @@
+Scene: Untitled
+PipelineSettings:
+  HDREnabled: true
+  ToneMapMode: 1
+  HDRExposure: 1
+  SkyEnabled: true
+  SkyTopColor: [0.419999987, 0.680000007, 0.920000017]
+  SkyBottomColor: [0.899999976, 0.920000017, 0.959999979]
+  IndirectLightingEnabled: true
+  IndirectDiffuseIntensity: 0.349999994
+  SkyReflectionIntensity: 0.200000003
+  IndirectTint: [1, 1, 1]
+  BloomEnabled: false
+  BloomThreshold: 0.800000012
+  BloomIntensity: 1
+  BloomIterations: 5
+  VignetteEnabled: true
+  VignetteIntensity: 0.319999993
+  VignetteSmoothness: 0.5
+  ColorAdjustEnabled: false
+  ColorExposure: 0
+  ColorContrast: 0
+  ColorSaturation: 0
+  ColorFilter: [1, 1, 1]
+  ColorGamma: 1
+  SMHEnabled: false
+  SMH_Shadows: [1, 1, 1]
+  SMH_Midtones: [1, 1, 1]
+  SMH_Highlights: [1, 1, 1]
+  SMH_ShadowStart: 0
+  SMH_ShadowEnd: 0.300000012
+  SMH_HighlightStart: 0.550000012
+  SMH_HighlightEnd: 1
+  CurvesEnabled: false
+  CurvesMaster:
+    - [0, 0]
+    - [1, 1]
+  CurvesRed:
+    - [0, 0]
+    - [1, 1]
+  CurvesGreen:
+    - [0, 0]
+    - [1, 1]
+  CurvesBlue:
+    - [0, 0]
+    - [1, 1]
+  TonemapEnabled: false
+  TonemapMode: 2
+  FogEnabled: true
+  FogMode: 2
+  FogColor: [0.699999988, 0.75, 0.800000012]
+  FogDensity: 0.00800000038
+  FogStart: 80
+  FogEnd: 180
+  FogHeightFalloff: 0
+  FogMaxOpacity: 0.449999988
+  VolFogEnabled: false
+  VolFogDensity: 0.0149999997
+  VolFogScattering: 0.699999988
+  VolFogLightIntensity: 1
+  VolFogColor: [0.899999976, 0.899999976, 1]
+  VolFogSteps: 32
+  VolFogMaxDistance: 100
+  VolFogHeightFalloff: 0.0500000007
+  VolFogBaseHeight: 0
+  MotionBlurEnabled: false
+  MotionBlurStrength: 0.5
+  MotionBlurSamples: 8
+  SSAOEnabled: false
+  SSAORadius: 0.5
+  SSAOBias: 0.0250000004
+  SSAOIntensity: 1
+  SSAOKernelSize: 32
+  SSREnabled: false
+  SSRMaxSteps: 64
+  SSRStepSize: 0.0500000007
+  SSRThickness: 0.100000001
+  SSRMaxDistance: 50
+  DoFEnabled: false
+  DoFFocusDistance: 10
+  DoFFocusRange: 5
+  DoFMaxBlur: 4
+  DoFApertureSize: 0.0500000007
+  AAMode: 2
+  FXAAEdgeThreshold: 0.0833000019
+  FXAAEdgeThresholdMin: 0.0625
+  FXAASubpixelQuality: 0.75
+  TAABlendFactor: 0.100000001
+  OcclusionCullingEnabled: false
+  GBufferDebugView: 0
+  ShadowsEnabled: true
+  ShadowResolution: 2048
+  ShadowMaxDistance: 200
+  ShadowSplitLambda: 0.75
+  ShadowDepthBias: 0.00249999994
+  ShadowNormalBias: 0.0299999993
+  ShadowPCFQuality: 2
+  ShadowCascadeBlendWidth: 0.100000001
+Entities:
+  - Entity: 910000000000000001
+    TagComponent:
+      Tag: LauncherRoot
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+  - Entity: 910000000000000002
+    Parent: 910000000000000001
+    TagComponent:
+      Tag: LauncherTrain
+      GameObjectTag: Player
+      Layer: 0
+    TransformComponent:
+      Position: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+  - Entity: 910000000000000003
+    Parent: 910000000000000002
+    TagComponent:
+      Tag: LauncherLocomotive
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 0.200000003, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: -1
+      MeshSource: Assets/Models/KenneyTrainKit/train-locomotive-a.fbx
+      Color: [1, 1, 1, 1]
+      CastShadows: true
+      MaterialName: Lit
+      MaterialOverrides:
+        - Name: u_MainTex
+          Type: Texture2D
+          Value: Assets/Models/KenneyTrainKit/colormap.png
+        - Name: u_Metallic
+          Type: Float
+          Value: 0
+          RangeMin: 0
+          RangeMax: 1
+        - Name: u_Roughness
+          Type: Float
+          Value: 0.5
+          RangeMin: 0
+          RangeMax: 1
+        - Name: u_BumpScale
+          Type: Float
+          Value: 1
+          RangeMin: 0
+          RangeMax: 2
+        - Name: u_OcclusionStrength
+          Type: Float
+          Value: 1
+          RangeMin: 0
+          RangeMax: 1
+        - Name: u_EmissionColor
+          Type: Vec4
+          Value: [0, 0, 0, 1]
+        - Name: u_Cutoff
+          Type: Float
+          Value: 0
+          RangeMin: 0
+          RangeMax: 1
+        - Name: u_AO
+          Type: Float
+          Value: 1
+          RangeMin: 0
+          RangeMax: 1
+  - Entity: 910000000000000004
+    Parent: 910000000000000002
+    TagComponent:
+      Tag: LauncherCarriageA
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 0.200000003, -4.4000001]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: -1
+      MeshSource: Assets/Models/KenneyTrainKit/train-carriage-box.fbx
+      Color: [1, 1, 1, 1]
+      CastShadows: true
+      MaterialName: Lit
+      MaterialOverrides:
+        - Name: u_MainTex
+          Type: Texture2D
+          Value: Assets/Models/KenneyTrainKit/colormap.png
+  - Entity: 910000000000000005
+    Parent: 910000000000000002
+    TagComponent:
+      Tag: LauncherCarriageB
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 0.200000003, -8]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    MeshRendererComponent:
+      MeshType: -1
+      MeshSource: Assets/Models/KenneyTrainKit/train-carriage-box.fbx
+      Color: [1, 1, 1, 1]
+      CastShadows: true
+      MaterialName: Lit
+      MaterialOverrides:
+        - Name: u_MainTex
+          Type: Texture2D
+          Value: Assets/Models/KenneyTrainKit/colormap.png
+  - Entity: 910000000000000011
+    Parent: 910000000000000001
+    TagComponent:
+      Tag: Directional Light
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 8, 0]
+      Rotation: [114.199997, 132.300003, 0]
+      Scale: [1, 1, 1]
+    DirectionalLightComponent:
+      Color: [1, 0.959999979, 0.899999976]
+      Intensity: 4
+  - Entity: 910000000000000012
+    TagComponent:
+      Tag: Camera
+      GameObjectTag: MainCamera
+      Layer: 0
+    TransformComponent:
+      Position: [-0.0365716591, 3.10078764, -11.6622677]
+      Rotation: [25.7500095, 361.649872, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      ProjectionType: Perspective
+      FOV: 60
+      Size: 5
+      NearClip: 0.100000001
+      FarClip: 1000
+      Priority: 0

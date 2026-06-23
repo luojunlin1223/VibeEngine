@@ -22,8 +22,27 @@
 #include <set>
 #include <cmath>
 #include <cctype>
+#include <unordered_map>
 
 static const char* s_SceneFilter = "VibeEngine Scene (*.vscene)\0*.vscene\0All Files\0*.*\0";
+
+enum class SceneGizmoTool {
+    Translate,
+    Rotate
+};
+
+static std::array<float, 3> EulerFromForwardDirection(const glm::vec3& rawDirection) {
+    glm::vec3 direction = rawDirection;
+    float len = glm::length(direction);
+    if (len <= 0.0001f)
+        direction = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+    else
+        direction /= len;
+
+    float yaw = std::asin(std::clamp(direction.x, -1.0f, 1.0f));
+    float pitch = std::atan2(-direction.y, direction.z);
+    return { glm::degrees(pitch), glm::degrees(yaw), 0.0f };
+}
 
 class Sandbox : public VE::Application {
 public:
@@ -131,8 +150,10 @@ protected:
         if (m_PlayMode && m_Paused && !m_StepOneFrame)
             shouldUpdate = false;
 
-        if (shouldUpdate)
+        if (shouldUpdate) {
             m_Scene->OnUpdate(m_DeltaTime);
+            UpdateLauncherPrototype(m_DeltaTime);
+        }
 
         if (m_StepOneFrame) {
             m_StepOneFrame = false;
@@ -320,8 +341,7 @@ protected:
         {
             auto lv = m_Scene->GetAllEntitiesWith<VE::DirectionalLightComponent>();
             for (auto e : lv) {
-                auto& dl = lv.get<VE::DirectionalLightComponent>(e);
-                s.LightDir = glm::normalize(glm::vec3(dl.Direction[0], dl.Direction[1], dl.Direction[2]));
+                s.LightDir = m_Scene->GetEntityForward(e);
                 break;
             }
         }
@@ -847,6 +867,10 @@ void main() { FragColor = texture(u_Source, v_UV); }
                     CutSelectedEntity();
                 if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false))
                     PasteEntity();
+                if (!ctrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_W, false))
+                    m_GizmoTool = SceneGizmoTool::Translate;
+                if (!ctrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_R, false))
+                    m_GizmoTool = SceneGizmoTool::Rotate;
             }
         }
 
@@ -855,36 +879,50 @@ void main() { FragColor = texture(u_Source, v_UV); }
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                 auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
 
-                // Project mouse in world space using the stored world position/rotation
-                float val = VE::GizmoRenderer::ProjectMouseOntoAxis(
-                    m_DraggingAxis, m_DragWorldStartPos, io.MousePos.x, io.MousePos.y, m_DragWorldRot);
-                float worldDelta = val - m_DragOriginVal;
-
-                // Build world-space delta vector along the dragged axis
-                glm::vec3 worldAxis(0.0f);
                 int axisIdx = (m_DraggingAxis == VE::GizmoAxis::X) ? 0
                             : (m_DraggingAxis == VE::GizmoAxis::Y) ? 1 : 2;
-                worldAxis[axisIdx] = 1.0f;
-                worldAxis = m_DragWorldRot * worldAxis;
-                glm::vec3 worldDeltaVec = worldAxis * worldDelta;
 
-                // Convert world delta to parent-local delta
-                glm::vec3 localDelta = glm::vec3(m_DragParentInverse * glm::vec4(worldDeltaVec, 0.0f));
-                tc.Position[0] = m_DragStartPos[0] + localDelta.x;
-                tc.Position[1] = m_DragStartPos[1] + localDelta.y;
-                tc.Position[2] = m_DragStartPos[2] + localDelta.z;
+                if (m_GizmoTool == SceneGizmoTool::Rotate) {
+                    float angleDelta = (io.MouseDelta.x - io.MouseDelta.y) * 0.35f;
+                    tc.Rotation[axisIdx] += angleDelta;
 
-                // Batch move: apply same world delta to all other selected entities
-                for (auto selEntity : m_SelectedEntities) {
-                    if (selEntity == m_SelectedEntity.GetHandle()) continue;
-                    if (!m_Scene->GetRegistry().valid(selEntity)) continue;
-                    if (!m_Scene->GetRegistry().any_of<VE::TransformComponent>(selEntity)) continue;
-                    auto it = m_BatchDragStartPositions.find(selEntity);
-                    if (it != m_BatchDragStartPositions.end()) {
+                    for (auto selEntity : m_SelectedEntities) {
+                        if (selEntity == m_SelectedEntity.GetHandle()) continue;
+                        if (!m_Scene->GetRegistry().valid(selEntity)) continue;
+                        if (!m_Scene->GetRegistry().any_of<VE::TransformComponent>(selEntity)) continue;
                         auto& otherTc = m_Scene->GetRegistry().get<VE::TransformComponent>(selEntity);
-                        otherTc.Position[0] = it->second[0] + localDelta.x;
-                        otherTc.Position[1] = it->second[1] + localDelta.y;
-                        otherTc.Position[2] = it->second[2] + localDelta.z;
+                        otherTc.Rotation[axisIdx] += angleDelta;
+                    }
+                } else {
+                    // Project mouse in world space using the stored world position/rotation
+                    float val = VE::GizmoRenderer::ProjectMouseOntoAxis(
+                        m_DraggingAxis, m_DragWorldStartPos, io.MousePos.x, io.MousePos.y, m_DragWorldRot);
+                    float worldDelta = val - m_DragOriginVal;
+
+                    // Build world-space delta vector along the dragged axis
+                    glm::vec3 worldAxis(0.0f);
+                    worldAxis[axisIdx] = 1.0f;
+                    worldAxis = m_DragWorldRot * worldAxis;
+                    glm::vec3 worldDeltaVec = worldAxis * worldDelta;
+
+                    // Convert world delta to parent-local delta
+                    glm::vec3 localDelta = glm::vec3(m_DragParentInverse * glm::vec4(worldDeltaVec, 0.0f));
+                    tc.Position[0] = m_DragStartPos[0] + localDelta.x;
+                    tc.Position[1] = m_DragStartPos[1] + localDelta.y;
+                    tc.Position[2] = m_DragStartPos[2] + localDelta.z;
+
+                    // Batch move: apply same world delta to all other selected entities
+                    for (auto selEntity : m_SelectedEntities) {
+                        if (selEntity == m_SelectedEntity.GetHandle()) continue;
+                        if (!m_Scene->GetRegistry().valid(selEntity)) continue;
+                        if (!m_Scene->GetRegistry().any_of<VE::TransformComponent>(selEntity)) continue;
+                        auto it = m_BatchDragStartPositions.find(selEntity);
+                        if (it != m_BatchDragStartPositions.end()) {
+                            auto& otherTc = m_Scene->GetRegistry().get<VE::TransformComponent>(selEntity);
+                            otherTc.Position[0] = it->second[0] + localDelta.x;
+                            otherTc.Position[1] = it->second[1] + localDelta.y;
+                            otherTc.Position[2] = it->second[2] + localDelta.z;
+                        }
                     }
                 }
             } else {
@@ -959,13 +997,20 @@ void main() { FragColor = texture(u_Source, v_UV); }
                     worldRot[0] = glm::normalize(worldRot[0]);
                     worldRot[1] = glm::normalize(worldRot[1]);
                     worldRot[2] = glm::normalize(worldRot[2]);
-                    axis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                        worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                    if (m_GizmoTool == SceneGizmoTool::Rotate) {
+                        axis = VE::GizmoRenderer::HitTestRotationGizmo(
+                            worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                    } else {
+                        axis = VE::GizmoRenderer::HitTestTranslationGizmo(
+                            worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                    }
                 }
 
                 if (axis != VE::GizmoAxis::None) {
                     // Start gizmo drag (batch move will be applied for all selected)
-                    if (!m_PlayMode) m_CommandHistory.BeginPropertyEdit("Move Entity");
+                    if (!m_PlayMode)
+                        m_CommandHistory.BeginPropertyEdit(
+                            m_GizmoTool == SceneGizmoTool::Rotate ? "Rotate Entity" : "Move Entity");
                     m_DraggingAxis = axis;
                     auto& tc = m_SelectedEntity.GetComponent<VE::TransformComponent>();
                     m_DragStartPos = { tc.Position[0], tc.Position[1], tc.Position[2] };
@@ -999,7 +1044,9 @@ void main() { FragColor = texture(u_Source, v_UV); }
                     }
                 } else {
                     // Click to select entity or start box selection
-                    VE::Entity hitEntity = HitTestEntities(io.MousePos.x, io.MousePos.y);
+                    VE::Entity hitEntity = HitTestCameraGizmoIcons(io.MousePos.x, io.MousePos.y);
+                    if (!hitEntity)
+                        hitEntity = HitTestEntities(io.MousePos.x, io.MousePos.y);
                     if (hitEntity) {
                         if (io.KeyCtrl) {
                             ToggleEntitySelection(hitEntity.GetHandle());
@@ -1087,7 +1134,316 @@ void main() { FragColor = texture(u_Source, v_UV); }
     }
 
 private:
+    bool IsLauncherScene() const {
+        if (m_CurrentScenePath.empty())
+            return false;
+
+        return std::filesystem::path(m_CurrentScenePath).stem().generic_string() == "launcher";
+    }
+
+    VE::Entity FindEntityByName(const std::string& name) {
+        auto view = m_Scene->GetAllEntitiesWith<VE::TagComponent>();
+        for (auto entityID : view) {
+            auto& tag = view.get<VE::TagComponent>(entityID);
+            if (tag.Tag == name)
+                return VE::Entity(entityID, &*m_Scene);
+        }
+        return {};
+    }
+
+    VE::Entity FindMainCameraEntity() {
+        auto view = m_Scene->GetAllEntitiesWith<VE::TagComponent, VE::CameraComponent>();
+        for (auto entityID : view) {
+            auto& tag = view.get<VE::TagComponent>(entityID);
+            if (tag.GameObjectTag == "MainCamera")
+                return VE::Entity(entityID, &*m_Scene);
+        }
+        return FindEntityByName("Camera");
+    }
+
+    VE::Entity CreateLauncherPrimitive(const std::string& name,
+                                       const std::shared_ptr<VE::VertexArray>& mesh,
+                                       const glm::vec3& position,
+                                       const glm::vec3& scale,
+                                       const std::array<float, 4>& color,
+                                       bool castShadows,
+                                       VE::Entity parent = {}) {
+        auto entity = m_Scene->CreateEntity(name);
+        auto& tc = entity.GetComponent<VE::TransformComponent>();
+        tc.Position = { position.x, position.y, position.z };
+        tc.Scale = { scale.x, scale.y, scale.z };
+
+        auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
+        mr.Mesh = mesh;
+        mr.Mat = VE::MaterialLibrary::Get("Lit");
+        mr.Color = color;
+        mr.CastShadows = castShadows;
+
+        for (int i = 0; i < VE::MeshLibrary::GetMeshCount(); ++i) {
+            if (mesh == VE::MeshLibrary::GetMeshByIndex(i)) {
+                mr.LocalBounds = VE::MeshLibrary::GetMeshAABB(i);
+                break;
+            }
+        }
+
+        if (parent)
+            m_Scene->SetParent(entity.GetHandle(), parent.GetHandle());
+
+        return entity;
+    }
+
+    std::string ResolveLauncherAssetPath(const std::string& relativePath) const {
+        std::filesystem::path runtimePath(relativePath);
+        if (std::filesystem::exists(runtimePath))
+            return runtimePath.generic_string();
+
+        std::filesystem::path sourcePath = std::filesystem::path(VE_PROJECT_ROOT) / relativePath;
+        if (std::filesystem::exists(sourcePath))
+            return sourcePath.generic_string();
+
+        return relativePath;
+    }
+
+    std::shared_ptr<VE::Texture2D> GetLauncherTexture(const std::string& resolvedTexturePath) {
+        static std::unordered_map<std::string, std::shared_ptr<VE::Texture2D>> textureCache;
+
+        auto it = textureCache.find(resolvedTexturePath);
+        if (it != textureCache.end())
+            return it->second;
+
+        auto texture = VE::Texture2D::Create(resolvedTexturePath);
+        textureCache[resolvedTexturePath] = texture;
+        return texture;
+    }
+
+    void ApplyLauncherMainTexture(VE::MeshRendererComponent& mr, const std::string& texturePath) {
+        const std::string resolvedTexturePath = ResolveLauncherAssetPath(texturePath);
+
+        for (auto& ov : mr.MaterialOverrides) {
+            if (ov.Name != "u_MainTex")
+                continue;
+
+            ov.Type = VE::MaterialPropertyType::Texture2D;
+            ov.FlagName = "u_HasMainTex";
+            if (ov.TexturePath == resolvedTexturePath && ov.TextureRef)
+                return;
+
+            ov.TexturePath = resolvedTexturePath;
+            ov.TextureRef = GetLauncherTexture(resolvedTexturePath);
+            return;
+        }
+
+        VE::MaterialProperty mainTex;
+        mainTex.Name = "u_MainTex";
+        mainTex.DisplayName = "Albedo";
+        mainTex.Type = VE::MaterialPropertyType::Texture2D;
+        mainTex.TexturePath = resolvedTexturePath;
+        mainTex.TextureRef = GetLauncherTexture(resolvedTexturePath);
+        mainTex.FlagName = "u_HasMainTex";
+        mr.MaterialOverrides.push_back(std::move(mainTex));
+    }
+
+    void EnsureLauncherImportedTextures() {
+        static constexpr const char* kKenneyTrainKit = "KenneyTrainKit";
+        static constexpr const char* kKenneyColorMap = "Assets/Models/KenneyTrainKit/colormap.png";
+
+        auto view = m_Scene->GetAllEntitiesWith<VE::MeshRendererComponent>();
+        for (auto entityID : view) {
+            auto& mr = view.get<VE::MeshRendererComponent>(entityID);
+            if (mr.MeshSourcePath.find(kKenneyTrainKit) == std::string::npos)
+                continue;
+
+            mr.Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+            ApplyLauncherMainTexture(mr, kKenneyColorMap);
+        }
+    }
+
+    VE::Entity CreateLauncherImportedMesh(const std::string& name,
+                                          const std::string& meshPath,
+                                          const glm::vec3& position,
+                                          const glm::vec3& scale,
+                                          const std::array<float, 4>& color,
+                                          bool castShadows,
+                                          VE::Entity parent = {}) {
+        const std::string resolvedPath = ResolveLauncherAssetPath(meshPath);
+        auto meshAsset = VE::MeshImporter::GetOrLoad(resolvedPath);
+        if (!meshAsset || !meshAsset->VAO)
+            return {};
+
+        auto entity = m_Scene->CreateEntity(name);
+        auto& tc = entity.GetComponent<VE::TransformComponent>();
+        tc.Position = { position.x, position.y, position.z };
+        tc.Scale = { scale.x, scale.y, scale.z };
+
+        auto& mr = entity.AddComponent<VE::MeshRendererComponent>();
+        mr.Mesh = meshAsset->VAO;
+        mr.Mat = VE::MaterialLibrary::Get("Lit");
+        mr.Color = color;
+        mr.MeshSourcePath = resolvedPath;
+        mr.CastShadows = castShadows;
+        mr.LocalBounds = meshAsset->BoundingBox;
+        ApplyLauncherMainTexture(mr, "Assets/Models/KenneyTrainKit/colormap.png");
+
+        if (parent)
+            m_Scene->SetParent(entity.GetHandle(), parent.GetHandle());
+
+        return entity;
+    }
+
+    bool LauncherRailSegmentExists(int segmentIndex) {
+        return static_cast<bool>(FindEntityByName("RailSegment_" + std::to_string(segmentIndex)));
+    }
+
+    void CreateLauncherRailSegment(int segmentIndex, float segmentLength) {
+        const float centerZ = static_cast<float>(segmentIndex) * segmentLength;
+        auto root = m_Scene->CreateEntity("RailSegment_" + std::to_string(segmentIndex));
+        auto& rootTag = root.GetComponent<VE::TagComponent>();
+        rootTag.GameObjectTag = "EditorOnly";
+
+        auto track = CreateLauncherImportedMesh("RailroadStraight_" + std::to_string(segmentIndex),
+            "Assets/Models/KenneyTrainKit/railroad-straight.fbx",
+            { 0.0f, 0.0f, centerZ },
+            { 1.0f, 1.0f, 2.35f },
+            { 1.0f, 1.0f, 1.0f, 1.0f },
+            true,
+            root);
+
+        if (!track) {
+            CreateLauncherPrimitive("RailBed_" + std::to_string(segmentIndex),
+                VE::MeshLibrary::GetPlane(),
+                { 0.0f, 0.0f, centerZ },
+                { 6.0f, 1.0f, segmentLength },
+                { 0.28f, 0.27f, 0.24f, 1.0f },
+                false,
+                root);
+
+            CreateLauncherPrimitive("RailLeft_" + std::to_string(segmentIndex),
+                VE::MeshLibrary::GetCube(),
+                { -0.85f, 0.12f, centerZ },
+                { 0.12f, 0.12f, segmentLength * 0.96f },
+                { 0.42f, 0.42f, 0.44f, 1.0f },
+                true,
+                root);
+
+            CreateLauncherPrimitive("RailRight_" + std::to_string(segmentIndex),
+                VE::MeshLibrary::GetCube(),
+                { 0.85f, 0.12f, centerZ },
+                { 0.12f, 0.12f, segmentLength * 0.96f },
+                { 0.42f, 0.42f, 0.44f, 1.0f },
+                true,
+                root);
+
+            for (int i = 0; i < 6; ++i) {
+                const float offset = -segmentLength * 0.42f + static_cast<float>(i) * (segmentLength * 0.84f / 5.0f);
+                CreateLauncherPrimitive("RailTie_" + std::to_string(segmentIndex) + "_" + std::to_string(i),
+                    VE::MeshLibrary::GetCube(),
+                    { 0.0f, 0.05f, centerZ + offset },
+                    { 2.35f, 0.1f, 0.28f },
+                    { 0.22f, 0.13f, 0.075f, 1.0f },
+                    true,
+                    root);
+            }
+        }
+    }
+
+    void DestroyLauncherRailSegmentsOutside(int minSegment, int maxSegment) {
+        std::vector<VE::Entity> toDestroy;
+        auto view = m_Scene->GetAllEntitiesWith<VE::TagComponent>();
+        for (auto entityID : view) {
+            auto& tag = view.get<VE::TagComponent>(entityID);
+            const std::string prefix = "RailSegment_";
+            if (tag.Tag.rfind(prefix, 0) != 0)
+                continue;
+
+            int segmentIndex = 0;
+            try {
+                segmentIndex = std::stoi(tag.Tag.substr(prefix.size()));
+            } catch (...) {
+                continue;
+            }
+
+            if (segmentIndex < minSegment || segmentIndex > maxSegment)
+                toDestroy.emplace_back(entityID, &*m_Scene);
+        }
+
+        for (auto entity : toDestroy)
+            m_Scene->DestroyEntity(entity);
+    }
+
+    void UpdateLauncherPrototype(float deltaTime) {
+        if (!IsLauncherScene())
+            return;
+
+        EnsureLauncherImportedTextures();
+
+        if (!m_PlayMode)
+            return;
+
+        auto train = FindEntityByName("LauncherTrain");
+        if (!train || !train.HasComponent<VE::TransformComponent>())
+            return;
+
+        constexpr float kTrainSpeed = 7.5f;
+        constexpr float kSegmentLength = 12.0f;
+        constexpr int kSegmentsBehind = 3;
+        constexpr int kSegmentsAhead = 9;
+
+        auto& trainTc = train.GetComponent<VE::TransformComponent>();
+        trainTc.Position[2] += kTrainSpeed * deltaTime;
+
+        const int currentSegment = static_cast<int>(std::floor(trainTc.Position[2] / kSegmentLength));
+        const int minSegment = currentSegment - kSegmentsBehind;
+        const int maxSegment = currentSegment + kSegmentsAhead;
+
+        for (int segment = minSegment; segment <= maxSegment; ++segment) {
+            if (!LauncherRailSegmentExists(segment))
+                CreateLauncherRailSegment(segment, kSegmentLength);
+        }
+        DestroyLauncherRailSegmentsOutside(minSegment, maxSegment);
+
+        auto camera = FindMainCameraEntity();
+        if (camera && camera.HasComponent<VE::TransformComponent>()) {
+            auto& cameraTc = camera.GetComponent<VE::TransformComponent>();
+            cameraTc.Position = { trainTc.Position[0], trainTc.Position[1] + 6.0f, trainTc.Position[2] - 15.0f };
+        }
+    }
+
     // ── Scene picking ─────────────────────────────────────────────────
+
+    std::string NormalizeMeshAssetPath(const std::string& path) const {
+        if (path.empty())
+            return {};
+
+        std::filesystem::path fsPath(path);
+        if (!fsPath.is_absolute() && !std::filesystem::exists(fsPath))
+            fsPath = std::filesystem::path(m_AssetDatabase.GetAssetsRoot()) / path;
+
+        std::error_code ec;
+        auto canonical = std::filesystem::weakly_canonical(fsPath, ec);
+        if (!ec)
+            return canonical.generic_string();
+
+        return fsPath.lexically_normal().generic_string();
+    }
+
+    void RebindSceneMeshAsset(const std::string& changedPath, const std::shared_ptr<VE::MeshAsset>& meshAsset) {
+        if (!meshAsset || !meshAsset->VAO)
+            return;
+
+        const std::string changedNorm = NormalizeMeshAssetPath(changedPath);
+        auto view = m_Scene->GetAllEntitiesWith<VE::MeshRendererComponent>();
+        for (auto entityID : view) {
+            auto& mr = view.get<VE::MeshRendererComponent>(entityID);
+            if (mr.MeshSourcePath.empty())
+                continue;
+
+            if (NormalizeMeshAssetPath(mr.MeshSourcePath) != changedNorm)
+                continue;
+
+            mr.Mesh = meshAsset->VAO;
+            mr.LocalBounds = meshAsset->BoundingBox;
+        }
+    }
 
     // Ray-AABB intersection (slab method). Returns hit distance or -1.
     static float RayAABBIntersect(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
@@ -1157,6 +1513,45 @@ private:
     }
 
     // ── Scene operations ──────────────────────────────────────────────
+
+    VE::Entity HitTestCameraGizmoIcons(float screenX, float screenY) {
+        if (!m_GizmosEnabled)
+            return {};
+
+        constexpr float kHitHalfWidth = 42.0f;
+        constexpr float kHitHalfHeight = 39.0f;
+
+        VE::Entity best;
+        float bestScore = std::numeric_limits<float>::max();
+        auto view = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::CameraComponent>();
+        for (auto entityID : view) {
+            glm::vec3 worldPos = glm::vec3(m_Scene->GetWorldTransform(entityID)[3]);
+            glm::vec4 clip = m_FrameVP * glm::vec4(worldPos, 1.0f);
+            if (clip.w <= 0.01f)
+                continue;
+
+            glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            if (ndc.x < -1.2f || ndc.x > 1.2f ||
+                ndc.y < -1.2f || ndc.y > 1.2f ||
+                ndc.z < -1.2f || ndc.z > 1.2f)
+                continue;
+
+            float iconX = m_SceneVpX + (ndc.x * 0.5f + 0.5f) * m_SceneVpW;
+            float iconY = m_SceneVpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * m_SceneVpH;
+            float dx = std::abs(screenX - iconX);
+            float dy = std::abs(screenY - iconY);
+            if (dx > kHitHalfWidth || dy > kHitHalfHeight)
+                continue;
+
+            float score = dx * dx + dy * dy;
+            if (score < bestScore) {
+                bestScore = score;
+                best = VE::Entity(entityID, &*m_Scene);
+            }
+        }
+
+        return best;
+    }
 
     void CreateAssetFile(const std::string& dir, const std::string& baseName, const std::string& ext) {
         std::string assetsRoot = m_AssetDatabase.GetAssetsRoot();
@@ -1341,10 +1736,74 @@ private:
         VE_INFO("New scene created");
     }
 
+    static bool PathSegmentEquals(const std::filesystem::path& segment, const char* text) {
+        std::string value = segment.string();
+        std::string expected = text;
+        std::transform(value.begin(), value.end(), value.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::transform(expected.begin(), expected.end(), expected.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return value == expected;
+    }
+
+    std::string GetSourceSceneMirrorPath(const std::string& scenePath) const {
+        if (scenePath.empty())
+            return {};
+
+        std::error_code ec;
+        std::filesystem::path sourceAssets = std::filesystem::path(VE_PROJECT_ROOT) / "Assets";
+        sourceAssets = std::filesystem::weakly_canonical(sourceAssets, ec);
+        if (ec)
+            sourceAssets = std::filesystem::absolute(std::filesystem::path(VE_PROJECT_ROOT) / "Assets").lexically_normal();
+
+        std::filesystem::path absoluteScene = std::filesystem::absolute(scenePath).lexically_normal();
+        if (absoluteScene.extension() != ".vscene")
+            return {};
+
+        ec.clear();
+        std::filesystem::path canonicalScene = std::filesystem::weakly_canonical(absoluteScene, ec);
+        if (!ec)
+            absoluteScene = canonicalScene;
+
+        auto relToSource = absoluteScene.lexically_relative(sourceAssets);
+        if (!relToSource.empty() && *relToSource.begin() != "..")
+            return {};
+
+        std::filesystem::path relAssetPath;
+        bool foundAssets = false;
+        for (auto it = absoluteScene.begin(); it != absoluteScene.end(); ++it) {
+            if (!foundAssets) {
+                foundAssets = PathSegmentEquals(*it, "Assets");
+                continue;
+            }
+            relAssetPath /= *it;
+        }
+
+        if (!foundAssets || relAssetPath.empty())
+            return {};
+
+        std::filesystem::path mirrorPath = (sourceAssets / relAssetPath).lexically_normal();
+        if (mirrorPath == absoluteScene)
+            return {};
+
+        return mirrorPath.generic_string();
+    }
+
+    void SerializeSceneWithSourceMirror(const std::string& scenePath) {
+        VE::SceneSerializer serializer(m_Scene);
+        serializer.Serialize(scenePath);
+
+        const std::string mirrorPath = GetSourceSceneMirrorPath(scenePath);
+        if (!mirrorPath.empty()) {
+            std::filesystem::create_directories(std::filesystem::path(mirrorPath).parent_path());
+            serializer.Serialize(mirrorPath);
+            VE_INFO("Mirrored scene save to source Assets: {0}", mirrorPath);
+        }
+    }
+
     void SaveScene() {
         if (m_CurrentScenePath.empty()) { SaveSceneAs(); return; }
-        VE::SceneSerializer serializer(m_Scene);
-        serializer.Serialize(m_CurrentScenePath);
+        SerializeSceneWithSourceMirror(m_CurrentScenePath);
         ClearDirty();
         m_AutoSaveTimer = 0.0f;
         // Remove auto-save file since scene is now saved
@@ -1355,8 +1814,7 @@ private:
         std::string path = VE::FileDialog::SaveFile(s_SceneFilter, GetWindow().GetNativeWindow());
         if (!path.empty()) {
             m_CurrentScenePath = path;
-            VE::SceneSerializer serializer(m_Scene);
-            serializer.Serialize(m_CurrentScenePath);
+            SerializeSceneWithSourceMirror(m_CurrentScenePath);
             ClearDirty();
             m_AutoSaveTimer = 0.0f;
             std::filesystem::remove("ProjectSettings/AutoSave.vscene");
@@ -1692,6 +2150,7 @@ private:
             auto e = m_Scene->CreateEntity("Directional Light");
             auto& tc = e.GetComponent<VE::TransformComponent>();
             tc.Position = { 0, 10, 0 };
+            tc.Rotation = EulerFromForwardDirection(glm::vec3(0.3f, 1.0f, 0.5f));
             e.AddComponent<VE::DirectionalLightComponent>();
         }
 
@@ -1781,6 +2240,25 @@ private:
         // Last opened scene
         out << YAML::Key << "LastScene" << YAML::Value << m_CurrentScenePath;
 
+        // Main window state
+        if (auto* window = GetWindow().GetNativeWindow()) {
+            int width = 0;
+            int height = 0;
+            int posX = 0;
+            int posY = 0;
+            glfwGetWindowSize(window, &width, &height);
+            glfwGetWindowPos(window, &posX, &posY);
+
+            out << YAML::Key << "MainWindow" << YAML::Value << YAML::BeginMap;
+            out << YAML::Key << "Width" << YAML::Value << width;
+            out << YAML::Key << "Height" << YAML::Value << height;
+            out << YAML::Key << "PosX" << YAML::Value << posX;
+            out << YAML::Key << "PosY" << YAML::Value << posY;
+            out << YAML::Key << "Maximized" << YAML::Value
+                << (glfwGetWindowAttrib(window, GLFW_MAXIMIZED) == GLFW_TRUE);
+            out << YAML::EndMap;
+        }
+
         // Camera state
         out << YAML::Key << "Camera" << YAML::Value << YAML::BeginMap;
         out << YAML::Key << "Mode" << YAML::Value
@@ -1834,6 +2312,23 @@ private:
 
         try {
             YAML::Node root = YAML::LoadFile(path);
+
+            // Restore main window size and placement after GLFW has created it.
+            if (auto winNode = root["MainWindow"]) {
+                if (auto* window = GetWindow().GetNativeWindow()) {
+                    int width = winNode["Width"].as<int>(1280);
+                    int height = winNode["Height"].as<int>(720);
+                    width = std::clamp(width, 640, 8192);
+                    height = std::clamp(height, 480, 8192);
+
+                    if (winNode["PosX"] && winNode["PosY"])
+                        glfwSetWindowPos(window, winNode["PosX"].as<int>(), winNode["PosY"].as<int>());
+
+                    glfwSetWindowSize(window, width, height);
+                    if (winNode["Maximized"].as<bool>(false))
+                        glfwMaximizeWindow(window);
+                }
+            }
 
             // Restore last scene
             if (root["LastScene"]) {
@@ -2502,6 +2997,8 @@ private:
                 if (ImGui::MenuItem("Create Directional Light"))
                     m_CommandHistory.Execute("Create Light", [this]() {
                         auto e = m_Scene->CreateEntity("Directional Light");
+                        e.GetComponent<VE::TransformComponent>().Rotation =
+                            EulerFromForwardDirection(glm::vec3(0.3f, 1.0f, 0.5f));
                         e.AddComponent<VE::DirectionalLightComponent>();
                     });
                 if (ImGui::MenuItem("Create Light Probe"))
@@ -2774,10 +3271,18 @@ private:
                 VE::GizmoAxis displayAxis = m_DraggingAxis;
                 ImGuiIO& io = ImGui::GetIO();
                 if (displayAxis == VE::GizmoAxis::None && m_ViewportHovered) {
-                    displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
-                        worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                    if (m_GizmoTool == SceneGizmoTool::Rotate) {
+                        displayAxis = VE::GizmoRenderer::HitTestRotationGizmo(
+                            worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                    } else {
+                        displayAxis = VE::GizmoRenderer::HitTestTranslationGizmo(
+                            worldPos, io.MousePos.x, io.MousePos.y, 12.0f, worldRot);
+                    }
                 }
-                VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
+                if (m_GizmoTool == SceneGizmoTool::Rotate)
+                    VE::GizmoRenderer::DrawRotationGizmo(m_SelectedEntity, displayAxis, worldMat);
+                else
+                    VE::GizmoRenderer::DrawTranslationGizmo(m_SelectedEntity, displayAxis, worldMat);
             }
 
             // Draw IK target gizmos for selected entity
@@ -3071,6 +3576,8 @@ private:
                 if (ImGui::MenuItem("Directional Light"))
                     m_CommandHistory.Execute("Create Light", [this]() {
                         auto e = m_Scene->CreateEntity("Directional Light");
+                        e.GetComponent<VE::TransformComponent>().Rotation =
+                            EulerFromForwardDirection(glm::vec3(0.3f, 1.0f, 0.5f));
                         e.AddComponent<VE::DirectionalLightComponent>();
                         SelectEntityOnly(e);
                     });
@@ -3709,10 +4216,15 @@ private:
             m_MeshSettingsDirty = false;
 
             // If no cached info, do a quick import to populate counts
-            if (m_InspectedMeshSettings.VertexCount == 0) {
+            if (m_InspectedMeshSettings.VertexCount == 0 || m_InspectedMeshSettings.BoundsSizeX == 0.0f) {
                 VE::FBXImportSettings probe = m_InspectedMeshSettings;
                 auto mesh = VE::FBXImporter::Import(absPath, probe);
                 if (mesh) {
+                    m_InspectedMeshSettings.SourceUnitMeters  = probe.SourceUnitMeters;
+                    m_InspectedMeshSettings.ImportedUnitMeters = probe.ImportedUnitMeters;
+                    m_InspectedMeshSettings.BoundsSizeX       = probe.BoundsSizeX;
+                    m_InspectedMeshSettings.BoundsSizeY       = probe.BoundsSizeY;
+                    m_InspectedMeshSettings.BoundsSizeZ       = probe.BoundsSizeZ;
                     m_InspectedMeshSettings.VertexCount   = probe.VertexCount;
                     m_InspectedMeshSettings.TriangleCount  = probe.TriangleCount;
                     m_InspectedMeshSettings.SubMeshCount   = probe.SubMeshCount;
@@ -3731,6 +4243,12 @@ private:
         ImGui::Text("Vertices:   %u", m_InspectedMeshSettings.VertexCount);
         ImGui::Text("Triangles:  %u", m_InspectedMeshSettings.TriangleCount);
         ImGui::Text("Sub-meshes: %u", m_InspectedMeshSettings.SubMeshCount);
+        ImGui::Text("Source Unit: %.6g m", m_InspectedMeshSettings.SourceUnitMeters);
+        ImGui::Text("Import Unit: %.6g m", m_InspectedMeshSettings.ImportedUnitMeters);
+        ImGui::Text("Bounds: %.3f x %.3f x %.3f",
+            m_InspectedMeshSettings.BoundsSizeX,
+            m_InspectedMeshSettings.BoundsSizeY,
+            m_InspectedMeshSettings.BoundsSizeZ);
         if (m_InspectedMeshSettings.BoneCount > 0)
             ImGui::Text("Bones:      %u", m_InspectedMeshSettings.BoneCount);
         if (m_InspectedMeshSettings.ClipCount > 0)
@@ -3772,6 +4290,11 @@ private:
             VE::FBXImportSettings newSettings = m_InspectedMeshSettings;
             auto mesh = VE::FBXImporter::Import(absPath, newSettings);
             if (mesh) {
+                m_InspectedMeshSettings.SourceUnitMeters  = newSettings.SourceUnitMeters;
+                m_InspectedMeshSettings.ImportedUnitMeters = newSettings.ImportedUnitMeters;
+                m_InspectedMeshSettings.BoundsSizeX       = newSettings.BoundsSizeX;
+                m_InspectedMeshSettings.BoundsSizeY       = newSettings.BoundsSizeY;
+                m_InspectedMeshSettings.BoundsSizeZ       = newSettings.BoundsSizeZ;
                 m_InspectedMeshSettings.VertexCount   = newSettings.VertexCount;
                 m_InspectedMeshSettings.TriangleCount  = newSettings.TriangleCount;
                 m_InspectedMeshSettings.SubMeshCount   = newSettings.SubMeshCount;
@@ -3780,6 +4303,8 @@ private:
 
                 VE::FBXImporter::SaveSettings(metaPath, m_InspectedMeshSettings);
                 VE::MeshImporter::InvalidateCache(absPath);
+                auto refreshedMesh = VE::MeshImporter::GetOrLoad(absPath);
+                RebindSceneMeshAsset(absPath, refreshedMesh);
                 m_MeshSettingsDirty = false;
             }
         }
@@ -4342,9 +4867,11 @@ private:
             DrawComponentContextMenu<VE::DirectionalLightComponent>("##DirLightCtx", "DirectionalLight", removeLight);
             if (openLight) {
                 auto& dl = m_SelectedEntity.GetComponent<VE::DirectionalLightComponent>();
-                ImGui::DragFloat3("Direction", dl.Direction.data(), 0.01f);
-                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Light Direction");
-                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                glm::vec3 worldDir = m_Scene->GetEntityForward(m_SelectedEntity.GetHandle());
+                float direction[3] = { worldDir.x, worldDir.y, worldDir.z };
+                ImGui::BeginDisabled();
+                ImGui::DragFloat3("World Z Direction", direction, 0.0f);
+                ImGui::EndDisabled();
                 ImGui::ColorEdit3("Light Color", dl.Color.data());
                 if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Light Color");
                 if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
@@ -6291,6 +6818,18 @@ private:
             }
         }
 
+        if (ImGui::CollapsingHeader("Indirect Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool indirectDirty = false;
+            indirectDirty |= ImGui::Checkbox("Enable Indirect Lighting", &ps.IndirectLightingEnabled);
+            if (ps.IndirectLightingEnabled) {
+                indirectDirty |= ImGui::SliderFloat("Diffuse Intensity##Indirect", &ps.IndirectDiffuseIntensity, 0.0f, 2.0f, "%.2f");
+                indirectDirty |= ImGui::SliderFloat("Sky Reflection Intensity", &ps.SkyReflectionIntensity, 0.0f, 2.0f, "%.2f");
+                indirectDirty |= ImGui::ColorEdit3("Tint##Indirect", ps.IndirectTint.data());
+            }
+            if (indirectDirty)
+                MarkDirty();
+        }
+
         if (ImGui::CollapsingHeader("Cascaded Shadows", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Enable Shadows", &ps.ShadowsEnabled);
             if (ps.ShadowsEnabled) {
@@ -6306,8 +6845,8 @@ private:
                 }
                 ImGui::SliderFloat("Max Distance", &ps.ShadowMaxDistance, 10.0f, 1000.0f, "%.0f");
                 ImGui::SliderFloat("Split Lambda", &ps.ShadowSplitLambda, 0.0f, 1.0f, "%.2f");
-                ImGui::SliderFloat("Depth Bias", &ps.ShadowDepthBias, 0.0f, 0.1f, "%.4f");
-                ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.5f, "%.3f");
+                ImGui::SliderFloat("Depth Bias", &ps.ShadowDepthBias, 0.0f, 0.02f, "%.5f");
+                ImGui::SliderFloat("Normal Bias", &ps.ShadowNormalBias, 0.0f, 0.1f, "%.4f");
                 const char* pcfOptions[] = { "Hard", "PCF 3x3", "PCF 5x5" };
                 ImGui::Combo("PCF Quality", &ps.ShadowPCFQuality, pcfOptions, 3);
                 ImGui::SliderFloat("Blend Width", &ps.ShadowCascadeBlendWidth, 0.0f, 0.3f, "%.2f");
@@ -6386,35 +6925,41 @@ private:
         }
 
         if (ImGui::CollapsingHeader("Fog", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Checkbox("Enable Fog", &ps.FogEnabled);
+            bool fogDirty = false;
+            fogDirty |= ImGui::Checkbox("Enable Fog", &ps.FogEnabled);
             if (ps.FogEnabled) {
                 const char* fogModes[] = { "Linear", "Exponential", "Exponential Squared" };
-                ImGui::Combo("Fog Mode", &ps.FogMode, fogModes, 3);
-                ImGui::ColorEdit3("Fog Color", ps.FogColor.data());
+                fogDirty |= ImGui::Combo("Fog Mode", &ps.FogMode, fogModes, 3);
+                fogDirty |= ImGui::ColorEdit3("Fog Color", ps.FogColor.data());
                 if (ps.FogMode == 0) { // Linear
-                    ImGui::DragFloat("Start Distance", &ps.FogStart, 1.0f, 0.0f, 10000.0f);
-                    ImGui::DragFloat("End Distance", &ps.FogEnd, 1.0f, 0.0f, 10000.0f);
+                    fogDirty |= ImGui::DragFloat("Start Distance", &ps.FogStart, 1.0f, 0.0f, 10000.0f);
+                    fogDirty |= ImGui::DragFloat("End Distance", &ps.FogEnd, 1.0f, 0.0f, 10000.0f);
                 } else {
-                    ImGui::SliderFloat("Density", &ps.FogDensity, 0.001f, 0.5f, "%.4f");
+                    fogDirty |= ImGui::SliderFloat("Density", &ps.FogDensity, 0.001f, 0.5f, "%.4f");
                 }
-                ImGui::SliderFloat("Height Falloff", &ps.FogHeightFalloff, 0.0f, 1.0f, "%.3f");
-                ImGui::SliderFloat("Max Opacity", &ps.FogMaxOpacity, 0.0f, 1.0f, "%.2f");
+                fogDirty |= ImGui::SliderFloat("Height Falloff", &ps.FogHeightFalloff, 0.0f, 1.0f, "%.3f");
+                fogDirty |= ImGui::SliderFloat("Max Opacity", &ps.FogMaxOpacity, 0.0f, 1.0f, "%.2f");
             }
+            if (fogDirty)
+                MarkDirty();
         }
 
         if (ImGui::CollapsingHeader("Volumetric Fog")) {
-            ImGui::Checkbox("Enable Volumetric Fog", &ps.VolFogEnabled);
+            bool volFogDirty = false;
+            volFogDirty |= ImGui::Checkbox("Enable Volumetric Fog", &ps.VolFogEnabled);
             if (ps.VolFogEnabled) {
-                ImGui::ColorEdit3("Fog Color##Vol", ps.VolFogColor.data());
-                ImGui::SliderFloat("Density##Vol", &ps.VolFogDensity, 0.001f, 0.2f, "%.4f");
-                ImGui::SliderFloat("Scattering (g)", &ps.VolFogScattering, 0.0f, 0.99f, "%.2f");
+                volFogDirty |= ImGui::ColorEdit3("Fog Color##Vol", ps.VolFogColor.data());
+                volFogDirty |= ImGui::SliderFloat("Density##Vol", &ps.VolFogDensity, 0.001f, 0.2f, "%.4f");
+                volFogDirty |= ImGui::SliderFloat("Scattering (g)", &ps.VolFogScattering, 0.0f, 0.99f, "%.2f");
                 ImGui::TextDisabled("0 = isotropic, 1 = forward (god rays)");
-                ImGui::SliderFloat("Light Intensity##Vol", &ps.VolFogLightIntensity, 0.0f, 5.0f, "%.2f");
-                ImGui::SliderInt("March Steps", &ps.VolFogSteps, 8, 128);
-                ImGui::DragFloat("Max Distance##Vol", &ps.VolFogMaxDistance, 1.0f, 1.0f, 1000.0f);
-                ImGui::SliderFloat("Height Falloff##Vol", &ps.VolFogHeightFalloff, 0.0f, 0.5f, "%.3f");
-                ImGui::DragFloat("Base Height", &ps.VolFogBaseHeight, 0.5f, -100.0f, 100.0f);
+                volFogDirty |= ImGui::SliderFloat("Light Intensity##Vol", &ps.VolFogLightIntensity, 0.0f, 5.0f, "%.2f");
+                volFogDirty |= ImGui::SliderInt("March Steps", &ps.VolFogSteps, 8, 128);
+                volFogDirty |= ImGui::DragFloat("Max Distance##Vol", &ps.VolFogMaxDistance, 1.0f, 1.0f, 1000.0f);
+                volFogDirty |= ImGui::SliderFloat("Height Falloff##Vol", &ps.VolFogHeightFalloff, 0.0f, 0.5f, "%.3f");
+                volFogDirty |= ImGui::DragFloat("Base Height", &ps.VolFogBaseHeight, 0.5f, -100.0f, 100.0f);
             }
+            if (volFogDirty)
+                MarkDirty();
         }
 
         if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -7661,6 +8206,7 @@ private:
     bool m_ViewportHovered = false;
     bool m_ViewportFocused = false;
     bool m_GizmosEnabled   = true;
+    SceneGizmoTool m_GizmoTool = SceneGizmoTool::Translate;
     bool m_OutlineEnabled  = true;
     float m_SceneVpX = 0, m_SceneVpY = 0, m_SceneVpW = 1, m_SceneVpH = 1;
 

@@ -105,8 +105,35 @@ uniform int   u_UseTexture;
 uniform int          u_HasReflectionProbe;
 uniform samplerCube  u_ReflectionProbe;
 uniform float        u_ReflectionIntensity;
+uniform int          u_IndirectLightingEnabled;
+uniform vec3         u_IndirectSkyColor;
+uniform vec3         u_IndirectGroundColor;
+uniform vec3         u_IndirectTint;
+uniform float        u_IndirectDiffuseIntensity;
+uniform float        u_SkyReflectionIntensity;
 
 out vec4 FragColor;
+
+vec3 SampleIndirectSky(vec3 dir) {
+    float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+    return mix(u_IndirectGroundColor, u_IndirectSkyColor, t) * u_IndirectTint;
+}
+
+vec3 ComputeSkyIndirect(vec3 N, vec3 V, vec3 albedo, float metallic,
+                        float roughness, float ao, vec3 F0) {
+    if (u_IndirectLightingEnabled == 0)
+        return vec3(0.0);
+
+    float NdotV = max(dot(N, V), 0.0);
+    vec3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+    vec3 diffuseGI = kD * albedo * SampleIndirectSky(N) * u_IndirectDiffuseIntensity;
+    vec3 R = reflect(-V, N);
+    float roughnessFade = mix(1.0, 0.25, clamp(roughness, 0.0, 1.0));
+    vec3 specularGI = SampleIndirectSky(R) * F * roughnessFade * u_SkyReflectionIntensity;
+    return (diffuseGI + specularGI) * ao;
+}
 
 // ── Main ─────────────────────────────────────────────────────────────
 
@@ -308,7 +335,7 @@ void main() {
 
         ambient = (kD * diffuseIBL + specularIBL) * ao * u_ReflectionIntensity;
     } else {
-        ambient = vec3(0.03) * albedo * ao;
+        ambient = ComputeSkyIndirect(N, V, albedo, metallic, roughness, ao, F0);
     }
     vec3 color = ambient + Lo;
 

@@ -6,6 +6,7 @@
 #include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <algorithm>
 #include <cmath>
 
 namespace VE {
@@ -25,8 +26,9 @@ uint32_t GizmoRenderer::s_LineVAO = 0;
 uint32_t GizmoRenderer::s_LineVBO = 0;
 bool     GizmoRenderer::s_LineRendererInited = false;
 
-static constexpr float kGizmoArmLength  = 0.4f;
-static constexpr float kGizmoArrowSize  = 0.06f;
+static constexpr float kGizmoArmLength  = 1.2f;
+static constexpr float kGizmoArrowSize  = 0.18f;
+static constexpr float kRotationGizmoRadius = 0.9f;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -38,6 +40,44 @@ static ImVec2 WorldToScreen(const glm::vec3& world) {
     float sx = s_VpX + (ndc.x * 0.5f + 0.5f) * s_VpW;
     float sy = s_VpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * s_VpH;
     return { sx, sy };
+}
+
+static bool ProjectWorldToScreenVisible(const glm::vec3& world, ImVec2& outScreen) {
+    glm::vec4 clip = s_VP * glm::vec4(world, 1.0f);
+    if (clip.w <= 0.01f)
+        return false;
+
+    glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    if (ndc.x < -1.2f || ndc.x > 1.2f || ndc.y < -1.2f || ndc.y > 1.2f || ndc.z < -1.2f || ndc.z > 1.2f)
+        return false;
+
+    outScreen.x = s_VpX + (ndc.x * 0.5f + 0.5f) * s_VpW;
+    outScreen.y = s_VpY + (1.0f - (ndc.y * 0.5f + 0.5f)) * s_VpH;
+    return true;
+}
+
+static void DrawCameraIcon(ImDrawList* dl, const ImVec2& center, ImU32 color) {
+    constexpr float scale = 3.0f;
+    constexpr float bodyW = 17.0f * scale;
+    constexpr float bodyH = 11.0f * scale;
+    constexpr float halfW = bodyW * 0.5f;
+    constexpr float halfH = bodyH * 0.5f;
+    constexpr float lensR = 3.0f * scale;
+    const ImU32 fill = IM_COL32(0, 220, 80, 46);
+    const ImU32 shadow = IM_COL32(0, 0, 0, 110);
+
+    ImVec2 bodyMin(center.x - halfW, center.y - halfH);
+    ImVec2 bodyMax(center.x + halfW, center.y + halfH);
+    ImVec2 topMin(center.x - 5.0f * scale, center.y - halfH - 4.0f * scale);
+    ImVec2 topMax(center.x + 2.0f * scale, center.y - halfH + 1.0f * scale);
+
+    dl->AddRectFilled(ImVec2(bodyMin.x + scale, bodyMin.y + scale), ImVec2(bodyMax.x + scale, bodyMax.y + scale), shadow, 2.0f * scale);
+    dl->AddRectFilled(bodyMin, bodyMax, fill, 2.0f * scale);
+    dl->AddRect(bodyMin, bodyMax, color, 2.0f * scale, 0, 1.7f * scale);
+    dl->AddRect(topMin, topMax, color, 1.5f * scale, 0, 1.5f * scale);
+    dl->AddCircle(center, lensR, color, 18, 1.5f * scale);
+    dl->AddLine(ImVec2(bodyMin.x - 3.0f * scale, center.y - 2.0f * scale), ImVec2(bodyMin.x, center.y - 2.0f * scale), color, 1.5f * scale);
+    dl->AddLine(ImVec2(bodyMin.x - 3.0f * scale, center.y + 2.0f * scale), ImVec2(bodyMin.x, center.y + 2.0f * scale), color, 1.5f * scale);
 }
 
 static void DrawLineWorld(ImDrawList* dl, const glm::vec3& a, const glm::vec3& b,
@@ -107,8 +147,8 @@ static glm::vec4 ImColorToVec4(ImU32 col) {
 
 // ── Depth-tested line helper ───────────────────────────────────────
 // Like DrawLineWorld but pushes to s_Lines3D instead of ImDrawList.
-static void DrawLineWorld3D(const glm::vec3& a, const glm::vec3& b, ImU32 color) {
-    GizmoRenderer::AddLine3D(a, b, ImColorToVec4(color));
+static void DrawLineWorld3D(const glm::vec3& a, const glm::vec3& b, ImU32 color, float thickness = 1.0f) {
+    GizmoRenderer::AddLine3D(a, b, ImColorToVec4(color), thickness);
 }
 
 // ── API ────────────────────────────────────────────────────────────
@@ -204,6 +244,74 @@ float GizmoRenderer::ProjectMouseOntoAxis(GizmoAxis axis,
     // Project t back along the rotated axis, but return the local component
     glm::vec3 worldOffset = axisDir * t;
     return entityPos[component] + worldOffset[component];
+}
+
+static void GetRotationRingBasis(const glm::mat3& rotMatrix, GizmoAxis axis,
+                                 glm::vec3& u, glm::vec3& v) {
+    glm::vec3 axisX = glm::normalize(rotMatrix * glm::vec3(1, 0, 0));
+    glm::vec3 axisY = glm::normalize(rotMatrix * glm::vec3(0, 1, 0));
+    glm::vec3 axisZ = glm::normalize(rotMatrix * glm::vec3(0, 0, 1));
+
+    if (axis == GizmoAxis::X) {
+        u = axisY;
+        v = axisZ;
+    } else if (axis == GizmoAxis::Y) {
+        u = axisX;
+        v = axisZ;
+    } else {
+        u = axisX;
+        v = axisY;
+    }
+}
+
+static void DrawRotationRing(const glm::vec3& center, const glm::mat3& rotMatrix,
+                             GizmoAxis axis, ImU32 color, float thickness) {
+    glm::vec3 u, v;
+    GetRotationRingBasis(rotMatrix, axis, u, v);
+
+    constexpr int kSegments = 96;
+    ImDrawList* dl = s_DrawList;
+    for (int i = 0; i < kSegments; ++i) {
+        float a0 = (float)i / (float)kSegments * 2.0f * 3.14159265f;
+        float a1 = (float)(i + 1) / (float)kSegments * 2.0f * 3.14159265f;
+        glm::vec3 p0 = center + (u * std::cos(a0) + v * std::sin(a0)) * kRotationGizmoRadius;
+        glm::vec3 p1 = center + (u * std::cos(a1) + v * std::sin(a1)) * kRotationGizmoRadius;
+        DrawLineWorld(dl, p0, p1, color, thickness);
+    }
+}
+
+GizmoAxis GizmoRenderer::HitTestRotationGizmo(const glm::vec3& entityPos,
+                                               float screenX, float screenY,
+                                               float pixelThreshold,
+                                               const glm::mat3& rotMatrix) {
+    ImVec2 mouse = { screenX, screenY };
+    GizmoAxis result = GizmoAxis::None;
+    float best = pixelThreshold;
+
+    auto testRing = [&](GizmoAxis axis) {
+        glm::vec3 u, v;
+        GetRotationRingBasis(rotMatrix, axis, u, v);
+
+        constexpr int kSegments = 96;
+        for (int i = 0; i < kSegments; ++i) {
+            float a0 = (float)i / (float)kSegments * 2.0f * 3.14159265f;
+            float a1 = (float)(i + 1) / (float)kSegments * 2.0f * 3.14159265f;
+            glm::vec3 p0 = entityPos + (u * std::cos(a0) + v * std::sin(a0)) * kRotationGizmoRadius;
+            glm::vec3 p1 = entityPos + (u * std::cos(a1) + v * std::sin(a1)) * kRotationGizmoRadius;
+            ImVec2 aSS = WorldToScreen(p0);
+            ImVec2 bSS = WorldToScreen(p1);
+            float dist = PointToSegmentDistanceSS(mouse, aSS, bSS);
+            if (dist < best) {
+                best = dist;
+                result = axis;
+            }
+        }
+    };
+
+    testRing(GizmoAxis::X);
+    testRing(GizmoAxis::Y);
+    testRing(GizmoAxis::Z);
+    return result;
 }
 
 void GizmoRenderer::DrawGrid(float /*gridSize*/, float spacing) {
@@ -342,6 +450,32 @@ void GizmoRenderer::DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis,
     DrawLineWorld(dl, zEnd, zEnd - axisZ * kGizmoArrowSize - zArrowPerp, zCol, zThick);
 }
 
+void GizmoRenderer::DrawRotationGizmo(Entity entity, GizmoAxis highlightAxis,
+                                      const glm::mat4& worldMatrix) {
+    if (!entity || !entity.HasComponent<TransformComponent>()) return;
+
+    glm::vec3 pos = glm::vec3(worldMatrix[3]);
+    glm::mat3 rot = glm::mat3(worldMatrix);
+    rot[0] = glm::normalize(rot[0]);
+    rot[1] = glm::normalize(rot[1]);
+    rot[2] = glm::normalize(rot[2]);
+
+    ImU32 red       = IM_COL32(230, 50, 50, 255);
+    ImU32 green     = IM_COL32(50, 200, 50, 255);
+    ImU32 blue      = IM_COL32(80, 80, 240, 255);
+    ImU32 highlight = IM_COL32(255, 255, 50, 255);
+
+    DrawRotationRing(pos, rot, GizmoAxis::X,
+        (highlightAxis == GizmoAxis::X) ? highlight : red,
+        (highlightAxis == GizmoAxis::X) ? 3.5f : 2.0f);
+    DrawRotationRing(pos, rot, GizmoAxis::Y,
+        (highlightAxis == GizmoAxis::Y) ? highlight : green,
+        (highlightAxis == GizmoAxis::Y) ? 3.5f : 2.0f);
+    DrawRotationRing(pos, rot, GizmoAxis::Z,
+        (highlightAxis == GizmoAxis::Z) ? highlight : blue,
+        (highlightAxis == GizmoAxis::Z) ? 3.5f : 2.0f);
+}
+
 void GizmoRenderer::DrawPointLightGizmo(const glm::vec3& position, float range,
                                          const glm::vec3& color) {
     // Convert light color to ImU32 (clamped, semi-transparent)
@@ -444,7 +578,8 @@ void GizmoRenderer::DrawSpotLightGizmo(const glm::vec3& position, const glm::vec
 void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
                                        int projType, float fov, float size,
                                        float nearClip, float farClip, float aspect) {
-    ImU32 wireColor = IM_COL32(220, 220, 220, 160);
+    ImU32 wireColor = IM_COL32(0, 255, 90, 210);
+    constexpr float kCameraFrustumLineWidth = 2.5f;
 
     // Compute near/far plane half-extents
     float nearH, nearW, farH, farW;
@@ -459,18 +594,18 @@ void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
         nearW = farW = size * aspect;
     }
 
-    // 8 corners in camera local space (camera looks down -Z)
+    // 8 corners in camera local space (VibeEngine cameras look down +Z)
     glm::vec3 local[8] = {
         // Near plane
-        { -nearW, -nearH, -nearClip },
-        {  nearW, -nearH, -nearClip },
-        {  nearW,  nearH, -nearClip },
-        { -nearW,  nearH, -nearClip },
+        { -nearW, -nearH, nearClip },
+        {  nearW, -nearH, nearClip },
+        {  nearW,  nearH, nearClip },
+        { -nearW,  nearH, nearClip },
         // Far plane (clamped for visualization)
-        { -farW, -farH, -std::min(farClip, 50.0f) },
-        {  farW, -farH, -std::min(farClip, 50.0f) },
-        {  farW,  farH, -std::min(farClip, 50.0f) },
-        { -farW,  farH, -std::min(farClip, 50.0f) },
+        { -farW, -farH, std::min(farClip, 50.0f) },
+        {  farW, -farH, std::min(farClip, 50.0f) },
+        {  farW,  farH, std::min(farClip, 50.0f) },
+        { -farW,  farH, std::min(farClip, 50.0f) },
     };
 
     // Recompute far extents with clamped distance for perspective
@@ -479,10 +614,10 @@ void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
         float halfFovRad = glm::radians(fov * 0.5f);
         float cFarH = clampedFar * std::tan(halfFovRad);
         float cFarW = cFarH * aspect;
-        local[4] = { -cFarW, -cFarH, -clampedFar };
-        local[5] = {  cFarW, -cFarH, -clampedFar };
-        local[6] = {  cFarW,  cFarH, -clampedFar };
-        local[7] = { -cFarW,  cFarH, -clampedFar };
+        local[4] = { -cFarW, -cFarH, clampedFar };
+        local[5] = {  cFarW, -cFarH, clampedFar };
+        local[6] = {  cFarW,  cFarH, clampedFar };
+        local[7] = { -cFarW,  cFarH, clampedFar };
     }
 
     // Transform to world space
@@ -493,18 +628,19 @@ void GizmoRenderer::DrawCameraFrustum(const glm::mat4& worldTransform,
     // Draw 12 edges (depth-tested)
     // Near plane
     for (int i = 0; i < 4; i++)
-        DrawLineWorld3D(corners[i], corners[(i + 1) % 4], wireColor);
+        DrawLineWorld3D(corners[i], corners[(i + 1) % 4], wireColor, kCameraFrustumLineWidth);
     // Far plane
     for (int i = 0; i < 4; i++)
-        DrawLineWorld3D(corners[4 + i], corners[4 + (i + 1) % 4], wireColor);
+        DrawLineWorld3D(corners[4 + i], corners[4 + (i + 1) % 4], wireColor, kCameraFrustumLineWidth);
     // Connecting edges
     for (int i = 0; i < 4; i++)
-        DrawLineWorld3D(corners[i], corners[i + 4], wireColor);
+        DrawLineWorld3D(corners[i], corners[i + 4], wireColor, kCameraFrustumLineWidth);
 
-    // Draw camera icon (always visible via ImGui)
+    // Draw camera icon at the camera world position.
     glm::vec3 camPos = glm::vec3(worldTransform[3]);
-    ImVec2 center = WorldToScreen(camPos);
-    s_DrawList->AddCircleFilled(center, 4.0f, IM_COL32(255, 255, 255, 200));
+    ImVec2 center;
+    if (s_DrawList && ProjectWorldToScreenVisible(camPos, center))
+        DrawCameraIcon(s_DrawList, center, wireColor);
 }
 
 void GizmoRenderer::DrawWireframeBox(const glm::mat4& worldMatrix) {
@@ -654,8 +790,9 @@ void GizmoRenderer::DrawWireframeCapsuleCollider(const glm::vec3& center, float 
 
 // ── Depth-tested 3D line rendering ─────────────────────────────────
 
-void GizmoRenderer::AddLine3D(const glm::vec3& start, const glm::vec3& end, const glm::vec4& color) {
-    s_Lines3D.push_back({ start, end, color });
+void GizmoRenderer::AddLine3D(const glm::vec3& start, const glm::vec3& end,
+                              const glm::vec4& color, float thickness) {
+    s_Lines3D.push_back({ start, end, color, thickness });
 }
 
 void GizmoRenderer::InitLineRenderer() {
@@ -752,6 +889,8 @@ void GizmoRenderer::FlushLines3D(const glm::mat4& viewProjection) {
     GLint prevBlendSrc, prevBlendDst;
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrc);
     glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDst);
+    GLfloat prevLineWidth = 1.0f;
+    glGetFloatv(GL_LINE_WIDTH, &prevLineWidth);
 
     // Upload and draw
     glBindVertexArray(s_LineVAO);
@@ -764,13 +903,17 @@ void GizmoRenderer::FlushLines3D(const glm::mat4& viewProjection) {
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glLineWidth(1.0f);
 
-    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(s_Lines3D.size() * 2));
+    for (size_t i = 0; i < s_Lines3D.size(); ++i) {
+        glLineWidth(std::max(1.0f, s_Lines3D[i].Thickness));
+        glDrawArrays(GL_LINES, static_cast<GLint>(i * 2), 2);
+    }
 
     // Restore state
     glUseProgram(0);
     glBindVertexArray(0);
+    glLineWidth(prevLineWidth);
+    glBlendFunc(prevBlendSrc, prevBlendDst);
     if (!prevBlend) glDisable(GL_BLEND);
 
     s_Lines3D.clear();

@@ -39,6 +39,12 @@ struct RenderPipelineSettings {
     std::shared_ptr<Texture2D> SkyTexture;
     std::string SkyTexturePath;
 
+    // Indirect Lighting
+    bool IndirectLightingEnabled = true;
+    float IndirectDiffuseIntensity = 0.35f;
+    float SkyReflectionIntensity = 0.20f;
+    std::array<float, 3> IndirectTint = { 1.0f, 1.0f, 1.0f };
+
     // Bloom
     bool BloomEnabled = false;
     float BloomThreshold = 0.8f;
@@ -143,9 +149,9 @@ struct RenderPipelineSettings {
     int   ShadowResolution        = 2048;   // per-cascade (512, 1024, 2048, 4096)
     float ShadowMaxDistance       = 200.0f;
     float ShadowSplitLambda       = 0.75f;  // 0=uniform, 1=logarithmic
-    float ShadowDepthBias         = 0.0015f;
-    float ShadowNormalBias        = 0.0f;
-    int   ShadowPCFQuality        = 1;      // 0=Hard, 1=3x3, 2=5x5
+    float ShadowDepthBias         = 0.0025f;
+    float ShadowNormalBias        = 0.03f;
+    int   ShadowPCFQuality        = 2;      // 0=Hard, 1=3x3, 2=5x5
     float ShadowCascadeBlendWidth = 0.1f;
 
     // Deferred debug
@@ -170,6 +176,7 @@ public:
 
     // Compute world model matrix (walks parent chain)
     glm::mat4 GetWorldTransform(entt::entity entity) const;
+    glm::vec3 GetEntityForward(entt::entity entity) const;
 
     // Check if entity is active in hierarchy (self + all parents must be active)
     bool IsEntityActiveInHierarchy(entt::entity entity) const;

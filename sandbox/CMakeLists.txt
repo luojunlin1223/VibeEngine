@@ -24,3 +24,15 @@ foreach(SCENE_FILE ${VE_SCENE_FILES})
         COMMENT "Copying scene: ${SCENE_NAME}"
     )
 endforeach()
+
+set(VE_ASSET_DIRS Models Textures Skybox)
+foreach(ASSET_DIR ${VE_ASSET_DIRS})
+    if(EXISTS "${CMAKE_SOURCE_DIR}/Assets/${ASSET_DIR}")
+        add_custom_command(TARGET Sandbox POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/Assets/${ASSET_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/Assets/${ASSET_DIR}" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/Assets/${ASSET_DIR}"
+            COMMENT "Copying asset directory: ${ASSET_DIR}"
+        )
+    endif()
+endforeach()

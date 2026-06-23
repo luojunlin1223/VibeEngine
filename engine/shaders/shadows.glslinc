@@ -37,7 +37,7 @@ float SampleShadowHard(vec3 shadowCoord, int cascade, float bias) {
         return 1.0;
     if (closestDepth >= 0.9999)
         return 1.0;
-    return (shadowCoord.z <= closestDepth + bias) ? 1.0 : 0.0;
+    return (shadowCoord.z - bias <= closestDepth) ? 1.0 : 0.0;
 }
 
 float SampleShadowPCF3x3(vec3 shadowCoord, int cascade, float bias) {
@@ -56,7 +56,7 @@ float SampleShadowPCF3x3(vec3 shadowCoord, int cascade, float bias) {
                 shadow += 1.0;
                 continue;
             }
-            shadow += (shadowCoord.z <= d + bias) ? 1.0 : 0.0;
+            shadow += (shadowCoord.z - bias <= d) ? 1.0 : 0.0;
         }
     }
     return shadow / 9.0;
@@ -78,7 +78,7 @@ float SampleShadowPCF5x5(vec3 shadowCoord, int cascade, float bias) {
                 shadow += 1.0;
                 continue;
             }
-            shadow += (shadowCoord.z <= d + bias) ? 1.0 : 0.0;
+            shadow += (shadowCoord.z - bias <= d) ? 1.0 : 0.0;
         }
     }
     return shadow / 25.0;
@@ -104,20 +104,14 @@ vec3 ProjectToShadowCoord(vec3 worldPos, int cascade) {
 vec3 ShadowBiasDirection(vec3 N) {
     vec3 L = normalize(u_LightDir);
     vec3 normal = normalize(N);
-    float nDotL = max(dot(normal, L), 0.0);
-    return normalize(L + normal * nDotL);
+    return normalize(normal + L * 0.25);
 }
 
 float ShadowReceiverDepthBias(vec3 N) {
     vec3 L = normalize(u_LightDir);
     float nDotL = clamp(dot(normalize(N), L), 0.0, 1.0);
-    return u_ShadowDepthBias * (0.35 + (1.0 - nDotL) * 1.5);
-}
-
-float ShadowReceiverDepthPush(vec3 N) {
-    vec3 L = normalize(u_LightDir);
-    float nDotL = clamp(dot(normalize(N), L), 0.0, 1.0);
-    return u_ShadowDepthBias * (1.5 + (1.0 - nDotL) * 1.5);
+    float slope = 1.0 - nDotL;
+    return clamp(u_ShadowDepthBias * (1.0 + slope * 4.0), 0.0, 0.02);
 }
 
 vec3 ShadowBiasedPosition(vec3 fragPosWorld, vec3 N) {
@@ -147,9 +141,7 @@ float ComputeShadow(vec3 fragPosWorld, vec3 N, float viewDepth) {
         return 1.0;
 
     float receiverBias = ShadowReceiverDepthBias(N);
-    vec3 compareCoord = shadowCoord;
-    compareCoord.z += ShadowReceiverDepthPush(N);
-    float shadow = SampleShadowCascade(compareCoord, cascade, receiverBias);
+    float shadow = SampleShadowCascade(shadowCoord, cascade, receiverBias);
 
     // Cascade boundary blending
     if (cascade < CSM_NUM_CASCADES - 1 && u_ShadowCascadeBlendWidth > 0.0) {
@@ -163,7 +155,6 @@ float ComputeShadow(vec3 fragPosWorld, vec3 N, float viewDepth) {
             int nextCascade = cascade + 1;
             vec3 nextCoord = ProjectToShadowCoord(biasedPos, nextCascade);
 
-            nextCoord.z += ShadowReceiverDepthPush(N);
             float nextShadow = SampleShadowCascade(nextCoord, nextCascade, receiverBias);
             shadow = mix(shadow, nextShadow, blendFactor);
         }

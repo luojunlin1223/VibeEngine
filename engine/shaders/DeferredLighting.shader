@@ -46,6 +46,13 @@ layout(binding = 3) uniform sampler2D u_GEmissionFlags;     // RT3
 #include "common.glslinc"
 #include "brdf.glslinc"
 
+uniform int   u_IndirectLightingEnabled;
+uniform vec3  u_IndirectSkyColor;
+uniform vec3  u_IndirectGroundColor;
+uniform vec3  u_IndirectTint;
+uniform float u_IndirectDiffuseIntensity;
+uniform float u_SkyReflectionIntensity;
+
 // ── Compute PBR lighting for one light ───────────────────────────────
 
 vec3 ComputePBR(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo,
@@ -62,6 +69,29 @@ vec3 ComputePBR(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo,
     float NdotL = max(dot(N, L), 0.0);
 
     return (kD * albedo / PI + spec) * radiance * NdotL;
+}
+
+vec3 SampleIndirectSky(vec3 dir) {
+    float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+    return mix(u_IndirectGroundColor, u_IndirectSkyColor, t) * u_IndirectTint;
+}
+
+vec3 ComputeIndirectLighting(vec3 N, vec3 V, vec3 albedo,
+                             float metallic, float roughness, float ao, vec3 F0) {
+    if (u_IndirectLightingEnabled == 0)
+        return vec3(0.0);
+
+    float NdotV = max(dot(N, V), 0.0);
+    vec3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+    vec3 diffuseGI = kD * albedo * SampleIndirectSky(N) * u_IndirectDiffuseIntensity;
+
+    vec3 R = reflect(-V, N);
+    float roughnessFade = mix(1.0, 0.25, clamp(roughness, 0.0, 1.0));
+    vec3 specularGI = SampleIndirectSky(R) * F * roughnessFade * u_SkyReflectionIntensity;
+
+    return (diffuseGI + specularGI) * ao;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
@@ -147,8 +177,8 @@ void main() {
     }
 
     // ── Ambient + Occlusion ──────────────────────────────────────────
-    vec3 ambient = vec3(0.03) * albedo * ao;
-    vec3 color = ambient + Lo + emission;
+    vec3 indirect = ComputeIndirectLighting(N, V, albedo, metallic, roughness, ao, F0);
+    vec3 color = indirect + Lo + emission;
 
     FragColor = vec4(color, 1.0);
 }

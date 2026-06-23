@@ -5,6 +5,14 @@
 
 namespace VE {
 
+namespace {
+constexpr float kScrollZoomFactor = 0.94f;
+constexpr float kMinOrthoZoom = 0.0001f;
+constexpr float kMaxOrthoZoom = 1000000.0f;
+constexpr float kMinOrbitDistance = 0.01f;
+constexpr float kMaxOrbitDistance = 1000000.0f;
+}
+
 void EditorCamera::SetViewportSize(float width, float height) {
     if (height > 0.0f)
         m_AspectRatio = width / height;
@@ -16,13 +24,24 @@ void EditorCamera::SetMode(CameraMode mode) {
     RecalculateMatrix();
 }
 
+void EditorCamera::SetZoom(float z) {
+    m_Zoom = std::clamp(z, kMinOrthoZoom, kMaxOrthoZoom);
+    RecalculateMatrix();
+}
+
+void EditorCamera::SetDistance(float d) {
+    m_Distance = std::clamp(d, kMinOrbitDistance, kMaxOrbitDistance);
+    RecalculatePosition3D();
+    RecalculateMatrix();
+}
+
 void EditorCamera::OnMouseScroll(float yOffset) {
     if (m_Mode == CameraMode::Orthographic2D) {
-        m_Zoom -= yOffset * 0.1f * m_Zoom;
-        m_Zoom = std::clamp(m_Zoom, 0.01f, 100.0f);
+        m_Zoom *= std::pow(kScrollZoomFactor, yOffset);
+        m_Zoom = std::clamp(m_Zoom, kMinOrthoZoom, kMaxOrthoZoom);
     } else {
-        m_Distance -= yOffset * 0.15f * m_Distance;
-        m_Distance = std::clamp(m_Distance, 0.1f, 500.0f);
+        m_Distance *= std::pow(kScrollZoomFactor, yOffset);
+        m_Distance = std::clamp(m_Distance, kMinOrbitDistance, kMaxOrbitDistance);
     }
     RecalculateMatrix();
 }

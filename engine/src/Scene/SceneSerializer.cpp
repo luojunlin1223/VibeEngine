@@ -10,11 +10,38 @@
 #include <yaml-cpp/yaml.h>
 #include <fstream>
 #include <filesystem>
+#include <algorithm>
+#include <cmath>
 
 namespace VE {
 
 SceneSerializer::SceneSerializer(const std::shared_ptr<Scene>& scene)
     : m_Scene(scene) {}
+
+static std::array<float, 3> EulerFromForwardDirection(const glm::vec3& rawDirection) {
+    glm::vec3 direction = rawDirection;
+    float len = glm::length(direction);
+    if (len <= 0.0001f)
+        direction = glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+    else
+        direction /= len;
+
+    float yaw = std::asin(std::clamp(direction.x, -1.0f, 1.0f));
+    float pitch = std::atan2(-direction.y, direction.z);
+    return { glm::degrees(pitch), glm::degrees(yaw), 0.0f };
+}
+
+static void MigrateDirectionalLightDirectionToTransform(Entity entity, const YAML::Node& dlNode) {
+    auto directionNode = dlNode["Direction"];
+    if (!directionNode || !entity.HasComponent<TransformComponent>())
+        return;
+
+    glm::vec3 direction(
+        directionNode[0].as<float>(),
+        directionNode[1].as<float>(),
+        directionNode[2].as<float>());
+    entity.GetComponent<TransformComponent>().Rotation = EulerFromForwardDirection(direction);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -63,8 +90,6 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
     if (entity.HasComponent<DirectionalLightComponent>()) {
         auto& dl = entity.GetComponent<DirectionalLightComponent>();
         out << YAML::Key << "DirectionalLightComponent" << YAML::Value << YAML::BeginMap;
-        out << YAML::Key << "Direction" << YAML::Value << YAML::Flow
-            << YAML::BeginSeq << dl.Direction[0] << dl.Direction[1] << dl.Direction[2] << YAML::EndSeq;
         out << YAML::Key << "Color" << YAML::Value << YAML::Flow
             << YAML::BeginSeq << dl.Color[0] << dl.Color[1] << dl.Color[2] << YAML::EndSeq;
         out << YAML::Key << "Intensity" << YAML::Value << dl.Intensity;
@@ -638,6 +663,11 @@ static std::string SerializeSceneToYAML(const std::shared_ptr<Scene>& scene) {
         << YAML::BeginSeq << ps.SkyBottomColor[0] << ps.SkyBottomColor[1] << ps.SkyBottomColor[2] << YAML::EndSeq;
     if (!ps.SkyTexturePath.empty())
         out << YAML::Key << "SkyTexturePath" << YAML::Value << ps.SkyTexturePath;
+    out << YAML::Key << "IndirectLightingEnabled" << YAML::Value << ps.IndirectLightingEnabled;
+    out << YAML::Key << "IndirectDiffuseIntensity" << YAML::Value << ps.IndirectDiffuseIntensity;
+    out << YAML::Key << "SkyReflectionIntensity" << YAML::Value << ps.SkyReflectionIntensity;
+    out << YAML::Key << "IndirectTint" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << ps.IndirectTint[0] << ps.IndirectTint[1] << ps.IndirectTint[2] << YAML::EndSeq;
     out << YAML::Key << "BloomEnabled" << YAML::Value << ps.BloomEnabled;
     out << YAML::Key << "BloomThreshold" << YAML::Value << ps.BloomThreshold;
     out << YAML::Key << "BloomIntensity" << YAML::Value << ps.BloomIntensity;
@@ -765,6 +795,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
             ps.SkyTexturePath = tex.as<std::string>();
             ps.SkyTexture = Texture2D::Create(ps.SkyTexturePath);
         }
+        if (psNode["IndirectLightingEnabled"]) ps.IndirectLightingEnabled = psNode["IndirectLightingEnabled"].as<bool>();
+        if (psNode["IndirectDiffuseIntensity"]) ps.IndirectDiffuseIntensity = psNode["IndirectDiffuseIntensity"].as<float>();
+        if (psNode["SkyReflectionIntensity"]) ps.SkyReflectionIntensity = psNode["SkyReflectionIntensity"].as<float>();
+        if (auto tint = psNode["IndirectTint"])
+            ps.IndirectTint = { tint[0].as<float>(), tint[1].as<float>(), tint[2].as<float>() };
         if (psNode["BloomEnabled"]) ps.BloomEnabled = psNode["BloomEnabled"].as<bool>();
         if (psNode["BloomThreshold"]) ps.BloomThreshold = psNode["BloomThreshold"].as<float>();
         if (psNode["BloomIntensity"]) ps.BloomIntensity = psNode["BloomIntensity"].as<float>();
@@ -902,11 +937,11 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
         if (auto dlNode = entityNode["DirectionalLightComponent"]) {
             try {
                 auto& dl = entity.AddComponent<DirectionalLightComponent>();
-                auto dir = dlNode["Direction"];
-                dl.Direction = { dir[0].as<float>(), dir[1].as<float>(), dir[2].as<float>() };
-                auto col = dlNode["Color"];
-                dl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
-                dl.Intensity = dlNode["Intensity"].as<float>();
+                MigrateDirectionalLightDirectionToTransform(entity, dlNode);
+                if (auto col = dlNode["Color"])
+                    dl.Color = { col[0].as<float>(), col[1].as<float>(), col[2].as<float>() };
+                if (dlNode["Intensity"])
+                    dl.Intensity = dlNode["Intensity"].as<float>();
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize DirectionalLightComponent: {}", e.what());
             }
@@ -1392,6 +1427,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                         for (const auto& mp : mr.Mat->GetProperties()) {
                             if (mp.Name == ov.Name) {
                                 ov.DisplayName = mp.DisplayName;
+                                ov.FlagName = mp.FlagName;
                                 if (mp.IsRange) {
                                     ov.IsRange = true;
                                     ov.RangeMin = mp.RangeMin;
@@ -1808,7 +1844,7 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
         // DirectionalLightComponent
         if (auto dlNode = entityNode["DirectionalLightComponent"]) {
             auto& dl = entity.AddComponent<DirectionalLightComponent>();
-            if (auto d = dlNode["Direction"]) dl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
+            MigrateDirectionalLightDirectionToTransform(entity, dlNode);
             if (auto c = dlNode["Color"]) dl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
             if (dlNode["Intensity"]) dl.Intensity = dlNode["Intensity"].as<float>();
         }
@@ -2073,6 +2109,7 @@ Entity SceneSerializer::InstantiateFromString(const std::string& yamlData, Scene
                         for (const auto& mp : mr.Mat->GetProperties()) {
                             if (mp.Name == ov.Name) {
                                 ov.DisplayName = mp.DisplayName;
+                                ov.FlagName = mp.FlagName;
                                 if (mp.IsRange) {
                                     ov.IsRange = true;
                                     ov.RangeMin = mp.RangeMin;
@@ -2153,7 +2190,7 @@ Entity SceneSerializer::InstantiateFromString(const std::string& yamlData, Scene
         // DirectionalLightComponent
         if (auto dlNode = entityNode["DirectionalLightComponent"]) {
             auto& dl = entity.AddComponent<DirectionalLightComponent>();
-            if (auto d = dlNode["Direction"]) dl.Direction = { d[0].as<float>(), d[1].as<float>(), d[2].as<float>() };
+            MigrateDirectionalLightDirectionToTransform(entity, dlNode);
             if (auto c = dlNode["Color"]) dl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
             if (dlNode["Intensity"]) dl.Intensity = dlNode["Intensity"].as<float>();
         }

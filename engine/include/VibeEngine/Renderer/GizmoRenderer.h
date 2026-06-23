@@ -34,6 +34,8 @@ public:
     static void DrawGrid(float gridSize = 20.0f, float spacing = 1.0f);
     static void DrawTranslationGizmo(Entity entity, GizmoAxis highlightAxis = GizmoAxis::None,
                                       const glm::mat4& worldMatrix = glm::mat4(1.0f));
+    static void DrawRotationGizmo(Entity entity, GizmoAxis highlightAxis = GizmoAxis::None,
+                                  const glm::mat4& worldMatrix = glm::mat4(1.0f));
     static void DrawWireframeBox(const glm::mat4& worldMatrix);
     static void DrawPointLightGizmo(const glm::vec3& position, float range,
                                      const glm::vec3& color = glm::vec3(1.0f));
@@ -68,6 +70,10 @@ public:
                                               float screenX, float screenY,
                                               float pixelThreshold = 12.0f,
                                               const glm::mat3& rotMatrix = glm::mat3(1.0f));
+    static GizmoAxis HitTestRotationGizmo(const glm::vec3& entityPos,
+                                          float screenX, float screenY,
+                                          float pixelThreshold = 12.0f,
+                                          const glm::mat3& rotMatrix = glm::mat3(1.0f));
 
     static float ProjectMouseOntoAxis(GizmoAxis axis,
                                        const glm::vec3& entityPos,
@@ -78,10 +84,12 @@ public:
     struct GizmoLine {
         glm::vec3 Start, End;
         glm::vec4 Color;
+        float Thickness = 1.0f;
     };
 
     /// Queue a world-space line for depth-tested rendering.
-    static void AddLine3D(const glm::vec3& start, const glm::vec3& end, const glm::vec4& color);
+    static void AddLine3D(const glm::vec3& start, const glm::vec3& end,
+                          const glm::vec4& color, float thickness = 1.0f);
 
     /// Upload queued lines and draw them with GL_LINES.
     /// Call this while the scene framebuffer is bound with depth test enabled.

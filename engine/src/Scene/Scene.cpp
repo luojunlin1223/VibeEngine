@@ -267,6 +267,17 @@ glm::mat4 Scene::GetWorldTransform(entt::entity entity) const {
     return local;
 }
 
+glm::vec3 Scene::GetEntityForward(entt::entity entity) const {
+    if (!m_Registry.valid(entity) || !m_Registry.all_of<TransformComponent>(entity))
+        return glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+
+    glm::vec3 forward = glm::vec3(GetWorldTransform(entity) * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
+    float len = glm::length(forward);
+    if (len <= 0.0001f)
+        return glm::normalize(glm::vec3(0.3f, 1.0f, 0.5f));
+    return forward / len;
+}
+
 bool Scene::IsEntityActiveInHierarchy(entt::entity entity) const {
     if (!m_Registry.valid(entity)) return false;
     if (m_Registry.all_of<TagComponent>(entity)) {
@@ -652,8 +663,8 @@ void Scene::UpdateAudio(const float listenerPos[3], const float listenerForward[
 glm::mat4 Scene::ComputeCameraView(const glm::mat4& worldTransform) {
     glm::vec3 position = glm::vec3(worldTransform[3]);
     glm::mat3 rotMat   = glm::mat3(worldTransform); // upper-left 3x3 includes rotation+scale
-    // Camera looks down -Z in local space (OpenGL convention)
-    glm::vec3 forward = glm::normalize(rotMat * glm::vec3(0, 0, -1));
+    // VibeEngine camera objects use local +Z as their forward direction.
+    glm::vec3 forward = glm::normalize(rotMat * glm::vec3(0, 0, 1));
     glm::vec3 up      = glm::normalize(rotMat * glm::vec3(0, 1,  0));
     return glm::lookAt(position, position + forward, up);
 }
@@ -822,9 +833,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         for (auto lightEntity : lightView) {
             if (!IsEntityActiveInHierarchy(lightEntity)) continue;
             auto& dl = lightView.get<DirectionalLightComponent>(lightEntity);
-            glm::vec3 dir(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
-            float len = glm::length(dir);
-            if (len > 0.0001f) lightDir = dir / len;
+            lightDir = GetEntityForward(lightEntity);
             lightColor = glm::vec3(dl.Color[0], dl.Color[1], dl.Color[2]);
             lightIntensity = dl.Intensity;
             break;
@@ -880,12 +889,26 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         }
     }
 
+    auto& ps = m_PipelineSettings;
+    auto colorToVec3 = [](const std::array<float, 3>& color) {
+        return glm::vec3(color[0], color[1], color[2]);
+    };
+    glm::vec3 indirectSkyColor = ps.SkyEnabled ? colorToVec3(ps.SkyTopColor) : glm::vec3(0.03f);
+    glm::vec3 indirectGroundColor = ps.SkyEnabled ? colorToVec3(ps.SkyBottomColor) : glm::vec3(0.03f);
+    glm::vec3 indirectTint = colorToVec3(ps.IndirectTint);
+
     // Lambda to set lighting uniforms on the deferred lighting shader
     auto setLightingUniforms = [&](const std::shared_ptr<Shader>& shader) {
         shader->SetVec3("u_LightDir", lightDir);
         shader->SetVec3("u_LightColor", lightColor);
         shader->SetFloat("u_LightIntensity", lightIntensity);
         shader->SetVec3("u_ViewPos", cameraPos);
+        shader->SetInt("u_IndirectLightingEnabled", ps.IndirectLightingEnabled ? 1 : 0);
+        shader->SetVec3("u_IndirectSkyColor", indirectSkyColor);
+        shader->SetVec3("u_IndirectGroundColor", indirectGroundColor);
+        shader->SetVec3("u_IndirectTint", indirectTint);
+        shader->SetFloat("u_IndirectDiffuseIntensity", ps.IndirectDiffuseIntensity);
+        shader->SetFloat("u_SkyReflectionIntensity", ps.SkyReflectionIntensity);
 
         BindDummyReflectionProbe(shader);
 
@@ -910,7 +933,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     };
 
     // ── Shadow settings helper ──
-    auto& ps = m_PipelineSettings;
     ShadowSettings shadowSettings;
     shadowSettings.Enabled           = ps.ShadowsEnabled;
     shadowSettings.Resolution        = ps.ShadowResolution;
@@ -1139,6 +1161,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     if (ov.TextureRef) {
                         ov.TextureRef->Bind(0);
                         gbufferShader->SetInt(ov.Name, 0);
+                        if (!ov.FlagName.empty())
+                            gbufferShader->SetInt(ov.FlagName, 1);
+                        else if (ov.Name == "u_MainTex")
+                            gbufferShader->SetInt("u_HasMainTex", 1);
                         gbufferShader->SetInt("u_UseTexture", 1);
                     }
                     break;
@@ -1185,6 +1211,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetVec3("u_LightColor", lightColor);
             shader->SetFloat("u_LightIntensity", lightIntensity);
             shader->SetVec3("u_ViewPos", cameraPos);
+            shader->SetInt("u_IndirectLightingEnabled", ps.IndirectLightingEnabled ? 1 : 0);
+            shader->SetVec3("u_IndirectSkyColor", indirectSkyColor);
+            shader->SetVec3("u_IndirectGroundColor", indirectGroundColor);
+            shader->SetVec3("u_IndirectTint", indirectTint);
+            shader->SetFloat("u_IndirectDiffuseIntensity", ps.IndirectDiffuseIntensity);
+            shader->SetFloat("u_SkyReflectionIntensity", ps.SkyReflectionIntensity);
+            BindDummyReflectionProbe(shader);
             shader->SetInt("u_NumPointLights", numPointLights);
             for (int i = 0; i < numPointLights; ++i) {
                 shader->SetVec3(s_PointLightPositions[i], pointPositions[i]);
@@ -1295,9 +1328,7 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
             for (auto le : lightView) {
                 if (!IsEntityActiveInHierarchy(le)) continue;
                 auto& dl = lightView.get<DirectionalLightComponent>(le);
-                glm::vec3 d(dl.Direction[0], dl.Direction[1], dl.Direction[2]);
-                float len = glm::length(d);
-                if (len > 0.0001f) lightDir = d / len;
+                lightDir = GetEntityForward(le);
                 lightColor = glm::vec3(dl.Color[0], dl.Color[1], dl.Color[2]);
                 lightIntensity = dl.Intensity;
                 break;

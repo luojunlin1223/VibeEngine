@@ -44,6 +44,11 @@ FBXImportSettings FBXImporter::LoadSettings(const std::string& metaPath) {
         if (is["importAnimations"])  s.ImportAnimations   = is["importAnimations"].as<bool>();
 
         // Read cached mesh info
+        if (is["sourceUnitMeters"])   s.SourceUnitMeters   = is["sourceUnitMeters"].as<float>();
+        if (is["importedUnitMeters"]) s.ImportedUnitMeters = is["importedUnitMeters"].as<float>();
+        if (is["boundsSizeX"])        s.BoundsSizeX        = is["boundsSizeX"].as<float>();
+        if (is["boundsSizeY"])        s.BoundsSizeY        = is["boundsSizeY"].as<float>();
+        if (is["boundsSizeZ"])        s.BoundsSizeZ        = is["boundsSizeZ"].as<float>();
         if (is["vertexCount"])   s.VertexCount   = is["vertexCount"].as<uint32_t>();
         if (is["triangleCount"]) s.TriangleCount = is["triangleCount"].as<uint32_t>();
         if (is["subMeshCount"])  s.SubMeshCount  = is["subMeshCount"].as<uint32_t>();
@@ -83,6 +88,11 @@ void FBXImporter::SaveSettings(const std::string& metaPath, const FBXImportSetti
     out << YAML::Key << "importVertexColors" << YAML::Value << settings.ImportVertexColors;
     out << YAML::Key << "importSkinWeights"  << YAML::Value << settings.ImportSkinWeights;
     out << YAML::Key << "importAnimations"   << YAML::Value << settings.ImportAnimations;
+    out << YAML::Key << "sourceUnitMeters"   << YAML::Value << settings.SourceUnitMeters;
+    out << YAML::Key << "importedUnitMeters" << YAML::Value << settings.ImportedUnitMeters;
+    out << YAML::Key << "boundsSizeX"        << YAML::Value << settings.BoundsSizeX;
+    out << YAML::Key << "boundsSizeY"        << YAML::Value << settings.BoundsSizeY;
+    out << YAML::Key << "boundsSizeZ"        << YAML::Value << settings.BoundsSizeZ;
     out << YAML::Key << "vertexCount"        << YAML::Value << settings.VertexCount;
     out << YAML::Key << "triangleCount"      << YAML::Value << settings.TriangleCount;
     out << YAML::Key << "subMeshCount"       << YAML::Value << settings.SubMeshCount;
@@ -158,6 +168,18 @@ static void CalculateFlatNormals(std::vector<float>& vertices, const std::vector
 
 // ── Import ──────────────────────────────────────────────────────────
 
+static ufbx_vec3 NormalizeUfbxVec3(ufbx_vec3 v) {
+    double len = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (len > 1e-8) {
+        v.x /= len;
+        v.y /= len;
+        v.z /= len;
+    } else {
+        v = { 0.0, 1.0, 0.0 };
+    }
+    return v;
+}
+
 std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
                                                  FBXImportSettings& settings) {
     ufbx_load_opts opts = {};
@@ -177,7 +199,37 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
         return nullptr;
     }
 
-    settings.SubMeshCount = static_cast<uint32_t>(scene->meshes.count);
+    settings.SourceUnitMeters = static_cast<float>(scene->settings.original_unit_meters);
+    settings.ImportedUnitMeters = static_cast<float>(scene->settings.unit_meters);
+
+    struct MeshImportInstance {
+        ufbx_mesh* Mesh = nullptr;
+        ufbx_node* Node = nullptr;
+        bool ApplyNodeTransform = false;
+        ufbx_matrix NormalMatrix = ufbx_identity_matrix;
+    };
+
+    std::vector<MeshImportInstance> importInstances;
+    for (size_t mi = 0; mi < scene->meshes.count; mi++) {
+        ufbx_mesh* mesh = scene->meshes.data[mi];
+        const bool hasSkin = mesh->skin_deformers.count > 0;
+
+        if (!hasSkin && mesh->instances.count > 0) {
+            for (size_t ni = 0; ni < mesh->instances.count; ni++) {
+                ufbx_node* node = mesh->instances.data[ni];
+                importInstances.push_back({ mesh, node, true, ufbx_get_compatible_matrix_for_normals(node) });
+                if (!settings.MergeAllMeshes)
+                    break;
+            }
+        } else {
+            importInstances.push_back({ mesh, nullptr, false, ufbx_identity_matrix });
+        }
+
+        if (!settings.MergeAllMeshes && !importInstances.empty())
+            break;
+    }
+
+    settings.SubMeshCount = static_cast<uint32_t>(importInstances.size());
 
     auto asset = std::make_shared<MeshAsset>();
     asset->SetName(std::filesystem::path(absPath).stem().generic_string());
@@ -196,21 +248,19 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
     };
     std::vector<MeshSkinInfo> meshSkinInfos;
 
-    size_t meshCount = settings.MergeAllMeshes ? scene->meshes.count : std::min<size_t>(1, scene->meshes.count);
-
     // Pre-calculate total triangle indices across all meshes for reserve
     {
         size_t totalIndices = 0;
-        for (size_t mi = 0; mi < meshCount; mi++)
-            totalIndices += scene->meshes.data[mi]->num_triangles * 3;
+        for (const auto& inst : importInstances)
+            totalIndices += inst.Mesh->num_triangles * 3;
         asset->Indices.reserve(totalIndices);
         // Vertices may be fewer due to deduplication, but reserve a reasonable estimate
         asset->Vertices.reserve(totalIndices * 11 / 3); // ~1 unique vertex per 3 index refs
     }
-    meshSkinInfos.reserve(meshCount);
+    meshSkinInfos.reserve(importInstances.size());
 
-    for (size_t mi = 0; mi < meshCount; mi++) {
-        ufbx_mesh* mesh = scene->meshes.data[mi];
+    for (const auto& inst : importInstances) {
+        ufbx_mesh* mesh = inst.Mesh;
         MeshSkinInfo skinInfo;
         skinInfo.mesh = mesh;
 
@@ -225,6 +275,8 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
                 uint32_t idx = triIndices[ti];
 
                 ufbx_vec3 pos = ufbx_get_vertex_vec3(&mesh->vertex_position, idx);
+                if (inst.ApplyNodeTransform)
+                    pos = ufbx_transform_position(&inst.Node->geometry_to_world, pos);
 
                 // Apply scale factor
                 pos.x *= settings.ScaleFactor;
@@ -232,8 +284,11 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
                 pos.z *= settings.ScaleFactor;
 
                 ufbx_vec3 nrm = {0, 1, 0};
-                if (settings.Normals == FBXImportSettings::NormalMode::Import && mesh->vertex_normal.exists)
+                if (settings.Normals == FBXImportSettings::NormalMode::Import && mesh->vertex_normal.exists) {
                     nrm = ufbx_get_vertex_vec3(&mesh->vertex_normal, idx);
+                    if (inst.ApplyNodeTransform)
+                        nrm = NormalizeUfbxVec3(ufbx_transform_direction(&inst.NormalMatrix, nrm));
+                }
 
                 ufbx_vec2 uv = {0, 0};
                 if (settings.ImportUVs && mesh->vertex_uv.exists)
@@ -558,6 +613,14 @@ std::shared_ptr<MeshAsset> FBXImporter::Import(const std::string& absPath,
     settings.TriangleCount = static_cast<uint32_t>(asset->Indices.size() / 3);
 
     asset->Upload();
+    if (asset->BoundingBox.Valid()) {
+        glm::vec3 size = asset->BoundingBox.Max - asset->BoundingBox.Min;
+        settings.BoundsSizeX = size.x;
+        settings.BoundsSizeY = size.y;
+        settings.BoundsSizeZ = size.z;
+    }
+    VE_ENGINE_INFO("FBXImporter: sourceUnit={0}m, bounds=({1}, {2}, {3})",
+        settings.SourceUnitMeters, settings.BoundsSizeX, settings.BoundsSizeY, settings.BoundsSizeZ);
     VE_ENGINE_INFO("FBXImporter: {0} — {1} verts, {2} tris, scale={3}",
         absPath, settings.VertexCount, settings.TriangleCount, settings.ScaleFactor);
 
