@@ -233,6 +233,15 @@ struct RenderDiagnostics {
     float HPWaterCausticDepthFade = 0.0f;
     bool HPWaterCausticRGBDispersion = false;
     float HPWaterCausticDispersionStrength = 0.0f;
+    bool HPWaterCausticAtlasRan = false;
+    bool HPWaterCausticAtlasValid = false;
+    uint32_t HPWaterCausticAtlasTexture = 0;
+    uint32_t HPWaterCausticAtlasDepthTexture = 0;
+    uint32_t HPWaterCausticAtlasTileResolution = 0;
+    uint32_t HPWaterCausticAtlasWidth = 0;
+    uint32_t HPWaterCausticAtlasHeight = 0;
+    uint32_t HPWaterCausticAtlasCascades = 0;
+    uint32_t HPWaterCausticAtlasDrawn = 0;
     float HPWaterCausticFilterRadius = 0.0f;
     float HPWaterCausticFilterDepthSigma = 0.0f;
     float HPWaterCausticVolumeStrength = 0.0f;

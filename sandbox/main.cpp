@@ -6294,6 +6294,10 @@ private:
                 ImGui::DragFloat("Caustic Depth Fade", &w.CausticDepthFade, 0.1f, 0.1f, 500.0f, "%.2f");
                 ImGui::Checkbox("RGB Caustic", &w.CausticRGBDispersion);
                 ImGui::SliderFloat("Caustic Dispersion", &w.CausticDispersionStrength, 0.0f, 2.0f, "%.3f");
+                ImGui::Checkbox("Light-Space Atlas", &w.CausticLightSpaceAtlasEnabled);
+                int causticAtlasResolution = w.CausticAtlasResolution;
+                if (ImGui::DragInt("Caustic Atlas Resolution", &causticAtlasResolution, 16, 128, 2048))
+                    w.CausticAtlasResolution = std::clamp(causticAtlasResolution, 128, 2048);
                 ImGui::Checkbox("Caustic Filter", &w.CausticFilterEnabled);
                 ImGui::DragFloat("Caustic Filter Radius", &w.CausticFilterRadius, 0.05f, 0.25f, 8.0f, "%.2f");
                 ImGui::DragFloat("Caustic Depth Sigma", &w.CausticFilterDepthSigma, 0.0001f, 0.00001f, 0.05f, "%.5f");
@@ -7079,6 +7083,14 @@ private:
         out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
         out << "HPWaterCausticRGBDispersion: " << d.HPWaterCausticRGBDispersion << "\n";
         out << "HPWaterCausticDispersionStrength: " << d.HPWaterCausticDispersionStrength << "\n";
+        out << "HPWaterCausticAtlasRan: " << d.HPWaterCausticAtlasRan << "\n";
+        out << "HPWaterCausticAtlasValid: " << d.HPWaterCausticAtlasValid << "\n";
+        out << "HPWaterCausticAtlasTexture: " << d.HPWaterCausticAtlasTexture << "\n";
+        out << "HPWaterCausticAtlasDepthTexture: " << d.HPWaterCausticAtlasDepthTexture << "\n";
+        out << "HPWaterCausticAtlasTileResolution: " << d.HPWaterCausticAtlasTileResolution << "\n";
+        out << "HPWaterCausticAtlasSize: " << d.HPWaterCausticAtlasWidth << "x" << d.HPWaterCausticAtlasHeight << "\n";
+        out << "HPWaterCausticAtlasCascades: " << d.HPWaterCausticAtlasCascades << "\n";
+        out << "HPWaterCausticAtlasDrawn: " << d.HPWaterCausticAtlasDrawn << "\n";
         out << "HPWaterCausticFilterRadius: " << d.HPWaterCausticFilterRadius << "\n";
         out << "HPWaterCausticFilterDepthSigma: " << d.HPWaterCausticFilterDepthSigma << "\n";
         out << "HPWaterCausticVolumeStrength: " << d.HPWaterCausticVolumeStrength << "\n";
@@ -7161,6 +7173,18 @@ private:
                 ProbeTexture(d.HPWaterCausticFilteredTexture, d.ViewportWidth, d.ViewportHeight));
             SaveTextureBMP(d.HPWaterCausticFilteredTexture, d.ViewportWidth, d.ViewportHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_filtered.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterCausticAtlasTexture != 0 &&
+            d.HPWaterCausticAtlasValid &&
+            d.HPWaterCausticAtlasWidth > 0 && d.HPWaterCausticAtlasHeight > 0) {
+            writeProbe("HPWaterCausticAtlas",
+                ProbeTexture(d.HPWaterCausticAtlasTexture,
+                             d.HPWaterCausticAtlasWidth,
+                             d.HPWaterCausticAtlasHeight));
+            SaveTextureBMP(d.HPWaterCausticAtlasTexture,
+                d.HPWaterCausticAtlasWidth,
+                d.HPWaterCausticAtlasHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_atlas.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterFluidHeightTexture != 0 && d.HPWaterFluidResolution > 0) {
             writeProbe("HPWaterFluidHeight",
@@ -7344,6 +7368,16 @@ private:
             d.HPWaterCausticDispersionStrength,
             d.HPWaterCausticFilterRadius,
             d.HPWaterCausticVolumeStrength);
+        ImGui::Text("HPWater caustic atlas: ran=%d valid=%d drawn=%u tile=%u size=%ux%u cascades=%u tex=%u depth=%u",
+            d.HPWaterCausticAtlasRan ? 1 : 0,
+            d.HPWaterCausticAtlasValid ? 1 : 0,
+            d.HPWaterCausticAtlasDrawn,
+            d.HPWaterCausticAtlasTileResolution,
+            d.HPWaterCausticAtlasWidth,
+            d.HPWaterCausticAtlasHeight,
+            d.HPWaterCausticAtlasCascades,
+            d.HPWaterCausticAtlasTexture,
+            d.HPWaterCausticAtlasDepthTexture);
         ImGui::Text("HPWater fluid: ran=%d valid=%d res=%u height=%u speed=%.3f damping=%.3f",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,

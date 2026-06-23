@@ -161,6 +161,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterCausticFilter.shader");
     }
 
+    m_HPWaterCausticAtlasShader = Shader::CreateFromFile("shaders/HPWaterCausticAtlas.shader");
+    if (!m_HPWaterCausticAtlasShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterCausticAtlas.shader");
+    }
+
     m_HPWaterDepthPyramidShader = Shader::CreateFromFile("shaders/HPWaterDepthPyramid.shader");
     if (!m_HPWaterDepthPyramidShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterDepthPyramid.shader");
@@ -207,6 +212,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticFBO.reset();
     m_HPWaterCausticFilteredFBO.reset();
     m_HPWaterCausticFilterScratchFBO.reset();
+    m_HPWaterCausticAtlasFBO.reset();
     m_HPWaterFluidCurrentFBO.reset();
     m_HPWaterFluidPreviousFBO.reset();
     m_HPWaterFluidNextFBO.reset();
@@ -220,6 +226,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeUpsampleShader.reset();
     m_HPWaterCausticShader.reset();
     m_HPWaterCausticFilterShader.reset();
+    m_HPWaterCausticAtlasShader.reset();
     m_HPWaterDepthPyramidShader.reset();
     m_HPWaterFluidShader.reset();
     m_LightingShader.reset();
@@ -233,6 +240,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
+    m_HPWaterCausticAtlasValid = false;
+    m_HPWaterCausticAtlasTileResolution = 0;
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterFluidValid = false;
     m_HPWaterFluidInitialized = false;
@@ -285,6 +294,22 @@ void DeferredRenderer::CreateHPWaterCausticFBO() {
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticFilterIterations = 0;
+}
+
+void DeferredRenderer::CreateHPWaterCausticAtlasFBO(uint32_t tileResolution) {
+    tileResolution = std::clamp(tileResolution, 128u, 2048u);
+    if (m_HPWaterCausticAtlasFBO && m_HPWaterCausticAtlasTileResolution == tileResolution)
+        return;
+
+    FramebufferSpec atlasSpec;
+    atlasSpec.Width = tileResolution * 2u;
+    atlasSpec.Height = tileResolution * 2u;
+    atlasSpec.ColorFormats = {
+        { GL_RGBA16F }, // RT0: encoded normal.xyz + normalized thickness/roughness
+    };
+    m_HPWaterCausticAtlasFBO = Framebuffer::Create(atlasSpec);
+    m_HPWaterCausticAtlasTileResolution = tileResolution;
+    m_HPWaterCausticAtlasValid = false;
 }
 
 void DeferredRenderer::DestroyHPWaterDepthPyramid() {
@@ -581,6 +606,7 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     m_HPWaterMaskValid = false;
+    m_HPWaterCausticAtlasValid = false;
 }
 
 void DeferredRenderer::BeginGeometryPass() {
@@ -621,6 +647,53 @@ void DeferredRenderer::BeginHPWaterGBufferPass() {
 void DeferredRenderer::EndHPWaterGBufferPass() {
     if (!m_HPWaterGBuffer) return;
     m_HPWaterGBuffer->Unbind();
+}
+
+bool DeferredRenderer::BeginHPWaterCausticAtlas(uint32_t tileResolution) {
+    if (!m_Initialized)
+        return false;
+
+    tileResolution = std::clamp(tileResolution, 128u, 2048u);
+    CreateHPWaterCausticAtlasFBO(tileResolution);
+    if (!m_HPWaterCausticAtlasFBO)
+        return false;
+
+    m_HPWaterCausticAtlasFBO->Bind();
+    glViewport(0, 0,
+               static_cast<GLsizei>(m_HPWaterCausticAtlasFBO->GetWidth()),
+               static_cast<GLsizei>(m_HPWaterCausticAtlasFBO->GetHeight()));
+    glDisable(GL_SCISSOR_TEST);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    m_HPWaterCausticAtlasValid = false;
+    return true;
+}
+
+void DeferredRenderer::BeginHPWaterCausticAtlasCascade(uint32_t cascadeIndex) {
+    if (!m_HPWaterCausticAtlasFBO || m_HPWaterCausticAtlasTileResolution == 0)
+        return;
+
+    cascadeIndex = std::min(cascadeIndex, 3u);
+    const GLint tile = static_cast<GLint>(m_HPWaterCausticAtlasTileResolution);
+    const GLint x = static_cast<GLint>(cascadeIndex % 2u) * tile;
+    const GLint y = static_cast<GLint>(cascadeIndex / 2u) * tile;
+    glViewport(x, y, tile, tile);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x, y, tile, tile);
+}
+
+void DeferredRenderer::EndHPWaterCausticAtlas(bool valid) {
+    glDisable(GL_SCISSOR_TEST);
+    if (m_HPWaterCausticAtlasFBO)
+        m_HPWaterCausticAtlasFBO->Unbind();
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    m_HPWaterCausticAtlasValid = valid && m_HPWaterCausticAtlasFBO != nullptr;
 }
 
 void DeferredRenderer::BindGBufferTextures(int startUnit) {
@@ -1506,6 +1579,26 @@ uint32_t DeferredRenderer::GetHPWaterCausticTexture() const {
 uint32_t DeferredRenderer::GetHPWaterCausticFilteredTexture() const {
     if (!m_HPWaterCausticFilteredFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterCausticFilteredFBO->GetColorAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterCausticAtlasTexture() const {
+    if (!m_HPWaterCausticAtlasFBO) return 0;
+    return static_cast<uint32_t>(m_HPWaterCausticAtlasFBO->GetColorAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterCausticAtlasDepthTexture() const {
+    if (!m_HPWaterCausticAtlasFBO) return 0;
+    return static_cast<uint32_t>(m_HPWaterCausticAtlasFBO->GetDepthAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterCausticAtlasWidth() const {
+    if (!m_HPWaterCausticAtlasFBO) return 0;
+    return m_HPWaterCausticAtlasFBO->GetWidth();
+}
+
+uint32_t DeferredRenderer::GetHPWaterCausticAtlasHeight() const {
+    if (!m_HPWaterCausticAtlasFBO) return 0;
+    return m_HPWaterCausticAtlasFBO->GetHeight();
 }
 
 uint32_t DeferredRenderer::GetHPWaterFluidHeightTexture() const {

@@ -50,6 +50,12 @@
  *   fullscreen passes. VibeEngine currently uses an explicit R8 water mask
  *   texture generated from the dedicated HPWater depth buffer as the equivalent
  *   GPU-side pass-isolation resource.
+ *
+ * HPWater light-space caustic atlas:
+ *   Captures water-only surface payloads from each directional-light cascade
+ *   into a 2x2 atlas. This is the first resource needed to replace the current
+ *   screen-space caustic approximation with HPWater-style light-space caustic
+ *   accumulation.
  */
 #pragma once
 
@@ -109,6 +115,9 @@ public:
 
     /// Get the HPWater G-buffer shader for rendering water surface payloads.
     std::shared_ptr<Shader> GetHPWaterGBufferShader() const { return m_HPWaterGBufferShader; }
+
+    /// Get the HPWater light-space caustic atlas shader.
+    std::shared_ptr<Shader> GetHPWaterCausticAtlasShader() const { return m_HPWaterCausticAtlasShader; }
 
     /// Execute the deferred lighting pass (fullscreen quad).
     /// Reads G-buffer textures and computes PBR lighting.
@@ -256,6 +265,16 @@ public:
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
     uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
+    bool BeginHPWaterCausticAtlas(uint32_t tileResolution);
+    void BeginHPWaterCausticAtlasCascade(uint32_t cascadeIndex);
+    void EndHPWaterCausticAtlas(bool valid);
+    uint32_t GetHPWaterCausticAtlasTexture() const;
+    uint32_t GetHPWaterCausticAtlasDepthTexture() const;
+    bool IsHPWaterCausticAtlasValid() const { return m_HPWaterCausticAtlasValid; }
+    uint32_t GetHPWaterCausticAtlasTileResolution() const { return m_HPWaterCausticAtlasTileResolution; }
+    uint32_t GetHPWaterCausticAtlasWidth() const;
+    uint32_t GetHPWaterCausticAtlasHeight() const;
+    uint32_t GetHPWaterCausticAtlasCascadeCount() const { return 4; }
 
     uint32_t GetHPWaterFluidHeightTexture() const;
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
@@ -295,6 +314,7 @@ private:
     void CreateHPWaterCompositeFBO();
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterCausticFBO();
+    void CreateHPWaterCausticAtlasFBO(uint32_t tileResolution);
     void CreateHPWaterGBuffer();
     void CreateHPWaterMaskFBO();
     void CreateHPWaterDepthPyramid();
@@ -363,6 +383,11 @@ private:
     bool m_HPWaterCausticFilteredValid = false;
     uint32_t m_HPWaterCausticFilterIterations = 0;
 
+    // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
+    std::shared_ptr<Framebuffer> m_HPWaterCausticAtlasFBO;
+    bool m_HPWaterCausticAtlasValid = false;
+    uint32_t m_HPWaterCausticAtlasTileResolution = 0;
+
     // HPWater FluidDynamics wave height ping-pong textures.
     std::shared_ptr<Framebuffer> m_HPWaterFluidCurrentFBO;
     std::shared_ptr<Framebuffer> m_HPWaterFluidPreviousFBO;
@@ -387,6 +412,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterVolumeUpsampleShader;
     std::shared_ptr<Shader> m_HPWaterCausticShader;
     std::shared_ptr<Shader> m_HPWaterCausticFilterShader;
+    std::shared_ptr<Shader> m_HPWaterCausticAtlasShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
     std::shared_ptr<Shader> m_LightingShader;

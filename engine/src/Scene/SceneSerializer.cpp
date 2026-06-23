@@ -601,6 +601,8 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "CausticDepthFade" << YAML::Value << w.CausticDepthFade;
         out << YAML::Key << "CausticRGBDispersion" << YAML::Value << w.CausticRGBDispersion;
         out << YAML::Key << "CausticDispersionStrength" << YAML::Value << w.CausticDispersionStrength;
+        out << YAML::Key << "CausticLightSpaceAtlasEnabled" << YAML::Value << w.CausticLightSpaceAtlasEnabled;
+        out << YAML::Key << "CausticAtlasResolution" << YAML::Value << w.CausticAtlasResolution;
         out << YAML::Key << "CausticFilterEnabled" << YAML::Value << w.CausticFilterEnabled;
         out << YAML::Key << "CausticFilterRadius" << YAML::Value << w.CausticFilterRadius;
         out << YAML::Key << "CausticFilterDepthSigma" << YAML::Value << w.CausticFilterDepthSigma;
@@ -1583,6 +1585,8 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["CausticDepthFade"]) w.CausticDepthFade = wNode["CausticDepthFade"].as<float>();
                 if (wNode["CausticRGBDispersion"]) w.CausticRGBDispersion = wNode["CausticRGBDispersion"].as<bool>();
                 if (wNode["CausticDispersionStrength"]) w.CausticDispersionStrength = wNode["CausticDispersionStrength"].as<float>();
+                if (wNode["CausticLightSpaceAtlasEnabled"]) w.CausticLightSpaceAtlasEnabled = wNode["CausticLightSpaceAtlasEnabled"].as<bool>();
+                if (wNode["CausticAtlasResolution"]) w.CausticAtlasResolution = wNode["CausticAtlasResolution"].as<int>();
                 if (wNode["CausticFilterEnabled"]) w.CausticFilterEnabled = wNode["CausticFilterEnabled"].as<bool>();
                 if (wNode["CausticFilterRadius"]) w.CausticFilterRadius = wNode["CausticFilterRadius"].as<float>();
                 if (wNode["CausticFilterDepthSigma"]) w.CausticFilterDepthSigma = wNode["CausticFilterDepthSigma"].as<float>();
@@ -1604,6 +1608,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.CausticScale = std::clamp(w.CausticScale, 0.1f, 128.0f);
                 w.CausticDepthFade = std::clamp(w.CausticDepthFade, 0.1f, 500.0f);
                 w.CausticDispersionStrength = std::clamp(w.CausticDispersionStrength, 0.0f, 2.0f);
+                w.CausticAtlasResolution = std::clamp(w.CausticAtlasResolution, 128, 2048);
                 w.CausticFilterRadius = std::clamp(w.CausticFilterRadius, 0.25f, 8.0f);
                 w.CausticFilterDepthSigma = std::clamp(w.CausticFilterDepthSigma, 0.00001f, 0.05f);
                 w.CausticFilterIterations = std::clamp(w.CausticFilterIterations, 1, 2);

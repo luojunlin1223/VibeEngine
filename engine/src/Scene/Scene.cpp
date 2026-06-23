@@ -1139,6 +1139,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
+    m_RenderDiagnostics.HPWaterCausticAtlasTexture = m_DeferredRenderer.GetHPWaterCausticAtlasTexture();
+    m_RenderDiagnostics.HPWaterCausticAtlasDepthTexture = m_DeferredRenderer.GetHPWaterCausticAtlasDepthTexture();
+    m_RenderDiagnostics.HPWaterCausticAtlasValid = m_DeferredRenderer.IsHPWaterCausticAtlasValid();
+    m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = m_DeferredRenderer.GetHPWaterCausticAtlasTileResolution();
+    m_RenderDiagnostics.HPWaterCausticAtlasWidth = m_DeferredRenderer.GetHPWaterCausticAtlasWidth();
+    m_RenderDiagnostics.HPWaterCausticAtlasHeight = m_DeferredRenderer.GetHPWaterCausticAtlasHeight();
+    m_RenderDiagnostics.HPWaterCausticAtlasCascades = m_DeferredRenderer.GetHPWaterCausticAtlasCascadeCount();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1347,6 +1354,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterCausticDepthFade = 20.0f;
     bool hpWaterCausticRGBDispersion = false;
     float hpWaterCausticDispersionStrength = 0.0f;
+    bool hpWaterCausticAtlasEnabled = false;
+    uint32_t hpWaterCausticAtlasResolution = 512;
+    uint32_t hpWaterCausticAtlasDrawn = 0;
     bool hpWaterCausticFilterEnabled = false;
     float hpWaterCausticFilterRadius = 1.35f;
     float hpWaterCausticFilterDepthSigma = 0.0025f;
@@ -1479,6 +1489,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterCausticRGBDispersion = hpWaterCausticRGBDispersion || water->CausticRGBDispersion;
                 hpWaterCausticDispersionStrength = std::max(
                     hpWaterCausticDispersionStrength, water->CausticDispersionStrength);
+                hpWaterCausticAtlasEnabled = hpWaterCausticAtlasEnabled ||
+                    (water->CausticsEnabled && water->CausticLightSpaceAtlasEnabled);
+                hpWaterCausticAtlasResolution = std::max(
+                    hpWaterCausticAtlasResolution,
+                    static_cast<uint32_t>(std::clamp(water->CausticAtlasResolution, 128, 2048)));
                 hpWaterCausticFilterEnabled = hpWaterCausticFilterEnabled || water->CausticFilterEnabled;
                 hpWaterCausticFilterRadius = std::max(hpWaterCausticFilterRadius, water->CausticFilterRadius);
                 hpWaterCausticFilterDepthSigma = std::max(hpWaterCausticFilterDepthSigma, water->CausticFilterDepthSigma);
@@ -1750,6 +1765,43 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             }
 
             m_DeferredRenderer.EndHPWaterGBufferPass();
+
+            if (!hpWaterEntities.empty() && hpWaterCausticAtlasEnabled &&
+                ps.ShadowsEnabled && m_ShadowMap.IsInitialized()) {
+                auto atlasShader = m_DeferredRenderer.GetHPWaterCausticAtlasShader();
+                if (atlasShader && m_DeferredRenderer.BeginHPWaterCausticAtlas(hpWaterCausticAtlasResolution)) {
+                    atlasShader->Bind();
+
+                    for (uint32_t cascade = 0; cascade < static_cast<uint32_t>(ShadowMap::NUM_CASCADES); ++cascade) {
+                        m_DeferredRenderer.BeginHPWaterCausticAtlasCascade(cascade);
+                        const glm::mat4 lightVP = m_ShadowMap.GetLightViewProjection(static_cast<int>(cascade));
+
+                        for (const auto& ve : hpWaterEntities) {
+                            auto* water = m_Registry.try_get<HPWaterComponent>(ve.ID);
+                            auto* mr = m_Registry.try_get<MeshRendererComponent>(ve.ID);
+                            if (!water || !water->Enabled || !mr || !mr->Mesh)
+                                continue;
+
+                            std::shared_ptr<VertexArray> drawVAO = mr->Mesh;
+                            auto* ac = m_Registry.try_get<AnimatorComponent>(ve.ID);
+                            if (ac && ac->_Animator && ac->_Animator->GetSkinnedVAO())
+                                drawVAO = ac->_Animator->GetSkinnedVAO();
+
+                            atlasShader->SetMat4("u_LightMVP", lightVP * ve.Model);
+                            atlasShader->SetMat4("u_Model", ve.Model);
+                            atlasShader->SetFloat("u_HPRoughness", water->Roughness);
+                            atlasShader->SetFloat("u_HPThickness", water->DepthTintDistance);
+                            RenderCommand::DrawIndexed(drawVAO);
+                            ++hpWaterCausticAtlasDrawn;
+                        }
+                    }
+
+                    m_DeferredRenderer.EndHPWaterCausticAtlas(hpWaterCausticAtlasDrawn > 0);
+                    RenderCommand::SetViewport(0, 0, viewportWidth, viewportHeight);
+                }
+            }
+            m_RenderDiagnostics.HPWaterCausticAtlasRan = hpWaterCausticAtlasDrawn > 0;
+            m_RenderDiagnostics.HPWaterCausticAtlasDrawn = hpWaterCausticAtlasDrawn;
         }
     }
 
@@ -1883,6 +1935,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
         m_RenderDiagnostics.HPWaterCausticRGBDispersion = hpWaterCausticRGBDispersion;
         m_RenderDiagnostics.HPWaterCausticDispersionStrength = hpWaterCausticDispersionStrength;
+        m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = hpWaterCausticAtlasResolution;
+        m_RenderDiagnostics.HPWaterCausticAtlasCascades = m_DeferredRenderer.GetHPWaterCausticAtlasCascadeCount();
+        m_RenderDiagnostics.HPWaterCausticAtlasDrawn = hpWaterCausticAtlasDrawn;
         m_RenderDiagnostics.HPWaterCausticFilterRadius = hpWaterCausticFilterRadius;
         m_RenderDiagnostics.HPWaterCausticFilterDepthSigma = hpWaterCausticFilterDepthSigma;
         m_RenderDiagnostics.HPWaterCausticVolumeStrength = hpWaterCausticVolumeStrength;
@@ -1993,6 +2048,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
+    m_RenderDiagnostics.HPWaterCausticAtlasValid = m_DeferredRenderer.IsHPWaterCausticAtlasValid();
+    m_RenderDiagnostics.HPWaterCausticAtlasTexture = m_DeferredRenderer.GetHPWaterCausticAtlasTexture();
+    m_RenderDiagnostics.HPWaterCausticAtlasDepthTexture = m_DeferredRenderer.GetHPWaterCausticAtlasDepthTexture();
+    m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = m_DeferredRenderer.GetHPWaterCausticAtlasTileResolution();
+    m_RenderDiagnostics.HPWaterCausticAtlasWidth = m_DeferredRenderer.GetHPWaterCausticAtlasWidth();
+    m_RenderDiagnostics.HPWaterCausticAtlasHeight = m_DeferredRenderer.GetHPWaterCausticAtlasHeight();
+    m_RenderDiagnostics.HPWaterCausticAtlasCascades = m_DeferredRenderer.GetHPWaterCausticAtlasCascadeCount();
+    m_RenderDiagnostics.HPWaterCausticAtlasDrawn = hpWaterCausticAtlasDrawn;
     m_RenderDiagnostics.HPWaterFluidDynamicsValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
