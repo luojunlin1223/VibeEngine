@@ -158,6 +158,29 @@ struct RenderPipelineSettings {
     int  GBufferDebugView = 0; // 0=None, 1..8 = GBufferDebugView enum
 };
 
+struct RenderDiagnostics {
+    uint64_t FrameIndex = 0;
+    uint32_t ViewportWidth = 0;
+    uint32_t ViewportHeight = 0;
+
+    uint32_t MeshRendererEntities = 0;
+    uint32_t OpaqueSubmitted = 0;
+    uint32_t TransparentQueued = 0;
+    uint32_t TransparentDrawn = 0;
+    uint32_t FrustumCulled = 0;
+
+    uint32_t HPWaterEntities = 0;
+    uint32_t HPWaterWithMesh = 0;
+    uint32_t HPWaterQueued = 0;
+    uint32_t HPWaterDrawn = 0;
+    uint32_t HPWaterCulled = 0;
+
+    bool DeferredInitialized = false;
+    bool LightingPassRan = false;
+    bool ForwardPassRan = false;
+    uint32_t DeferredOutputTexture = 0;
+};
+
 class Scene {
 public:
     Scene() = default;
@@ -194,6 +217,8 @@ public:
 
     /// Get the deferred renderer instance (creates on first access).
     DeferredRenderer& GetDeferredRenderer() { return m_DeferredRenderer; }
+
+    const RenderDiagnostics& GetRenderDiagnostics() const { return m_RenderDiagnostics; }
 
     void OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& cameraPos);
     void OnRenderSprites(const glm::mat4& viewProjection);
@@ -270,6 +295,7 @@ private:
     entt::registry m_Registry;
     uint32_t m_EntityCounter = 0;
     RenderPipelineSettings m_PipelineSettings;
+    RenderDiagnostics m_RenderDiagnostics;
 
     std::unique_ptr<PhysicsWorld> m_PhysicsWorld;
     bool  m_PhysicsRunning = false;

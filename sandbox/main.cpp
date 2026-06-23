@@ -16,6 +16,7 @@
 #include <shellapi.h>
 #endif
 #include <fstream>
+#include <iomanip>
 #include <algorithm>
 #include <array>
 #include <any>
@@ -1086,6 +1087,7 @@ void main() { FragColor = texture(u_Source, v_UV); }
         DrawInspectorPanel();
         DrawSceneInfoPanel();
         DrawPipelineSettingsPanel();
+        DrawRenderDebuggerPanel();
         DrawScriptingPanel();
         DrawContentBrowserPanel();
         DrawProjectSettingsPanel();
@@ -3077,6 +3079,7 @@ private:
                 ImGui::MenuItem("Scene Info", nullptr, &m_ShowSceneInfo);
                 ImGui::Separator();
                 ImGui::MenuItem("Render Pipeline", nullptr, &m_ShowPipelineSettings);
+                ImGui::MenuItem("Render Debugger", nullptr, &m_ShowRenderDebugger);
                 ImGui::MenuItem("Scripting", nullptr, &m_ShowScripting);
                 ImGui::MenuItem("Content Browser", nullptr, &m_ShowContentBrowser);
                 ImGui::MenuItem("Game", nullptr, &m_ShowGameView);
@@ -6828,6 +6831,235 @@ private:
         ImGui::PopID();
     }
 
+    struct TextureProbeSummary {
+        bool Valid = false;
+        uint32_t Width = 0;
+        uint32_t Height = 0;
+        float AverageLuminance = 0.0f;
+        float NonBlackRatio = 0.0f;
+        std::array<unsigned char, 4> Center = { 0, 0, 0, 0 };
+        std::array<unsigned char, 4> MaxRGB = { 0, 0, 0, 0 };
+    };
+
+    TextureProbeSummary ProbeTexture(uint32_t textureID, uint32_t width, uint32_t height) {
+        TextureProbeSummary summary;
+        summary.Width = width;
+        summary.Height = height;
+        if (textureID == 0 || width == 0 || height == 0)
+            return summary;
+
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+        std::vector<unsigned char> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+
+        const size_t centerIndex = ((static_cast<size_t>(height / 2) * width) + (width / 2)) * 4;
+        if (centerIndex + 3 < pixels.size()) {
+            summary.Center = {
+                pixels[centerIndex + 0],
+                pixels[centerIndex + 1],
+                pixels[centerIndex + 2],
+                pixels[centerIndex + 3]
+            };
+        }
+
+        double luminanceSum = 0.0;
+        size_t nonBlack = 0;
+        const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+        const size_t step = std::max<size_t>(1, pixelCount / 65536);
+        size_t sampled = 0;
+        for (size_t pixel = 0; pixel < pixelCount; pixel += step) {
+            const size_t i = pixel * 4;
+            const unsigned char r = pixels[i + 0];
+            const unsigned char g = pixels[i + 1];
+            const unsigned char b = pixels[i + 2];
+            summary.MaxRGB[0] = std::max(summary.MaxRGB[0], r);
+            summary.MaxRGB[1] = std::max(summary.MaxRGB[1], g);
+            summary.MaxRGB[2] = std::max(summary.MaxRGB[2], b);
+            luminanceSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            if (r > 2 || g > 2 || b > 2)
+                nonBlack++;
+            sampled++;
+        }
+
+        summary.Valid = sampled > 0;
+        if (sampled > 0) {
+            summary.AverageLuminance = static_cast<float>(luminanceSum / (255.0 * sampled));
+            summary.NonBlackRatio = static_cast<float>(static_cast<double>(nonBlack) / sampled);
+        }
+        return summary;
+    }
+
+    bool SaveTextureBMP(uint32_t textureID, uint32_t width, uint32_t height, const std::filesystem::path& path) {
+        if (textureID == 0 || width == 0 || height == 0)
+            return false;
+
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+        std::vector<unsigned char> rgba(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+
+        const uint32_t rowStride = ((width * 3 + 3) / 4) * 4;
+        const uint32_t pixelDataSize = rowStride * height;
+        const uint32_t fileSize = 54 + pixelDataSize;
+        std::vector<unsigned char> bmp(fileSize, 0);
+
+        bmp[0] = 'B';
+        bmp[1] = 'M';
+        auto writeU32 = [&](size_t offset, uint32_t value) {
+            bmp[offset + 0] = static_cast<unsigned char>(value & 0xff);
+            bmp[offset + 1] = static_cast<unsigned char>((value >> 8) & 0xff);
+            bmp[offset + 2] = static_cast<unsigned char>((value >> 16) & 0xff);
+            bmp[offset + 3] = static_cast<unsigned char>((value >> 24) & 0xff);
+        };
+        auto writeU16 = [&](size_t offset, uint16_t value) {
+            bmp[offset + 0] = static_cast<unsigned char>(value & 0xff);
+            bmp[offset + 1] = static_cast<unsigned char>((value >> 8) & 0xff);
+        };
+
+        writeU32(2, fileSize);
+        writeU32(10, 54);
+        writeU32(14, 40);
+        writeU32(18, width);
+        writeU32(22, height);
+        writeU16(26, 1);
+        writeU16(28, 24);
+        writeU32(34, pixelDataSize);
+
+        for (uint32_t y = 0; y < height; ++y) {
+            const uint32_t srcY = y;
+            unsigned char* dst = bmp.data() + 54 + static_cast<size_t>(y) * rowStride;
+            for (uint32_t x = 0; x < width; ++x) {
+                const size_t src = (static_cast<size_t>(srcY) * width + x) * 4;
+                dst[x * 3 + 0] = rgba[src + 2];
+                dst[x * 3 + 1] = rgba[src + 1];
+                dst[x * 3 + 2] = rgba[src + 0];
+            }
+        }
+
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        if (!file)
+            return false;
+        file.write(reinterpret_cast<const char*>(bmp.data()), static_cast<std::streamsize>(bmp.size()));
+        return true;
+    }
+
+    void WriteRenderDiagnosticsFile() {
+        const std::filesystem::path outputPath = std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics.txt";
+        std::ofstream out(outputPath, std::ios::trunc);
+        if (!out)
+            return;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+
+        out << "VibeEngine Render Diagnostics\n";
+        out << "ScenePath: " << m_CurrentScenePath << "\n";
+        out << "FrameIndex: " << d.FrameIndex << "\n";
+        out << "Viewport: " << d.ViewportWidth << "x" << d.ViewportHeight << "\n";
+        out << "DeferredInitialized: " << d.DeferredInitialized << "\n";
+        out << "LightingPassRan: " << d.LightingPassRan << "\n";
+        out << "ForwardPassRan: " << d.ForwardPassRan << "\n";
+        out << "DeferredOutputTexture: " << d.DeferredOutputTexture << "\n";
+        out << "MeshRendererEntities: " << d.MeshRendererEntities << "\n";
+        out << "OpaqueSubmitted: " << d.OpaqueSubmitted << "\n";
+        out << "TransparentQueued: " << d.TransparentQueued << "\n";
+        out << "TransparentDrawn: " << d.TransparentDrawn << "\n";
+        out << "FrustumCulled: " << d.FrustumCulled << "\n";
+        out << "HPWaterEntities: " << d.HPWaterEntities << "\n";
+        out << "HPWaterWithMesh: " << d.HPWaterWithMesh << "\n";
+        out << "HPWaterQueued: " << d.HPWaterQueued << "\n";
+        out << "HPWaterDrawn: " << d.HPWaterDrawn << "\n";
+        out << "HPWaterCulled: " << d.HPWaterCulled << "\n";
+
+        auto writeProbe = [&](const char* name, const TextureProbeSummary& p) {
+            out << "\n[" << name << "]\n";
+            out << "Valid: " << p.Valid << "\n";
+            out << "Size: " << p.Width << "x" << p.Height << "\n";
+            out << "AverageLuminance: " << std::fixed << std::setprecision(4) << p.AverageLuminance << "\n";
+            out << "NonBlackRatio: " << std::fixed << std::setprecision(4) << p.NonBlackRatio << "\n";
+            out << "CenterRGBA: "
+                << static_cast<int>(p.Center[0]) << ","
+                << static_cast<int>(p.Center[1]) << ","
+                << static_cast<int>(p.Center[2]) << ","
+                << static_cast<int>(p.Center[3]) << "\n";
+            out << "MaxRGB: "
+                << static_cast<int>(p.MaxRGB[0]) << ","
+                << static_cast<int>(p.MaxRGB[1]) << ","
+                << static_cast<int>(p.MaxRGB[2]) << "\n";
+        };
+
+        if (m_Framebuffer) {
+            uint32_t sceneTexture = static_cast<uint32_t>(m_Framebuffer->Resolve());
+            writeProbe("SceneFramebuffer", ProbeTexture(sceneTexture, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight()));
+            SaveTextureBMP(sceneTexture, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_scene.bmp");
+        }
+        if (dr.IsInitialized() && dr.GetOutputTexture() != 0) {
+            writeProbe("DeferredOutput", ProbeTexture(dr.GetOutputTexture(), dr.GetWidth(), dr.GetHeight()));
+            SaveTextureBMP(dr.GetOutputTexture(), dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_deferred.bmp");
+        }
+        if (m_PostProcessedTexture != 0 && m_Framebuffer) {
+            writeProbe("PostProcessedTexture", ProbeTexture(m_PostProcessedTexture, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight()));
+            SaveTextureBMP(m_PostProcessedTexture, m_Framebuffer->GetWidth(), m_Framebuffer->GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_post.bmp");
+        }
+    }
+
+    void DrawRenderDebuggerPanel() {
+        if (!m_ShowRenderDebugger) return;
+        ImGui::Begin("Render Debugger", &m_ShowRenderDebugger);
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        ImGui::Text("Frame: %llu", static_cast<unsigned long long>(d.FrameIndex));
+        ImGui::Text("Viewport: %ux%u", d.ViewportWidth, d.ViewportHeight);
+        ImGui::Separator();
+        ImGui::Text("Deferred: init=%d lighting=%d output=%u",
+            d.DeferredInitialized ? 1 : 0,
+            d.LightingPassRan ? 1 : 0,
+            d.DeferredOutputTexture);
+        ImGui::Text("Forward transparent: pass=%d queued=%u drawn=%u",
+            d.ForwardPassRan ? 1 : 0,
+            d.TransparentQueued,
+            d.TransparentDrawn);
+        ImGui::Text("Opaque submitted: %u", d.OpaqueSubmitted);
+        ImGui::Text("Frustum culled: %u", d.FrustumCulled);
+        ImGui::Separator();
+        ImGui::Text("HPWater: entities=%u mesh=%u queued=%u drawn=%u culled=%u",
+            d.HPWaterEntities,
+            d.HPWaterWithMesh,
+            d.HPWaterQueued,
+            d.HPWaterDrawn,
+            d.HPWaterCulled);
+
+        ImGui::Checkbox("Auto export when HPWater exists", &m_AutoExportRenderDiagnostics);
+        if (m_AutoExportRenderDiagnostics &&
+            d.HPWaterEntities > 0 &&
+            d.FrameIndex > 8 &&
+            d.FrameIndex - m_LastAutoRenderDiagnosticFrame > 120) {
+            WriteRenderDiagnosticsFile();
+            m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
+        }
+
+        if (ImGui::Button("Export Render Diagnostics")) {
+            WriteRenderDiagnosticsFile();
+            m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("writes render_diagnostics.txt");
+
+        ImGui::End();
+    }
+
     void DrawPipelineSettingsPanel() {
         if (!m_ShowPipelineSettings) return;
         ImGui::Begin("Render Pipeline", &m_ShowPipelineSettings);
@@ -8330,6 +8562,9 @@ private:
     bool m_ShowInspector = true;
     bool m_ShowSceneInfo = true;
     bool m_ShowPipelineSettings = false;
+    bool m_ShowRenderDebugger = true;
+    bool m_AutoExportRenderDiagnostics = true;
+    uint64_t m_LastAutoRenderDiagnosticFrame = 0;
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;

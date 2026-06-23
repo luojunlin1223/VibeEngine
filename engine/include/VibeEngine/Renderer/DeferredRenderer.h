@@ -89,6 +89,13 @@ public:
     /// Copy depth from G-buffer to the main framebuffer (for forward transparent pass).
     void BlitDepthTo(uint32_t targetFBO, uint32_t width, uint32_t height);
 
+    /// Bind the deferred lighting target for forward transparent rendering.
+    /// Copies G-buffer depth first so transparent objects test against opaque geometry.
+    void BeginForwardPass();
+
+    /// Finish forward transparent rendering into the lighting target.
+    void EndForwardPass();
+
 private:
     void CreateLightingFBO();
 

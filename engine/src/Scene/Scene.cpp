@@ -150,7 +150,7 @@ static void RebuildHPWaterMesh(HPWaterComponent& water, MeshRendererComponent* m
             uint32_t i1 = static_cast<uint32_t>(HPWaterIndex(x + 1, z, n));
             uint32_t i2 = static_cast<uint32_t>(HPWaterIndex(x + 1, z + 1, n));
             uint32_t i3 = static_cast<uint32_t>(HPWaterIndex(x, z + 1, n));
-            water._Indices.insert(water._Indices.end(), { i0, i1, i2, i0, i2, i3 });
+            water._Indices.insert(water._Indices.end(), { i0, i2, i1, i0, i3, i2 });
         }
     }
 
@@ -1026,12 +1026,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                               float nearClip, float farClip,
                               uint32_t viewportWidth, uint32_t viewportHeight) {
     // ── Initialize or resize the deferred renderer ──
+    const uint64_t renderDiagnosticsFrame = m_RenderDiagnostics.FrameIndex + 1;
+    m_RenderDiagnostics = {};
+    m_RenderDiagnostics.FrameIndex = renderDiagnosticsFrame;
+    m_RenderDiagnostics.ViewportWidth = viewportWidth;
+    m_RenderDiagnostics.ViewportHeight = viewportHeight;
+
     if (!m_DeferredRenderer.IsInitialized()) {
         m_DeferredRenderer.Init(viewportWidth, viewportHeight);
     } else if (m_DeferredRenderer.GetWidth() != viewportWidth ||
                m_DeferredRenderer.GetHeight() != viewportHeight) {
         m_DeferredRenderer.Resize(viewportWidth, viewportHeight);
     }
+    m_RenderDiagnostics.DeferredInitialized = m_DeferredRenderer.IsInitialized();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1235,6 +1242,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     for (auto entityID : view) {
         if (!IsEntityActiveInHierarchy(entityID)) continue;
         auto [tc, mr] = view.get<TransformComponent, MeshRendererComponent>(entityID);
+        const bool isHPWater = m_Registry.any_of<HPWaterComponent>(entityID);
+        m_RenderDiagnostics.MeshRendererEntities++;
+        if (isHPWater) {
+            m_RenderDiagnostics.HPWaterEntities++;
+            if (mr.Mesh)
+                m_RenderDiagnostics.HPWaterWithMesh++;
+        }
 
         if (!mr.Mesh || !mr.Mat) continue;
 
@@ -1270,6 +1284,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
             if (!frustum.TestAABB(worldMin, worldMax)) {
                 stats.CulledObjects++;
+                m_RenderDiagnostics.FrustumCulled++;
+                if (isHPWater)
+                    m_RenderDiagnostics.HPWaterCulled++;
                 continue;
             }
             stats.VisibleObjects++;
@@ -1294,13 +1311,17 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         }
 
         // ── Separate transparent from opaque ──
-        bool isTransparent = mr.Mat->IsTransparent() || mr.Color[3] < 0.999f;
+        bool isTransparent = !isHPWater && (mr.Mat->IsTransparent() || mr.Color[3] < 0.999f);
         if (isTransparent) {
             glm::vec3 worldPos = glm::vec3(model[3]);
             float distSq = glm::dot(worldPos - cameraPos, worldPos - cameraPos);
             transparentEntities.push_back({ entityID, model, distSq });
+            m_RenderDiagnostics.TransparentQueued++;
+            if (isHPWater)
+                m_RenderDiagnostics.HPWaterQueued++;
             continue;
         }
+        m_RenderDiagnostics.OpaqueSubmitted++;
 
         // ── Render opaque entity to G-buffer ──
         std::shared_ptr<VertexArray> drawVAO = mr.Mesh;
@@ -1310,6 +1331,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
         glm::mat4 mvp = viewProjection * model;
         glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
+        if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID)) {
+            entityColor = glm::vec4(
+                water->ScatterColor[0],
+                water->ScatterColor[1],
+                water->ScatterColor[2],
+                1.0f);
+        }
 
         // Use the G-buffer shader for all opaque geometry
         gbufferShader->Bind();
@@ -1385,10 +1413,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     break;
             }
         }
+        if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID)) {
+            gbufferShader->SetFloat("u_Metallic", 0.0f);
+            gbufferShader->SetFloat("u_Roughness", std::clamp(water->Roughness, 0.02f, 0.75f));
+            gbufferShader->SetFloat("u_AO", 1.0f);
+            gbufferShader->SetInt("u_HasMainTex", 0);
+            gbufferShader->SetInt("u_UseTexture", 0);
+        }
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         RenderCommand::DrawIndexed(drawVAO);
+        if (isHPWater)
+            m_RenderDiagnostics.HPWaterDrawn++;
     }
 
     m_DeferredRenderer.EndGeometryPass();
@@ -1408,11 +1445,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             }
         }
         m_DeferredRenderer.LightingPass();
+        m_RenderDiagnostics.LightingPassRan = true;
+        m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
     }
 
     // ── Phase 3: Forward pass for transparent objects ──
     // Transparent objects cannot be deferred-rendered; they need the forward path.
     if (!transparentEntities.empty()) {
+        m_RenderDiagnostics.ForwardPassRan = true;
+        m_DeferredRenderer.BeginForwardPass();
+
         // Sort back-to-front
         std::sort(transparentEntities.begin(), transparentEntities.end(),
             [](const VisibleEntity& a, const VisibleEntity& b) {
@@ -1476,6 +1518,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
             if (auto* water = m_Registry.try_get<HPWaterComponent>(ve.ID)) {
                 shader->SetInt("u_HPWaterEnabled", water->Enabled ? 1 : 0);
+                shader->SetVec4("u_WaterColor", glm::vec4(
+                    water->ScatterColor[0], water->ScatterColor[1], water->ScatterColor[2], 0.86f));
+                shader->SetVec4("u_DeepColor", glm::vec4(
+                    water->AbsorptionColor[0], water->AbsorptionColor[1], water->AbsorptionColor[2], 1.0f));
                 shader->SetVec3("u_HPScatterColor", glm::vec3(
                     water->ScatterColor[0], water->ScatterColor[1], water->ScatterColor[2]));
                 shader->SetVec3("u_HPAbsorptionColor", glm::vec3(
@@ -1495,8 +1541,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 setForwardLighting(shader, true);
 
             RenderCommand::DrawIndexed(mr->Mesh);
+            m_RenderDiagnostics.TransparentDrawn++;
+            if (m_Registry.any_of<HPWaterComponent>(ve.ID))
+                m_RenderDiagnostics.HPWaterDrawn++;
         }
-        RenderCommand::SetDepthWrite(true);
+        m_DeferredRenderer.EndForwardPass();
     }
 }
 

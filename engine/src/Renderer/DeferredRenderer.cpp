@@ -233,6 +233,30 @@ uint32_t DeferredRenderer::GetDepthTexture() const {
     return static_cast<uint32_t>(m_GBuffer->GetDepthAttachmentID());
 }
 
+void DeferredRenderer::BeginForwardPass() {
+    if (!m_LightingFBO || !m_GBuffer) return;
+
+    m_LightingFBO->Bind();
+    GLint targetFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &targetFBO);
+
+    BlitDepthTo(static_cast<uint32_t>(targetFBO), m_Width, m_Height);
+    m_LightingFBO->Bind();
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void DeferredRenderer::EndForwardPass() {
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+    if (m_LightingFBO)
+        m_LightingFBO->Unbind();
+}
+
 void DeferredRenderer::BlitDepthTo(uint32_t targetFBO, uint32_t width, uint32_t height) {
     if (!m_GBuffer) return;
 
