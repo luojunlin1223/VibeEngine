@@ -1639,10 +1639,21 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_DeferredRenderer.EndGeometryPass();
 
     if (hpWaterFluidEnabled) {
-        std::vector<uint8_t> obstacleMask(
-            static_cast<size_t>(hpWaterFluidResolution) * static_cast<size_t>(hpWaterFluidResolution), 0);
+        const size_t fluidTexelCount =
+            static_cast<size_t>(hpWaterFluidResolution) * static_cast<size_t>(hpWaterFluidResolution);
+        std::vector<uint8_t> obstacleMask(fluidTexelCount, 0);
+        std::vector<float> waterHeights(fluidTexelCount, 0.0f);
+        std::vector<float> sceneHeights(fluidTexelCount, 0.0f);
         uint32_t obstacleCount = 0;
         uint32_t obstaclePixels = 0;
+
+        const float waterMinY = hpWaterFluidBoxCenter.y - hpWaterFluidBoxSize.y * 0.5f;
+        const float invY = hpWaterFluidBoxSize.y > 0.0001f ? 1.0f / hpWaterFluidBoxSize.y : 0.0f;
+        const auto normalizeHeight = [&](float worldY) -> float {
+            return std::clamp((worldY - waterMinY) * invY, 0.0f, 1.0f);
+        };
+        const float normalizedWaterHeight = normalizeHeight(hpWaterFluidSurfaceY);
+        std::fill(waterHeights.begin(), waterHeights.end(), normalizedWaterHeight);
 
         if (hpWaterFluidObstaclesEnabled) {
             const float halfX = hpWaterFluidBoxSize.x * 0.5f;
@@ -1684,11 +1695,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     continue;
 
                 bool wroteAnyPixel = false;
+                const float normalizedSceneHeight = normalizeHeight(obstacle.Max.y);
                 for (int z = z0; z <= z1; ++z) {
                     for (int x = x0; x <= x1; ++x) {
                         const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(hpWaterFluidResolution) +
                                            static_cast<size_t>(x);
-                        if (obstacleMask[idx] == 0) {
+                        sceneHeights[idx] = std::max(sceneHeights[idx], normalizedSceneHeight);
+                        if (sceneHeights[idx] > waterHeights[idx] + 0.0005f && obstacleMask[idx] == 0) {
                             obstacleMask[idx] = 255;
                             ++obstaclePixels;
                             wroteAnyPixel = true;
@@ -1703,6 +1716,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
         m_RenderDiagnostics.HPWaterFluidObstacleCount = obstacleCount;
         m_RenderDiagnostics.HPWaterFluidObstaclePixels = obstaclePixels;
+        m_RenderDiagnostics.HPWaterFluidHeightFieldValid =
+            m_DeferredRenderer.UploadHPWaterFluidHeightFields(hpWaterFluidResolution,
+                                                              waterHeights,
+                                                              sceneHeights,
+                                                              hpWaterFluidBoxCenter,
+                                                              hpWaterFluidBoxSize);
         m_RenderDiagnostics.HPWaterFluidObstacleValid =
             m_DeferredRenderer.UploadHPWaterFluidObstacleMask(hpWaterFluidResolution,
                                                               obstacleMask,
@@ -2078,6 +2097,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterFluidDamping = hpWaterFluidDamping;
     m_RenderDiagnostics.HPWaterFluidObstacleValid = m_DeferredRenderer.IsHPWaterFluidObstacleValid();
     m_RenderDiagnostics.HPWaterFluidObstacleTexture = m_DeferredRenderer.GetHPWaterFluidObstacleTexture();
+    m_RenderDiagnostics.HPWaterFluidHeightFieldValid = m_DeferredRenderer.IsHPWaterFluidHeightFieldValid();
+    m_RenderDiagnostics.HPWaterFluidWaterHeightTexture = m_DeferredRenderer.GetHPWaterFluidWaterHeightTexture();
+    m_RenderDiagnostics.HPWaterFluidSceneHeightTexture = m_DeferredRenderer.GetHPWaterFluidSceneHeightTexture();
     m_RenderDiagnostics.DeferredOutputTexture = m_DeferredRenderer.GetOutputTexture();
 }
 

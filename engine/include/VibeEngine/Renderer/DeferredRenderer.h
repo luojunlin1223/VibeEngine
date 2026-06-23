@@ -197,6 +197,14 @@ public:
                                         const glm::vec3& boxCenter,
                                         const glm::vec3& boxSize);
 
+    /// Upload HPWater-style top-down height textures consumed by fluid dynamics.
+    /// Values are normalized into the water simulation volume: water < scene means obstacle.
+    bool UploadHPWaterFluidHeightFields(uint32_t resolution,
+                                        const std::vector<float>& waterHeights,
+                                        const std::vector<float>& sceneHeights,
+                                        const glm::vec3& boxCenter,
+                                        const glm::vec3& boxSize);
+
     /// Get the lit output texture ID for post-processing.
     uint32_t GetOutputTexture() const;
 
@@ -283,10 +291,13 @@ public:
 
     uint32_t GetHPWaterFluidHeightTexture() const;
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
+    uint32_t GetHPWaterFluidWaterHeightTexture() const { return m_HPWaterFluidWaterHeightTexture; }
+    uint32_t GetHPWaterFluidSceneHeightTexture() const { return m_HPWaterFluidSceneHeightTexture; }
     uint32_t GetHPWaterFluidResolution() const { return m_HPWaterFluidResolution; }
     bool IsHPWaterFluidDynamicsValid() const { return m_HPWaterFluidValid; }
     bool DidHPWaterFluidComputeRun() const { return m_HPWaterFluidComputeRan; }
     bool IsHPWaterFluidObstacleValid() const { return m_HPWaterFluidObstacleValid; }
+    bool IsHPWaterFluidHeightFieldValid() const { return m_HPWaterFluidHeightFieldValid; }
     glm::vec3 GetHPWaterFluidBoxCenter() const { return m_HPWaterFluidBoxCenter; }
     glm::vec3 GetHPWaterFluidBoxSize() const { return m_HPWaterFluidBoxSize; }
 
@@ -327,6 +338,7 @@ private:
     void CreateHPWaterDepthPyramid();
     void CreateHPWaterFluidFBO(uint32_t resolution);
     void DestroyHPWaterFluidObstacleTexture();
+    void DestroyHPWaterFluidHeightFieldTextures();
     void DestroyHPWaterDepthPyramid();
     void DestroyHPWaterCausticComputeTexture();
     void ClearHPWaterFluidFBOs();
@@ -415,8 +427,12 @@ private:
     bool m_HPWaterFluidInitialized = false;
     bool m_HPWaterFluidComputeRan = false;
     bool m_HPWaterFluidObstacleValid = false;
+    bool m_HPWaterFluidHeightFieldValid = false;
     uint32_t m_HPWaterFluidObstacleTexture = 0;
     uint32_t m_HPWaterFluidObstacleResolution = 0;
+    uint32_t m_HPWaterFluidWaterHeightTexture = 0;
+    uint32_t m_HPWaterFluidSceneHeightTexture = 0;
+    uint32_t m_HPWaterFluidHeightFieldResolution = 0;
     uint32_t m_HPWaterFluidResolution = 0;
     glm::vec3 m_HPWaterFluidBoxCenter = glm::vec3(0.0f);
     glm::vec3 m_HPWaterFluidBoxSize = glm::vec3(1.0f);

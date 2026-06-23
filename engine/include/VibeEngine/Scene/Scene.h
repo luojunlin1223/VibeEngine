@@ -258,6 +258,9 @@ struct RenderDiagnostics {
     float HPWaterFluidDamping = 0.0f;
     bool HPWaterFluidObstacleValid = false;
     uint32_t HPWaterFluidObstacleTexture = 0;
+    bool HPWaterFluidHeightFieldValid = false;
+    uint32_t HPWaterFluidWaterHeightTexture = 0;
+    uint32_t HPWaterFluidSceneHeightTexture = 0;
     uint32_t HPWaterFluidObstacleCount = 0;
     uint32_t HPWaterFluidObstaclePixels = 0;
 

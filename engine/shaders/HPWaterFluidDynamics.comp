@@ -11,6 +11,8 @@ layout(binding = 1, r16f) readonly uniform image2D u_WaveHeightPreviousImage;
 layout(binding = 2, r16f) writeonly uniform image2D u_WaveHeightNextImage;
 
 uniform sampler2D u_ObstacleMask;
+uniform sampler2D u_WaterHeightTexture;
+uniform sampler2D u_SceneHeightTexture;
 
 uniform float u_WaveSpeed;
 uniform float u_DampingFactor;
@@ -18,6 +20,8 @@ uniform vec3  u_WaveSourceUV;
 uniform float u_WaveSourceIntensity;
 uniform float u_WaveSourceRadius;
 uniform int   u_ObstacleMaskEnabled;
+uniform int   u_HeightFieldEnabled;
+uniform float u_HeightObstacleEpsilon;
 
 float ReadHeight(ivec2 coord, ivec2 size) {
     coord = clamp(coord, ivec2(0), size - ivec2(1));
@@ -25,9 +29,14 @@ float ReadHeight(ivec2 coord, ivec2 size) {
 }
 
 float ReadObstacle(ivec2 coord, ivec2 size) {
+    coord = clamp(coord, ivec2(0), size - ivec2(1));
+    if (u_HeightFieldEnabled != 0) {
+        float waterHeight = texelFetch(u_WaterHeightTexture, coord, 0).r;
+        float sceneHeight = texelFetch(u_SceneHeightTexture, coord, 0).r;
+        return sceneHeight > waterHeight + max(u_HeightObstacleEpsilon, 0.0) ? 1.0 : 0.0;
+    }
     if (u_ObstacleMaskEnabled == 0)
         return 0.0;
-    coord = clamp(coord, ivec2(0), size - ivec2(1));
     return texelFetch(u_ObstacleMask, coord, 0).r;
 }
 
