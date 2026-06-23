@@ -1272,8 +1272,10 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         float skyReflectionIntensity,
                                         uint32_t skyTexture,
                                         uint32_t reflectionProbeTexture,
+                                        uint32_t reflectionProbeSecondaryTexture,
                                         bool hasReflectionProbe,
                                         float reflectionProbeIntensity,
+                                        float reflectionProbeBlend,
                                         const glm::mat4& inverseViewProjection) {
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
@@ -1371,12 +1373,22 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetInt("u_HasSkyTexture", skyTextureValid ? 1 : 0);
 
     const bool reflectionProbeValid = hasReflectionProbe && reflectionProbeTexture != 0;
+    const bool reflectionProbeSecondaryValid = reflectionProbeValid && reflectionProbeSecondaryTexture != 0;
     glActiveTexture(GL_TEXTURE13);
     glBindTexture(GL_TEXTURE_CUBE_MAP, reflectionProbeValid ? static_cast<GLuint>(reflectionProbeTexture) : 0);
     m_HPWaterCompositeShader->SetInt("u_ReflectionProbe", 13);
+
+    glActiveTexture(GL_TEXTURE15);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, reflectionProbeSecondaryValid
+        ? static_cast<GLuint>(reflectionProbeSecondaryTexture)
+        : (reflectionProbeValid ? static_cast<GLuint>(reflectionProbeTexture) : 0));
+    m_HPWaterCompositeShader->SetInt("u_ReflectionProbeSecondary", 15);
+
     m_HPWaterCompositeShader->SetInt("u_HasReflectionProbe", reflectionProbeValid ? 1 : 0);
     m_HPWaterCompositeShader->SetFloat("u_ReflectionProbeIntensity",
         reflectionProbeValid ? std::clamp(reflectionProbeIntensity, 0.0f, 4.0f) : 0.0f);
+    m_HPWaterCompositeShader->SetFloat("u_ReflectionProbeBlend",
+        reflectionProbeSecondaryValid ? std::clamp(reflectionProbeBlend, 0.0f, 1.0f) : 0.0f);
 
     glActiveTexture(GL_TEXTURE14);
     glBindTexture(GL_TEXTURE_2D, m_HPWaterFGDLUTValid ? m_HPWaterFGDLUTTexture : 0);

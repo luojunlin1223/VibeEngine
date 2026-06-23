@@ -7082,7 +7082,9 @@ private:
         out << "HPWaterSkyTexture: " << d.HPWaterSkyTexture << "\n";
         out << "HPWaterReflectionProbeBound: " << d.HPWaterReflectionProbeBound << "\n";
         out << "HPWaterReflectionProbeTexture: " << d.HPWaterReflectionProbeTexture << "\n";
+        out << "HPWaterReflectionProbeSecondaryTexture: " << d.HPWaterReflectionProbeSecondaryTexture << "\n";
         out << "HPWaterReflectionProbeIntensity: " << d.HPWaterReflectionProbeIntensity << "\n";
+        out << "HPWaterReflectionProbeBlend: " << d.HPWaterReflectionProbeBlend << "\n";
         out << "HPWaterForwardScatterMipEnabled: " << d.HPWaterForwardScatterMipEnabled << "\n";
         out << "HPWaterForwardScatterMipCount: " << d.HPWaterForwardScatterMipCount << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
@@ -7418,12 +7420,14 @@ private:
             d.HPWaterSkyReflectionIntensity,
             d.HPWaterIndirectDiffuseIntensity,
             d.HPWaterDirectionalLightIntensity);
-        ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d (%u) probeIntensity=%.3f",
+        ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d (%u/%u) intensity=%.3f blend=%.3f",
             d.HPWaterSkyTextureReflectionBound ? 1 : 0,
             d.HPWaterSkyTexture,
             d.HPWaterReflectionProbeBound ? 1 : 0,
             d.HPWaterReflectionProbeTexture,
-            d.HPWaterReflectionProbeIntensity);
+            d.HPWaterReflectionProbeSecondaryTexture,
+            d.HPWaterReflectionProbeIntensity,
+            d.HPWaterReflectionProbeBlend);
         ImGui::Text("HPWater forward scatter mips: enabled=%d count=%u",
             d.HPWaterForwardScatterMipEnabled ? 1 : 0,
             d.HPWaterForwardScatterMipCount);

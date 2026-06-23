@@ -52,6 +52,7 @@ uniform sampler2D u_HPWaterCaustic;
 uniform sampler2D u_SkyTexture;
 uniform sampler2D u_PreintegratedFGDLUT;
 uniform samplerCube u_ReflectionProbe;
+uniform samplerCube u_ReflectionProbeSecondary;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
@@ -75,6 +76,7 @@ uniform int u_IndirectLightingEnabled;
 uniform float u_IndirectDiffuseIntensity;
 uniform float u_SkyReflectionIntensity;
 uniform float u_ReflectionProbeIntensity;
+uniform float u_ReflectionProbeBlend;
 uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
@@ -212,7 +214,9 @@ vec3 SampleEnvironment(vec3 dir, vec3 fallbackDir, float roughness, bool diffuse
         int levels = textureQueryLevels(u_ReflectionProbe);
         float maxMip = float(max(levels - 1, 0));
         float lod = diffuseSample ? maxMip : clamp(roughness * maxMip, 0.0, maxMip);
-        return textureLod(u_ReflectionProbe, normalize(dir), lod).rgb;
+        vec3 primary = textureLod(u_ReflectionProbe, normalize(dir), lod).rgb;
+        vec3 secondary = textureLod(u_ReflectionProbeSecondary, normalize(dir), lod).rgb;
+        return mix(primary, secondary, clamp(u_ReflectionProbeBlend, 0.0, 1.0));
     }
 
     if (u_HasSkyTexture == 1) {

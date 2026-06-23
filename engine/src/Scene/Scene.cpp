@@ -2103,9 +2103,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;
+        uint32_t hpWaterReflectionProbeSecondaryTexture = 0;
         float hpWaterReflectionProbeIntensity = 0.0f;
+        float hpWaterReflectionProbeBlend = 0.0f;
         {
             float bestDistanceSq = 3.402823466e+38F;
+            float secondDistanceSq = 3.402823466e+38F;
             auto probeView = m_Registry.view<TransformComponent, ReflectionProbeComponent>();
             for (auto probeEntity : probeView) {
                 if (!IsEntityActiveInHierarchy(probeEntity))
@@ -2119,10 +2122,23 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 glm::vec3 toCamera = probePos - cameraPos;
                 float distanceSq = glm::dot(toCamera, toCamera);
                 if (distanceSq < bestDistanceSq) {
+                    secondDistanceSq = bestDistanceSq;
+                    hpWaterReflectionProbeSecondaryTexture = hpWaterReflectionProbeTexture;
                     bestDistanceSq = distanceSq;
                     hpWaterReflectionProbeTexture = probe._Probe->GetCubemapID();
                     hpWaterReflectionProbeIntensity = 1.0f;
+                } else if (distanceSq < secondDistanceSq) {
+                    secondDistanceSq = distanceSq;
+                    hpWaterReflectionProbeSecondaryTexture = probe._Probe->GetCubemapID();
                 }
+            }
+
+            if (hpWaterReflectionProbeTexture != 0 && hpWaterReflectionProbeSecondaryTexture != 0) {
+                const float bestDistance = std::sqrt(std::max(bestDistanceSq, 0.0f));
+                const float secondDistance = std::sqrt(std::max(secondDistanceSq, 0.0f));
+                const float primaryWeight = 1.0f / std::max(bestDistance, 0.25f);
+                const float secondaryWeight = 1.0f / std::max(secondDistance, 0.25f);
+                hpWaterReflectionProbeBlend = secondaryWeight / std::max(primaryWeight + secondaryWeight, 0.0001f);
             }
         }
         const bool hpWaterReflectionProbeBound = hpWaterReflectionProbeTexture != 0;
@@ -2130,7 +2146,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterSkyTexture = hpWaterSkyTexture;
         m_RenderDiagnostics.HPWaterReflectionProbeBound = hpWaterReflectionProbeBound;
         m_RenderDiagnostics.HPWaterReflectionProbeTexture = hpWaterReflectionProbeTexture;
+        m_RenderDiagnostics.HPWaterReflectionProbeSecondaryTexture = hpWaterReflectionProbeSecondaryTexture;
         m_RenderDiagnostics.HPWaterReflectionProbeIntensity = hpWaterReflectionProbeIntensity;
+        m_RenderDiagnostics.HPWaterReflectionProbeBlend = hpWaterReflectionProbeBlend;
         m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
         m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
@@ -2173,8 +2191,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             ps.SkyReflectionIntensity,
                                             hpWaterSkyTexture,
                                             hpWaterReflectionProbeTexture,
+                                            hpWaterReflectionProbeSecondaryTexture,
                                             hpWaterReflectionProbeBound,
                                             hpWaterReflectionProbeIntensity,
+                                            hpWaterReflectionProbeBlend,
                                             inverseViewProjection);
         m_RenderDiagnostics.HPWaterCausticRan =
             hpWaterCausticsEnabled &&
@@ -2244,8 +2264,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 ps.SkyReflectionIntensity,
                                                 hpWaterSkyTexture,
                                                 hpWaterReflectionProbeTexture,
+                                                hpWaterReflectionProbeSecondaryTexture,
                                                 hpWaterReflectionProbeBound,
                                                 hpWaterReflectionProbeIntensity,
+                                                hpWaterReflectionProbeBlend,
                                                 inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
