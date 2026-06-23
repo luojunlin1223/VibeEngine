@@ -24,6 +24,8 @@
 namespace VE {
     class Animator;
     class VertexArray;
+    class VertexBuffer;
+    class IndexBuffer;
     class Texture2D;
     class ReflectionProbe;
     class VideoPlayer;
@@ -365,6 +367,47 @@ struct TerrainComponent {
 };
 
 // ── Runtime UI Components ─────────────────────────────────────────────
+
+struct HPWaterComponent {
+    bool Enabled = true;
+
+    int   Resolution = 96;
+    float WorldSizeX = 180.0f;
+    float WorldSizeZ = 180.0f;
+    float BaseHeight = -0.35f;
+
+    float WaveSpeed = 14.0f;
+    float Damping = 0.018f;
+    float HeightScale = 0.55f;
+    float EdgeAbsorptionWidth = 0.10f;
+
+    bool  AutoImpulse = true;
+    float AutoImpulseInterval = 1.25f;
+    float ImpulseRadius = 7.0f;
+    float ImpulseStrength = 0.045f;
+
+    std::array<float, 3> ScatterColor = { 0.07f, 0.42f, 0.58f };
+    std::array<float, 3> AbsorptionColor = { 0.012f, 0.055f, 0.095f };
+    std::array<float, 3> FoamColor = { 0.85f, 0.96f, 1.0f };
+    float FoamIntensity = 0.35f;
+    float Roughness = 0.06f;
+    float RefractionStrength = 0.16f;
+    float DepthTintDistance = 12.0f;
+
+    std::shared_ptr<VertexArray> _Mesh;
+    std::shared_ptr<VertexBuffer> _VertexBuffer;
+    std::shared_ptr<IndexBuffer> _IndexBuffer;
+    std::vector<float> _Current;
+    std::vector<float> _Previous;
+    std::vector<float> _Next;
+    std::vector<float> _Vertices;
+    std::vector<uint32_t> _Indices;
+    float _Accumulator = 0.0f;
+    float _ImpulseTimer = 0.0f;
+    bool _NeedsRebuild = true;
+
+    HPWaterComponent() = default;
+};
 
 enum class UIAnchorType {
     TopLeft, TopCenter, TopRight,

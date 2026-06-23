@@ -5,6 +5,7 @@
 #include "VibeEngine/Renderer/RenderCommand.h"
 #include "VibeEngine/Renderer/ShadowMap.h"
 #include "VibeEngine/Renderer/VertexArray.h"
+#include "VibeEngine/Renderer/Buffer.h"
 #include "VibeEngine/Renderer/Texture.h"
 #include "VibeEngine/Renderer/VideoPlayer.h"
 #include "VibeEngine/Scripting/ScriptEngine.h"
@@ -91,6 +92,209 @@ static void BindDummyReflectionProbe(const std::shared_ptr<Shader>& shader) {
     shader->SetInt("u_ReflectionProbe", 13);
     shader->SetInt("u_HasReflectionProbe", 0);
     shader->SetFloat("u_ReflectionIntensity", 0.0f);
+}
+
+static int ClampHPWaterResolution(int resolution) {
+    return std::clamp(resolution, 8, 256);
+}
+
+static size_t HPWaterIndex(int x, int z, int resolution) {
+    return static_cast<size_t>(z * resolution + x);
+}
+
+static void AddHPWaterImpulse(HPWaterComponent& water, float u, float v, float radiusWorld, float strength) {
+    const int n = ClampHPWaterResolution(water.Resolution);
+    if (water._Current.size() != static_cast<size_t>(n * n))
+        return;
+
+    const float cellSize = std::max(water.WorldSizeX, water.WorldSizeZ) / static_cast<float>(std::max(1, n - 1));
+    const float radiusCells = std::max(radiusWorld / std::max(cellSize, 0.001f), 1.0f);
+    const float centerX = glm::clamp(u, 0.0f, 1.0f) * static_cast<float>(n - 1);
+    const float centerZ = glm::clamp(v, 0.0f, 1.0f) * static_cast<float>(n - 1);
+    const int minX = std::max(0, static_cast<int>(std::floor(centerX - radiusCells)));
+    const int maxX = std::min(n - 1, static_cast<int>(std::ceil(centerX + radiusCells)));
+    const int minZ = std::max(0, static_cast<int>(std::floor(centerZ - radiusCells)));
+    const int maxZ = std::min(n - 1, static_cast<int>(std::ceil(centerZ + radiusCells)));
+    const float sigma = radiusCells * 0.4f;
+    const float invTwoSigma2 = 1.0f / std::max(2.0f * sigma * sigma, 0.0001f);
+
+    for (int z = minZ; z <= maxZ; ++z) {
+        for (int x = minX; x <= maxX; ++x) {
+            const float dx = static_cast<float>(x) - centerX;
+            const float dz = static_cast<float>(z) - centerZ;
+            const float dist2 = dx * dx + dz * dz;
+            if (dist2 > radiusCells * radiusCells)
+                continue;
+
+            const float impulse = std::exp(-dist2 * invTwoSigma2) * strength;
+            water._Current[HPWaterIndex(x, z, n)] += impulse;
+        }
+    }
+}
+
+static void RebuildHPWaterMesh(HPWaterComponent& water, MeshRendererComponent* meshRenderer) {
+    water.Resolution = ClampHPWaterResolution(water.Resolution);
+    const int n = water.Resolution;
+    const size_t sampleCount = static_cast<size_t>(n * n);
+
+    water._Current.assign(sampleCount, 0.0f);
+    water._Previous.assign(sampleCount, 0.0f);
+    water._Next.assign(sampleCount, 0.0f);
+    water._Vertices.assign(sampleCount * 11, 0.0f);
+    water._Indices.clear();
+    water._Indices.reserve(static_cast<size_t>(n - 1) * static_cast<size_t>(n - 1) * 6);
+
+    for (int z = 0; z < n - 1; ++z) {
+        for (int x = 0; x < n - 1; ++x) {
+            uint32_t i0 = static_cast<uint32_t>(HPWaterIndex(x, z, n));
+            uint32_t i1 = static_cast<uint32_t>(HPWaterIndex(x + 1, z, n));
+            uint32_t i2 = static_cast<uint32_t>(HPWaterIndex(x + 1, z + 1, n));
+            uint32_t i3 = static_cast<uint32_t>(HPWaterIndex(x, z + 1, n));
+            water._Indices.insert(water._Indices.end(), { i0, i1, i2, i0, i2, i3 });
+        }
+    }
+
+    water._Mesh = VertexArray::Create();
+    water._VertexBuffer = VertexBuffer::Create(water._Vertices.data(),
+        static_cast<uint32_t>(water._Vertices.size() * sizeof(float)));
+    water._VertexBuffer->SetLayout({
+        { ShaderDataType::Float3, "a_Position" },
+        { ShaderDataType::Float3, "a_Normal" },
+        { ShaderDataType::Float3, "a_Color" },
+        { ShaderDataType::Float2, "a_TexCoord" }
+    });
+    water._IndexBuffer = IndexBuffer::Create(water._Indices.data(),
+        static_cast<uint32_t>(water._Indices.size()));
+    water._Mesh->AddVertexBuffer(water._VertexBuffer);
+    water._Mesh->SetIndexBuffer(water._IndexBuffer);
+
+    if (meshRenderer) {
+        meshRenderer->Mesh = water._Mesh;
+        if (!meshRenderer->Mat || meshRenderer->Mat->GetName() != "Water")
+            meshRenderer->Mat = MaterialLibrary::Get("Water");
+        meshRenderer->CastShadows = false;
+        meshRenderer->LocalBounds = {
+            glm::vec3(-water.WorldSizeX * 0.5f, water.BaseHeight - water.HeightScale * 2.0f, -water.WorldSizeZ * 0.5f),
+            glm::vec3( water.WorldSizeX * 0.5f, water.BaseHeight + water.HeightScale * 2.0f,  water.WorldSizeZ * 0.5f)
+        };
+    }
+
+    water._NeedsRebuild = false;
+}
+
+static void UploadHPWaterMesh(HPWaterComponent& water) {
+    const int n = ClampHPWaterResolution(water.Resolution);
+    if (!water._VertexBuffer || water._Vertices.size() != static_cast<size_t>(n * n * 11))
+        return;
+
+    const float dx = water.WorldSizeX / static_cast<float>(std::max(1, n - 1));
+    const float dz = water.WorldSizeZ / static_cast<float>(std::max(1, n - 1));
+
+    for (int z = 0; z < n; ++z) {
+        for (int x = 0; x < n; ++x) {
+            const int xl = std::max(0, x - 1);
+            const int xr = std::min(n - 1, x + 1);
+            const int zd = std::max(0, z - 1);
+            const int zu = std::min(n - 1, z + 1);
+            const float h = water._Current[HPWaterIndex(x, z, n)];
+            const float hx = water._Current[HPWaterIndex(xr, z, n)] - water._Current[HPWaterIndex(xl, z, n)];
+            const float hz = water._Current[HPWaterIndex(x, zu, n)] - water._Current[HPWaterIndex(x, zd, n)];
+            const glm::vec3 normal = glm::normalize(glm::vec3(
+                -hx * water.HeightScale / std::max(dx * 2.0f, 0.001f),
+                 1.0f,
+                -hz * water.HeightScale / std::max(dz * 2.0f, 0.001f)));
+
+            const float u = static_cast<float>(x) / static_cast<float>(std::max(1, n - 1));
+            const float v = static_cast<float>(z) / static_cast<float>(std::max(1, n - 1));
+            const size_t base = HPWaterIndex(x, z, n) * 11;
+            water._Vertices[base + 0] = (u - 0.5f) * water.WorldSizeX;
+            water._Vertices[base + 1] = water.BaseHeight + h * water.HeightScale;
+            water._Vertices[base + 2] = (v - 0.5f) * water.WorldSizeZ;
+            water._Vertices[base + 3] = normal.x;
+            water._Vertices[base + 4] = normal.y;
+            water._Vertices[base + 5] = normal.z;
+            water._Vertices[base + 6] = 1.0f;
+            water._Vertices[base + 7] = 1.0f;
+            water._Vertices[base + 8] = 1.0f;
+            water._Vertices[base + 9] = u;
+            water._Vertices[base + 10] = v;
+        }
+    }
+
+    water._VertexBuffer->SetData(water._Vertices.data(),
+        static_cast<uint32_t>(water._Vertices.size() * sizeof(float)));
+}
+
+static void StepHPWaterSimulation(HPWaterComponent& water, float dt) {
+    const int n = ClampHPWaterResolution(water.Resolution);
+    if (water._Current.size() != static_cast<size_t>(n * n))
+        return;
+
+    const float dx = water.WorldSizeX / static_cast<float>(std::max(1, n - 1));
+    const float dz = water.WorldSizeZ / static_cast<float>(std::max(1, n - 1));
+    const float c2dt2 = water.WaveSpeed * water.WaveSpeed * dt * dt;
+    const float damping = glm::clamp(water.Damping, 0.0f, 0.98f);
+    const float edgeWidth = std::max(static_cast<float>(n) * water.EdgeAbsorptionWidth, 1.0f);
+
+    for (int z = 0; z < n; ++z) {
+        for (int x = 0; x < n; ++x) {
+            const size_t i = HPWaterIndex(x, z, n);
+            const float current = water._Current[i];
+            const float left = water._Current[HPWaterIndex(std::max(0, x - 1), z, n)];
+            const float right = water._Current[HPWaterIndex(std::min(n - 1, x + 1), z, n)];
+            const float down = water._Current[HPWaterIndex(x, std::max(0, z - 1), n)];
+            const float up = water._Current[HPWaterIndex(x, std::min(n - 1, z + 1), n)];
+            const float laplacian =
+                (left + right - 2.0f * current) / std::max(dx * dx, 0.0001f) +
+                (down + up - 2.0f * current) / std::max(dz * dz, 0.0001f);
+
+            const float edgeDist = static_cast<float>(std::min({ x, z, n - 1 - x, n - 1 - z }));
+            float edgeRetention = glm::smoothstep(0.0f, edgeWidth, edgeDist);
+            edgeRetention *= edgeRetention;
+            const float inertia = (current - water._Previous[i]) * (1.0f - damping) * edgeRetention;
+            water._Next[i] = current + inertia + c2dt2 * laplacian;
+        }
+    }
+
+    water._Previous.swap(water._Current);
+    water._Current.swap(water._Next);
+}
+
+static void UpdateHPWaterComponent(HPWaterComponent& water, MeshRendererComponent* meshRenderer, float deltaTime) {
+    if (!water.Enabled)
+        return;
+
+    const int desiredResolution = ClampHPWaterResolution(water.Resolution);
+    if (water._NeedsRebuild || !water._Mesh || water._Current.size() != static_cast<size_t>(desiredResolution * desiredResolution))
+        RebuildHPWaterMesh(water, meshRenderer);
+
+    constexpr float fixedDt = 1.0f / 60.0f;
+    water._Accumulator = std::min(water._Accumulator + std::max(deltaTime, 0.0f), 0.2f);
+    int steps = 0;
+    while (water._Accumulator >= fixedDt && steps < 8) {
+        if (water.AutoImpulse) {
+            water._ImpulseTimer -= fixedDt;
+            if (water._ImpulseTimer <= 0.0f) {
+                const float t = water._ImpulseTimer + 37.0f;
+                const float u = 0.5f + 0.26f * std::sin(t * 1.91f);
+                const float v = 0.5f + 0.32f * std::cos(t * 1.37f);
+                AddHPWaterImpulse(water, u, v, water.ImpulseRadius, water.ImpulseStrength);
+                water._ImpulseTimer = std::max(water.AutoImpulseInterval, fixedDt);
+            }
+        }
+        StepHPWaterSimulation(water, fixedDt);
+        water._Accumulator -= fixedDt;
+        ++steps;
+    }
+
+    UploadHPWaterMesh(water);
+    if (meshRenderer) {
+        meshRenderer->Mesh = water._Mesh;
+        meshRenderer->LocalBounds = {
+            glm::vec3(-water.WorldSizeX * 0.5f, water.BaseHeight - water.HeightScale * 2.0f, -water.WorldSizeZ * 0.5f),
+            glm::vec3( water.WorldSizeX * 0.5f, water.BaseHeight + water.HeightScale * 2.0f,  water.WorldSizeZ * 0.5f)
+        };
+    }
 }
 
 Entity Scene::CreateEntity(const std::string& name) {
@@ -433,6 +637,17 @@ void Scene::OnUpdate(float deltaTime) {
 
     // Update nav agents
     UpdateNavAgents(deltaTime);
+
+    // Update HPWater surfaces before rendering consumes their dynamic meshes.
+    {
+        auto waterView = m_Registry.view<HPWaterComponent>();
+        for (auto entity : waterView) {
+            if (!IsEntityActiveInHierarchy(entity)) continue;
+            auto& water = waterView.get<HPWaterComponent>(entity);
+            auto* mr = m_Registry.try_get<MeshRendererComponent>(entity);
+            UpdateHPWaterComponent(water, mr, deltaTime);
+        }
+    }
 
     // Update particle systems
     OnUpdateParticles(deltaTime);
@@ -1258,6 +1473,23 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             shader->SetMat4("u_MVP", mvp);
             shader->SetMat4("u_Model", ve.Model);
             shader->SetVec4("u_EntityColor", entityColor);
+
+            if (auto* water = m_Registry.try_get<HPWaterComponent>(ve.ID)) {
+                shader->SetInt("u_HPWaterEnabled", water->Enabled ? 1 : 0);
+                shader->SetVec3("u_HPScatterColor", glm::vec3(
+                    water->ScatterColor[0], water->ScatterColor[1], water->ScatterColor[2]));
+                shader->SetVec3("u_HPAbsorptionColor", glm::vec3(
+                    water->AbsorptionColor[0], water->AbsorptionColor[1], water->AbsorptionColor[2]));
+                shader->SetVec3("u_HPFoamColor", glm::vec3(
+                    water->FoamColor[0], water->FoamColor[1], water->FoamColor[2]));
+                shader->SetFloat("u_HPFoamIntensity", water->FoamIntensity);
+                shader->SetFloat("u_HPRoughness", water->Roughness);
+                shader->SetFloat("u_HPRefractionStrength", water->RefractionStrength);
+                shader->SetFloat("u_HPDepthTintDistance", water->DepthTintDistance);
+                shader->SetFloat("u_HPHeightScale", water->HeightScale);
+            } else {
+                shader->SetInt("u_HPWaterEnabled", 0);
+            }
 
             if (mr->Mat->IsLit())
                 setForwardLighting(shader, true);

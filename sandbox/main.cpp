@@ -1258,6 +1258,48 @@ private:
         }
     }
 
+    void EnsureLauncherWater() {
+        auto waterEntity = FindEntityByName("HPWaterOcean");
+        if (!waterEntity) {
+            waterEntity = m_Scene->CreateEntity("HPWaterOcean");
+            auto& tag = waterEntity.GetComponent<VE::TagComponent>();
+            tag.Layer = 4;
+
+            auto& tc = waterEntity.GetComponent<VE::TransformComponent>();
+            tc.Position = { 0.0f, 0.0f, 72.0f };
+            tc.Scale = { 1.0f, 1.0f, 1.0f };
+
+            auto& water = waterEntity.AddComponent<VE::HPWaterComponent>();
+            water.WorldSizeX = 220.0f;
+            water.WorldSizeZ = 360.0f;
+            water.BaseHeight = -0.42f;
+            water.Resolution = 128;
+            water.HeightScale = 0.45f;
+            water.WaveSpeed = 12.0f;
+            water.Damping = 0.020f;
+            water.EdgeAbsorptionWidth = 0.14f;
+            water.AutoImpulse = true;
+            water.ImpulseRadius = 8.5f;
+            water.ImpulseStrength = 0.035f;
+            water.ScatterColor = { 0.035f, 0.28f, 0.36f };
+            water.AbsorptionColor = { 0.020f, 0.060f, 0.090f };
+            water.FoamIntensity = 0.18f;
+
+            auto& mr = waterEntity.AddComponent<VE::MeshRendererComponent>();
+            mr.Mat = VE::MaterialLibrary::Get("Water");
+            mr.Color = { 1.0f, 1.0f, 1.0f, 0.82f };
+            mr.CastShadows = false;
+        } else {
+            if (!waterEntity.HasComponent<VE::HPWaterComponent>())
+                waterEntity.AddComponent<VE::HPWaterComponent>();
+            auto& mr = waterEntity.HasComponent<VE::MeshRendererComponent>()
+                ? waterEntity.GetComponent<VE::MeshRendererComponent>()
+                : waterEntity.AddComponent<VE::MeshRendererComponent>();
+            mr.Mat = VE::MaterialLibrary::Get("Water");
+            mr.CastShadows = false;
+        }
+    }
+
     VE::Entity CreateLauncherImportedMesh(const std::string& name,
                                           const std::string& meshPath,
                                           const glm::vec3& position,
@@ -1375,6 +1417,7 @@ private:
             return;
 
         EnsureLauncherImportedTextures();
+        EnsureLauncherWater();
 
         if (!m_PlayMode)
             return;
@@ -2602,6 +2645,21 @@ private:
             reg.get_or_emplace<VE::TransformComponent>(dst) = reg.get<VE::TransformComponent>(srcEntity);
         if (reg.any_of<VE::MeshRendererComponent>(srcEntity))
             reg.get_or_emplace<VE::MeshRendererComponent>(dst) = reg.get<VE::MeshRendererComponent>(srcEntity);
+        if (reg.any_of<VE::HPWaterComponent>(srcEntity)) {
+            auto copied = reg.get<VE::HPWaterComponent>(srcEntity);
+            copied._Mesh.reset();
+            copied._VertexBuffer.reset();
+            copied._IndexBuffer.reset();
+            copied._Current.clear();
+            copied._Previous.clear();
+            copied._Next.clear();
+            copied._Vertices.clear();
+            copied._Indices.clear();
+            copied._Accumulator = 0.0f;
+            copied._ImpulseTimer = 0.0f;
+            copied._NeedsRebuild = true;
+            reg.get_or_emplace<VE::HPWaterComponent>(dst) = std::move(copied);
+        }
         if (reg.any_of<VE::DirectionalLightComponent>(srcEntity))
             reg.get_or_emplace<VE::DirectionalLightComponent>(dst) = reg.get<VE::DirectionalLightComponent>(srcEntity);
 
@@ -6177,6 +6235,41 @@ private:
         }
 
         // ── UI Components Inspector ──────────────────────────────
+        if (m_SelectedEntity.HasComponent<VE::HPWaterComponent>()) {
+            bool removeC = false;
+            bool openWater = ImGui::CollapsingHeader("HP Water", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::HPWaterComponent>("##HPWaterCtx", "HPWater", removeC);
+            if (openWater) {
+                auto& w = m_SelectedEntity.GetComponent<VE::HPWaterComponent>();
+                ImGui::Checkbox("Enabled", &w.Enabled);
+                int res = w.Resolution;
+                if (ImGui::DragInt("Resolution", &res, 1, 8, 256)) {
+                    w.Resolution = std::clamp(res, 8, 256);
+                    w._NeedsRebuild = true;
+                }
+                if (ImGui::DragFloat("World Size X", &w.WorldSizeX, 1.0f, 1.0f, 10000.0f)) w._NeedsRebuild = true;
+                if (ImGui::DragFloat("World Size Z", &w.WorldSizeZ, 1.0f, 1.0f, 10000.0f)) w._NeedsRebuild = true;
+                if (ImGui::DragFloat("Base Height", &w.BaseHeight, 0.01f, -100.0f, 100.0f)) w._NeedsRebuild = true;
+                ImGui::DragFloat("Wave Speed", &w.WaveSpeed, 0.1f, 0.0f, 100.0f);
+                ImGui::SliderFloat("Damping", &w.Damping, 0.0f, 0.5f, "%.3f");
+                if (ImGui::DragFloat("Height Scale", &w.HeightScale, 0.01f, 0.0f, 10.0f)) w._NeedsRebuild = true;
+                ImGui::SliderFloat("Edge Absorption", &w.EdgeAbsorptionWidth, 0.0f, 0.5f, "%.3f");
+                ImGui::Checkbox("Auto Impulse", &w.AutoImpulse);
+                ImGui::DragFloat("Impulse Interval", &w.AutoImpulseInterval, 0.05f, 0.05f, 20.0f);
+                ImGui::DragFloat("Impulse Radius", &w.ImpulseRadius, 0.1f, 0.1f, 100.0f);
+                ImGui::DragFloat("Impulse Strength", &w.ImpulseStrength, 0.001f, -1.0f, 1.0f, "%.3f");
+                ImGui::ColorEdit3("Scatter", w.ScatterColor.data());
+                ImGui::ColorEdit3("Absorption", w.AbsorptionColor.data());
+                ImGui::ColorEdit3("Foam", w.FoamColor.data());
+                ImGui::SliderFloat("Foam Intensity", &w.FoamIntensity, 0.0f, 2.0f, "%.3f");
+                ImGui::SliderFloat("Roughness", &w.Roughness, 0.01f, 0.75f, "%.3f");
+                ImGui::SliderFloat("Refraction", &w.RefractionStrength, 0.0f, 1.0f, "%.3f");
+                ImGui::DragFloat("Depth Tint Distance", &w.DepthTintDistance, 0.1f, 0.1f, 100.0f);
+            }
+            if (removeC) m_SelectedEntity.RemoveComponent<VE::HPWaterComponent>();
+            ImGui::Separator();
+        }
+
         if (m_SelectedEntity.HasComponent<VE::UICanvasComponent>()) {
             bool removeC = false;
             bool openC = ImGui::CollapsingHeader("UI Canvas", ImGuiTreeNodeFlags_DefaultOpen);
@@ -6443,6 +6536,18 @@ private:
 
             ADD_COMPONENT_ITEM("Terrain", VE::TerrainComponent,
                 m_SelectedEntity.AddComponent<VE::TerrainComponent>())
+
+            ADD_COMPONENT_ITEM("HP Water", VE::HPWaterComponent,
+                m_CommandHistory.Execute("Add HP Water", [this]() {
+                    auto& water = m_SelectedEntity.AddComponent<VE::HPWaterComponent>();
+                    water._NeedsRebuild = true;
+                    auto& mr = m_SelectedEntity.HasComponent<VE::MeshRendererComponent>()
+                        ? m_SelectedEntity.GetComponent<VE::MeshRendererComponent>()
+                        : m_SelectedEntity.AddComponent<VE::MeshRendererComponent>();
+                    mr.Mat = VE::MaterialLibrary::Get("Water");
+                    mr.Color = { 1.0f, 1.0f, 1.0f, 0.82f };
+                    mr.CastShadows = false;
+                }))
 
             ADD_COMPONENT_ITEM("Nav Agent", VE::NavAgentComponent,
                 m_SelectedEntity.AddComponent<VE::NavAgentComponent>())

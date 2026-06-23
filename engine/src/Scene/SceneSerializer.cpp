@@ -560,6 +560,35 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    if (entity.HasComponent<HPWaterComponent>()) {
+        auto& w = entity.GetComponent<HPWaterComponent>();
+        out << YAML::Key << "HPWaterComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Enabled" << YAML::Value << w.Enabled;
+        out << YAML::Key << "Resolution" << YAML::Value << w.Resolution;
+        out << YAML::Key << "WorldSizeX" << YAML::Value << w.WorldSizeX;
+        out << YAML::Key << "WorldSizeZ" << YAML::Value << w.WorldSizeZ;
+        out << YAML::Key << "BaseHeight" << YAML::Value << w.BaseHeight;
+        out << YAML::Key << "WaveSpeed" << YAML::Value << w.WaveSpeed;
+        out << YAML::Key << "Damping" << YAML::Value << w.Damping;
+        out << YAML::Key << "HeightScale" << YAML::Value << w.HeightScale;
+        out << YAML::Key << "EdgeAbsorptionWidth" << YAML::Value << w.EdgeAbsorptionWidth;
+        out << YAML::Key << "AutoImpulse" << YAML::Value << w.AutoImpulse;
+        out << YAML::Key << "AutoImpulseInterval" << YAML::Value << w.AutoImpulseInterval;
+        out << YAML::Key << "ImpulseRadius" << YAML::Value << w.ImpulseRadius;
+        out << YAML::Key << "ImpulseStrength" << YAML::Value << w.ImpulseStrength;
+        out << YAML::Key << "ScatterColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << w.ScatterColor[0] << w.ScatterColor[1] << w.ScatterColor[2] << YAML::EndSeq;
+        out << YAML::Key << "AbsorptionColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << w.AbsorptionColor[0] << w.AbsorptionColor[1] << w.AbsorptionColor[2] << YAML::EndSeq;
+        out << YAML::Key << "FoamColor" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << w.FoamColor[0] << w.FoamColor[1] << w.FoamColor[2] << YAML::EndSeq;
+        out << YAML::Key << "FoamIntensity" << YAML::Value << w.FoamIntensity;
+        out << YAML::Key << "Roughness" << YAML::Value << w.Roughness;
+        out << YAML::Key << "RefractionStrength" << YAML::Value << w.RefractionStrength;
+        out << YAML::Key << "DepthTintDistance" << YAML::Value << w.DepthTintDistance;
+        out << YAML::EndMap;
+    }
+
     // UICanvasComponent
     if (entity.HasComponent<UICanvasComponent>()) {
         auto& uc = entity.GetComponent<UICanvasComponent>();
@@ -1481,6 +1510,38 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 t._NeedsRebuild = true;
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize TerrainComponent: {}", e.what());
+            }
+        }
+
+        if (auto wNode = entityNode["HPWaterComponent"]) {
+            try {
+                auto& w = entity.AddComponent<HPWaterComponent>();
+                if (wNode["Enabled"])             w.Enabled = wNode["Enabled"].as<bool>();
+                if (wNode["Resolution"])          w.Resolution = wNode["Resolution"].as<int>();
+                if (wNode["WorldSizeX"])          w.WorldSizeX = wNode["WorldSizeX"].as<float>();
+                if (wNode["WorldSizeZ"])          w.WorldSizeZ = wNode["WorldSizeZ"].as<float>();
+                if (wNode["BaseHeight"])          w.BaseHeight = wNode["BaseHeight"].as<float>();
+                if (wNode["WaveSpeed"])           w.WaveSpeed = wNode["WaveSpeed"].as<float>();
+                if (wNode["Damping"])             w.Damping = wNode["Damping"].as<float>();
+                if (wNode["HeightScale"])         w.HeightScale = wNode["HeightScale"].as<float>();
+                if (wNode["EdgeAbsorptionWidth"]) w.EdgeAbsorptionWidth = wNode["EdgeAbsorptionWidth"].as<float>();
+                if (wNode["AutoImpulse"])         w.AutoImpulse = wNode["AutoImpulse"].as<bool>();
+                if (wNode["AutoImpulseInterval"]) w.AutoImpulseInterval = wNode["AutoImpulseInterval"].as<float>();
+                if (wNode["ImpulseRadius"])       w.ImpulseRadius = wNode["ImpulseRadius"].as<float>();
+                if (wNode["ImpulseStrength"])     w.ImpulseStrength = wNode["ImpulseStrength"].as<float>();
+                if (auto c = wNode["ScatterColor"])
+                    w.ScatterColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+                if (auto c = wNode["AbsorptionColor"])
+                    w.AbsorptionColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+                if (auto c = wNode["FoamColor"])
+                    w.FoamColor = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+                if (wNode["FoamIntensity"])       w.FoamIntensity = wNode["FoamIntensity"].as<float>();
+                if (wNode["Roughness"])           w.Roughness = wNode["Roughness"].as<float>();
+                if (wNode["RefractionStrength"])  w.RefractionStrength = wNode["RefractionStrength"].as<float>();
+                if (wNode["DepthTintDistance"])   w.DepthTintDistance = wNode["DepthTintDistance"].as<float>();
+                w._NeedsRebuild = true;
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize HPWaterComponent: {}", e.what());
             }
         }
 
