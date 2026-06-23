@@ -63,6 +63,8 @@ uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
 uniform int u_HPWaterDepthPyramidMipCount;
+uniform int u_SceneColorMipEnabled;
+uniform int u_SceneColorMipCount;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_RefractionSampleCount;
 uniform int u_RefractionJitterEnabled;
@@ -133,6 +135,15 @@ float DepthPyramidLOD(float normalizedDistance, float maxTravel) {
     float pixelTravel = maxTravel * float(max(pyramidSize.x, pyramidSize.y));
     float projectedFootprint = max(pixelTravel * normalizedDistance * 0.45, 1.0);
     return clamp(log2(projectedFootprint), 0.0, float(u_HPWaterDepthPyramidMipCount - 1));
+}
+
+vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
+    if (u_SceneColorMipEnabled != 1 || u_SceneColorMipCount <= 1) {
+        return texture(u_SceneColor, uv).rgb;
+    }
+
+    float maxLod = float(max(u_SceneColorMipCount - 1, 0));
+    return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
 }
 
 vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float sceneLinearDepth, float depthTintDistance) {
@@ -348,8 +359,11 @@ void main() {
         clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *
         (1.0 - roughness * 0.45);
     float forwardPhase = HenyeyGreenstein(lightViewAlignment, 0.72);
-    vec3 forwardScatter = scatterColor * forwardPhase * normalizedThickness *
-        clamp(u_ForwardScatterStrength, 0.0, 3.0) * 0.18;
+    float forwardStrength = clamp(u_ForwardScatterStrength, 0.0, 3.0);
+    float forwardBlurLOD = mix(1.0, 5.5, normalizedThickness) * (0.35 + 0.65 * (1.0 - roughness));
+    vec3 forwardBlur = SampleSceneColorBlurred(refractUV, forwardBlurLOD);
+    vec3 forwardScatter = (scatterColor * forwardPhase * 0.16 +
+        forwardBlur * scatterColor * 0.22) * normalizedThickness * forwardStrength;
     vec3 thinSSS = scatterColor * (vec3(1.0) - fallbackTransmittance) *
         (0.18 + 0.82 * (1.0 - normalizedThickness)) *
         clamp(u_ThinSSSStrength, 0.0, 3.0);

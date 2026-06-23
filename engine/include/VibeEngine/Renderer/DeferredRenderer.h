@@ -241,6 +241,8 @@ public:
     uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
     uint32_t GetHPWaterDepthPyramidMipCount() const { return m_HPWaterDepthPyramidMipCount; }
     bool IsHPWaterDepthPyramidValid() const { return m_HPWaterDepthPyramidValid; }
+    uint32_t GetHPWaterSceneColorMipCount() const { return m_HPWaterSceneColorMipCount; }
+    bool IsHPWaterSceneColorMipValid() const { return m_HPWaterSceneColorMipValid; }
 
     /// Get HPWater explicit coverage mask texture.
     uint32_t GetHPWaterMaskTexture() const;
@@ -406,6 +408,8 @@ private:
     // HPWater final composite output and precomputed refraction payload.
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     bool m_HPWaterCompositeValid = false;
+    uint32_t m_HPWaterSceneColorMipCount = 1;
+    bool m_HPWaterSceneColorMipValid = false;
 
     // HPWater opaque scene-depth pyramid for Hi-Z assisted refraction.
     uint32_t m_HPWaterDepthPyramidTexture = 0;

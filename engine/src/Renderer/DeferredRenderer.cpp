@@ -14,6 +14,16 @@
 
 namespace VE {
 
+static uint32_t CalculateMipCount(uint32_t width, uint32_t height) {
+    uint32_t maxDim = std::max(width, height);
+    uint32_t mipCount = 1;
+    while (maxDim > 1) {
+        maxDim /= 2;
+        ++mipCount;
+    }
+    return mipCount;
+}
+
 // ── Debug visualization fragment shader ─────────────────────────────
 // Displays individual G-buffer channels for debugging.
 
@@ -1152,8 +1162,23 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
 
     m_HPWaterCompositeShader->Bind();
 
+    m_HPWaterSceneColorMipCount = 1;
+    m_HPWaterSceneColorMipValid = false;
+    const GLuint sceneColorTexture = static_cast<GLuint>(m_LightingFBO->GetColorAttachmentID());
+    if (sceneColorTexture != 0 && m_Width > 1 && m_Height > 1) {
+        m_HPWaterSceneColorMipCount = CalculateMipCount(m_Width, m_Height);
+        glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL,
+            static_cast<GLint>(m_HPWaterSceneColorMipCount - 1u));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        m_HPWaterSceneColorMipValid = true;
+    }
+
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_LightingFBO->GetColorAttachmentID()));
+    glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
     m_HPWaterCompositeShader->SetInt("u_SceneColor", 0);
 
     glActiveTexture(GL_TEXTURE1);
@@ -1235,6 +1260,9 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetInt("u_HPWaterDepthPyramidEnabled", m_HPWaterDepthPyramidValid ? 1 : 0);
     m_HPWaterCompositeShader->SetInt("u_HPWaterDepthPyramidMipCount",
         static_cast<int>(m_HPWaterDepthPyramidMipCount));
+    m_HPWaterCompositeShader->SetInt("u_SceneColorMipEnabled", m_HPWaterSceneColorMipValid ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_SceneColorMipCount",
+        static_cast<int>(m_HPWaterSceneColorMipCount));
     m_HPWaterCompositeShader->SetInt("u_HPWaterMaskEnabled", m_HPWaterMaskValid ? 1 : 0);
     m_HPWaterCompositeShader->SetInt("u_HPWaterCausticEnabled", causticCompositeValid ? 1 : 0);
 

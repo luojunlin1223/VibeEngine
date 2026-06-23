@@ -7062,6 +7062,8 @@ private:
         out << "HPWaterThinSSSStrength: " << d.HPWaterThinSSSStrength << "\n";
         out << "HPWaterBacklitTransmissionStrength: " << d.HPWaterBacklitTransmissionStrength << "\n";
         out << "HPWaterForwardScatterStrength: " << d.HPWaterForwardScatterStrength << "\n";
+        out << "HPWaterForwardScatterMipEnabled: " << d.HPWaterForwardScatterMipEnabled << "\n";
+        out << "HPWaterForwardScatterMipCount: " << d.HPWaterForwardScatterMipCount << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
         out << "HPWaterVolumeColorTexture: " << d.HPWaterVolumeColorTexture << "\n";
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
@@ -7386,6 +7388,9 @@ private:
             d.HPWaterThinSSSStrength,
             d.HPWaterBacklitTransmissionStrength,
             d.HPWaterForwardScatterStrength);
+        ImGui::Text("HPWater forward scatter mips: enabled=%d count=%u",
+            d.HPWaterForwardScatterMipEnabled ? 1 : 0,
+            d.HPWaterForwardScatterMipCount);
         ImGui::Text("HPWater volume raw: %ux%u color=%u trans=%u depth=%u",
             d.HPWaterVolumeWidth,
             d.HPWaterVolumeHeight,

@@ -204,6 +204,8 @@ struct RenderDiagnostics {
     float HPWaterThinSSSStrength = 0.0f;
     float HPWaterBacklitTransmissionStrength = 0.0f;
     float HPWaterForwardScatterStrength = 0.0f;
+    bool HPWaterForwardScatterMipEnabled = false;
+    uint32_t HPWaterForwardScatterMipCount = 0;
     bool HPWaterVolumeRan = false;
     uint32_t HPWaterVolumeColorTexture = 0;
     uint32_t HPWaterVolumeTransmittanceTexture = 0;

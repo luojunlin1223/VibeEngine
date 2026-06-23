@@ -105,7 +105,7 @@ HPWater's BSDF is more detailed than the current VibeEngine approximation:
 - Caustic contribution and volumetric transmittance.
 - Indirect lighting strength and environment contribution controlled by global HPWater parameters.
 
-VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air-to-water IOR of 1.33, environment reflection intensity is serialized, the composite pass adds thin-layer SSS, backlit transmission, and forward scatter terms, and the low-resolution volume pass exposes macro scatter strength. This is still not HDRP/HPWater parity: preintegrated FGD, GGX energy compensation, real reflected environment/probe sampling, camera-color mip forward-scatter blur, and a true light-loop integration remain pending.
+VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air-to-water IOR of 1.33, environment reflection intensity is serialized, the composite pass adds thin-layer SSS, backlit transmission, forward scatter terms, and camera-color mip forward-scatter blur, and the low-resolution volume pass exposes macro scatter strength. This is still not HDRP/HPWater parity: preintegrated FGD, GGX energy compensation, exact forward-scatter weighting, real reflected environment/probe sampling, and a true light-loop integration remain pending.
 
 ## Porting Order
 
@@ -160,7 +160,8 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
 7. BSDF parity
    - Done: add serialized macro scattering, thin-layer SSS, backlit transmission, forward scatter, and environment reflection controls.
    - Done: route the controls through `DeferredRenderer`, `HPWaterComposite.shader`, `HPWaterVolume.shader`, Render Debugger, and `render_diagnostics.txt`.
-   - Pending: replace the approximate terms with HPWater/HDRP-style GGX, preintegrated FGD, energy compensation, camera-color mip forward-scatter blur, and real probe/sky environment sampling.
+   - Done: generate a camera-color mip chain for the HPWater composite and use it for thickness-driven forward-scatter blur.
+   - Pending: replace the approximate terms with HPWater/HDRP-style GGX, preintegrated FGD, energy compensation, exact forward-scatter weighting, and real probe/sky environment sampling.
    - Pending: connect sky/environment reflection as the reflection-probe fallback until a full HDRP-style light loop exists.
 
 ## Acceptance Checks
@@ -176,5 +177,6 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
 - Filtered caustics remain valid in `render_diagnostics.txt` (`HPWaterCausticFilterRan=1`, `HPWaterCausticFilteredValid=1`) and feed volume lighting through `HPWaterCausticVolumeStrength`.
 - Interactive GPU fluid impulses run through the compute backend (`HPWaterFluidComputeRan=1`) and produce a non-empty `render_diagnostics_hpwater_fluid_height.bmp`; overlapping non-water meshes produce valid `render_diagnostics_hpwater_fluid_obstacle.bmp`, `render_diagnostics_hpwater_fluid_water_height.bmp`, and `render_diagnostics_hpwater_fluid_scene_height.bmp`, with `HPWaterFluidHeightCaptureRan=1`, `HPWaterFluidHeightCaptureValid=1`, and `HPWaterFluidHeightFieldValid=1`.
 - BSDF controls are serialized and visible in diagnostics (`HPWaterEnvironmentReflectionIntensity`, `HPWaterMacroScatterStrength`, `HPWaterThinSSSStrength`, `HPWaterBacklitTransmissionStrength`, and `HPWaterForwardScatterStrength`), and changing them affects composite/volume lighting without disabling the HPWater passes.
+- Forward-scatter blur uses the generated scene-color mip chain and reports `HPWaterForwardScatterMipEnabled=1` with more than one mip when HPWater composite runs.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
 - The final image stays valid with water enabled, disabled, above camera, below camera, and outside the frustum.
