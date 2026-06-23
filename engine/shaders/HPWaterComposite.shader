@@ -52,6 +52,61 @@ float LinearizeDepth(float depth) {
         max(u_FarClip + u_NearClip - z * (u_FarClip - u_NearClip), 0.0001);
 }
 
+float ScreenEdgeFade(vec2 uv) {
+    vec2 edge = min(uv, vec2(1.0) - uv);
+    return clamp(min(edge.x, edge.y) * 8.0, 0.0, 1.0);
+}
+
+vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float sceneLinearDepth, float depthTintDistance) {
+    float directionLength = length(direction);
+    if (directionLength < 0.00001) {
+        return uv;
+    }
+
+    vec2 rayDirection = direction / directionLength;
+    float maxTravel = clamp(directionLength, 0.0, 0.16) * ScreenEdgeFade(uv);
+    if (maxTravel <= 0.00001) {
+        return uv;
+    }
+
+    const int sampleCount = 16;
+    const float expFactor = 8.0;
+    float maxCrossDistance = clamp(depthTintDistance, 0.5, 80.0);
+    float hitTolerance = max(0.25, maxCrossDistance * 0.025);
+    vec2 bestUV = clamp(uv + rayDirection * maxTravel, vec2(0.001), vec2(0.999));
+    bool hit = false;
+
+    for (int i = 1; i <= sampleCount; ++i) {
+        float linearStep = float(i) / float(sampleCount);
+        float d = (pow(expFactor, linearStep) - 1.0) / (expFactor - 1.0);
+        vec2 sampleUV = clamp(uv + rayDirection * maxTravel * d, vec2(0.001), vec2(0.999));
+        float sampleDepth = texture(u_SceneDepth, sampleUV).r;
+
+        if (sampleDepth >= 0.9999) {
+            continue;
+        }
+
+        float sampleLinear = LinearizeDepth(sampleDepth);
+        float rayLinear = waterLinearDepth + maxCrossDistance * d;
+
+        if (sampleLinear <= waterLinearDepth + 0.02) {
+            continue;
+        }
+
+        if (rayLinear >= sampleLinear - hitTolerance) {
+            bestUV = sampleUV;
+            hit = true;
+            break;
+        }
+    }
+
+    if (!hit && sceneLinearDepth <= waterLinearDepth + 0.02) {
+        return uv;
+    }
+
+    return bestUV;
+}
+
 void main() {
     vec4 sceneColor = texture(u_SceneColor, v_UV);
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
@@ -87,12 +142,13 @@ void main() {
     float thickness = max(sceneLinear - waterLinear, 0.0);
     float normalizedThickness = clamp(thickness / depthTintDistance, 0.0, 1.0);
 
-    // First slice of HPWater-style refraction: normal-driven screen offset.
-    // Later passes can replace this with the reference ray-marched search.
+    // HPWater-style refraction slice: march a normal-driven screen ray until
+    // it reaches opaque scene depth. This is the full-resolution counterpart
+    // of the reference pass before introducing a depth pyramid.
     vec2 distortion = N.xz * (0.018 + 0.032 * (1.0 - roughness)) *
         clamp(u_RefractionStrength, 0.0, 2.0) *
         (0.25 + 0.75 * normalizedThickness);
-    vec2 refractUV = clamp(v_UV + distortion, vec2(0.001), vec2(0.999));
+    vec2 refractUV = FindRefractedUV(v_UV, distortion, waterLinear, sceneLinear, depthTintDistance);
 
     float refractedSceneDepth = texture(u_SceneDepth, refractUV).r;
     if (refractedSceneDepth < waterDepth - 0.00005) {
