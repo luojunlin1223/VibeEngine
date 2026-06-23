@@ -1,8 +1,21 @@
 #version 460 core
 
+// HPWater-style caustic irradiance accumulation.
+//
+// The previous VibeEngine bridge wrote one scalar irradiance value directly to
+// the current screen pixel. HPWater's reference path is closer to a gather from
+// water pixels into a receiver irradiance texture, where many refracted light
+// paths can contribute to the same receiver. This compute pass uses an unsigned
+// integer accumulation target and imageAtomicAdd to model that multi-writer
+// RGB irradiance step. A second resolve pass converts the integer buffer to a
+// sampleable RGBA16F texture for filtering/composite diagnostics.
+
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-layout(binding = 0, r16f) uniform writeonly image2D u_CausticIrradiance;
+layout(binding = 0, r32ui) uniform uimage2D u_CausticIrradianceAtomicR;
+layout(binding = 1, r32ui) uniform uimage2D u_CausticIrradianceAtomicG;
+layout(binding = 2, r32ui) uniform uimage2D u_CausticIrradianceAtomicB;
+layout(binding = 3, r32ui) uniform uimage2D u_CausticIrradianceAtomicA;
 
 uniform sampler2D u_HPWaterNormalRoughness;
 uniform sampler2D u_HPWaterScatterThickness;
@@ -17,15 +30,19 @@ uniform int u_OutputWidth;
 uniform int u_OutputHeight;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticAtlasEnabled;
+uniform int u_CausticRGBDispersion;
 uniform float u_HPWaterCausticAtlasWidth;
 uniform float u_HPWaterCausticAtlasHeight;
 uniform float u_CausticStrength;
 uniform float u_CausticScale;
 uniform float u_CausticDepthFade;
+uniform float u_CausticDispersionStrength;
 uniform float u_LightIntensity;
 uniform float u_NearClip;
 uniform float u_FarClip;
 uniform vec3 u_LightDir;
+
+const float kAtomicScale = 16384.0;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -78,6 +95,39 @@ float AtlasFocus(vec2 screenUV, vec2 causticUV, vec3 waterNormal, vec3 lightDir,
         thicknessFocus;
 }
 
+void AtomicAddChannel(ivec2 pixel, int channel, float value) {
+    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= u_OutputWidth || pixel.y >= u_OutputHeight)
+        return;
+    uint quantized = uint(clamp(value, 0.0, 8.0) * kAtomicScale + 0.5);
+    if (quantized == 0u)
+        return;
+
+    if (channel == 0)
+        imageAtomicAdd(u_CausticIrradianceAtomicR, pixel, quantized);
+    else if (channel == 1)
+        imageAtomicAdd(u_CausticIrradianceAtomicG, pixel, quantized);
+    else if (channel == 2)
+        imageAtomicAdd(u_CausticIrradianceAtomicB, pixel, quantized);
+    else
+        imageAtomicAdd(u_CausticIrradianceAtomicA, pixel, quantized);
+}
+
+void ScatterChannel(vec2 receiverUV, int channel, float energy) {
+    vec2 receiver = receiverUV * vec2(u_OutputWidth, u_OutputHeight) - vec2(0.5);
+    ivec2 basePixel = ivec2(floor(receiver));
+    vec2 f = fract(receiver);
+
+    float w00 = (1.0 - f.x) * (1.0 - f.y);
+    float w10 = f.x * (1.0 - f.y);
+    float w01 = (1.0 - f.x) * f.y;
+    float w11 = f.x * f.y;
+
+    AtomicAddChannel(basePixel + ivec2(0, 0), channel, energy * w00);
+    AtomicAddChannel(basePixel + ivec2(1, 0), channel, energy * w10);
+    AtomicAddChannel(basePixel + ivec2(0, 1), channel, energy * w01);
+    AtomicAddChannel(basePixel + ivec2(1, 1), channel, energy * w11);
+}
+
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     if (pixel.x >= u_OutputWidth || pixel.y >= u_OutputHeight)
@@ -89,16 +139,12 @@ void main() {
         ? texture(u_HPWaterMask, uv).r
         : (waterDepth < 0.9999 ? 1.0 : 0.0);
 
-    if (waterMask < 0.5 || waterDepth >= 0.9999) {
-        imageStore(u_CausticIrradiance, pixel, vec4(0.0));
+    if (waterMask < 0.5 || waterDepth >= 0.9999)
         return;
-    }
 
     float sceneDepth = texture(u_SceneDepth, uv).r;
-    if (sceneDepth < waterDepth - 0.00005) {
-        imageStore(u_CausticIrradiance, pixel, vec4(0.0));
+    if (sceneDepth < waterDepth - 0.00005)
         return;
-    }
 
     vec4 normalRoughness = texture(u_HPWaterNormalRoughness, uv);
     vec4 scatterThickness = texture(u_HPWaterScatterThickness, uv);
@@ -121,9 +167,21 @@ void main() {
     float foamOcclusion = 1.0 - clamp(absorptionFoam.a, 0.0, 1.0) * 0.65;
     float sunFacing = clamp(dot(N, L) * 0.5 + 0.5, 0.0, 1.0);
 
-    float irradiance = max(atlasFocus, CausticStrands(causticUV) * 0.25);
-    irradiance *= surfaceFocus * sunFacing * depthFade * foamOcclusion;
-    irradiance *= clamp(u_CausticStrength, 0.0, 8.0) * max(u_LightIntensity, 0.0);
+    float strandEnergy = max(atlasFocus, CausticStrands(causticUV) * 0.25);
+    float sharedEnergy = strandEnergy * surfaceFocus * sunFacing * depthFade * foamOcclusion;
+    sharedEnergy *= clamp(u_CausticStrength, 0.0, 8.0) * max(u_LightIntensity, 0.0);
+    if (sharedEnergy <= 0.000001)
+        return;
 
-    imageStore(u_CausticIrradiance, pixel, vec4(clamp(irradiance, 0.0, 4.0)));
+    vec2 lightBend = normalize(L.xz + vec2(0.001)) * (0.006 + thickness * 0.00008);
+    vec2 baseReceiver = uv + N.xz * (0.022 + thickness * 0.00035) + lightBend;
+    vec2 dispersionAxis = normalize(N.xz * 0.7 + L.xz * 0.3 + vec2(0.001));
+    float dispersion = u_CausticRGBDispersion == 1
+        ? clamp(u_CausticDispersionStrength, 0.0, 2.0) * (0.003 + clamp(thickness, 0.0, 80.0) * 0.00008)
+        : 0.0;
+
+    ScatterChannel(baseReceiver + dispersionAxis * dispersion, 0, sharedEnergy);
+    ScatterChannel(baseReceiver, 1, sharedEnergy);
+    ScatterChannel(baseReceiver - dispersionAxis * dispersion, 2, sharedEnergy);
+    ScatterChannel(baseReceiver, 3, max(max(sharedEnergy, 0.0), 0.0));
 }

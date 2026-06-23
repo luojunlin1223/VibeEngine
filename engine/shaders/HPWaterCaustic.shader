@@ -161,9 +161,9 @@ void main() {
     sharedEnergy *= clamp(u_CausticStrength, 0.0, 8.0) * max(u_LightIntensity, 0.0);
     sharedEnergy *= SampleAtlasFocus(v_UV, causticUV, N, L, thickness);
 
-    float computeIrradiance = u_HPWaterCausticComputeEnabled == 1
-        ? texture(u_HPWaterCausticComputeIrradiance, v_UV).r
-        : 0.0;
+    vec4 computeIrradiance = u_HPWaterCausticComputeEnabled == 1
+        ? texture(u_HPWaterCausticComputeIrradiance, v_UV)
+        : vec4(0.0);
     float centerStrands = CausticStrands(causticUV);
     vec3 energyRGB = vec3(centerStrands) * sharedEnergy;
     if (u_CausticRGBDispersion == 1) {
@@ -174,7 +174,8 @@ void main() {
         float blueStrands = CausticStrands(causticUV - dispersionAxis * dispersion);
         energyRGB = vec3(redStrands, centerStrands, blueStrands) * sharedEnergy;
     }
-    energyRGB = mix(energyRGB, max(energyRGB * 0.25, vec3(computeIrradiance)), 0.72 * step(0.00001, computeIrradiance));
+    float computeWeight = step(0.00001, computeIrradiance.a);
+    energyRGB = mix(energyRGB, max(energyRGB * 0.25, computeIrradiance.rgb), 0.82 * computeWeight);
 
     vec3 absorption = max(absorptionFoam.rgb, vec3(0.0001));
     vec3 waterTint = mix(vec3(1.0), scatterThickness.rgb, 0.24);

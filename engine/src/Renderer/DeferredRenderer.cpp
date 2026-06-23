@@ -250,6 +250,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterCausticIrradiance.comp");
     }
 
+    m_HPWaterCausticResolveShader = ComputeShader::CreateFromFile("shaders/HPWaterCausticIrradianceResolve.comp");
+    if (!m_HPWaterCausticResolveShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterCausticIrradianceResolve.comp");
+    }
+
     m_HPWaterFluidComputeShader = ComputeShader::CreateFromFile("shaders/HPWaterFluidDynamics.comp");
     if (!m_HPWaterFluidComputeShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterFluidDynamics.comp");
@@ -329,6 +334,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticFilterShader.reset();
     m_HPWaterCausticAtlasShader.reset();
     m_HPWaterCausticComputeShader.reset();
+    m_HPWaterCausticResolveShader.reset();
     m_HPWaterFluidComputeShader.reset();
     m_HPWaterDepthPyramidShader.reset();
     m_HPWaterFluidShader.reset();
@@ -350,6 +356,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
+    m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterFGDLUTValid = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
@@ -422,8 +429,16 @@ void DeferredRenderer::DestroyHPWaterCausticComputeTexture() {
         glDeleteTextures(1, &m_HPWaterCausticComputeIrradianceTexture);
         m_HPWaterCausticComputeIrradianceTexture = 0;
     }
+    for (uint32_t& texture : m_HPWaterCausticComputeAtomicTextures) {
+        if (texture != 0) {
+            VE_GPU_UNTRACK(GPUResourceType::Texture, texture);
+            glDeleteTextures(1, &texture);
+            texture = 0;
+        }
+    }
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
+    m_HPWaterCausticComputeAtomicEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
@@ -436,7 +451,7 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
     glBindTexture(GL_TEXTURE_2D, m_HPWaterCausticComputeIrradianceTexture);
     glTexStorage2D(GL_TEXTURE_2D,
                    1,
-                   GL_R16F,
+                   GL_RGBA16F,
                    static_cast<GLsizei>(m_Width),
                    static_cast<GLsizei>(m_Height));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -444,8 +459,26 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    glGenTextures(4, m_HPWaterCausticComputeAtomicTextures);
+    for (uint32_t texture : m_HPWaterCausticComputeAtomicTextures) {
+        VE_GPU_TRACK(GPUResourceType::Texture, texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexStorage2D(GL_TEXTURE_2D,
+                       1,
+                       GL_R32UI,
+                       static_cast<GLsizei>(m_Width),
+                       static_cast<GLsizei>(m_Height));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
+    m_HPWaterCausticComputeAtomicEnabled = false;
 }
 
 void DeferredRenderer::DestroyHPWaterFGDLUT() {
@@ -1880,6 +1913,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticFilteredValid = false;
         m_HPWaterCausticComputeIrradianceValid = false;
         m_HPWaterCausticComputeIrradianceRan = false;
+        m_HPWaterCausticComputeAtomicEnabled = false;
         m_HPWaterCausticFilterIterations = 0;
         m_HPWaterCausticAtlasConsumed = false;
         return false;
@@ -1890,13 +1924,16 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticFilteredValid = false;
         m_HPWaterCausticComputeIrradianceValid = false;
         m_HPWaterCausticComputeIrradianceRan = false;
+        m_HPWaterCausticComputeAtomicEnabled = false;
         m_HPWaterCausticFilterIterations = 0;
         m_HPWaterCausticAtlasConsumed = false;
         return false;
     }
 
     const bool computeIrradianceValid =
-        RunHPWaterCausticComputeIrradiance(nearClip, farClip, lightDir, lightIntensity, strength, scale, depthFade);
+        RunHPWaterCausticComputeIrradiance(
+            nearClip, farClip, lightDir, lightIntensity, strength, scale, depthFade,
+            rgbDispersion, dispersionStrength);
 
     m_HPWaterCausticFBO->Bind();
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1989,11 +2026,19 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
                                                           float lightIntensity,
                                                           float strength,
                                                           float scale,
-                                                          float depthFade) {
+                                                          float depthFade,
+                                                          bool rgbDispersion,
+                                                          float dispersionStrength) {
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeIrradianceValid = false;
+    m_HPWaterCausticComputeAtomicEnabled = false;
 
-    if (!m_HPWaterCausticComputeShader || m_HPWaterCausticComputeIrradianceTexture == 0 ||
+    if (!m_HPWaterCausticComputeShader || !m_HPWaterCausticResolveShader ||
+        m_HPWaterCausticComputeIrradianceTexture == 0 ||
+        m_HPWaterCausticComputeAtomicTextures[0] == 0 ||
+        m_HPWaterCausticComputeAtomicTextures[1] == 0 ||
+        m_HPWaterCausticComputeAtomicTextures[2] == 0 ||
+        m_HPWaterCausticComputeAtomicTextures[3] == 0 ||
         !m_GBuffer || !m_HPWaterGBuffer || m_Width == 0 || m_Height == 0) {
         return false;
     }
@@ -2001,6 +2046,16 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     const bool atlasValid = m_HPWaterCausticAtlasValid && m_HPWaterCausticAtlasFBO &&
         m_HPWaterCausticAtlasFBO->GetColorAttachmentID() != 0 &&
         m_HPWaterCausticAtlasFBO->GetDepthAttachmentID() != 0;
+
+    const GLuint clearValue = 0u;
+    for (uint32_t texture : m_HPWaterCausticComputeAtomicTextures) {
+        glClearTexImage(static_cast<GLuint>(texture),
+                        0,
+                        GL_RED_INTEGER,
+                        GL_UNSIGNED_INT,
+                        &clearValue);
+    }
+    glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     m_HPWaterCausticComputeShader->Bind();
 
@@ -2035,13 +2090,15 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
         : 0);
     m_HPWaterCausticComputeShader->SetInt("u_HPWaterCausticAtlasDepth", 7);
 
-    glBindImageTexture(0,
-                       static_cast<GLuint>(m_HPWaterCausticComputeIrradianceTexture),
-                       0,
-                       GL_FALSE,
-                       0,
-                       GL_WRITE_ONLY,
-                       GL_R16F);
+    for (uint32_t channel = 0; channel < 4; ++channel) {
+        glBindImageTexture(channel,
+                           static_cast<GLuint>(m_HPWaterCausticComputeAtomicTextures[channel]),
+                           0,
+                           GL_FALSE,
+                           0,
+                           GL_READ_WRITE,
+                           GL_R32UI);
+    }
 
     m_HPWaterCausticComputeShader->SetInt("u_OutputWidth", static_cast<int>(m_Width));
     m_HPWaterCausticComputeShader->SetInt("u_OutputHeight", static_cast<int>(m_Height));
@@ -2060,14 +2117,44 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeShader->SetFloat("u_CausticStrength", std::clamp(strength, 0.0f, 8.0f));
     m_HPWaterCausticComputeShader->SetFloat("u_CausticScale", std::clamp(scale, 0.1f, 128.0f));
     m_HPWaterCausticComputeShader->SetFloat("u_CausticDepthFade", std::clamp(depthFade, 0.1f, 500.0f));
+    m_HPWaterCausticComputeShader->SetInt("u_CausticRGBDispersion", rgbDispersion ? 1 : 0);
+    m_HPWaterCausticComputeShader->SetFloat("u_CausticDispersionStrength",
+        std::clamp(dispersionStrength, 0.0f, 2.0f));
 
     m_HPWaterCausticComputeShader->Dispatch((m_Width + 15u) / 16u, (m_Height + 15u) / 16u, 1u);
     m_HPWaterCausticComputeShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-    glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+    for (uint32_t channel = 0; channel < 4; ++channel) {
+        glBindImageTexture(channel, 0, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
+    }
     m_HPWaterCausticComputeShader->Unbind();
+
+    m_HPWaterCausticResolveShader->Bind();
+    for (uint32_t channel = 0; channel < 4; ++channel) {
+        glActiveTexture(GL_TEXTURE0 + channel);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterCausticComputeAtomicTextures[channel]));
+    }
+    m_HPWaterCausticResolveShader->SetInt("u_AtomicIrradianceR", 0);
+    m_HPWaterCausticResolveShader->SetInt("u_AtomicIrradianceG", 1);
+    m_HPWaterCausticResolveShader->SetInt("u_AtomicIrradianceB", 2);
+    m_HPWaterCausticResolveShader->SetInt("u_AtomicIrradianceA", 3);
+    glBindImageTexture(4,
+                       static_cast<GLuint>(m_HPWaterCausticComputeIrradianceTexture),
+                       0,
+                       GL_FALSE,
+                       0,
+                       GL_WRITE_ONLY,
+                       GL_RGBA16F);
+    m_HPWaterCausticResolveShader->SetInt("u_OutputWidth", static_cast<int>(m_Width));
+    m_HPWaterCausticResolveShader->SetInt("u_OutputHeight", static_cast<int>(m_Height));
+    m_HPWaterCausticResolveShader->SetFloat("u_AtomicScale", 16384.0f);
+    m_HPWaterCausticResolveShader->Dispatch((m_Width + 15u) / 16u, (m_Height + 15u) / 16u, 1u);
+    m_HPWaterCausticResolveShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    glBindImageTexture(4, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    m_HPWaterCausticResolveShader->Unbind();
 
     m_HPWaterCausticComputeIrradianceRan = true;
     m_HPWaterCausticComputeIrradianceValid = true;
+    m_HPWaterCausticComputeAtomicEnabled = true;
     return true;
 }
 

@@ -1157,6 +1157,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticComputeIrradianceValid();
     m_RenderDiagnostics.HPWaterCausticComputeRan =
         m_DeferredRenderer.DidRunHPWaterCausticComputeIrradiance();
+    m_RenderDiagnostics.HPWaterCausticComputeAtomicEnabled =
+        m_DeferredRenderer.IsHPWaterCausticComputeAtomicEnabled();
+    m_RenderDiagnostics.HPWaterCausticComputeAtomicTexture =
+        m_DeferredRenderer.GetHPWaterCausticComputeAtomicTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
@@ -2337,6 +2341,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticComputeIrradianceValid();
     m_RenderDiagnostics.HPWaterCausticComputeRan =
         m_DeferredRenderer.DidRunHPWaterCausticComputeIrradiance();
+    m_RenderDiagnostics.HPWaterCausticComputeAtomicEnabled =
+        m_DeferredRenderer.IsHPWaterCausticComputeAtomicEnabled();
+    m_RenderDiagnostics.HPWaterCausticComputeAtomicTexture =
+        m_DeferredRenderer.GetHPWaterCausticComputeAtomicTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();

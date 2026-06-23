@@ -255,6 +255,8 @@ struct RenderDiagnostics {
     bool HPWaterCausticComputeRan = false;
     bool HPWaterCausticComputeValid = false;
     uint32_t HPWaterCausticComputeTexture = 0;
+    bool HPWaterCausticComputeAtomicEnabled = false;
+    uint32_t HPWaterCausticComputeAtomicTexture = 0;
     bool HPWaterCausticFilterRan = false;
     bool HPWaterCausticFilteredValid = false;
     uint32_t HPWaterCausticFilteredTexture = 0;
