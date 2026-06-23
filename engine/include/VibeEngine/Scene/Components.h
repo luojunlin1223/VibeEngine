@@ -404,6 +404,11 @@ struct HPWaterComponent {
     float RefractionThicknessOffset = 0.5f;
     bool  RefractionJitter = true;
 
+    bool  CausticsEnabled = true;
+    float CausticStrength = 1.0f;
+    float CausticScale = 12.0f;
+    float CausticDepthFade = 20.0f;
+
     bool  FluidDynamicsEnabled = true;
     int   FluidResolution = 128;
     float FluidWaveSpeed = 1.0f;

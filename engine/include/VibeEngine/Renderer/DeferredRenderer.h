@@ -150,6 +150,16 @@ public:
     /// Resolve filtered low-resolution HPWater volume buffers into full-resolution textures.
     bool UpsampleHPWaterVolume(float nearClip, float farClip);
 
+    /// Accumulate first-pass HPWater caustic energy into a full-resolution texture.
+    bool AccumulateHPWaterCaustics(float nearClip,
+                                   float farClip,
+                                   const glm::vec3& lightDir,
+                                   const glm::vec3& lightColor,
+                                   float lightIntensity,
+                                   float strength,
+                                   float scale,
+                                   float depthFade);
+
     /// Step HPWater's GPU fluid height field. This is the OpenGL ping-pong
     /// equivalent of HPWater's compute wave equation texture path.
     bool UpdateHPWaterFluidDynamics(uint32_t resolution,
@@ -233,6 +243,8 @@ public:
     uint32_t GetHPWaterVolumeFilteredTexture(int index) const;
     uint32_t GetHPWaterVolumeHistoryTexture(int index) const;
     uint32_t GetHPWaterVolumeUpsampledTexture(int index) const;
+    uint32_t GetHPWaterCausticTexture() const;
+    bool IsHPWaterCausticValid() const { return m_HPWaterCausticValid; }
 
     uint32_t GetHPWaterFluidHeightTexture() const;
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
@@ -271,6 +283,7 @@ private:
     void CreateLightingFBO();
     void CreateHPWaterCompositeFBO();
     void CreateHPWaterVolumeFBO();
+    void CreateHPWaterCausticFBO();
     void CreateHPWaterGBuffer();
     void CreateHPWaterMaskFBO();
     void CreateHPWaterDepthPyramid();
@@ -326,6 +339,10 @@ private:
     bool m_HPWaterVolumeUpsampledValid = false;
     uint32_t m_HPWaterVolumeFilterIterations = 0;
 
+    // Full-resolution caustic energy consumed by the HPWater composite pass.
+    std::shared_ptr<Framebuffer> m_HPWaterCausticFBO;
+    bool m_HPWaterCausticValid = false;
+
     // HPWater FluidDynamics wave height ping-pong textures.
     std::shared_ptr<Framebuffer> m_HPWaterFluidCurrentFBO;
     std::shared_ptr<Framebuffer> m_HPWaterFluidPreviousFBO;
@@ -348,6 +365,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterVolumeTemporalShader;
     std::shared_ptr<Shader> m_HPWaterVolumeFilterShader;
     std::shared_ptr<Shader> m_HPWaterVolumeUpsampleShader;
+    std::shared_ptr<Shader> m_HPWaterCausticShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
     std::shared_ptr<Shader> m_LightingShader;

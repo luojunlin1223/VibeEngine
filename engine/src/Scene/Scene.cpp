@@ -1134,6 +1134,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledDepthTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(2);
     m_RenderDiagnostics.HPWaterVolumeUpsampledWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
+    m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
 
     auto gbufferShader = m_DeferredRenderer.GetGBufferShader();
     if (!gbufferShader) {
@@ -1336,6 +1338,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterRefractionThicknessOffset = 0.01f;
     uint32_t hpWaterRefractionSampleCount = 4;
     bool hpWaterRefractionJitter = false;
+    bool hpWaterCausticsEnabled = false;
+    float hpWaterCausticStrength = 0.0f;
+    float hpWaterCausticScale = 12.0f;
+    float hpWaterCausticDepthFade = 20.0f;
     bool hpWaterFluidEnabled = false;
     uint32_t hpWaterFluidResolution = 128;
     float hpWaterFluidWaveSpeed = 1.0f;
@@ -1456,6 +1462,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     hpWaterRefractionSampleCount,
                     static_cast<uint32_t>(std::clamp(water->RefractionSampleCount, 4, 64)));
                 hpWaterRefractionJitter = hpWaterRefractionJitter || water->RefractionJitter;
+                hpWaterCausticsEnabled = hpWaterCausticsEnabled || water->CausticsEnabled;
+                hpWaterCausticStrength = std::max(hpWaterCausticStrength, water->CausticStrength);
+                hpWaterCausticScale = std::max(hpWaterCausticScale, water->CausticScale);
+                hpWaterCausticDepthFade = std::max(hpWaterCausticDepthFade, water->CausticDepthFade);
                 if (!hpWaterFluidEnabled && water->FluidDynamicsEnabled) {
                     hpWaterFluidEnabled = true;
                     hpWaterFluidResolution = static_cast<uint32_t>(
@@ -1847,6 +1857,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterRefractionThicknessOffset = hpWaterRefractionThicknessOffset;
         m_RenderDiagnostics.HPWaterRefractionSampleCount = hpWaterRefractionSampleCount;
         m_RenderDiagnostics.HPWaterRefractionJitterEnabled = hpWaterRefractionJitter;
+        m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
+        m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
+        m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
         const uint32_t hpWaterFrameIndex = static_cast<uint32_t>(m_RenderDiagnostics.FrameIndex & 0xffffffffULL);
         m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
         m_RenderDiagnostics.HPWaterMaskRan = m_DeferredRenderer.BuildHPWaterMask();
@@ -1882,6 +1895,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterVolumeUpsampleRan =
             m_RenderDiagnostics.HPWaterVolumeFilterRan &&
             m_DeferredRenderer.UpsampleHPWaterVolume(nearClip, farClip);
+        m_RenderDiagnostics.HPWaterCausticRan =
+            hpWaterCausticsEnabled &&
+            m_DeferredRenderer.AccumulateHPWaterCaustics(nearClip,
+                                                         farClip,
+                                                         lightDir,
+                                                         lightColor,
+                                                         lightIntensity,
+                                                         hpWaterCausticStrength,
+                                                         hpWaterCausticScale,
+                                                         hpWaterCausticDepthFade);
         m_RenderDiagnostics.HPWaterCompositeRan =
             m_DeferredRenderer.CompositeHPWater(nearClip,
                                                 farClip,
@@ -1930,6 +1953,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledDepthTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(2);
     m_RenderDiagnostics.HPWaterVolumeUpsampledWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
+    m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
     m_RenderDiagnostics.HPWaterFluidDynamicsValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();

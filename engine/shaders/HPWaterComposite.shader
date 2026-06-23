@@ -48,6 +48,7 @@ uniform sampler2D u_HPWaterMask;
 uniform sampler2D u_HPWaterVolumeColor;
 uniform sampler2D u_HPWaterVolumeTransmittance;
 uniform sampler2D u_HPWaterVolumeDepth;
+uniform sampler2D u_HPWaterCaustic;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
@@ -55,6 +56,7 @@ uniform float u_RefractionStrength;
 uniform float u_MaxRefractionCrossDistance;
 uniform float u_RefractionThicknessOffset;
 uniform int u_HPWaterVolumeEnabled;
+uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
 uniform int u_HPWaterDepthPyramidMipCount;
 uniform int u_HPWaterMaskEnabled;
@@ -318,6 +320,12 @@ void main() {
     float fresnel = pow(clamp(1.0 - max(N.y, 0.0), 0.0, 1.0), 2.0);
     vec3 skyTint = mix(scatterColor, vec3(0.78, 0.88, 0.98), 0.55);
     vec3 reflected = skyTint * (0.08 + 0.40 * fresnel);
+
+    if (u_HPWaterCausticEnabled == 1) {
+        vec4 caustic = texture(u_HPWaterCaustic, v_UV);
+        float receiverWeight = (0.25 + 0.75 * normalizedThickness) * (1.0 - foam * 0.55);
+        bodyColor += caustic.rgb * receiverWeight;
+    }
 
     vec3 foamColor = mix(vec3(0.88, 0.94, 0.98), vec3(1.0), foam);
     vec3 waterColor = mix(bodyColor + reflected, foamColor, foam * 0.65);

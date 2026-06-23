@@ -6286,6 +6286,11 @@ private:
                 ImGui::DragFloat("Refraction Thickness Offset",
                     &w.RefractionThicknessOffset, 0.01f, 0.01f, 8.0f, "%.2f");
                 ImGui::Checkbox("Refraction Jitter", &w.RefractionJitter);
+                ImGui::SeparatorText("Caustics");
+                ImGui::Checkbox("Caustics", &w.CausticsEnabled);
+                ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
+                ImGui::DragFloat("Caustic Scale", &w.CausticScale, 0.1f, 0.1f, 128.0f, "%.2f");
+                ImGui::DragFloat("Caustic Depth Fade", &w.CausticDepthFade, 0.1f, 0.1f, 500.0f, "%.2f");
                 ImGui::SeparatorText("Fluid Dynamics");
                 ImGui::Checkbox("Fluid Dynamics", &w.FluidDynamicsEnabled);
                 int fluidResolution = w.FluidResolution;
@@ -7052,6 +7057,12 @@ private:
         out << "HPWaterVolumeUpsampledTransmittanceTexture: " << d.HPWaterVolumeUpsampledTransmittanceTexture << "\n";
         out << "HPWaterVolumeUpsampledDepthTexture: " << d.HPWaterVolumeUpsampledDepthTexture << "\n";
         out << "HPWaterVolumeUpsampledSize: " << d.HPWaterVolumeUpsampledWidth << "x" << d.HPWaterVolumeUpsampledHeight << "\n";
+        out << "HPWaterCausticRan: " << d.HPWaterCausticRan << "\n";
+        out << "HPWaterCausticValid: " << d.HPWaterCausticValid << "\n";
+        out << "HPWaterCausticTexture: " << d.HPWaterCausticTexture << "\n";
+        out << "HPWaterCausticStrength: " << d.HPWaterCausticStrength << "\n";
+        out << "HPWaterCausticScale: " << d.HPWaterCausticScale << "\n";
+        out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
         out << "HPWaterFluidDynamicsRan: " << d.HPWaterFluidDynamicsRan << "\n";
         out << "HPWaterFluidDynamicsValid: " << d.HPWaterFluidDynamicsValid << "\n";
         out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
@@ -7118,6 +7129,12 @@ private:
             writeProbe("HPWaterMask", ProbeTexture(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight));
             SaveTextureBMP(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_mask.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterCausticTexture != 0 &&
+            d.ViewportWidth > 0 && d.ViewportHeight > 0) {
+            writeProbe("HPWaterCaustic", ProbeTexture(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight));
+            SaveTextureBMP(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterFluidHeightTexture != 0 && d.HPWaterFluidResolution > 0) {
             writeProbe("HPWaterFluidHeight",
@@ -7271,6 +7288,13 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u strength=%.3f scale=%.2f depthFade=%.2f",
+            d.HPWaterCausticRan ? 1 : 0,
+            d.HPWaterCausticValid ? 1 : 0,
+            d.HPWaterCausticTexture,
+            d.HPWaterCausticStrength,
+            d.HPWaterCausticScale,
+            d.HPWaterCausticDepthFade);
         ImGui::Text("HPWater fluid: ran=%d valid=%d res=%u height=%u speed=%.3f damping=%.3f",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,
