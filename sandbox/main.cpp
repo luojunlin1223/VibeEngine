@@ -1281,13 +1281,13 @@ private:
             water.Damping = 0.020f;
             water.EdgeAbsorptionWidth = 0.14f;
             water.SpectrumWaves = true;
-            water.SpectrumAmplitude = 0.32f;
+            water.SpectrumAmplitude = 0.85f;
             water.SpectrumWindAngle = 28.0f;
-            water.SpectrumTimeScale = 1.0f;
-            water.Choppiness = 0.18f;
+            water.SpectrumTimeScale = 1.35f;
+            water.Choppiness = 0.45f;
             water.AutoImpulse = true;
             water.ImpulseRadius = 8.5f;
-            water.ImpulseStrength = 0.035f;
+            water.ImpulseStrength = 0.060f;
             water.ScatterColor = { 0.035f, 0.28f, 0.36f };
             water.AbsorptionColor = { 0.020f, 0.060f, 0.090f };
             water.FoamIntensity = 0.18f;

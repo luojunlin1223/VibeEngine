@@ -123,8 +123,8 @@ static HPWaterSpectrumSample SampleHPWaterSpectrum(const HPWaterComponent& water
     const glm::vec2 side(-wind.y, wind.x);
     const float domain = std::max(std::max(water.WorldSizeX, water.WorldSizeZ), 1.0f);
 
-    static const float wavelengthFactors[] = { 0.62f, 0.41f, 0.29f, 0.19f, 0.13f, 0.085f, 0.057f, 0.039f };
-    static const float directionOffsets[] = { 0.00f, 0.24f, -0.31f, 0.52f, -0.58f, 0.77f, -0.91f, 1.13f };
+    static const float wavelengthFactors[] = { 0.18f, 0.12f, 0.078f, 0.052f, 0.036f, 0.025f, 0.018f, 0.013f };
+    static const float directionOffsets[] = { 0.00f, 0.18f, -0.24f, 0.43f, -0.52f, 0.68f, -0.84f, 1.05f };
     static const float phaseOffsets[] = { 0.0f, 1.7f, 3.1f, 4.6f, 2.4f, 5.2f, 0.9f, 3.9f };
 
     for (int i = 0; i < 8; ++i) {
@@ -132,14 +132,14 @@ static HPWaterSpectrumSample SampleHPWaterSpectrum(const HPWaterComponent& water
         const float wavelength = std::max(domain * wavelengthFactors[i], 0.25f);
         const float k = twoPi / wavelength;
         const float omega = std::sqrt(gravity * k);
-        const float amplitude = water.SpectrumAmplitude * std::pow(0.58f, static_cast<float>(i));
+        const float amplitude = water.SpectrumAmplitude * std::pow(0.64f, static_cast<float>(i));
         const float phase = k * (dir.x * localX + dir.y * localZ) + omega * water._OceanTime + phaseOffsets[i];
         const float s = std::sin(phase);
         const float c = std::cos(phase);
 
         sample.Height += s * amplitude;
-        sample.Dx += c * amplitude * k * dir.x;
-        sample.Dz += c * amplitude * k * dir.y;
+        sample.Dx += c * amplitude * k * dir.x * 1.8f;
+        sample.Dz += c * amplitude * k * dir.y * 1.8f;
         sample.ChopX += c * amplitude * water.Choppiness * dir.x;
         sample.ChopZ += c * amplitude * water.Choppiness * dir.y;
     }
