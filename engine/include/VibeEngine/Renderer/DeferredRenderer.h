@@ -21,7 +21,7 @@
  *   RT3 (RGBA8):   Emission.rgb + Flags
  *
  * HPWater G-Buffer layout:
- *   RT0 (RGBA16F): Water normal.xyz + roughness
+ *   RT0 (RGBA16F): Water normal.xyz encoded to [0,1] + roughness
  *   RT1 (RGBA16F): Scatter color.rgb + thickness
  *   RT2 (RGBA16F): Absorption color.rgb + foam
  */
@@ -71,8 +71,17 @@ public:
     /// End geometry pass: unbind G-buffer FBO.
     void EndGeometryPass();
 
+    /// Begin HPWater surface-data pass.
+    void BeginHPWaterGBufferPass();
+
+    /// End HPWater surface-data pass.
+    void EndHPWaterGBufferPass();
+
     /// Get the G-buffer shader for rendering opaque geometry.
     std::shared_ptr<Shader> GetGBufferShader() const { return m_GBufferShader; }
+
+    /// Get the HPWater G-buffer shader for rendering water surface payloads.
+    std::shared_ptr<Shader> GetHPWaterGBufferShader() const { return m_HPWaterGBufferShader; }
 
     /// Execute the deferred lighting pass (fullscreen quad).
     /// Reads G-buffer textures and computes PBR lighting.
@@ -145,6 +154,7 @@ private:
 
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
+    std::shared_ptr<Shader> m_HPWaterGBufferShader;
     std::shared_ptr<Shader> m_LightingShader;
     std::shared_ptr<Shader> m_DebugShader;
 

@@ -108,6 +108,12 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load GBuffer.shader");
     }
 
+    // ── Load HPWater G-buffer shader ──
+    m_HPWaterGBufferShader = Shader::CreateFromFile("shaders/HPWaterGBuffer.shader");
+    if (!m_HPWaterGBufferShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterGBuffer.shader");
+    }
+
     // ── Load Deferred Lighting shader ──
     m_LightingShader = Shader::CreateFromFile("shaders/DeferredLighting.shader");
     if (!m_LightingShader) {
@@ -132,6 +138,7 @@ void DeferredRenderer::Shutdown() {
     m_LightingFBO.reset();
     m_HPWaterGBuffer.reset();
     m_GBufferShader.reset();
+    m_HPWaterGBufferShader.reset();
     m_LightingShader.reset();
     m_DebugShader.reset();
 
@@ -211,6 +218,22 @@ void DeferredRenderer::BeginGeometryPass() {
 void DeferredRenderer::EndGeometryPass() {
     if (!m_GBuffer) return;
     m_GBuffer->Unbind();
+}
+
+void DeferredRenderer::BeginHPWaterGBufferPass() {
+    if (!m_HPWaterGBuffer) return;
+
+    m_HPWaterGBuffer->Bind();
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+}
+
+void DeferredRenderer::EndHPWaterGBufferPass() {
+    if (!m_HPWaterGBuffer) return;
+    m_HPWaterGBuffer->Unbind();
 }
 
 void DeferredRenderer::BindGBufferTextures(int startUnit) {

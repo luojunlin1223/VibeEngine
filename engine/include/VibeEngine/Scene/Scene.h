@@ -174,6 +174,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterQueued = 0;
     uint32_t HPWaterDrawn = 0;
     uint32_t HPWaterCulled = 0;
+    uint32_t HPWaterGBufferDrawn = 0;
     bool HPWaterGBufferInitialized = false;
     uint32_t HPWaterGBufferAttachmentCount = 0;
     uint32_t HPWaterGBuffer0 = 0;

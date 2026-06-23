@@ -1302,9 +1302,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         float        DistSq;
     };
     std::vector<VisibleEntity> transparentEntities;
+    std::vector<VisibleEntity> hpWaterEntities;
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
     transparentEntities.reserve(view.size_hint() / 4);
+    hpWaterEntities.reserve(4);
 
     for (auto entityID : view) {
         if (!IsEntityActiveInHierarchy(entityID)) continue;
@@ -1395,6 +1397,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         auto* ac = m_Registry.try_get<AnimatorComponent>(entityID);
         bool hasAnimator = ac && ac->_Animator && ac->_Animator->GetSkinnedVAO();
         if (hasAnimator) drawVAO = ac->_Animator->GetSkinnedVAO();
+        if (isHPWater)
+            hpWaterEntities.push_back({ entityID, model, 0.0f });
 
         glm::mat4 mvp = viewProjection * model;
         glm::vec4 entityColor(mr.Color[0], mr.Color[1], mr.Color[2], mr.Color[3]);
@@ -1514,6 +1518,51 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     }
 
     m_DeferredRenderer.EndGeometryPass();
+
+    if (!hpWaterEntities.empty()) {
+        auto hpWaterShader = m_DeferredRenderer.GetHPWaterGBufferShader();
+        if (hpWaterShader) {
+            m_DeferredRenderer.BeginHPWaterGBufferPass();
+            hpWaterShader->Bind();
+
+            for (const auto& ve : hpWaterEntities) {
+                auto* water = m_Registry.try_get<HPWaterComponent>(ve.ID);
+                auto* mr = m_Registry.try_get<MeshRendererComponent>(ve.ID);
+                if (!water || !water->Enabled || !mr || !mr->Mesh)
+                    continue;
+
+                std::shared_ptr<VertexArray> drawVAO = mr->Mesh;
+                auto* ac = m_Registry.try_get<AnimatorComponent>(ve.ID);
+                if (ac && ac->_Animator && ac->_Animator->GetSkinnedVAO())
+                    drawVAO = ac->_Animator->GetSkinnedVAO();
+
+                hpWaterShader->SetMat4("u_MVP", viewProjection * ve.Model);
+                hpWaterShader->SetMat4("u_Model", ve.Model);
+                hpWaterShader->SetVec3("u_HPScatterColor", glm::vec3(
+                    water->ScatterColor[0],
+                    water->ScatterColor[1],
+                    water->ScatterColor[2]));
+                hpWaterShader->SetVec3("u_HPAbsorptionColor", glm::vec3(
+                    water->AbsorptionColor[0],
+                    water->AbsorptionColor[1],
+                    water->AbsorptionColor[2]));
+                hpWaterShader->SetVec3("u_HPFoamColor", glm::vec3(
+                    water->FoamColor[0],
+                    water->FoamColor[1],
+                    water->FoamColor[2]));
+                hpWaterShader->SetFloat("u_HPFoamIntensity", water->FoamIntensity);
+                hpWaterShader->SetFloat("u_HPRoughness", water->Roughness);
+                hpWaterShader->SetFloat("u_HPThickness", water->DepthTintDistance);
+                hpWaterShader->SetFloat("u_HPHeightScale", water->HeightScale);
+                hpWaterShader->SetFloat("u_HPBaseHeight", water->BaseHeight);
+
+                RenderCommand::DrawIndexed(drawVAO);
+                m_RenderDiagnostics.HPWaterGBufferDrawn++;
+            }
+
+            m_DeferredRenderer.EndHPWaterGBufferPass();
+        }
+    }
 
     // ── Phase 2: Deferred Lighting Pass ──
     {

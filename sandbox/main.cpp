@@ -6989,6 +6989,7 @@ private:
         out << "HPWaterQueued: " << d.HPWaterQueued << "\n";
         out << "HPWaterDrawn: " << d.HPWaterDrawn << "\n";
         out << "HPWaterCulled: " << d.HPWaterCulled << "\n";
+        out << "HPWaterGBufferDrawn: " << d.HPWaterGBufferDrawn << "\n";
         out << "HPWaterGBufferInitialized: " << d.HPWaterGBufferInitialized << "\n";
         out << "HPWaterGBufferAttachmentCount: " << d.HPWaterGBufferAttachmentCount << "\n";
         out << "HPWaterGBuffer0: " << d.HPWaterGBuffer0 << "\n";
@@ -7075,6 +7076,7 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
+        ImGui::Text("HPWater pass: gbufferDrawn=%u", d.HPWaterGBufferDrawn);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,
