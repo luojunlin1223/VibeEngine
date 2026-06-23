@@ -285,6 +285,7 @@ public:
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
     uint32_t GetHPWaterFluidResolution() const { return m_HPWaterFluidResolution; }
     bool IsHPWaterFluidDynamicsValid() const { return m_HPWaterFluidValid; }
+    bool DidHPWaterFluidComputeRun() const { return m_HPWaterFluidComputeRan; }
     bool IsHPWaterFluidObstacleValid() const { return m_HPWaterFluidObstacleValid; }
     glm::vec3 GetHPWaterFluidBoxCenter() const { return m_HPWaterFluidBoxCenter; }
     glm::vec3 GetHPWaterFluidBoxSize() const { return m_HPWaterFluidBoxSize; }
@@ -412,6 +413,7 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterFluidNextFBO;
     bool m_HPWaterFluidValid = false;
     bool m_HPWaterFluidInitialized = false;
+    bool m_HPWaterFluidComputeRan = false;
     bool m_HPWaterFluidObstacleValid = false;
     uint32_t m_HPWaterFluidObstacleTexture = 0;
     uint32_t m_HPWaterFluidObstacleResolution = 0;
@@ -432,6 +434,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterCausticFilterShader;
     std::shared_ptr<Shader> m_HPWaterCausticAtlasShader;
     std::shared_ptr<ComputeShader> m_HPWaterCausticComputeShader;
+    std::shared_ptr<ComputeShader> m_HPWaterFluidComputeShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
     std::shared_ptr<Shader> m_LightingShader;

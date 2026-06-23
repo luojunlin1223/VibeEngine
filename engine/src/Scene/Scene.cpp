@@ -2071,6 +2071,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCausticAtlasDrawn = hpWaterCausticAtlasDrawn;
     m_RenderDiagnostics.HPWaterCausticAtlasConsumed = m_DeferredRenderer.IsHPWaterCausticAtlasConsumed();
     m_RenderDiagnostics.HPWaterFluidDynamicsValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
+    m_RenderDiagnostics.HPWaterFluidComputeRan = m_DeferredRenderer.DidHPWaterFluidComputeRun();
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
     m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;

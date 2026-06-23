@@ -1,42 +1,15 @@
-// VibeEngine ShaderLab - HPWater FluidDynamics wave equation pass.
-// Kept as a fallback for platforms where the compute backend is unavailable.
-// The primary OpenGL path is HPWaterFluidDynamics.comp.
-
-Shader "VibeEngine/HPWaterFluidDynamics" {
-    Properties {
-    }
-
-    SubShader {
-        Tags { "RenderType"="Opaque" "Queue"="Overlay" "LightMode"="HPWaterFluidDynamics" }
-
-        Pass {
-            Name "HPWaterFluidDynamicsPass"
-
-            Cull Off
-            ZWrite Off
-            ZTest Always
-
-            GLSLPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-
 #version 460 core
 
-#ifdef VERTEX
-layout(location = 0) out vec2 v_UV;
-void main() {
-    vec2 pos = vec2((gl_VertexID & 1) * 2.0, (gl_VertexID & 2) * 1.0);
-    v_UV = pos;
-    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
-}
-#endif
+// HPWater-style wave equation update for the persistent fluid height ping-pong
+// textures. This replaces the temporary fullscreen fragment pass with a real
+// compute path while keeping the existing R16F texture dataflow.
 
-#ifdef FRAGMENT
-layout(location = 0) in vec2 v_UV;
-layout(location = 0) out float FragHeight;
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-uniform sampler2D u_WaveHeightCurrent;
-uniform sampler2D u_WaveHeightPrevious;
+layout(binding = 0, r16f) readonly uniform image2D u_WaveHeightCurrentImage;
+layout(binding = 1, r16f) readonly uniform image2D u_WaveHeightPreviousImage;
+layout(binding = 2, r16f) writeonly uniform image2D u_WaveHeightNextImage;
+
 uniform sampler2D u_ObstacleMask;
 
 uniform float u_WaveSpeed;
@@ -48,7 +21,7 @@ uniform int   u_ObstacleMaskEnabled;
 
 float ReadHeight(ivec2 coord, ivec2 size) {
     coord = clamp(coord, ivec2(0), size - ivec2(1));
-    return texelFetch(u_WaveHeightCurrent, coord, 0).r;
+    return imageLoad(u_WaveHeightCurrentImage, coord).r;
 }
 
 float ReadObstacle(ivec2 coord, ivec2 size) {
@@ -59,15 +32,17 @@ float ReadObstacle(ivec2 coord, ivec2 size) {
 }
 
 void main() {
-    ivec2 size = textureSize(u_WaveHeightCurrent, 0);
-    ivec2 coord = clamp(ivec2(v_UV * vec2(size)), ivec2(0), size - ivec2(1));
+    ivec2 size = imageSize(u_WaveHeightCurrentImage);
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    if (coord.x >= size.x || coord.y >= size.y)
+        return;
 
-    float current = texelFetch(u_WaveHeightCurrent, coord, 0).r;
-    float previous = texelFetch(u_WaveHeightPrevious, coord, 0).r;
+    float current = imageLoad(u_WaveHeightCurrentImage, coord).r;
+    float previous = imageLoad(u_WaveHeightPreviousImage, coord).r;
     float obstacle = ReadObstacle(coord, size);
 
     if (obstacle > 0.5) {
-        FragHeight = 0.0;
+        imageStore(u_WaveHeightNextImage, coord, vec4(0.0));
         return;
     }
 
@@ -109,13 +84,5 @@ void main() {
         }
     }
 
-    FragHeight = clamp(next, -1.0, 1.0);
-}
-#endif
-
-            ENDGLSL
-        }
-    }
-
-    FallBack "VibeEngine/Unlit"
+    imageStore(u_WaveHeightNextImage, coord, vec4(clamp(next, -1.0, 1.0)));
 }

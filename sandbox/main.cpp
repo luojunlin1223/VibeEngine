@@ -7100,6 +7100,7 @@ private:
         out << "HPWaterCausticVolumeStrength: " << d.HPWaterCausticVolumeStrength << "\n";
         out << "HPWaterFluidDynamicsRan: " << d.HPWaterFluidDynamicsRan << "\n";
         out << "HPWaterFluidDynamicsValid: " << d.HPWaterFluidDynamicsValid << "\n";
+        out << "HPWaterFluidComputeRan: " << d.HPWaterFluidComputeRan << "\n";
         out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
         out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
         out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";
@@ -7393,9 +7394,10 @@ private:
             d.HPWaterCausticAtlasCascades,
             d.HPWaterCausticAtlasTexture,
             d.HPWaterCausticAtlasDepthTexture);
-        ImGui::Text("HPWater fluid: ran=%d valid=%d res=%u height=%u speed=%.3f damping=%.3f",
+        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d res=%u height=%u speed=%.3f damping=%.3f",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,
+            d.HPWaterFluidComputeRan ? 1 : 0,
             d.HPWaterFluidResolution,
             d.HPWaterFluidHeightTexture,
             d.HPWaterFluidWaveSpeed,
