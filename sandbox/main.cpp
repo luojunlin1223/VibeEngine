@@ -7132,6 +7132,10 @@ private:
         out << "HPWaterPointLightCount: " << d.HPWaterPointLightCount << "\n";
         out << "HPWaterSpotLightCount: " << d.HPWaterSpotLightCount << "\n";
         out << "HPWaterPunctualLightLoopEnabled: " << d.HPWaterPunctualLightLoopEnabled << "\n";
+        out << "HPWaterPunctualLightLayerFilteringEnabled: "
+            << d.HPWaterPunctualLightLayerFilteringEnabled << "\n";
+        out << "HPWaterPunctualLightsLayerSkipped: "
+            << d.HPWaterPunctualLightsLayerSkipped << "\n";
         out << "HPWaterVolumePointLightCount: " << d.HPWaterVolumePointLightCount << "\n";
         out << "HPWaterVolumeSpotLightCount: " << d.HPWaterVolumeSpotLightCount << "\n";
         out << "HPWaterVolumePunctualLightLoopEnabled: "
@@ -7640,13 +7644,15 @@ private:
             d.HPWaterGGXEnergyCompensation,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d point=%u spot=%u volumePunctual=%d vPoint=%u vSpot=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d point=%u spot=%u layerFilter=%d skipped=%u volumePunctual=%d vPoint=%u vSpot=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSurfaceShadowSamplingEnabled ? 1 : 0,
             d.HPWaterShadowCascadeDitherEnabled ? 1 : 0,
             d.HPWaterPunctualLightLoopEnabled ? 1 : 0,
             d.HPWaterPointLightCount,
             d.HPWaterSpotLightCount,
+            d.HPWaterPunctualLightLayerFilteringEnabled ? 1 : 0,
+            d.HPWaterPunctualLightsLayerSkipped,
             d.HPWaterVolumePunctualLightLoopEnabled ? 1 : 0,
             d.HPWaterVolumePointLightCount,
             d.HPWaterVolumeSpotLightCount,
