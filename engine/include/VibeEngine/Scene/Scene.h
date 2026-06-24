@@ -270,6 +270,8 @@ struct RenderDiagnostics {
     float HPWaterReflectionProbeHierarchyWeight = 0.0f;
     bool HPWaterReflectionProbeInfluenceBlendEnabled = false;
     bool HPWaterReflectionProbeBoxProjectionEnabled = false;
+    bool HPWaterEnvSpecularDominantDirEnabled = false;
+    bool HPWaterEnvSpecularMultiBounceEnabled = false;
     bool HPWaterSSRReflectionEnabled = false;
     bool HPWaterSSRHierarchyBlendEnabled = false;
     uint32_t HPWaterSSRMaxSteps = 0;

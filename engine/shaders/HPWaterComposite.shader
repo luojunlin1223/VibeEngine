@@ -384,20 +384,41 @@ vec3 BoxProjectedReflectionDirection(vec3 worldPos, vec3 dir, vec3 probeCenter, 
     return NormalizeOr(worldPos + r * t - probeCenter, r);
 }
 
-vec3 SampleEnvironment(vec3 dir, vec3 fallbackDir, vec3 worldPos, float roughness, bool diffuseSample) {
+vec3 HPWaterSpecularEnvironmentDirection(vec3 normal, vec3 reflectionDir, float roughness) {
+    vec3 N = NormalizeOr(normal, vec3(0.0, 1.0, 0.0));
+    vec3 R = NormalizeOr(reflectionDir, N);
+    float oneMinusRoughness = clamp(1.0 - roughness, 0.0, 1.0);
+    float dominantWeight = oneMinusRoughness * (sqrt(oneMinusRoughness) + roughness);
+    vec3 dominantR = NormalizeOr(mix(N, R, clamp(dominantWeight, 0.0, 1.0)), R);
+    float roughnessBlend = smoothstep(0.0, 1.0, roughness * roughness);
+    vec3 hpWaterR = NormalizeOr(mix(dominantR, R, roughnessBlend), R);
+    hpWaterR.y = abs(hpWaterR.y) + 0.1;
+    return NormalizeOr(hpWaterR, R);
+}
+
+vec3 SampleEnvironment(vec3 dir,
+                       vec3 fallbackDir,
+                       vec3 worldPos,
+                       vec3 normal,
+                       float roughness,
+                       bool diffuseSample) {
+    vec3 sampleDir = diffuseSample
+        ? NormalizeOr(dir, fallbackDir)
+        : HPWaterSpecularEnvironmentDirection(normal, dir, roughness);
+
     vec3 fallback;
     if (u_HasSkyTexture == 1) {
         float skyRoughness = diffuseSample ? 1.0 : roughness;
-        fallback = SampleSkyTexture(dir, skyRoughness);
+        fallback = SampleSkyTexture(sampleDir, skyRoughness);
     } else {
-        fallback = SampleIndirectSky(fallbackDir);
+        fallback = SampleIndirectSky(diffuseSample ? fallbackDir : sampleDir);
     }
 
     if (u_HasReflectionProbe == 1) {
         int levels = textureQueryLevels(u_ReflectionProbe);
         float maxMip = float(max(levels - 1, 0));
         float lod = diffuseSample ? maxMip : clamp(roughness * maxMip, 0.0, maxMip);
-        vec3 primaryDir = normalize(dir);
+        vec3 primaryDir = normalize(sampleDir);
         vec3 secondaryDir = primaryDir;
         if (u_ReflectionProbeBoxProjectionEnabled == 1 && !diffuseSample) {
             primaryDir = BoxProjectedReflectionDirection(
@@ -931,10 +952,10 @@ void main() {
     if (u_IndirectLightingEnabled == 1) {
         vec3 R = reflect(-V, N);
         float roughnessFade = mix(1.0, 0.25, roughness);
-        vec3 environmentSpecular = SampleEnvironment(R, R, waterWorldPos, roughness, false);
+        vec3 environmentSpecular = SampleEnvironment(R, R, waterWorldPos, N, roughness, false);
         vec4 ssrReflection = TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear);
         environmentSpecular = mix(environmentSpecular, ssrReflection.rgb, clamp(ssrReflection.a, 0.0, 1.0));
-        vec3 environmentDiffuse = SampleEnvironment(N, N, waterWorldPos, 1.0, true);
+        vec3 environmentDiffuse = SampleEnvironment(N, N, waterWorldPos, N, 1.0, true);
         float probeHierarchyWeight = u_HasReflectionProbe == 1
             ? clamp(u_ReflectionProbeHierarchyWeight, 0.0, 1.0)
             : 0.0;

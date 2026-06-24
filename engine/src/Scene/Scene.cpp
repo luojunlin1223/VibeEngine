@@ -2920,6 +2920,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterReflectionProbeInfluenceBlendEnabled =
             hpWaterReflectionProbeBound && hpWaterReflectionProbeHierarchyWeight > 0.0f;
         m_RenderDiagnostics.HPWaterReflectionProbeBoxProjectionEnabled = hpWaterReflectionProbeBound;
+        m_RenderDiagnostics.HPWaterEnvSpecularDominantDirEnabled =
+            m_RenderDiagnostics.HPWaterSkyTextureReflectionBound || hpWaterReflectionProbeBound;
+        m_RenderDiagnostics.HPWaterEnvSpecularMultiBounceEnabled =
+            m_RenderDiagnostics.HPWaterEnvSpecularDominantDirEnabled;
         m_RenderDiagnostics.HPWaterSSRReflectionEnabled = ps.SSREnabled;
         m_RenderDiagnostics.HPWaterSSRHierarchyBlendEnabled = ps.SSREnabled;
         m_RenderDiagnostics.HPWaterSSRMaxSteps = static_cast<uint32_t>(std::max(ps.SSRMaxSteps, 0));
