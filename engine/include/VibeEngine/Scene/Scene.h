@@ -279,6 +279,7 @@ struct RenderDiagnostics {
     bool HPWaterCausticFilteredValid = false;
     uint32_t HPWaterCausticFilteredTexture = 0;
     uint32_t HPWaterCausticFilterIterations = 0;
+    bool HPWaterCausticFilterKernelParityEnabled = false;
     float HPWaterCausticStrength = 0.0f;
     float HPWaterCausticScale = 0.0f;
     float HPWaterCausticDepthFade = 0.0f;
@@ -300,6 +301,7 @@ struct RenderDiagnostics {
     bool HPWaterCausticAtlasConsumed = false;
     float HPWaterCausticFilterRadius = 0.0f;
     float HPWaterCausticFilterDepthSigma = 0.0f;
+    float HPWaterCausticFilterLuminanceWeight = 0.0f;
     float HPWaterCausticVolumeStrength = 0.0f;
     bool HPWaterFluidDynamicsRan = false;
     bool HPWaterFluidDynamicsValid = false;

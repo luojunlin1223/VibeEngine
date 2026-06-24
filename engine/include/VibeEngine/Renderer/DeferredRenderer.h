@@ -225,6 +225,7 @@ public:
     /// Denoise/filter HPWater caustic energy before composite and volume lighting.
     bool FilterHPWaterCaustics(float radius,
                                float depthSigma,
+                               float luminanceWeight,
                                int iterations);
 
     /// Step HPWater's GPU fluid height field. This is the OpenGL ping-pong
@@ -470,7 +471,8 @@ private:
                                      const std::shared_ptr<Framebuffer>& outputFBO,
                                      float stride,
                                      float radius,
-                                     float depthSigma);
+                                     float depthSigma,
+                                     float luminanceWeight);
     bool RunHPWaterCausticComputeIrradiance(float nearClip,
                                             float farClip,
                                             const glm::vec3& lightDir,

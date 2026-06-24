@@ -6320,6 +6320,7 @@ private:
                 ImGui::Checkbox("Caustic Filter", &w.CausticFilterEnabled);
                 ImGui::DragFloat("Caustic Filter Radius", &w.CausticFilterRadius, 0.05f, 0.25f, 8.0f, "%.2f");
                 ImGui::DragFloat("Caustic Depth Sigma", &w.CausticFilterDepthSigma, 0.0001f, 0.00001f, 0.05f, "%.5f");
+                ImGui::SliderFloat("Caustic Luminance Weight", &w.CausticFilterLuminanceWeight, 0.0f, 128.0f, "%.2f");
                 int causticFilterIterations = w.CausticFilterIterations;
                 if (ImGui::SliderInt("Caustic Filter Iterations", &causticFilterIterations, 1, 2))
                     w.CausticFilterIterations = std::clamp(causticFilterIterations, 1, 2);
@@ -7156,6 +7157,7 @@ private:
         out << "HPWaterCausticFilteredValid: " << d.HPWaterCausticFilteredValid << "\n";
         out << "HPWaterCausticFilteredTexture: " << d.HPWaterCausticFilteredTexture << "\n";
         out << "HPWaterCausticFilterIterations: " << d.HPWaterCausticFilterIterations << "\n";
+        out << "HPWaterCausticFilterKernelParityEnabled: " << d.HPWaterCausticFilterKernelParityEnabled << "\n";
         out << "HPWaterCausticStrength: " << d.HPWaterCausticStrength << "\n";
         out << "HPWaterCausticScale: " << d.HPWaterCausticScale << "\n";
         out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
@@ -7176,6 +7178,7 @@ private:
         out << "HPWaterCausticAtlasConsumed: " << d.HPWaterCausticAtlasConsumed << "\n";
         out << "HPWaterCausticFilterRadius: " << d.HPWaterCausticFilterRadius << "\n";
         out << "HPWaterCausticFilterDepthSigma: " << d.HPWaterCausticFilterDepthSigma << "\n";
+        out << "HPWaterCausticFilterLuminanceWeight: " << d.HPWaterCausticFilterLuminanceWeight << "\n";
         out << "HPWaterCausticVolumeStrength: " << d.HPWaterCausticVolumeStrength << "\n";
         out << "HPWaterFluidDynamicsRan: " << d.HPWaterFluidDynamicsRan << "\n";
         out << "HPWaterFluidDynamicsValid: " << d.HPWaterFluidDynamicsValid << "\n";
@@ -7517,7 +7520,7 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f trans=%.2f leak=%.2f scatter=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u kernel=%d tex=%u strength=%.3f scale=%.2f depthFade=%.2f trans=%.2f leak=%.2f scatter=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f lum=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
@@ -7535,6 +7538,7 @@ private:
             d.HPWaterCausticSpectralWeightingEnabled ? 1 : 0,
             d.HPWaterCausticFilteredValid ? 1 : 0,
             d.HPWaterCausticFilterIterations,
+            d.HPWaterCausticFilterKernelParityEnabled ? 1 : 0,
             d.HPWaterCausticFilteredTexture,
             d.HPWaterCausticStrength,
             d.HPWaterCausticScale,
@@ -7545,6 +7549,7 @@ private:
             d.HPWaterCausticRGBDispersion ? 1 : 0,
             d.HPWaterCausticDispersionStrength,
             d.HPWaterCausticFilterRadius,
+            d.HPWaterCausticFilterLuminanceWeight,
             d.HPWaterCausticVolumeStrength);
         ImGui::Text("HPWater caustic atlas: ran=%d valid=%d consumed=%d drawn=%u tile=%u size=%ux%u cascades=%u tex=%u depth=%u",
             d.HPWaterCausticAtlasRan ? 1 : 0,

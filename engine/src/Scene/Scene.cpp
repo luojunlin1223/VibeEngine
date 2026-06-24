@@ -1463,6 +1463,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     bool hpWaterCausticFilterEnabled = false;
     float hpWaterCausticFilterRadius = 1.35f;
     float hpWaterCausticFilterDepthSigma = 0.0025f;
+    float hpWaterCausticFilterLuminanceWeight = 0.5f;
     int hpWaterCausticFilterIterations = 1;
     float hpWaterCausticVolumeStrength = 0.0f;
     bool hpWaterFluidEnabled = false;
@@ -1657,6 +1658,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterCausticFilterEnabled = hpWaterCausticFilterEnabled || water->CausticFilterEnabled;
                 hpWaterCausticFilterRadius = std::max(hpWaterCausticFilterRadius, water->CausticFilterRadius);
                 hpWaterCausticFilterDepthSigma = std::max(hpWaterCausticFilterDepthSigma, water->CausticFilterDepthSigma);
+                hpWaterCausticFilterLuminanceWeight = std::max(
+                    hpWaterCausticFilterLuminanceWeight,
+                    std::clamp(water->CausticFilterLuminanceWeight, 0.0f, 128.0f));
                 hpWaterCausticFilterIterations = std::max(
                     hpWaterCausticFilterIterations,
                     std::clamp(water->CausticFilterIterations, 1, 2));
@@ -2364,6 +2368,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticAtlasDrawn = hpWaterCausticAtlasDrawn;
         m_RenderDiagnostics.HPWaterCausticFilterRadius = hpWaterCausticFilterRadius;
         m_RenderDiagnostics.HPWaterCausticFilterDepthSigma = hpWaterCausticFilterDepthSigma;
+        m_RenderDiagnostics.HPWaterCausticFilterLuminanceWeight = hpWaterCausticFilterLuminanceWeight;
         m_RenderDiagnostics.HPWaterCausticVolumeStrength = hpWaterCausticVolumeStrength;
         const uint32_t hpWaterFrameIndex = static_cast<uint32_t>(m_RenderDiagnostics.FrameIndex & 0xffffffffULL);
         m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
@@ -2442,7 +2447,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterCausticFilterEnabled &&
             m_DeferredRenderer.FilterHPWaterCaustics(hpWaterCausticFilterRadius,
                                                      hpWaterCausticFilterDepthSigma,
+                                                     hpWaterCausticFilterLuminanceWeight,
                                                      hpWaterCausticFilterIterations);
+        m_RenderDiagnostics.HPWaterCausticFilterKernelParityEnabled =
+            m_RenderDiagnostics.HPWaterCausticFilterRan;
         m_RenderDiagnostics.HPWaterVolumeRan =
             m_DeferredRenderer.AccumulateHPWaterVolume(nearClip,
                                                        farClip,

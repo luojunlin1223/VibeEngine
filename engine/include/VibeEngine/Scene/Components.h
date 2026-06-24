@@ -426,6 +426,7 @@ struct HPWaterComponent {
     bool  CausticFilterEnabled = true;
     float CausticFilterRadius = 1.35f;
     float CausticFilterDepthSigma = 0.0025f;
+    float CausticFilterLuminanceWeight = 0.5f;
     int   CausticFilterIterations = 2;
     float CausticVolumeStrength = 0.45f;
 

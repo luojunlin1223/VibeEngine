@@ -1,8 +1,9 @@
 // VibeEngine ShaderLab - HPWater caustic denoise/filter pass
 //
 // HPWater filters caustic irradiance after compute accumulation. This OpenGL
-// slice keeps the same dataflow contract by edge-aware filtering the caustic
-// energy texture before water composite and volume lighting consume it.
+// slice mirrors HPWater's first 3x3 a-trous luminance edge filter, with the
+// existing water mask/depth guard retained so deferred fullscreen filtering
+// does not bleed outside VibeEngine's HPWater pixels.
 
 Shader "VibeEngine/HPWaterCausticFilter" {
     Properties {
@@ -44,7 +45,26 @@ uniform sampler2D u_HPWaterMask;
 uniform float u_FilterStep;
 uniform float u_FilterRadius;
 uniform float u_DepthSigma;
+uniform float u_LuminanceWeight;
 uniform int u_HPWaterMaskEnabled;
+
+float CausticLuminance(vec4 value) {
+    return max(dot(max(value.rgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)), max(value.a, 0.0));
+}
+
+float ComputeEdgeWeight(float centerLum, float sampleLum, float luminanceWeight) {
+    float lumDiff = abs(log2(1.0 + max(centerLum, 0.0)) - log2(1.0 + max(sampleLum, 0.0)));
+    float strictness = smoothstep(0.0, 0.25, min(centerLum, sampleLum));
+    return exp2(-lumDiff * max(luminanceWeight, 0.0) * strictness);
+}
+
+float AtrousKernel3x3(int x, int y) {
+    if (x == 0 && y == 0)
+        return 4.0 / 16.0;
+    if (x == 0 || y == 0)
+        return 2.0 / 16.0;
+    return 1.0 / 16.0;
+}
 
 void main() {
     float centerDepth = texture(u_HPWaterDepth, v_UV).r;
@@ -61,14 +81,15 @@ void main() {
     vec2 texel = 1.0 / vec2(max(texSize, ivec2(1)));
     float stepRadius = max(u_FilterStep, 1.0) * max(u_FilterRadius, 0.25);
     float depthSigma = max(u_DepthSigma, 0.00001);
+    vec4 centerCaustic = texture(u_CausticInput, v_UV);
+    float centerLum = CausticLuminance(centerCaustic);
 
     vec4 accum = vec4(0.0);
     float totalWeight = 0.0;
 
-    for (int y = -2; y <= 2; ++y) {
-        for (int x = -2; x <= 2; ++x) {
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
             vec2 offset = vec2(x, y);
-            float r2 = dot(offset, offset);
             vec2 sampleUV = clamp(v_UV + offset * texel * stepRadius, vec2(0.001), vec2(0.999));
             vec4 sampleCaustic = texture(u_CausticInput, sampleUV);
             float sampleDepth = texture(u_HPWaterDepth, sampleUV).r;
@@ -76,10 +97,12 @@ void main() {
                 ? texture(u_HPWaterMask, sampleUV).r
                 : (sampleDepth < 0.9999 ? 1.0 : 0.0);
 
-            float spatialWeight = exp(-r2 * 0.42);
+            float sampleLum = CausticLuminance(sampleCaustic);
+            float spatialWeight = AtrousKernel3x3(x, y);
+            float edgeWeight = ComputeEdgeWeight(centerLum, sampleLum, u_LuminanceWeight);
             float depthWeight = exp(-abs(sampleDepth - centerDepth) / depthSigma);
-            float energyWeight = 0.25 + clamp(sampleCaustic.a, 0.0, 1.0) * 0.75;
-            float w = spatialWeight * depthWeight * sampleMask * energyWeight;
+            float guardWeight = sampleMask * mix(depthWeight, 1.0, 0.35);
+            float w = spatialWeight * mix(edgeWeight, 1.0, 0.25) * guardWeight;
             accum += sampleCaustic * w;
             totalWeight += w;
         }

@@ -2420,7 +2420,8 @@ bool DeferredRenderer::RunHPWaterCausticFilterPass(const std::shared_ptr<Framebu
                                                    const std::shared_ptr<Framebuffer>& outputFBO,
                                                    float stride,
                                                    float radius,
-                                                   float depthSigma) {
+                                                   float depthSigma,
+                                                   float luminanceWeight) {
     if (!m_HPWaterCausticFilterShader || !inputFBO || !outputFBO || !m_HPWaterGBuffer || m_QuadVAO == 0)
         return false;
 
@@ -2450,6 +2451,7 @@ bool DeferredRenderer::RunHPWaterCausticFilterPass(const std::shared_ptr<Framebu
     m_HPWaterCausticFilterShader->SetFloat("u_FilterStep", std::max(stride, 1.0f));
     m_HPWaterCausticFilterShader->SetFloat("u_FilterRadius", std::clamp(radius, 0.25f, 8.0f));
     m_HPWaterCausticFilterShader->SetFloat("u_DepthSigma", std::clamp(depthSigma, 0.00001f, 0.05f));
+    m_HPWaterCausticFilterShader->SetFloat("u_LuminanceWeight", std::clamp(luminanceWeight, 0.0f, 128.0f));
     m_HPWaterCausticFilterShader->SetInt("u_HPWaterMaskEnabled", m_HPWaterMaskValid ? 1 : 0);
 
     glBindVertexArray(m_QuadVAO);
@@ -2465,6 +2467,7 @@ bool DeferredRenderer::RunHPWaterCausticFilterPass(const std::shared_ptr<Framebu
 
 bool DeferredRenderer::FilterHPWaterCaustics(float radius,
                                              float depthSigma,
+                                             float luminanceWeight,
                                              int iterations) {
     if (!m_HPWaterCausticFilterShader || !m_HPWaterCausticFBO ||
         !m_HPWaterCausticFilteredFBO || !m_HPWaterCausticFilterScratchFBO ||
@@ -2481,7 +2484,12 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
         const bool lastPass = i == clampedIterations - 1;
         const auto outputFBO = lastPass ? m_HPWaterCausticFilteredFBO : m_HPWaterCausticFilterScratchFBO;
         const float stride = static_cast<float>(1u << static_cast<uint32_t>(i));
-        if (!RunHPWaterCausticFilterPass(inputFBO, outputFBO, stride, radius, depthSigma)) {
+        if (!RunHPWaterCausticFilterPass(inputFBO,
+                                         outputFBO,
+                                         stride,
+                                         radius,
+                                         depthSigma,
+                                         luminanceWeight)) {
             m_HPWaterCausticFilteredValid = false;
             return false;
         }
