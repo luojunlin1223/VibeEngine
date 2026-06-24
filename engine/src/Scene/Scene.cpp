@@ -2389,6 +2389,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterSpecularFGDStrength = hpWaterSpecularFGDStrength;
         m_RenderDiagnostics.HPWaterGGXEnergyCompensation = hpWaterGGXEnergyCompensation;
         m_RenderDiagnostics.HPWaterLightLoopInputsValid = true;
+        m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled =
+            ps.IndirectLightingEnabled && hpWaterIndirectLightStrength > 0.0001f;
         m_RenderDiagnostics.HPWaterSkyReflectionIntensity = ps.SkyReflectionIntensity;
         m_RenderDiagnostics.HPWaterIndirectDiffuseIntensity =
             ps.IndirectLightingEnabled ? ps.IndirectDiffuseIntensity * hpWaterIndirectLightStrength : 0.0f;
@@ -2730,6 +2732,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterDepthPyramidHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
+    if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0)
+        m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled = false;
     m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
     m_RenderDiagnostics.HPWaterVolumeTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(1);
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);

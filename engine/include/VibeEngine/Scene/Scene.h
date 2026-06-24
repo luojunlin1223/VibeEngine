@@ -216,6 +216,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterPreintegratedFGDLUTTexture = 0;
     uint32_t HPWaterPreintegratedFGDLUTResolution = 0;
     bool HPWaterLightLoopInputsValid = false;
+    bool HPWaterIndirectScatterIntegrationEnabled = false;
     float HPWaterSkyReflectionIntensity = 0.0f;
     float HPWaterIndirectDiffuseIntensity = 0.0f;
     float HPWaterDirectionalLightIntensity = 0.0f;

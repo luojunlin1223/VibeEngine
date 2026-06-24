@@ -109,6 +109,8 @@ const float PI = 3.14159265358979323846;
 const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 10.0;
 const float HPWATER_FORWARD_SCALING_FACTOR = 1.0;
 const float HPWATER_WATER_DISPERSION_UV_CLAMP = 0.01;
+const int HPWATER_INDIRECT_SAMPLE_COUNT = 16;
+const float HPWATER_INDIRECT_EXP_FACTOR = 32.0;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -245,6 +247,44 @@ float GGXEnergyCompensation(vec3 F0, float roughness) {
 vec3 SampleIndirectSky(vec3 dir) {
     float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
     return mix(u_IndirectGroundColor, u_IndirectSkyColor, t) * u_IndirectTint;
+}
+
+vec3 HPWaterScatteredLight(vec3 originLight,
+                           vec3 absorptionCoeff,
+                           vec3 scatteringCoeff,
+                           float crossDistance,
+                           vec3 phase) {
+    vec3 extinctionCoeff = max(absorptionCoeff + scatteringCoeff, vec3(0.00001));
+    vec3 transmittance = exp(-extinctionCoeff * max(crossDistance, 0.00001));
+    vec3 extinguishedLight = originLight * (vec3(1.0) - transmittance);
+    vec3 scatteringAlbedo = scatteringCoeff / extinctionCoeff;
+    return extinguishedLight * scatteringAlbedo * phase;
+}
+
+vec3 AccumulateHPWaterIndirectScattering(vec3 indirectLighting,
+                                         vec3 absorptionCoeff,
+                                         vec3 scatteringCoeff,
+                                         float rayLength,
+                                         float ambientDepth,
+                                         float dither) {
+    float rcpCount = 1.0 / float(HPWATER_INDIRECT_SAMPLE_COUNT);
+    float kDenom = 1.0 / max(HPWATER_INDIRECT_EXP_FACTOR - 1.0, 0.0001);
+    float kDD = log(HPWATER_INDIRECT_EXP_FACTOR) * rcpCount * kDenom;
+    float expStep = pow(HPWATER_INDIRECT_EXP_FACTOR, rcpCount);
+    float currentExp = pow(HPWATER_INDIRECT_EXP_FACTOR, clamp(dither, 0.0, 1.0) * rcpCount);
+    float travelDistance = max(rayLength + ambientDepth, 0.00001);
+    vec3 total = vec3(0.0);
+    for (int i = 0; i < HPWATER_INDIRECT_SAMPLE_COUNT; ++i) {
+        float dd = currentExp * kDD;
+        float crossDistance = max(dd * travelDistance, 0.00001);
+        total += HPWaterScatteredLight(indirectLighting,
+                                       absorptionCoeff,
+                                       scatteringCoeff,
+                                       crossDistance,
+                                       vec3(1.0));
+        currentExp *= expStep;
+    }
+    return total;
 }
 
 vec2 DirectionToEquirectUV(vec3 dir) {
@@ -637,10 +677,18 @@ void main() {
             clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *
             roughnessFade *
             energyCompensation;
-        indirectBody = scatterColor * environmentDiffuse *
+        float indirectDither = InterleavedGradientNoise(v_UV * vec2(textureSize(u_SceneColor, 0)),
+                                                        u_FrameIndex);
+        vec3 indirectLighting = environmentDiffuse *
             clamp(u_IndirectDiffuseIntensity, 0.0, 4.0) *
-            clamp(u_IndirectLightStrength, 0.0, 4.0) *
-            (0.08 + 0.18 * normalizedThickness);
+            clamp(u_IndirectLightStrength, 0.0, 4.0);
+        indirectBody = AccumulateHPWaterIndirectScattering(
+            indirectLighting,
+            absorptionColor,
+            scatterColor,
+            min(rayLength, clamp(u_MaxRefractionCrossDistance, 0.1, 200.0)),
+            max(normalizedThickness * 2.0, 0.0),
+            indirectDither);
     }
     vec3 reflected = skyReflection + directSpecular * clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0);
     float forwardPhase = HenyeyGreenstein(lightViewAlignment, clamp(u_PhaseG, -0.95, 0.95));
