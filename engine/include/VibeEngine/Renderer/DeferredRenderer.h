@@ -253,6 +253,7 @@ public:
                                  const std::array<float, 4>& areaLightHeights,
                                  const glm::vec3& cameraPosition,
                                  const glm::mat4& inverseViewProjection,
+                                 float maxRefractionCrossDistance,
                                  const glm::mat4& shadowCameraView,
                                  const std::array<glm::mat4, 4>& shadowLightVP,
                                  const std::array<float, 4>& shadowCascadeSplits,
@@ -445,6 +446,12 @@ public:
     bool IsHPWaterVolumeShadowParamsEnabled() const {
         return m_HPWaterVolumeShadowParamsEnabled;
     }
+    bool IsHPWaterVolumeMaxCrossDistanceEnabled() const {
+        return m_HPWaterVolumeMaxCrossDistanceEnabled;
+    }
+    bool IsHPWaterVolumeDynamicShadowDistanceEnabled() const {
+        return m_HPWaterVolumeDynamicShadowDistanceEnabled;
+    }
     bool IsHPWaterVolumePunctualLightLoopEnabled() const {
         return m_HPWaterVolumePunctualLightLoopEnabled;
     }
@@ -462,6 +469,9 @@ public:
     }
     uint32_t GetHPWaterVolumeSampleCount() const {
         return m_HPWaterVolumeSampleCount;
+    }
+    float GetHPWaterVolumeMaxCrossDistance() const {
+        return m_HPWaterVolumeMaxCrossDistance;
     }
     float GetHPWaterVolumeShadowSoftness() const {
         return m_HPWaterVolumeShadowSoftness;
@@ -772,12 +782,15 @@ private:
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
     bool m_HPWaterVolumeShadowSamplingEnabled = false;
     bool m_HPWaterVolumeShadowParamsEnabled = false;
+    bool m_HPWaterVolumeMaxCrossDistanceEnabled = false;
+    bool m_HPWaterVolumeDynamicShadowDistanceEnabled = false;
     bool m_HPWaterVolumePunctualLightLoopEnabled = false;
     bool m_HPWaterVolumeAreaLightLoopEnabled = false;
     uint32_t m_HPWaterVolumePointLightCount = 0;
     uint32_t m_HPWaterVolumeSpotLightCount = 0;
     uint32_t m_HPWaterVolumeAreaLightCount = 0;
     uint32_t m_HPWaterVolumeSampleCount = 0;
+    float m_HPWaterVolumeMaxCrossDistance = 0.0f;
     float m_HPWaterVolumeShadowSoftness = 0.0f;
     float m_HPWaterVolumeShadowMinFilterSize = 0.0f;
     uint32_t m_HPWaterVolumeShadowBlockerSamples = 0;

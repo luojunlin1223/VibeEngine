@@ -399,6 +399,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumeMaxCrossDistanceEnabled = false;
+    m_HPWaterVolumeDynamicShadowDistanceEnabled = false;
     m_HPWaterVolumePunctualLightLoopEnabled = false;
     m_HPWaterVolumeAreaLightLoopEnabled = false;
     m_HPWaterVolumePointLightCount = 0;
@@ -409,6 +411,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeShadowBlockerSamples = 0;
     m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
+    m_HPWaterVolumeMaxCrossDistance = 0.0f;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterVolumeTemporalBlendFactor = 0.0f;
     m_HPWaterVolumeSpatialFilterEnabled = false;
@@ -2402,6 +2405,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                                const std::array<float, 4>& areaLightHeights,
                                                const glm::vec3& cameraPosition,
                                                const glm::mat4& inverseViewProjection,
+                                               float maxRefractionCrossDistance,
                                                const glm::mat4& shadowCameraView,
                                                const std::array<glm::mat4, 4>& shadowLightVP,
                                                const std::array<float, 4>& shadowCascadeSplits,
@@ -2427,6 +2431,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         m_HPWaterVolumeShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
         m_HPWaterVolumeShadowParamsEnabled = false;
+        m_HPWaterVolumeMaxCrossDistanceEnabled = false;
+        m_HPWaterVolumeDynamicShadowDistanceEnabled = false;
         m_HPWaterVolumePunctualLightLoopEnabled = false;
         m_HPWaterVolumeAreaLightLoopEnabled = false;
         m_HPWaterVolumePointLightCount = 0;
@@ -2437,6 +2443,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         m_HPWaterVolumeShadowBlockerSamples = 0;
         m_HPWaterVolumeShadowFilterSamples = 0;
         m_HPWaterVolumeSampleCount = 0;
+        m_HPWaterVolumeMaxCrossDistance = 0.0f;
         return false;
     }
 
@@ -2570,6 +2577,10 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     }
     m_HPWaterVolumeShader->SetVec3("u_CameraPosition", cameraPosition);
     m_HPWaterVolumeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
+    const float clampedMaxRefractionCrossDistance =
+        std::clamp(maxRefractionCrossDistance, 0.1f, 200.0f);
+    m_HPWaterVolumeShader->SetFloat("u_MaxRefractionCrossDistance",
+        clampedMaxRefractionCrossDistance);
     m_HPWaterVolumeShader->SetFloat("u_MacroScatterStrength",
         std::clamp(macroScatterStrength, 0.0f, 4.0f));
     constexpr uint32_t hpWaterVolumeSampleCount = 16;
@@ -2625,11 +2636,14 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterShadowCascadeDitherEnabled =
         m_HPWaterShadowCascadeDitherEnabled || shadowCascadeDitherEnabled;
     m_HPWaterVolumeShadowParamsEnabled = volumeShadowParamsEnabled;
+    m_HPWaterVolumeMaxCrossDistanceEnabled = clampedMaxRefractionCrossDistance > 0.0f;
+    m_HPWaterVolumeDynamicShadowDistanceEnabled = shadowSamplingValid;
     m_HPWaterVolumeShadowSoftness = clampedVolumeShadowSoftness;
     m_HPWaterVolumeShadowMinFilterSize = clampedVolumeShadowMinFilterSize;
     m_HPWaterVolumeShadowBlockerSamples = static_cast<uint32_t>(clampedVolumeShadowBlockerSamples);
     m_HPWaterVolumeShadowFilterSamples = static_cast<uint32_t>(clampedVolumeShadowFilterSamples);
     m_HPWaterVolumeSampleCount = hpWaterVolumeSampleCount;
+    m_HPWaterVolumeMaxCrossDistance = clampedMaxRefractionCrossDistance;
     m_HPWaterVolumePunctualLightLoopEnabled = (clampedPointLightCount + clampedSpotLightCount) > 0;
     m_HPWaterVolumeAreaLightLoopEnabled = clampedAreaLightCount > 0;
     m_HPWaterVolumePointLightCount = static_cast<uint32_t>(clampedPointLightCount);

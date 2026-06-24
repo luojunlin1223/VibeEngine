@@ -3148,6 +3148,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        hpWaterAreaHeights,
                                                        cameraPos,
                                                        inverseViewProjection,
+                                                       hpWaterMaxRefractionCrossDistance,
                                                        cameraView,
                                                        hpWaterCascadeVP,
                                                        hpWaterCascadeSplits,
@@ -3180,6 +3181,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterShadowCascadeDitherEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
             m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
+        m_RenderDiagnostics.HPWaterVolumeMaxCrossDistanceEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeMaxCrossDistanceEnabled();
+        m_RenderDiagnostics.HPWaterVolumeDynamicShadowDistanceEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeDynamicShadowDistanceEnabled();
         m_RenderDiagnostics.HPWaterVolumePunctualLightLoopEnabled =
             m_DeferredRenderer.IsHPWaterVolumePunctualLightLoopEnabled();
         m_RenderDiagnostics.HPWaterVolumePointLightCount =
@@ -3200,6 +3205,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.GetHPWaterVolumeShadowBlockerSamples();
         m_RenderDiagnostics.HPWaterVolumeShadowFilterSamples =
             m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
+        m_RenderDiagnostics.HPWaterVolumeMaxCrossDistance =
+            m_DeferredRenderer.GetHPWaterVolumeMaxCrossDistance();
         m_RenderDiagnostics.HPWaterVolumeSampleCount =
             m_DeferredRenderer.GetHPWaterVolumeSampleCount();
         m_RenderDiagnostics.HPWaterVolumeTemporalBlendFactor =
@@ -3403,6 +3410,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterShadowCascadeDitherEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
+    m_RenderDiagnostics.HPWaterVolumeMaxCrossDistanceEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeMaxCrossDistanceEnabled();
+    m_RenderDiagnostics.HPWaterVolumeDynamicShadowDistanceEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeDynamicShadowDistanceEnabled();
     m_RenderDiagnostics.HPWaterVolumePunctualLightLoopEnabled =
         m_DeferredRenderer.IsHPWaterVolumePunctualLightLoopEnabled();
     m_RenderDiagnostics.HPWaterVolumePointLightCount =
@@ -3423,6 +3434,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeShadowBlockerSamples();
     m_RenderDiagnostics.HPWaterVolumeShadowFilterSamples =
         m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
+    m_RenderDiagnostics.HPWaterVolumeMaxCrossDistance =
+        m_DeferredRenderer.GetHPWaterVolumeMaxCrossDistance();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
         m_DeferredRenderer.GetHPWaterVolumeMotionVectorTexture();
     m_RenderDiagnostics.HPWaterVolumeTemporalBlendFactor =

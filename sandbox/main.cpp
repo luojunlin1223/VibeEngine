@@ -7367,8 +7367,14 @@ private:
             << d.HPWaterVolumeShadowSamplingEnabled << "\n";
         out << "HPWaterVolumeShadowParamsEnabled: "
             << d.HPWaterVolumeShadowParamsEnabled << "\n";
+        out << "HPWaterVolumeMaxCrossDistanceEnabled: "
+            << d.HPWaterVolumeMaxCrossDistanceEnabled << "\n";
+        out << "HPWaterVolumeDynamicShadowDistanceEnabled: "
+            << d.HPWaterVolumeDynamicShadowDistanceEnabled << "\n";
         out << "HPWaterVolumeSampleCount: "
             << d.HPWaterVolumeSampleCount << "\n";
+        out << "HPWaterVolumeMaxCrossDistance: "
+            << d.HPWaterVolumeMaxCrossDistance << "\n";
         out << "HPWaterVolumeShadowSoftness: "
             << d.HPWaterVolumeShadowSoftness << "\n";
         out << "HPWaterVolumeShadowMinFilterSize: "
@@ -7795,11 +7801,14 @@ private:
             d.HPWaterVolumeTemporalDepthThreshold,
             d.HPWaterVolumeSpatialDepthAwareEnabled ? 1 : 0,
             d.HPWaterVolumeSpatialDepthSensitivity);
-        ImGui::Text("HPWater volume phase/shadows: albedoPhase=%d phaseG=%d sampling=%d params=%d softness=%.2f minFilter=%.2f blockers=%u filters=%u",
+        ImGui::Text("HPWater volume phase/shadows: albedoPhase=%d phaseG=%d sampling=%d params=%d maxCross=%d dynamicShadow=%d maxCrossDist=%.2f softness=%.2f minFilter=%.2f blockers=%u filters=%u",
             d.HPWaterVolumeAlbedoPhaseBlendEnabled ? 1 : 0,
             d.HPWaterVolumePhaseGEnabled ? 1 : 0,
             d.HPWaterVolumeShadowSamplingEnabled ? 1 : 0,
             d.HPWaterVolumeShadowParamsEnabled ? 1 : 0,
+            d.HPWaterVolumeMaxCrossDistanceEnabled ? 1 : 0,
+            d.HPWaterVolumeDynamicShadowDistanceEnabled ? 1 : 0,
+            d.HPWaterVolumeMaxCrossDistance,
             d.HPWaterVolumeShadowSoftness,
             d.HPWaterVolumeShadowMinFilterSize,
             d.HPWaterVolumeShadowBlockerSamples,

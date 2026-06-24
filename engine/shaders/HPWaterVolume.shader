@@ -62,6 +62,7 @@ uniform int u_HPWaterVolumeShadowBlockerSamples;
 uniform int u_HPWaterVolumeShadowFilterSamples;
 uniform int u_VolumeSampleCount;
 uniform int u_FrameIndex;
+uniform float u_MaxRefractionCrossDistance;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
@@ -475,6 +476,24 @@ void main() {
     vec3 extinction = max(absorptionCoeff + scatterCoeff, vec3(0.0001));
     vec3 scatteringAlbedo = scatterCoeff / extinction;
     float macroScatter = clamp(u_MacroScatterStrength, 0.0, 4.0);
+    vec3 fullRayVector = refractedWorldPos - waterWorldPos;
+    float fullRayLength = max(rayLength, 0.0001);
+    if (length(fullRayVector) <= 0.0001) {
+        fullRayVector = SafeNormalize(refractedWorldPos - waterWorldPos, -V) * fullRayLength;
+    }
+
+    float maxCrossDistance = clamp(u_MaxRefractionCrossDistance, 0.1, 200.0);
+    float noLinearScale = min(fullRayLength, maxCrossDistance) / fullRayLength;
+    float noLinearRayLength = fullRayLength * noLinearScale;
+    vec3 noLinearEndPos = waterWorldPos + fullRayVector * noLinearScale;
+    float extinctionStrength = dot(extinction, vec3(0.2126, 0.7152, 0.0722));
+    float distanceToQuarterEnergy = -log(0.25) / max(extinctionStrength, 0.000001);
+    float dynamicShadowDistance = clamp(distanceToQuarterEnergy, 0.1, maxCrossDistance);
+    float dynamicShadowScale = min(fullRayLength, dynamicShadowDistance) / fullRayLength;
+    vec3 dynamicShadowEndPos = waterWorldPos + fullRayVector * dynamicShadowScale;
+    float ambientDepth = abs(SafeNormalize(refractedWorldPos, vec3(0.0, -1.0, 0.0)).y) *
+        noLinearRayLength;
+    float sunDepth = ambientDepth * min(1.0 / max(abs(V.y), 0.001), 4.0);
 
     vec3 baseDirectLight = u_LightColor * max(u_LightIntensity, 0.0) *
         (0.18 + 0.82 * NdotL) * (0.75 + 0.25 * normalizedThickness);
@@ -506,17 +525,21 @@ void main() {
             d = 1.0;
         }
 
-        float segment = max((d - previousD) * rayLength, 0.0);
+        float segment = max((d - previousD) * noLinearRayLength, 0.0);
         float midD = clamp((previousD + d) * 0.5, 0.0, 1.0);
-        vec3 samplePos = mix(waterWorldPos, refractedWorldPos, midD);
+        vec3 samplePos = mix(waterWorldPos, noLinearEndPos, midD);
+        vec3 shadowSamplePos = mix(waterWorldPos, dynamicShadowEndPos, midD);
         vec2 sampleUV = mix(v_UV, clamp(refractMeta.xy, vec2(0.001), vec2(0.999)), midD);
         vec3 sampleToCamera = SafeNormalize(u_CameraPosition - samplePos, V);
         float cosTheta = clamp(dot(sampleToCamera, L), -1.0, 1.0);
         vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
-        float shadowVisibility = ComputeHPWaterVolumeShadow(samplePos, N);
+        float shadowVisibility = ComputeHPWaterVolumeShadow(shadowSamplePos, N);
         float volumeShadow = mix(0.35, 1.0, shadowVisibility);
+        float directSegment = segment + max((d - previousD) * sunDepth, 0.0);
         vec3 stepTransmittance = exp(-extinction * segment);
+        vec3 directStepTransmittance = exp(-extinction * directSegment);
         vec3 extinguished = vec3(1.0) - stepTransmittance;
+        vec3 directExtinguished = vec3(1.0) - directStepTransmittance;
         float depthWeight = 0.55 + 0.45 * smoothstep(0.0, 1.0, midD);
 
         vec3 directionalScatter = baseDirectLight * volumeShadow * (phase * 2.6);
@@ -526,8 +549,9 @@ void main() {
                                                                     clamp(normalRoughness.w, 0.02, 1.0),
                                                                     scatteringAlbedo,
                                                                     normalizedThickness);
-        directScatter += accumTransmittance * (directionalScatter + punctualScatter) *
-            extinguished * scatteringAlbedo * macroScatter * depthWeight;
+        directScatter += accumTransmittance *
+            (directionalScatter * directExtinguished + punctualScatter * extinguished) *
+            scatteringAlbedo * macroScatter * depthWeight;
 
         vec3 refractedSceneColor = texture(u_SceneColor, sampleUV).rgb;
         sceneInScatter += accumTransmittance * refractedSceneColor * scatterCoeff *
