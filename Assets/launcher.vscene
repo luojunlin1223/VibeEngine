@@ -223,6 +223,20 @@ Entities:
     DirectionalLightComponent:
       Color: [1, 0.959999979, 0.899999976]
       Intensity: 4
+  - Entity: 910000000000000013
+    Parent: 910000000000000001
+    TagComponent:
+      Tag: HPWater Test Point Light
+      GameObjectTag: Untagged
+      Layer: 0
+    TransformComponent:
+      Position: [0, 3, 4]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    PointLightComponent:
+      Color: [0.650000036, 0.850000024, 1]
+      Intensity: 2
+      Range: 12
   - Entity: 910000000000000012
     TagComponent:
       Tag: Camera

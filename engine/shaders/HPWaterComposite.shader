@@ -74,6 +74,19 @@ uniform vec3 u_ViewPos;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
+uniform int u_NumPointLights;
+uniform vec3 u_PointLightPositions[8];
+uniform vec3 u_PointLightColors[8];
+uniform float u_PointLightIntensities[8];
+uniform float u_PointLightRanges[8];
+uniform int u_NumSpotLights;
+uniform vec3 u_SpotLightPositions[4];
+uniform vec3 u_SpotLightDirections[4];
+uniform vec3 u_SpotLightColors[4];
+uniform float u_SpotLightIntensities[4];
+uniform float u_SpotLightRanges[4];
+uniform float u_SpotLightInnerCos[4];
+uniform float u_SpotLightOuterCos[4];
 uniform vec3 u_IndirectSkyColor;
 uniform vec3 u_IndirectGroundColor;
 uniform vec3 u_IndirectTint;
@@ -414,6 +427,26 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
 
     float maxLod = float(max(u_SceneColorMipCount - 1, 0));
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
+}
+
+vec3 EvaluateHPWaterSpecularLight(vec3 N,
+                                  vec3 V,
+                                  vec3 L,
+                                  vec3 radiance,
+                                  float roughness,
+                                  vec3 fresnel,
+                                  float energyCompensation) {
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
+    float NdotL = clamp(dot(N, L), 0.0, 1.0);
+    if (NdotL <= 0.0001 || NdotV <= 0.0001) {
+        return vec3(0.0);
+    }
+
+    vec3 H = NormalizeOr(V + L, N);
+    float D = DistributionGGX(N, H, roughness);
+    float G = GeometrySmith(N, V, L, roughness);
+    return (D * G * fresnel) / max(4.0 * NdotV * NdotL, 0.001) *
+        radiance * NdotL * energyCompensation;
 }
 
 vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughness, float waterLinearDepth) {
@@ -771,6 +804,63 @@ void main() {
     float G = GeometrySmith(N, V, L, roughness);
     vec3 directSpecular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
     directSpecular *= u_LightColor * max(u_LightIntensity, 0.0) * NdotL * energyCompensation;
+    vec3 punctualWaterLight = vec3(0.0);
+
+    int pointCount = clamp(u_NumPointLights, 0, 8);
+    for (int i = 0; i < 8; ++i) {
+        if (i >= pointCount) {
+            break;
+        }
+
+        vec3 lightVector = u_PointLightPositions[i] - waterWorldPos;
+        float lightDistance = length(lightVector);
+        float lightRange = max(u_PointLightRanges[i], 0.001);
+        if (lightDistance <= 0.0001 || lightDistance >= lightRange) {
+            continue;
+        }
+
+        vec3 localL = lightVector / lightDistance;
+        float range01 = clamp(lightDistance / lightRange, 0.0, 1.0);
+        float rangeWindow = 1.0 - pow(range01, 4.0);
+        rangeWindow *= rangeWindow;
+        float attenuation = rangeWindow / (lightDistance * lightDistance + 1.0);
+        vec3 radiance = u_PointLightColors[i] * max(u_PointLightIntensities[i], 0.0) * attenuation;
+        directSpecular += EvaluateHPWaterSpecularLight(
+            N, V, localL, radiance, roughness, F, energyCompensation);
+        punctualWaterLight += radiance * clamp(dot(N, localL), 0.0, 1.0);
+    }
+
+    int spotCount = clamp(u_NumSpotLights, 0, 4);
+    for (int i = 0; i < 4; ++i) {
+        if (i >= spotCount) {
+            break;
+        }
+
+        vec3 lightVector = u_SpotLightPositions[i] - waterWorldPos;
+        float lightDistance = length(lightVector);
+        float lightRange = max(u_SpotLightRanges[i], 0.001);
+        if (lightDistance <= 0.0001 || lightDistance >= lightRange) {
+            continue;
+        }
+
+        vec3 localL = lightVector / lightDistance;
+        vec3 spotForward = NormalizeOr(-u_SpotLightDirections[i], vec3(0.0, -1.0, 0.0));
+        float theta = dot(localL, spotForward);
+        float coneWidth = max(u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i], 0.0001);
+        float spotFactor = clamp((theta - u_SpotLightOuterCos[i]) / coneWidth, 0.0, 1.0);
+        if (spotFactor <= 0.0001) {
+            continue;
+        }
+
+        float range01 = clamp(lightDistance / lightRange, 0.0, 1.0);
+        float rangeWindow = 1.0 - pow(range01, 4.0);
+        rangeWindow *= rangeWindow;
+        float attenuation = rangeWindow * spotFactor / (lightDistance * lightDistance + 1.0);
+        vec3 radiance = u_SpotLightColors[i] * max(u_SpotLightIntensities[i], 0.0) * attenuation;
+        directSpecular += EvaluateHPWaterSpecularLight(
+            N, V, localL, radiance, roughness, F, energyCompensation);
+        punctualWaterLight += radiance * clamp(dot(N, localL), 0.0, 1.0);
+    }
 
     vec3 skyReflection = vec3(0.0);
     vec3 indirectBody = vec3(0.0);
@@ -819,7 +909,7 @@ void main() {
             scatterDensity,
             6.0));
     vec3 forwardBlur = SampleHPWaterDispersedSceneColor(v_UV, refractUV, forwardBlurLOD);
-    vec3 directWaterLight = u_LightColor * max(u_LightIntensity, 0.0);
+    vec3 directWaterLight = u_LightColor * max(u_LightIntensity, 0.0) + punctualWaterLight;
 
     // HPWaterBSDFLibary component split:
     // diffR = T_entry * G_entry * S_volume

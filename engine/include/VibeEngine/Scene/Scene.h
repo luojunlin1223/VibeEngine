@@ -221,6 +221,9 @@ struct RenderDiagnostics {
     float HPWaterSkyReflectionIntensity = 0.0f;
     float HPWaterIndirectDiffuseIntensity = 0.0f;
     float HPWaterDirectionalLightIntensity = 0.0f;
+    uint32_t HPWaterPointLightCount = 0;
+    uint32_t HPWaterSpotLightCount = 0;
+    bool HPWaterPunctualLightLoopEnabled = false;
     bool HPWaterSpectralOceanEnabled = false;
     bool HPWaterSpectralNormalParityEnabled = false;
     float HPWaterSpectrumAmplitude = 0.0f;

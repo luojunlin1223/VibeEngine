@@ -1498,6 +1498,19 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         const glm::vec3& lightDir,
                                         const glm::vec3& lightColor,
                                         float lightIntensity,
+                                        int pointLightCount,
+                                        const std::array<glm::vec3, 8>& pointLightPositions,
+                                        const std::array<glm::vec3, 8>& pointLightColors,
+                                        const std::array<float, 8>& pointLightIntensities,
+                                        const std::array<float, 8>& pointLightRanges,
+                                        int spotLightCount,
+                                        const std::array<glm::vec3, 4>& spotLightPositions,
+                                        const std::array<glm::vec3, 4>& spotLightDirections,
+                                        const std::array<glm::vec3, 4>& spotLightColors,
+                                        const std::array<float, 4>& spotLightIntensities,
+                                        const std::array<float, 4>& spotLightRanges,
+                                        const std::array<float, 4>& spotLightInnerCos,
+                                        const std::array<float, 4>& spotLightOuterCos,
                                         const glm::vec3& indirectSkyColor,
                                         const glm::vec3& indirectGroundColor,
                                         const glm::vec3& indirectTint,
@@ -1696,6 +1709,31 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetVec3("u_LightDir", safeLightDir);
     m_HPWaterCompositeShader->SetVec3("u_LightColor", lightColor);
     m_HPWaterCompositeShader->SetFloat("u_LightIntensity", std::max(lightIntensity, 0.0f));
+    const int clampedPointLightCount = std::clamp(pointLightCount, 0, 8);
+    m_HPWaterCompositeShader->SetInt("u_NumPointLights", clampedPointLightCount);
+    for (int i = 0; i < clampedPointLightCount; ++i) {
+        const std::string index = std::to_string(i);
+        m_HPWaterCompositeShader->SetVec3("u_PointLightPositions[" + index + "]", pointLightPositions[i]);
+        m_HPWaterCompositeShader->SetVec3("u_PointLightColors[" + index + "]", pointLightColors[i]);
+        m_HPWaterCompositeShader->SetFloat("u_PointLightIntensities[" + index + "]",
+            std::max(pointLightIntensities[i], 0.0f));
+        m_HPWaterCompositeShader->SetFloat("u_PointLightRanges[" + index + "]",
+            std::max(pointLightRanges[i], 0.001f));
+    }
+    const int clampedSpotLightCount = std::clamp(spotLightCount, 0, 4);
+    m_HPWaterCompositeShader->SetInt("u_NumSpotLights", clampedSpotLightCount);
+    for (int i = 0; i < clampedSpotLightCount; ++i) {
+        const std::string index = std::to_string(i);
+        m_HPWaterCompositeShader->SetVec3("u_SpotLightPositions[" + index + "]", spotLightPositions[i]);
+        m_HPWaterCompositeShader->SetVec3("u_SpotLightDirections[" + index + "]", spotLightDirections[i]);
+        m_HPWaterCompositeShader->SetVec3("u_SpotLightColors[" + index + "]", spotLightColors[i]);
+        m_HPWaterCompositeShader->SetFloat("u_SpotLightIntensities[" + index + "]",
+            std::max(spotLightIntensities[i], 0.0f));
+        m_HPWaterCompositeShader->SetFloat("u_SpotLightRanges[" + index + "]",
+            std::max(spotLightRanges[i], 0.001f));
+        m_HPWaterCompositeShader->SetFloat("u_SpotLightInnerCos[" + index + "]", spotLightInnerCos[i]);
+        m_HPWaterCompositeShader->SetFloat("u_SpotLightOuterCos[" + index + "]", spotLightOuterCos[i]);
+    }
     m_HPWaterCompositeShader->SetVec3("u_IndirectSkyColor", indirectSkyColor);
     m_HPWaterCompositeShader->SetVec3("u_IndirectGroundColor", indirectGroundColor);
     m_HPWaterCompositeShader->SetVec3("u_IndirectTint", indirectTint);

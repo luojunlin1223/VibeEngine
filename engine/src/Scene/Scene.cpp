@@ -1278,10 +1278,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
     static constexpr int MAX_POINT_LIGHTS = 8;
     int numPointLights = 0;
-    glm::vec3 pointPositions[MAX_POINT_LIGHTS] = {};
-    glm::vec3 pointColors[MAX_POINT_LIGHTS] = {};
-    float     pointIntensities[MAX_POINT_LIGHTS] = {};
-    float     pointRanges[MAX_POINT_LIGHTS] = {};
+    std::array<glm::vec3, MAX_POINT_LIGHTS> pointPositions = {};
+    std::array<glm::vec3, MAX_POINT_LIGHTS> pointColors = {};
+    std::array<float, MAX_POINT_LIGHTS> pointIntensities = {};
+    std::array<float, MAX_POINT_LIGHTS> pointRanges = {};
     {
         auto plView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto plEntity : plView) {
@@ -1299,13 +1299,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
     static constexpr int MAX_SPOT_LIGHTS = 4;
     int numSpotLights = 0;
-    glm::vec3 spotPositions[MAX_SPOT_LIGHTS] = {};
-    glm::vec3 spotDirections[MAX_SPOT_LIGHTS] = {};
-    glm::vec3 spotColors[MAX_SPOT_LIGHTS] = {};
-    float     spotIntensities[MAX_SPOT_LIGHTS] = {};
-    float     spotRanges[MAX_SPOT_LIGHTS] = {};
-    float     spotInnerCos[MAX_SPOT_LIGHTS] = {};
-    float     spotOuterCos[MAX_SPOT_LIGHTS] = {};
+    std::array<glm::vec3, MAX_SPOT_LIGHTS> spotPositions = {};
+    std::array<glm::vec3, MAX_SPOT_LIGHTS> spotDirections = {};
+    std::array<glm::vec3, MAX_SPOT_LIGHTS> spotColors = {};
+    std::array<float, MAX_SPOT_LIGHTS> spotIntensities = {};
+    std::array<float, MAX_SPOT_LIGHTS> spotRanges = {};
+    std::array<float, MAX_SPOT_LIGHTS> spotInnerCos = {};
+    std::array<float, MAX_SPOT_LIGHTS> spotOuterCos = {};
     {
         auto slView = m_Registry.view<TransformComponent, SpotLightComponent>();
         for (auto slEntity : slView) {
@@ -2399,6 +2399,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterIndirectDiffuseIntensity =
             ps.IndirectLightingEnabled ? ps.IndirectDiffuseIntensity * hpWaterIndirectLightStrength : 0.0f;
         m_RenderDiagnostics.HPWaterDirectionalLightIntensity = lightIntensity;
+        m_RenderDiagnostics.HPWaterPointLightCount = static_cast<uint32_t>(numPointLights);
+        m_RenderDiagnostics.HPWaterSpotLightCount = static_cast<uint32_t>(numSpotLights);
+        m_RenderDiagnostics.HPWaterPunctualLightLoopEnabled = (numPointLights + numSpotLights) > 0;
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;
@@ -2583,6 +2586,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             lightDir,
                                             lightColor,
                                             lightIntensity,
+                                            numPointLights,
+                                            pointPositions,
+                                            pointColors,
+                                            pointIntensities,
+                                            pointRanges,
+                                            numSpotLights,
+                                            spotPositions,
+                                            spotDirections,
+                                            spotColors,
+                                            spotIntensities,
+                                            spotRanges,
+                                            spotInnerCos,
+                                            spotOuterCos,
                                             indirectSkyColor,
                                             indirectGroundColor,
                                             indirectTint,
@@ -2750,6 +2766,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 lightDir,
                                                 lightColor,
                                                 lightIntensity,
+                                                numPointLights,
+                                                pointPositions,
+                                                pointColors,
+                                                pointIntensities,
+                                                pointRanges,
+                                                numSpotLights,
+                                                spotPositions,
+                                                spotDirections,
+                                                spotColors,
+                                                spotIntensities,
+                                                spotRanges,
+                                                spotInnerCos,
+                                                spotOuterCos,
                                                 indirectSkyColor,
                                                 indirectGroundColor,
                                                 indirectTint,

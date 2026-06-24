@@ -190,7 +190,8 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
    - Done: replace the previous ad hoc forward/thin/backlit addends with HPWaterBSDFLibary-style `diffR/diffT` component weighting and diagnostics.
    - Done: add influence-volume weighting for baked reflection probes and blend the probe hierarchy with the sky fallback.
    - Done: add a HPWater composite-local SSR ray march that occupies the first reflection hierarchy slot before probe/sky fallback.
-   - Pending: exact HDRP SSR validation, multiple-light accumulation, and full light-loop parity.
+   - Done: feed HPWater composite with the current scene point/spot punctual light arrays, matching the deferred renderer's range/cone attenuation, and export count/enabled diagnostics.
+   - Pending: exact HDRP SSR validation, HDRP punctual/area light validation, and full light-loop parity.
 
 ## Acceptance Checks
 
@@ -219,6 +220,7 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
 - FGD and energy compensation controls are serialized and visible in diagnostics (`HPWaterSpecularFGDStrength` and `HPWaterGGXEnergyCompensation`) while HPWater composite remains valid. The generated preintegrated LUT reports `HPWaterPreintegratedFGDLUTValid=1` and `HPWaterPreintegratedFGDLUTResolution=128`.
 - Forward-scatter blur uses the generated scene-color mip chain and reports `HPWaterForwardScatterMipEnabled=1` with more than one mip when HPWater composite runs.
 - HPWater composite consumes scene light-loop inputs and reports `HPWaterLightLoopInputsValid=1`, plus sky reflection, indirect diffuse, and directional light intensities in `render_diagnostics.txt`.
+- HPWater composite reports punctual light-loop inputs through `HPWaterPointLightCount`, `HPWaterSpotLightCount`, and `HPWaterPunctualLightLoopEnabled`; when launcher contains a local light, the punctual branch contributes to HPWater specular and body scattering.
 - HPWater composite reports environment reflection inputs in `render_diagnostics.txt`; the launcher scene binds `HPWaterSkyTextureReflectionBound=1` through `Assets/Skybox/Sky_Sunny.hdr`, while `HPWaterReflectionProbeBound` becomes 1 when the camera is inside a baked reflection probe influence box. Probe blending now exports `HPWaterReflectionProbeInfluenceWeight`, `HPWaterReflectionProbeHierarchyWeight`, and `HPWaterReflectionProbeInfluenceBlendEnabled`; the composite shader uses that hierarchy weight to blend box-projected probe lighting with sky fallback instead of hard-switching away from sky reflection.
 - HPWater composite reports `HPWaterSSRReflectionEnabled`, `HPWaterSSRHierarchyBlendEnabled`, `HPWaterSSRMaxSteps`, `HPWaterSSRStepSize`, `HPWaterSSRThickness`, and `HPWaterSSRMaxDistance`; when pipeline SSR is enabled, the water composite performs a screen-space reflection march before falling back to reflection probes and sky lighting.
 - Debug diagnostics export all HPWater intermediate targets without user screenshots.
