@@ -38,8 +38,10 @@ layout(location = 0) out vec2 MotionVector;
 
 uniform sampler2D u_CurrentDepth;
 uniform sampler2D u_HPWaterRefractionWorldData;
+uniform sampler2D u_ScenePositionMetallic;
 uniform mat4 u_CurrentViewProjection;
 uniform mat4 u_PreviousViewProjection;
+uniform int u_SceneMotionVectorEnabled;
 
 vec2 ProjectUV(mat4 viewProjection, vec3 worldPos, out bool valid) {
     vec4 clip = viewProjection * vec4(worldPos, 1.0);
@@ -56,6 +58,26 @@ vec2 ProjectUV(mat4 viewProjection, vec3 worldPos, out bool valid) {
     return projectedUV;
 }
 
+bool IsFinitePosition(vec3 value) {
+    return all(equal(value, value)) &&
+        all(lessThan(abs(value), vec3(1000000.0))) &&
+        dot(value, value) > 0.000001;
+}
+
+bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
+    bool currentValid = false;
+    bool previousValid = false;
+    vec2 currentUV = ProjectUV(u_CurrentViewProjection, worldPos, currentValid);
+    vec2 previousUV = ProjectUV(u_PreviousViewProjection, worldPos, previousValid);
+    if (!currentValid || !previousValid) {
+        motionVector = vec2(0.0);
+        return false;
+    }
+
+    motionVector = previousUV - currentUV;
+    return true;
+}
+
 void main() {
     vec4 currentDepth = texture(u_CurrentDepth, v_UV);
     if (currentDepth.a <= 0.0001) {
@@ -63,18 +85,17 @@ void main() {
         return;
     }
 
-    vec4 refractWorld = texture(u_HPWaterRefractionWorldData, v_UV);
-
-    bool currentValid = false;
-    bool previousValid = false;
-    vec2 currentUV = ProjectUV(u_CurrentViewProjection, refractWorld.xyz, currentValid);
-    vec2 previousUV = ProjectUV(u_PreviousViewProjection, refractWorld.xyz, previousValid);
-    if (!currentValid || !previousValid) {
-        MotionVector = vec2(0.0);
-        return;
+    if (u_SceneMotionVectorEnabled == 1) {
+        vec3 sceneWorld = texture(u_ScenePositionMetallic, v_UV).xyz;
+        if (IsFinitePosition(sceneWorld) && BuildMotionVector(sceneWorld, MotionVector)) {
+            return;
+        }
     }
 
-    MotionVector = previousUV - currentUV;
+    vec3 refractWorld = texture(u_HPWaterRefractionWorldData, v_UV).xyz;
+    if (!IsFinitePosition(refractWorld) || !BuildMotionVector(refractWorld, MotionVector)) {
+        MotionVector = vec2(0.0);
+    }
 }
 #endif
 

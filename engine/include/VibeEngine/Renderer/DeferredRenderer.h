@@ -393,6 +393,9 @@ public:
     bool IsHPWaterVolumeExplicitMotionVectorEnabled() const {
         return m_HPWaterVolumeExplicitMotionVectorEnabled;
     }
+    bool IsHPWaterVolumeSceneMotionVectorEnabled() const {
+        return m_HPWaterVolumeSceneMotionVectorEnabled;
+    }
     bool IsHPWaterVolumeExponentialIntegrationEnabled() const {
         return m_HPWaterVolumeExponentialIntegrationEnabled;
     }
@@ -703,6 +706,7 @@ private:
     bool m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     bool m_HPWaterVolumeExplicitMotionVectorEnabled = false;
+    bool m_HPWaterVolumeSceneMotionVectorEnabled = false;
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
     bool m_HPWaterVolumeShadowSamplingEnabled = false;
     bool m_HPWaterVolumeShadowParamsEnabled = false;
