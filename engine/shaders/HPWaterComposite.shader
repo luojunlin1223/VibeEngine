@@ -447,6 +447,55 @@ vec3 SampleEnvironment(vec3 dir,
     return fallback;
 }
 
+vec3 SampleHPWaterSpecularEnvironmentHierarchy(vec3 dir,
+                                               vec3 worldPos,
+                                               vec3 normal,
+                                               vec3 viewDir,
+                                               float roughness,
+                                               float consumedSSRWeight,
+                                               out float consumedProbeWeight,
+                                               out float consumedSkyWeight) {
+    vec3 sampleDir = HPWaterSpecularEnvironmentDirection(
+        normal, dir, roughness, dot(normal, viewDir));
+
+    vec3 sky;
+    if (u_HasSkyTexture == 1) {
+        sky = SampleSkyTexture(sampleDir, roughness);
+    } else {
+        sky = SampleIndirectSky(sampleDir);
+    }
+
+    float remainingWeight = clamp(1.0 - clamp(consumedSSRWeight, 0.0, 1.0), 0.0, 1.0);
+    consumedProbeWeight = 0.0;
+    consumedSkyWeight = remainingWeight;
+
+    if (u_HasReflectionProbe != 1 || remainingWeight <= 0.0001) {
+        return sky * consumedSkyWeight;
+    }
+
+    int levels = textureQueryLevels(u_ReflectionProbe);
+    float maxMip = float(max(levels - 1, 0));
+    float lod = clamp(roughness * maxMip, 0.0, maxMip);
+    vec3 primaryDir = normalize(sampleDir);
+    vec3 secondaryDir = primaryDir;
+    if (u_ReflectionProbeBoxProjectionEnabled == 1) {
+        primaryDir = BoxProjectedReflectionDirection(
+            worldPos, primaryDir, u_ReflectionProbeCenter, u_ReflectionProbeBoxMin, u_ReflectionProbeBoxMax);
+        secondaryDir = BoxProjectedReflectionDirection(
+            worldPos, secondaryDir, u_ReflectionProbeSecondaryCenter,
+            u_ReflectionProbeSecondaryBoxMin, u_ReflectionProbeSecondaryBoxMax);
+    }
+
+    vec3 primary = textureLod(u_ReflectionProbe, primaryDir, lod).rgb;
+    vec3 secondary = textureLod(u_ReflectionProbeSecondary, secondaryDir, lod).rgb;
+    vec3 probe = mix(primary, secondary, clamp(u_ReflectionProbeBlend, 0.0, 1.0));
+    float requestedProbeWeight = clamp(u_ReflectionProbeHierarchyWeight, 0.0, 1.0);
+
+    consumedProbeWeight = min(requestedProbeWeight, remainingWeight);
+    consumedSkyWeight = max(remainingWeight - consumedProbeWeight, 0.0);
+    return probe * consumedProbeWeight + sky * consumedSkyWeight;
+}
+
 float SampleSceneDepth(vec2 uv, float lod) {
     if (u_HPWaterDepthPyramidEnabled == 1) {
         return textureLod(u_HPWaterDepthPyramid, uv, lod).r;
@@ -965,22 +1014,23 @@ void main() {
     float ssrConfidence = 0.0;
     float ssrHit = 0.0;
     float probeHierarchyWeight = 0.0;
+    float skyHierarchyWeight = 0.0;
     if (u_IndirectLightingEnabled == 1) {
         vec3 R = reflect(-V, N);
         float roughnessFade = mix(1.0, 0.25, roughness);
-        vec3 environmentSpecular = SampleEnvironment(R, R, waterWorldPos, N, V, roughness, false);
         vec4 ssrReflection = TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear);
         ssrConfidence = clamp(ssrReflection.a, 0.0, 1.0);
         ssrHit = ssrConfidence > 0.0001 ? 1.0 : 0.0;
-        environmentSpecular = mix(environmentSpecular, ssrReflection.rgb, ssrConfidence);
+        vec3 environmentSpecular =
+            ssrReflection.rgb * ssrConfidence +
+            SampleHPWaterSpecularEnvironmentHierarchy(
+                R, waterWorldPos, N, V, roughness, ssrConfidence,
+                probeHierarchyWeight, skyHierarchyWeight);
         vec3 environmentDiffuse = SampleEnvironment(N, N, waterWorldPos, N, V, 1.0, true);
-        probeHierarchyWeight = u_HasReflectionProbe == 1
-            ? clamp(u_ReflectionProbeHierarchyWeight, 0.0, 1.0)
-            : 0.0;
-        float environmentIntensity = mix(
-            clamp(u_SkyReflectionIntensity, 0.0, 4.0),
-            clamp(u_ReflectionProbeIntensity, 0.0, 4.0),
-            probeHierarchyWeight);
+        float environmentIntensity =
+            ssrConfidence +
+            probeHierarchyWeight * clamp(u_ReflectionProbeIntensity, 0.0, 4.0) +
+            skyHierarchyWeight * clamp(u_SkyReflectionIntensity, 0.0, 4.0);
         skyReflection = environmentSpecular * Fgd *
             (0.35 + environmentIntensity * 2.35) *
             clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *
@@ -1082,7 +1132,7 @@ void main() {
     SSRDiagnostics = vec4(ssrConfidence,
                           ssrHit,
                           probeHierarchyWeight,
-                          clamp(u_HPWaterSSRStrength, 0.0, 1.0));
+                          skyHierarchyWeight);
 }
 #endif
 

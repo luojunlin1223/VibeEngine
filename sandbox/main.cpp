@@ -6977,9 +6977,10 @@ private:
         uint32_t Width = 0;
         uint32_t Height = 0;
         float AverageLuminance = 0.0f;
+        float AverageAlpha = 0.0f;
         float NonBlackRatio = 0.0f;
         std::array<unsigned char, 4> Center = { 0, 0, 0, 0 };
-        std::array<unsigned char, 4> MaxRGB = { 0, 0, 0, 0 };
+        std::array<unsigned char, 4> MaxRGBA = { 0, 0, 0, 0 };
     };
 
     TextureProbeSummary ProbeTexture(uint32_t textureID, uint32_t width, uint32_t height) {
@@ -7009,6 +7010,7 @@ private:
         }
 
         double luminanceSum = 0.0;
+        double alphaSum = 0.0;
         size_t nonBlack = 0;
         const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
         const size_t step = std::max<size_t>(1, pixelCount / 65536);
@@ -7018,10 +7020,13 @@ private:
             const unsigned char r = pixels[i + 0];
             const unsigned char g = pixels[i + 1];
             const unsigned char b = pixels[i + 2];
-            summary.MaxRGB[0] = std::max(summary.MaxRGB[0], r);
-            summary.MaxRGB[1] = std::max(summary.MaxRGB[1], g);
-            summary.MaxRGB[2] = std::max(summary.MaxRGB[2], b);
+            const unsigned char a = pixels[i + 3];
+            summary.MaxRGBA[0] = std::max(summary.MaxRGBA[0], r);
+            summary.MaxRGBA[1] = std::max(summary.MaxRGBA[1], g);
+            summary.MaxRGBA[2] = std::max(summary.MaxRGBA[2], b);
+            summary.MaxRGBA[3] = std::max(summary.MaxRGBA[3], a);
             luminanceSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            alphaSum += a;
             if (r > 2 || g > 2 || b > 2)
                 nonBlack++;
             sampled++;
@@ -7030,6 +7035,7 @@ private:
         summary.Valid = sampled > 0;
         if (sampled > 0) {
             summary.AverageLuminance = static_cast<float>(luminanceSum / (255.0 * sampled));
+            summary.AverageAlpha = static_cast<float>(alphaSum / (255.0 * sampled));
             summary.NonBlackRatio = static_cast<float>(static_cast<double>(nonBlack) / sampled);
         }
         return summary;
@@ -7417,16 +7423,18 @@ private:
             out << "Valid: " << p.Valid << "\n";
             out << "Size: " << p.Width << "x" << p.Height << "\n";
             out << "AverageLuminance: " << std::fixed << std::setprecision(4) << p.AverageLuminance << "\n";
+            out << "AverageAlpha: " << std::fixed << std::setprecision(4) << p.AverageAlpha << "\n";
             out << "NonBlackRatio: " << std::fixed << std::setprecision(4) << p.NonBlackRatio << "\n";
             out << "CenterRGBA: "
                 << static_cast<int>(p.Center[0]) << ","
                 << static_cast<int>(p.Center[1]) << ","
                 << static_cast<int>(p.Center[2]) << ","
                 << static_cast<int>(p.Center[3]) << "\n";
-            out << "MaxRGB: "
-                << static_cast<int>(p.MaxRGB[0]) << ","
-                << static_cast<int>(p.MaxRGB[1]) << ","
-                << static_cast<int>(p.MaxRGB[2]) << "\n";
+            out << "MaxRGBA: "
+                << static_cast<int>(p.MaxRGBA[0]) << ","
+                << static_cast<int>(p.MaxRGBA[1]) << ","
+                << static_cast<int>(p.MaxRGBA[2]) << ","
+                << static_cast<int>(p.MaxRGBA[3]) << "\n";
         };
 
         if (m_Framebuffer) {
