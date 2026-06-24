@@ -1161,6 +1161,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticComputeAtomicEnabled();
     m_RenderDiagnostics.HPWaterCausticComputeAtomicTexture =
         m_DeferredRenderer.GetHPWaterCausticComputeAtomicTexture();
+    m_RenderDiagnostics.HPWaterCausticShadowDepthConsumed =
+        m_DeferredRenderer.IsHPWaterCausticShadowDepthConsumed();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
@@ -2186,6 +2188,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterCascadeSplits[static_cast<size_t>(i)] = splits[static_cast<size_t>(i)];
             }
         }
+        const uint32_t hpWaterShadowDepthTextureArray =
+            m_ShadowMap.IsInitialized() ? m_ShadowMap.GetTextureArrayID() : 0u;
+        const uint32_t hpWaterShadowDepthResolution =
+            m_ShadowMap.IsInitialized() ? static_cast<uint32_t>(m_ShadowMap.GetResolution()) : 0u;
         // First composite pass generates the full-resolution refraction payload
         // consumed by the low-resolution HPWater volume pass.
         m_DeferredRenderer.CompositeHPWater(nearClip,
@@ -2226,9 +2232,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                          lightDir,
                                                          lightColor,
                                                          lightIntensity,
+                                                         viewProjection,
                                                          inverseViewProjection,
                                                          hpWaterCascadeVP,
                                                          hpWaterCascadeSplits,
+                                                         hpWaterShadowDepthTextureArray,
+                                                         hpWaterShadowDepthResolution,
                                                          hpWaterCausticStrength,
                                                          hpWaterCausticScale,
                                                          hpWaterCausticDepthFade,
@@ -2357,6 +2366,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticComputeAtomicEnabled();
     m_RenderDiagnostics.HPWaterCausticComputeAtomicTexture =
         m_DeferredRenderer.GetHPWaterCausticComputeAtomicTexture();
+    m_RenderDiagnostics.HPWaterCausticShadowDepthConsumed =
+        m_DeferredRenderer.IsHPWaterCausticShadowDepthConsumed();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();

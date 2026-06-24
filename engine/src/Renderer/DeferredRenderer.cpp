@@ -358,6 +358,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
+    m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterFGDLUTValid = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
@@ -440,6 +441,7 @@ void DeferredRenderer::DestroyHPWaterCausticComputeTexture() {
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
+    m_HPWaterCausticShadowDepthConsumed = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
@@ -480,6 +482,7 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
+    m_HPWaterCausticShadowDepthConsumed = false;
 }
 
 void DeferredRenderer::DestroyHPWaterFGDLUT() {
@@ -1038,6 +1041,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticAtlasConsumed = false;
+    m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
@@ -1054,6 +1058,7 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
     m_HPWaterCausticAtlasConsumed = false;
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
+    m_HPWaterCausticShadowDepthConsumed = false;
 }
 
 void DeferredRenderer::BeginGeometryPass() {
@@ -1903,9 +1908,12 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
                                                  const glm::vec3& lightDir,
                                                  const glm::vec3& lightColor,
                                                  float lightIntensity,
+                                                 const glm::mat4& viewProjection,
                                                  const glm::mat4& inverseViewProjection,
                                                  const std::array<glm::mat4, 4>& waterCascadeVP,
                                                  const std::array<float, 4>& waterCascadeSplits,
+                                                 uint32_t shadowDepthTextureArray,
+                                                 uint32_t shadowDepthResolution,
                                                  float strength,
                                                  float scale,
                                                  float depthFade,
@@ -1920,6 +1928,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticComputeAtomicEnabled = false;
         m_HPWaterCausticFilterIterations = 0;
         m_HPWaterCausticAtlasConsumed = false;
+        m_HPWaterCausticShadowDepthConsumed = false;
         return false;
     }
 
@@ -1931,13 +1940,15 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticComputeAtomicEnabled = false;
         m_HPWaterCausticFilterIterations = 0;
         m_HPWaterCausticAtlasConsumed = false;
+        m_HPWaterCausticShadowDepthConsumed = false;
         return false;
     }
 
     const bool computeIrradianceValid =
         RunHPWaterCausticComputeIrradiance(
-            nearClip, farClip, lightDir, lightIntensity, inverseViewProjection,
-            waterCascadeVP, waterCascadeSplits, strength, scale, depthFade,
+            nearClip, farClip, lightDir, lightIntensity, viewProjection,
+            inverseViewProjection, waterCascadeVP, waterCascadeSplits,
+            shadowDepthTextureArray, shadowDepthResolution, strength, scale, depthFade,
             rgbDispersion, dispersionStrength);
 
     m_HPWaterCausticFBO->Bind();
@@ -2029,9 +2040,12 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
                                                           float farClip,
                                                           const glm::vec3& lightDir,
                                                           float lightIntensity,
+                                                          const glm::mat4& viewProjection,
                                                           const glm::mat4& inverseViewProjection,
                                                           const std::array<glm::mat4, 4>& waterCascadeVP,
                                                           const std::array<float, 4>& waterCascadeSplits,
+                                                          uint32_t shadowDepthTextureArray,
+                                                          uint32_t shadowDepthResolution,
                                                           float strength,
                                                           float scale,
                                                           float depthFade,
@@ -2040,6 +2054,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
+    m_HPWaterCausticShadowDepthConsumed = false;
 
     if (!m_HPWaterCausticComputeShader || !m_HPWaterCausticResolveShader ||
         m_HPWaterCausticComputeIrradianceTexture == 0 ||
@@ -2054,6 +2069,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     const bool atlasValid = m_HPWaterCausticAtlasValid && m_HPWaterCausticAtlasFBO &&
         m_HPWaterCausticAtlasFBO->GetColorAttachmentID() != 0 &&
         m_HPWaterCausticAtlasFBO->GetDepthAttachmentID() != 0;
+    const bool shadowDepthValid = shadowDepthTextureArray != 0 && shadowDepthResolution > 0;
 
     const GLuint clearValue = 0u;
     for (uint32_t texture : m_HPWaterCausticComputeAtomicTextures) {
@@ -2098,6 +2114,12 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
         : 0);
     m_HPWaterCausticComputeShader->SetInt("u_HPWaterCausticAtlasDepth", 7);
 
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, shadowDepthValid
+        ? static_cast<GLuint>(shadowDepthTextureArray)
+        : 0);
+    m_HPWaterCausticComputeShader->SetInt("u_ShadowDepthCascadeAtlas", 8);
+
     for (uint32_t channel = 0; channel < 4; ++channel) {
         glBindImageTexture(channel,
                            static_cast<GLuint>(m_HPWaterCausticComputeAtomicTextures[channel]),
@@ -2122,7 +2144,12 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeShader->SetFloat("u_FarClip", farClip);
     m_HPWaterCausticComputeShader->SetVec3("u_LightDir", lightDir);
     m_HPWaterCausticComputeShader->SetFloat("u_LightIntensity", lightIntensity);
+    m_HPWaterCausticComputeShader->SetMat4("u_ViewProjection", viewProjection);
     m_HPWaterCausticComputeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
+    m_HPWaterCausticComputeShader->SetInt("u_ShadowDepthCascadeAtlasEnabled", shadowDepthValid ? 1 : 0);
+    m_HPWaterCausticComputeShader->SetFloat("u_ShadowDepthResolution", shadowDepthValid
+        ? static_cast<float>(shadowDepthResolution)
+        : 0.0f);
     for (int i = 0; i < 4; ++i) {
         m_HPWaterCausticComputeShader->SetMat4("u_WaterCascadeVP[" + std::to_string(i) + "]",
                                                waterCascadeVP[static_cast<size_t>(i)]);
@@ -2170,6 +2197,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeIrradianceRan = true;
     m_HPWaterCausticComputeIrradianceValid = true;
     m_HPWaterCausticComputeAtomicEnabled = true;
+    m_HPWaterCausticShadowDepthConsumed = shadowDepthValid;
     return true;
 }
 

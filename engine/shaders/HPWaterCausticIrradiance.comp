@@ -25,11 +25,13 @@ uniform sampler2D u_HPWaterMask;
 uniform sampler2D u_SceneDepth;
 uniform sampler2D u_HPWaterCausticAtlas;
 uniform sampler2D u_HPWaterCausticAtlasDepth;
+uniform sampler2DArray u_ShadowDepthCascadeAtlas;
 
 uniform int u_OutputWidth;
 uniform int u_OutputHeight;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticAtlasEnabled;
+uniform int u_ShadowDepthCascadeAtlasEnabled;
 uniform int u_CausticRGBDispersion;
 uniform float u_HPWaterCausticAtlasWidth;
 uniform float u_HPWaterCausticAtlasHeight;
@@ -40,7 +42,9 @@ uniform float u_CausticDispersionStrength;
 uniform float u_LightIntensity;
 uniform float u_NearClip;
 uniform float u_FarClip;
+uniform float u_ShadowDepthResolution;
 uniform vec3 u_LightDir;
+uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
 uniform mat4 u_WaterCascadeVP[4];
 uniform float u_WaterCascadeSplits[4];
@@ -92,6 +96,104 @@ vec3 ProjectWorldToWaterCascade(vec3 worldPos, int cascadeIndex) {
     if (abs(clip.w) <= 0.00001)
         return vec3(-1.0);
     return clip.xyz / clip.w * 0.5 + 0.5;
+}
+
+vec3 ProjectWorldToCamera(vec3 worldPos) {
+    vec4 clip = u_ViewProjection * vec4(worldPos, 1.0);
+    if (clip.w <= 0.00001)
+        return vec3(-1.0);
+    return clip.xyz / clip.w * 0.5 + 0.5;
+}
+
+float SampleShadowReceiverDepth(vec2 uv, int cascadeIndex) {
+    if (u_ShadowDepthResolution <= 1.0)
+        return texture(u_ShadowDepthCascadeAtlas, vec3(uv, float(cascadeIndex))).r;
+
+    vec2 texel = 1.0 / vec2(u_ShadowDepthResolution);
+    float d = texture(u_ShadowDepthCascadeAtlas, vec3(uv, float(cascadeIndex))).r;
+    d = min(d, texture(u_ShadowDepthCascadeAtlas, vec3(clamp(uv + vec2(texel.x, 0.0), vec2(0.0), vec2(1.0)), float(cascadeIndex))).r);
+    d = min(d, texture(u_ShadowDepthCascadeAtlas, vec3(clamp(uv + vec2(-texel.x, 0.0), vec2(0.0), vec2(1.0)), float(cascadeIndex))).r);
+    d = min(d, texture(u_ShadowDepthCascadeAtlas, vec3(clamp(uv + vec2(0.0, texel.y), vec2(0.0), vec2(1.0)), float(cascadeIndex))).r);
+    d = min(d, texture(u_ShadowDepthCascadeAtlas, vec3(clamp(uv + vec2(0.0, -texel.y), vec2(0.0), vec2(1.0)), float(cascadeIndex))).r);
+    return d;
+}
+
+bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
+                                         vec3 waterNormal,
+                                         vec3 surfaceToLight,
+                                         int cascadeIndex,
+                                         float thickness,
+                                         float jitter,
+                                         out vec2 receiverUV,
+                                         out float hitWeight,
+                                         out float hitDistance) {
+    receiverUV = vec2(0.0);
+    hitWeight = 0.0;
+    hitDistance = 0.0;
+
+    if (u_ShadowDepthCascadeAtlasEnabled == 0)
+        return false;
+
+    vec3 incident = normalize(-surfaceToLight);
+    vec3 N = normalize(waterNormal);
+    N = dot(incident, N) < 0.0 ? N : -N;
+
+    const float etaAirToWater = 1.0 / 1.333;
+    vec3 refracted = refract(incident, N, etaAirToWater);
+    vec3 flatRefracted = refract(incident, vec3(0.0, 1.0, 0.0), etaAirToWater);
+    if (dot(flatRefracted, flatRefracted) > 0.000001 &&
+        dot(refracted, refracted) > 0.000001) {
+        refracted = normalize(refracted - flatRefracted + incident);
+    } else if (dot(refracted, refracted) > 0.000001) {
+        refracted = normalize(refracted);
+    } else {
+        return false;
+    }
+
+    float maxDistance = clamp(max(thickness, 1.0) * 1.9, 2.0, 90.0);
+    float previousT = 0.0;
+    const int coarseSteps = 16;
+
+    for (int i = 0; i < coarseSteps; ++i) {
+        float step01 = (float(i) + 0.35 + jitter * 0.3) / float(coarseSteps);
+        float t = maxDistance * (exp2(step01 * 4.0) - 1.0) / 15.0;
+        vec3 sampleWorld = waterWorldPos + refracted * t;
+        vec3 cascadeCoord = ProjectWorldToWaterCascade(sampleWorld, cascadeIndex);
+        if (any(lessThan(cascadeCoord, vec3(0.0))) ||
+            any(greaterThan(cascadeCoord, vec3(1.0)))) {
+            previousT = t;
+            continue;
+        }
+
+        float receiverDepth = SampleShadowReceiverDepth(cascadeCoord.xy, cascadeIndex);
+        if (receiverDepth >= 0.99995) {
+            previousT = t;
+            continue;
+        }
+
+        float depthDelta = cascadeCoord.z - receiverDepth;
+        float depthBias = 0.0015 + 0.00035 * float(i);
+        if (depthDelta >= -depthBias && depthDelta <= 0.055) {
+            float refinedT = mix(previousT, t, clamp((depthBias + depthDelta) / 0.0565, 0.0, 1.0));
+            vec3 hitWorld = waterWorldPos + refracted * refinedT;
+            vec3 cameraCoord = ProjectWorldToCamera(hitWorld);
+            if (cameraCoord.x < 0.0 || cameraCoord.x > 1.0 ||
+                cameraCoord.y < 0.0 || cameraCoord.y > 1.0 ||
+                cameraCoord.z < 0.0 || cameraCoord.z > 1.0) {
+                return false;
+            }
+
+            receiverUV = cameraCoord.xy;
+            hitWeight = 1.0 - smoothstep(0.0, 0.055, abs(depthDelta));
+            hitWeight *= 1.0 - smoothstep(maxDistance * 0.15, maxDistance, refinedT);
+            hitDistance = refinedT;
+            return true;
+        }
+
+        previousT = t;
+    }
+
+    return false;
 }
 
 float AtlasFocus(vec3 waterWorldPos, float waterViewDepth, vec2 causticUV, vec3 waterNormal, vec3 lightDir, float thickness) {
@@ -212,6 +314,25 @@ void main() {
 
     vec2 lightBend = normalize(L.xz + vec2(0.001)) * (0.006 + thickness * 0.00008);
     vec2 baseReceiver = uv + N.xz * (0.022 + thickness * 0.00035) + lightBend;
+    vec2 shadowReceiver = baseReceiver;
+    float shadowReceiverWeight = 0.0;
+    float shadowReceiverDistance = 0.0;
+    int waterCascadeIndex = SelectWaterCascade(waterLinear);
+    bool shadowReceiverHit = MarchRefractedLightToShadowReceiver(
+        waterWorldPos,
+        N,
+        L,
+        waterCascadeIndex,
+        thickness,
+        Hash21(uv * vec2(u_OutputWidth, u_OutputHeight)),
+        shadowReceiver,
+        shadowReceiverWeight,
+        shadowReceiverDistance);
+    if (shadowReceiverHit) {
+        baseReceiver = mix(baseReceiver, shadowReceiver, clamp(0.55 + shadowReceiverWeight * 0.45, 0.0, 1.0));
+        sharedEnergy *= mix(0.82, 1.42, shadowReceiverWeight);
+    }
+
     vec2 dispersionAxis = normalize(N.xz * 0.7 + L.xz * 0.3 + vec2(0.001));
     float dispersion = u_CausticRGBDispersion == 1
         ? clamp(u_CausticDispersionStrength, 0.0, 2.0) * (0.003 + clamp(thickness, 0.0, 80.0) * 0.00008)

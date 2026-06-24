@@ -7125,6 +7125,7 @@ private:
         out << "HPWaterCausticComputeTexture: " << d.HPWaterCausticComputeTexture << "\n";
         out << "HPWaterCausticComputeAtomicEnabled: " << d.HPWaterCausticComputeAtomicEnabled << "\n";
         out << "HPWaterCausticComputeAtomicTexture: " << d.HPWaterCausticComputeAtomicTexture << "\n";
+        out << "HPWaterCausticShadowDepthConsumed: " << d.HPWaterCausticShadowDepthConsumed << "\n";
         out << "HPWaterCausticFilterRan: " << d.HPWaterCausticFilterRan << "\n";
         out << "HPWaterCausticFilteredValid: " << d.HPWaterCausticFilteredValid << "\n";
         out << "HPWaterCausticFilteredTexture: " << d.HPWaterCausticFilteredTexture << "\n";

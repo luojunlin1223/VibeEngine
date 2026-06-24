@@ -194,9 +194,12 @@ public:
                                    const glm::vec3& lightDir,
                                    const glm::vec3& lightColor,
                                    float lightIntensity,
+                                   const glm::mat4& viewProjection,
                                    const glm::mat4& inverseViewProjection,
                                    const std::array<glm::mat4, 4>& waterCascadeVP,
                                    const std::array<float, 4>& waterCascadeSplits,
+                                   uint32_t shadowDepthTextureArray,
+                                   uint32_t shadowDepthResolution,
                                    float strength,
                                    float scale,
                                    float depthFade,
@@ -333,6 +336,7 @@ public:
     bool DidRunHPWaterCausticComputeIrradiance() const { return m_HPWaterCausticComputeIrradianceRan; }
     uint32_t GetHPWaterCausticComputeAtomicTexture() const { return m_HPWaterCausticComputeAtomicTextures[0]; }
     bool IsHPWaterCausticComputeAtomicEnabled() const { return m_HPWaterCausticComputeAtomicEnabled; }
+    bool IsHPWaterCausticShadowDepthConsumed() const { return m_HPWaterCausticShadowDepthConsumed; }
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
     uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
@@ -427,9 +431,12 @@ private:
                                             float farClip,
                                             const glm::vec3& lightDir,
                                             float lightIntensity,
+                                            const glm::mat4& viewProjection,
                                             const glm::mat4& inverseViewProjection,
                                             const std::array<glm::mat4, 4>& waterCascadeVP,
                                             const std::array<float, 4>& waterCascadeSplits,
+                                            uint32_t shadowDepthTextureArray,
+                                            uint32_t shadowDepthResolution,
                                             float strength,
                                             float scale,
                                             float depthFade,
@@ -500,6 +507,7 @@ private:
     bool m_HPWaterCausticComputeIrradianceValid = false;
     bool m_HPWaterCausticComputeIrradianceRan = false;
     bool m_HPWaterCausticComputeAtomicEnabled = false;
+    bool m_HPWaterCausticShadowDepthConsumed = false;
 
     // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
     std::shared_ptr<Framebuffer> m_HPWaterCausticAtlasFBO;
