@@ -66,7 +66,7 @@ HPWater uses low-resolution volumetric accumulation, then filters and composites
 - Depth-aware joint bilateral upsampling.
 - Final composite with full-resolution specular lighting and refraction.
 
-VibeEngine now has the first half-resolution `HPWaterVolume.shader` accumulation target with in-scattering, transmittance, and refracted depth, plus a temporal reprojection/history pass, a three-iteration depth-aware a-trous-style spatial filter, and a full-resolution joint-bilateral upsample pass. The temporal path now generates and consumes an explicit RG16F volume motion-vector texture, rejects mismatched history with both center-depth and neighborhood-depth tests, and clamps history color/transmittance to the current 3x3 neighborhood before blending. True parity with HPWater/HDRP's full scene/object motion-vector source and all validation heuristics remains pending.
+VibeEngine now has a half-resolution `HPWaterVolume.shader` accumulation target with in-scattering, transmittance, and refracted depth, plus a temporal reprojection/history pass, a three-iteration depth-aware a-trous-style spatial filter, and a full-resolution joint-bilateral upsample pass. The accumulation pass now follows the HPWater reference more closely by marching the refracted water ray with exponentially distributed samples and frame-indexed IGN jitter, accumulating directional in-scattering, scene in-scattering, and transmittance through the water volume instead of relying on a single analytic approximation. The temporal path now generates and consumes an explicit RG16F volume motion-vector texture, rejects mismatched history with both center-depth and neighborhood-depth tests, and clamps history color/transmittance to the current 3x3 neighborhood before blending. True parity with HPWater/HDRP's directional shadow query inside the water volume, full scene/object motion-vector source, and all validation heuristics remains pending.
 
 ### Caustics
 
@@ -136,9 +136,10 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
    - Done: add first temporal history/reprojection pass for low-resolution volume buffers.
    - Done: add current/previous view-projection motion reprojection, stronger neighborhood-depth rejection, and HPWater/HDRP-style 3x3 history neighborhood clamp.
    - Done: add an explicit half-resolution motion-vector texture input for the volume temporal filter, with matrix reprojection kept as fallback.
+   - Done: replace the transitional single-step volume approximation with a HPWater-style exponentially distributed multi-sample ray integration path, including frame-indexed IGN jitter and diagnostics.
    - Done: add three-iteration depth-aware a-trous-style spatial filtering.
    - Done: add a full-resolution joint-bilateral depth-aware upsample pass.
-   - Pending: add full scene/object motion-vector parity and closer HPWater/HDRP validation heuristics.
+   - Pending: add HPWater/HDRP directional shadow queries per volume sample, full scene/object motion-vector parity, and closer validation heuristics.
 
 5. GPU fluid dynamics
    - Done: add persistent R16F ping-pong wave equation height textures and diagnostics.
@@ -187,7 +188,7 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
 - A scene with `HPWaterOcean` produces a non-empty HPWater mask texture and exports `render_diagnostics_hpwater_mask.bmp`.
 - A scene with `HPWaterOcean` builds a valid HPWater scene-depth pyramid with more than one mip.
 - The refraction buffer changes when water normals change, remains masked to water pixels, and reports `HPWaterRefractionNDCMarchEnabled=1` when the NDC depth-pyramid march is active.
-- Water volume color/transmittance changes with absorption and scatter settings; temporal volume filtering reports `HPWaterVolumeTemporalNeighborhoodClampEnabled=1`, `HPWaterVolumeTemporalMotionReprojectionEnabled=1`, `HPWaterVolumeExplicitMotionVectorEnabled=1`, a non-zero `HPWaterVolumeMotionVectorTexture`, and a positive `HPWaterVolumeTemporalNeighborhoodClampStrength` when history filtering runs.
+- Water volume color/transmittance changes with absorption and scatter settings; accumulation reports `HPWaterVolumeExponentialIntegrationEnabled=1` and `HPWaterVolumeSampleCount=16`, and temporal volume filtering reports `HPWaterVolumeTemporalNeighborhoodClampEnabled=1`, `HPWaterVolumeTemporalMotionReprojectionEnabled=1`, `HPWaterVolumeExplicitMotionVectorEnabled=1`, a non-zero `HPWaterVolumeMotionVectorTexture`, and a positive `HPWaterVolumeTemporalNeighborhoodClampStrength` when history filtering runs.
 - Caustics appear under shallow waves, change with directional light direction, and produce non-empty `render_diagnostics_hpwater_caustic.bmp` and `render_diagnostics_hpwater_caustic_filtered.bmp`.
 - Light-space caustic atlas capture runs when HPWater and shadows are enabled, produces a non-empty `render_diagnostics_hpwater_caustic_atlas.bmp`, and reports `HPWaterCausticAtlasRan=1`, `HPWaterCausticAtlasValid=1`, `HPWaterCausticAtlasConsumed=1`, and four cascade draws in `render_diagnostics.txt`.
 - Compute caustic irradiance runs when caustics are enabled, produces a non-empty `render_diagnostics_hpwater_caustic_compute_irradiance.bmp`, and reports `HPWaterCausticComputeRan=1`, `HPWaterCausticComputeValid=1`, `HPWaterCausticComputeAtomicEnabled=1`, and a non-zero `HPWaterCausticComputeAtomicTexture`.

@@ -54,6 +54,8 @@ uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform float u_CausticVolumeStrength;
 uniform float u_MacroScatterStrength;
+uniform int u_VolumeSampleCount;
+uniform int u_FrameIndex;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
@@ -93,6 +95,17 @@ vec3 ScatterPhase(float cosTheta) {
     return betaRayleigh * rayleighPhase * 0.05 + vec3(miePhase) * 0.95;
 }
 
+float InterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
+    const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+    vec2 scrolled = pixelPos + vec2(float(frameIndex & 63)) * vec2(5.588238, 5.588238);
+    return fract(magic.z * fract(dot(scrolled, magic.xy)));
+}
+
+vec3 SafeNormalize(vec3 v, vec3 fallback) {
+    float len2 = dot(v, v);
+    return len2 > 0.000001 ? v * inversesqrt(len2) : fallback;
+}
+
 void main() {
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
     vec4 refractData = texture(u_HPWaterRefractionWorldData, v_UV);
@@ -126,34 +139,73 @@ void main() {
         rayLength = max(normalizedThickness * depthTintDistance, 0.01);
     }
 
-    vec3 V = normalize(u_CameraPosition - waterWorldPos);
+    vec3 V = SafeNormalize(u_CameraPosition - waterWorldPos, vec3(0.0, 1.0, 0.0));
     vec3 L = normalize(u_LightDir);
     float NdotL = clamp(dot(N, L), 0.0, 1.0);
-    float cosTheta = dot(-V, L);
-    vec3 phase = ScatterPhase(cosTheta);
 
     vec3 absorptionCoeff = absorptionColor * 1.35;
     vec3 scatterCoeff = max(scatterColor, vec3(0.0001)) * 0.42;
     vec3 extinction = max(absorptionCoeff + scatterCoeff, vec3(0.0001));
-    vec3 transmittance = exp(-extinction * rayLength);
     vec3 scatteringAlbedo = scatterCoeff / extinction;
     float macroScatter = clamp(u_MacroScatterStrength, 0.0, 4.0);
 
-    vec3 directLight = u_LightColor * max(u_LightIntensity, 0.0) *
+    vec3 baseDirectLight = u_LightColor * max(u_LightIntensity, 0.0) *
         (0.18 + 0.82 * NdotL) * (0.75 + 0.25 * normalizedThickness);
     if (u_HPWaterCausticEnabled == 1) {
         vec4 caustic = texture(u_HPWaterCaustic, v_UV);
         float causticWeight = clamp(caustic.a, 0.0, 1.0) *
             (0.25 + 0.75 * normalizedThickness);
-        directLight += caustic.rgb * causticWeight * clamp(u_CausticVolumeStrength, 0.0, 4.0);
+        baseDirectLight += caustic.rgb * causticWeight * clamp(u_CausticVolumeStrength, 0.0, 4.0);
     }
-    vec3 directScatter = directLight * (vec3(1.0) - transmittance) *
-        scatteringAlbedo * (phase * 2.6) * macroScatter;
 
-    vec3 refractedSceneColor = texture(u_SceneColor, clamp(refractMeta.xy, vec2(0.001), vec2(0.999))).rgb;
-    float sceneScatterAmount = Luminance(vec3(1.0) - transmittance) *
-        (0.10 + 0.45 * normalizedThickness);
-    vec3 sceneInScatter = refractedSceneColor * scatterColor * sceneScatterAmount * macroScatter;
+    const float expFactor = 8.0;
+    int sampleCount = clamp(u_VolumeSampleCount, 4, 32);
+    vec2 volumeSize = vec2(max(textureSize(u_HPWaterDepth, 0), ivec2(1)));
+    float dither = InterleavedGradientNoise(v_UV * volumeSize, u_FrameIndex);
+    float invSampleCount = 1.0 / float(sampleCount);
+    float previousD = 0.0;
+    vec3 accumTransmittance = vec3(1.0);
+    vec3 directScatter = vec3(0.0);
+    vec3 sceneInScatter = vec3(0.0);
+    float accumulatedDistance = 0.0;
+
+    for (int i = 0; i < 32; ++i) {
+        if (i >= sampleCount)
+            break;
+
+        float stepT = (float(i) + dither) * invSampleCount;
+        float d = (pow(expFactor, stepT) - 1.0) / (expFactor - 1.0);
+        if (i == sampleCount - 1) {
+            d = 1.0;
+        }
+
+        float segment = max((d - previousD) * rayLength, 0.0);
+        float midD = clamp((previousD + d) * 0.5, 0.0, 1.0);
+        vec3 samplePos = mix(waterWorldPos, refractedWorldPos, midD);
+        vec2 sampleUV = mix(v_UV, clamp(refractMeta.xy, vec2(0.001), vec2(0.999)), midD);
+        vec3 sampleToCamera = SafeNormalize(u_CameraPosition - samplePos, V);
+        float cosTheta = clamp(dot(sampleToCamera, L), -1.0, 1.0);
+        vec3 phase = ScatterPhase(cosTheta);
+        vec3 stepTransmittance = exp(-extinction * segment);
+        vec3 extinguished = vec3(1.0) - stepTransmittance;
+        float depthWeight = 0.55 + 0.45 * smoothstep(0.0, 1.0, midD);
+
+        directScatter += accumTransmittance * baseDirectLight * extinguished *
+            scatteringAlbedo * (phase * 2.6) * macroScatter * depthWeight;
+
+        vec3 refractedSceneColor = texture(u_SceneColor, sampleUV).rgb;
+        sceneInScatter += accumTransmittance * refractedSceneColor * scatterCoeff *
+            segment * (0.08 + 0.22 * normalizedThickness) * macroScatter;
+
+        accumTransmittance *= stepTransmittance;
+        accumulatedDistance += segment;
+        previousD = d;
+    }
+
+    vec3 transmittance = clamp(accumTransmittance, vec3(0.0), vec3(1.0));
+    if (accumulatedDistance <= 0.0001) {
+        transmittance = exp(-extinction * rayLength);
+    }
 
     vec3 ambientScatter = scatterColor * (0.025 + 0.12 * normalizedThickness) * macroScatter;
     vec3 volumeColor = directScatter + sceneInScatter + ambientScatter;

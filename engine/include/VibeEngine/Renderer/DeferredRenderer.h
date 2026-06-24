@@ -177,7 +177,8 @@ public:
                                  const glm::vec3& cameraPosition,
                                  const glm::mat4& inverseViewProjection,
                                  float macroScatterStrength,
-                                 float causticVolumeStrength);
+                                 float causticVolumeStrength,
+                                 uint32_t frameIndex);
 
     /// Reproject and blend low-resolution HPWater volume data with previous frame history.
     bool TemporalFilterHPWaterVolume(const glm::mat4& currentViewProjection,
@@ -298,6 +299,12 @@ public:
     }
     bool IsHPWaterVolumeExplicitMotionVectorEnabled() const {
         return m_HPWaterVolumeExplicitMotionVectorEnabled;
+    }
+    bool IsHPWaterVolumeExponentialIntegrationEnabled() const {
+        return m_HPWaterVolumeExponentialIntegrationEnabled;
+    }
+    uint32_t GetHPWaterVolumeSampleCount() const {
+        return m_HPWaterVolumeSampleCount;
     }
     float GetHPWaterVolumeTemporalNeighborhoodClampStrength() const {
         return m_HPWaterVolumeTemporalNeighborhoodClampStrength;
@@ -507,6 +514,8 @@ private:
     bool m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     bool m_HPWaterVolumeExplicitMotionVectorEnabled = false;
+    bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    uint32_t m_HPWaterVolumeSampleCount = 0;
     float m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
 
     // Full-resolution caustic energy consumed by the HPWater composite pass.

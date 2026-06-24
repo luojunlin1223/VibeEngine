@@ -1156,6 +1156,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeTemporalMotionReprojectionEnabled();
     m_RenderDiagnostics.HPWaterVolumeExplicitMotionVectorEnabled =
         m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeExponentialIntegrationEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
+    m_RenderDiagnostics.HPWaterVolumeSampleCount =
+        m_DeferredRenderer.GetHPWaterVolumeSampleCount();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
         m_DeferredRenderer.GetHPWaterVolumeMotionVectorTexture();
     m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =
@@ -2358,7 +2362,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        cameraPos,
                                                        inverseViewProjection,
                                                        hpWaterMacroScatterStrength,
-                                                       hpWaterCausticVolumeStrength);
+                                                       hpWaterCausticVolumeStrength,
+                                                       hpWaterFrameIndex);
+        m_RenderDiagnostics.HPWaterVolumeExponentialIntegrationEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
+        m_RenderDiagnostics.HPWaterVolumeSampleCount =
+            m_DeferredRenderer.GetHPWaterVolumeSampleCount();
         const glm::mat4 previousWaterVP = m_HasPreviousHPWaterViewProjection
             ? m_PreviousHPWaterViewProjection
             : viewProjection;

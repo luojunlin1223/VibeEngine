@@ -352,6 +352,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
+    m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeSampleCount = 0;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
@@ -675,6 +677,8 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
+    m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeSampleCount = 0;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterVolumeFilterIterations = 0;
 }
@@ -1066,6 +1070,8 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
+    m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeSampleCount = 0;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticComputeIrradianceValid = false;
@@ -1215,6 +1221,8 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
+    m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeSampleCount = 0;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterDepthPyramidValid = false;
@@ -1584,10 +1592,13 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                                const glm::vec3& cameraPosition,
                                                const glm::mat4& inverseViewProjection,
                                                float macroScatterStrength,
-                                               float causticVolumeStrength) {
+                                               float causticVolumeStrength,
+                                               uint32_t frameIndex) {
     if (!m_HPWaterVolumeShader || !m_HPWaterVolumeFBO || !m_HPWaterCompositeFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterVolumeValid = false;
+        m_HPWaterVolumeExponentialIntegrationEnabled = false;
+        m_HPWaterVolumeSampleCount = 0;
         return false;
     }
 
@@ -1647,6 +1658,10 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterVolumeShader->SetFloat("u_MacroScatterStrength",
         std::clamp(macroScatterStrength, 0.0f, 4.0f));
+    constexpr uint32_t hpWaterVolumeSampleCount = 16;
+    m_HPWaterVolumeShader->SetInt("u_VolumeSampleCount",
+        static_cast<int>(hpWaterVolumeSampleCount));
+    m_HPWaterVolumeShader->SetInt("u_FrameIndex", static_cast<int>(frameIndex));
     m_HPWaterVolumeShader->SetInt("u_HPWaterMaskEnabled", m_HPWaterMaskValid ? 1 : 0);
     m_HPWaterVolumeShader->SetInt("u_HPWaterCausticEnabled", causticVolumeValid ? 1 : 0);
     m_HPWaterVolumeShader->SetFloat("u_CausticVolumeStrength",
@@ -1665,6 +1680,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeFilterIterations = 0;
+    m_HPWaterVolumeExponentialIntegrationEnabled = true;
+    m_HPWaterVolumeSampleCount = hpWaterVolumeSampleCount;
     return true;
 }
 

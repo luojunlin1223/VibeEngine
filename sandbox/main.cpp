@@ -7100,6 +7100,10 @@ private:
             << d.HPWaterVolumeTemporalMotionReprojectionEnabled << "\n";
         out << "HPWaterVolumeExplicitMotionVectorEnabled: "
             << d.HPWaterVolumeExplicitMotionVectorEnabled << "\n";
+        out << "HPWaterVolumeExponentialIntegrationEnabled: "
+            << d.HPWaterVolumeExponentialIntegrationEnabled << "\n";
+        out << "HPWaterVolumeSampleCount: "
+            << d.HPWaterVolumeSampleCount << "\n";
         out << "HPWaterVolumeMotionVectorTexture: "
             << d.HPWaterVolumeMotionVectorTexture << "\n";
         out << "HPWaterVolumeTemporalNeighborhoodClampStrength: "
