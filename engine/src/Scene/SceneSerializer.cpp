@@ -122,6 +122,19 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::EndMap;
     }
 
+    // AreaLightComponent
+    if (entity.HasComponent<AreaLightComponent>()) {
+        auto& al = entity.GetComponent<AreaLightComponent>();
+        out << YAML::Key << "AreaLightComponent" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "Color" << YAML::Value << YAML::Flow
+            << YAML::BeginSeq << al.Color[0] << al.Color[1] << al.Color[2] << YAML::EndSeq;
+        out << YAML::Key << "Intensity" << YAML::Value << al.Intensity;
+        out << YAML::Key << "Range" << YAML::Value << al.Range;
+        out << YAML::Key << "Width" << YAML::Value << al.Width;
+        out << YAML::Key << "Height" << YAML::Value << al.Height;
+        out << YAML::EndMap;
+    }
+
     // ReflectionProbeComponent
     if (entity.HasComponent<ReflectionProbeComponent>()) {
         auto& rp = entity.GetComponent<ReflectionProbeComponent>();
@@ -1062,6 +1075,19 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
             } catch (const std::exception& e) {
                 VE_ENGINE_WARN("Failed to deserialize SpotLightComponent: {}", e.what());
+            }
+        }
+
+        if (auto alNode = entityNode["AreaLightComponent"]) {
+            try {
+                auto& al = entity.AddComponent<AreaLightComponent>();
+                if (auto c = alNode["Color"]) al.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+                if (alNode["Intensity"]) al.Intensity = alNode["Intensity"].as<float>();
+                if (alNode["Range"]) al.Range = alNode["Range"].as<float>();
+                if (alNode["Width"]) al.Width = alNode["Width"].as<float>();
+                if (alNode["Height"]) al.Height = alNode["Height"].as<float>();
+            } catch (const std::exception& e) {
+                VE_ENGINE_WARN("Failed to deserialize AreaLightComponent: {}", e.what());
             }
         }
 
@@ -2111,6 +2137,16 @@ Entity SceneSerializer::InstantiatePrefab(const std::string& filepath, Scene& sc
             if (slNode["OuterAngle"]) sl.OuterAngle = slNode["OuterAngle"].as<float>();
         }
 
+        // AreaLightComponent
+        if (auto alNode = entityNode["AreaLightComponent"]) {
+            auto& al = entity.AddComponent<AreaLightComponent>();
+            if (auto c = alNode["Color"]) al.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+            if (alNode["Intensity"]) al.Intensity = alNode["Intensity"].as<float>();
+            if (alNode["Range"]) al.Range = alNode["Range"].as<float>();
+            if (alNode["Width"]) al.Width = alNode["Width"].as<float>();
+            if (alNode["Height"]) al.Height = alNode["Height"].as<float>();
+        }
+
         // ReflectionProbeComponent
         if (auto rpNode = entityNode["ReflectionProbeComponent"]) {
             auto& rp = entity.AddComponent<ReflectionProbeComponent>();
@@ -2433,6 +2469,16 @@ Entity SceneSerializer::InstantiateFromString(const std::string& yamlData, Scene
             if (auto c = plNode["Color"]) pl.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
             if (plNode["Intensity"]) pl.Intensity = plNode["Intensity"].as<float>();
             if (plNode["Range"]) pl.Range = plNode["Range"].as<float>();
+        }
+
+        // AreaLightComponent
+        if (auto alNode = entityNode["AreaLightComponent"]) {
+            auto& al = entity.AddComponent<AreaLightComponent>();
+            if (auto c = alNode["Color"]) al.Color = { c[0].as<float>(), c[1].as<float>(), c[2].as<float>() };
+            if (alNode["Intensity"]) al.Intensity = alNode["Intensity"].as<float>();
+            if (alNode["Range"]) al.Range = alNode["Range"].as<float>();
+            if (alNode["Width"]) al.Width = alNode["Width"].as<float>();
+            if (alNode["Height"]) al.Height = alNode["Height"].as<float>();
         }
 
         // CameraComponent

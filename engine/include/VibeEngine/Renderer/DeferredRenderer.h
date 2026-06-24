@@ -165,6 +165,16 @@ public:
                           const std::array<float, 4>& spotLightRanges,
                           const std::array<float, 4>& spotLightInnerCos,
                           const std::array<float, 4>& spotLightOuterCos,
+                          int areaLightCount,
+                          const std::array<glm::vec3, 4>& areaLightPositions,
+                          const std::array<glm::vec3, 4>& areaLightRights,
+                          const std::array<glm::vec3, 4>& areaLightUps,
+                          const std::array<glm::vec3, 4>& areaLightForwards,
+                          const std::array<glm::vec3, 4>& areaLightColors,
+                          const std::array<float, 4>& areaLightIntensities,
+                          const std::array<float, 4>& areaLightRanges,
+                          const std::array<float, 4>& areaLightWidths,
+                          const std::array<float, 4>& areaLightHeights,
                           const glm::mat4& shadowCameraView,
                           const std::array<glm::mat4, 4>& shadowLightVP,
                           const std::array<float, 4>& shadowCascadeSplits,
@@ -231,6 +241,16 @@ public:
                                  const std::array<float, 4>& spotLightRanges,
                                  const std::array<float, 4>& spotLightInnerCos,
                                  const std::array<float, 4>& spotLightOuterCos,
+                                 int areaLightCount,
+                                 const std::array<glm::vec3, 4>& areaLightPositions,
+                                 const std::array<glm::vec3, 4>& areaLightRights,
+                                 const std::array<glm::vec3, 4>& areaLightUps,
+                                 const std::array<glm::vec3, 4>& areaLightForwards,
+                                 const std::array<glm::vec3, 4>& areaLightColors,
+                                 const std::array<float, 4>& areaLightIntensities,
+                                 const std::array<float, 4>& areaLightRanges,
+                                 const std::array<float, 4>& areaLightWidths,
+                                 const std::array<float, 4>& areaLightHeights,
                                  const glm::vec3& cameraPosition,
                                  const glm::mat4& inverseViewProjection,
                                  const glm::mat4& shadowCameraView,
@@ -422,6 +442,12 @@ public:
     }
     uint32_t GetHPWaterVolumeSpotLightCount() const {
         return m_HPWaterVolumeSpotLightCount;
+    }
+    uint32_t GetHPWaterVolumeAreaLightCount() const {
+        return m_HPWaterVolumeAreaLightCount;
+    }
+    bool IsHPWaterVolumeAreaLightLoopEnabled() const {
+        return m_HPWaterVolumeAreaLightLoopEnabled;
     }
     uint32_t GetHPWaterVolumeSampleCount() const {
         return m_HPWaterVolumeSampleCount;
@@ -715,8 +741,10 @@ private:
     bool m_HPWaterVolumeShadowSamplingEnabled = false;
     bool m_HPWaterVolumeShadowParamsEnabled = false;
     bool m_HPWaterVolumePunctualLightLoopEnabled = false;
+    bool m_HPWaterVolumeAreaLightLoopEnabled = false;
     uint32_t m_HPWaterVolumePointLightCount = 0;
     uint32_t m_HPWaterVolumeSpotLightCount = 0;
+    uint32_t m_HPWaterVolumeAreaLightCount = 0;
     uint32_t m_HPWaterVolumeSampleCount = 0;
     float m_HPWaterVolumeShadowSoftness = 0.0f;
     float m_HPWaterVolumeShadowMinFilterSize = 0.0f;

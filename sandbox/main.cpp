@@ -2679,6 +2679,8 @@ private:
         }
         if (reg.any_of<VE::DirectionalLightComponent>(srcEntity))
             reg.get_or_emplace<VE::DirectionalLightComponent>(dst) = reg.get<VE::DirectionalLightComponent>(srcEntity);
+        if (reg.any_of<VE::AreaLightComponent>(srcEntity))
+            reg.get_or_emplace<VE::AreaLightComponent>(dst) = reg.get<VE::AreaLightComponent>(srcEntity);
 
             // Copy ReflectionProbeComponent (reset runtime probe)
             if (reg.any_of<VE::ReflectionProbeComponent>(srcEntity)) {
@@ -3668,6 +3670,12 @@ private:
                         auto e = m_Scene->CreateEntity("Spot Light");
                         e.AddComponent<VE::SpotLightComponent>();
                         m_SelectedEntity = e;
+                    });
+                if (ImGui::MenuItem("Area Light"))
+                    m_CommandHistory.Execute("Create Area Light", [this]() {
+                        auto e = m_Scene->CreateEntity("Area Light");
+                        e.AddComponent<VE::AreaLightComponent>();
+                        SelectEntityOnly(e);
                     });
                 if (ImGui::MenuItem("Spot Light"))
                     m_CommandHistory.Execute("Create Spot Light", [this]() {
@@ -5013,6 +5021,35 @@ private:
             if (removeSpotLight)
                 m_CommandHistory.Execute("Remove Spot Light", [this]() {
                     m_SelectedEntity.RemoveComponent<VE::SpotLightComponent>();
+                });
+            ImGui::Separator();
+        }
+
+        if (m_SelectedEntity.HasComponent<VE::AreaLightComponent>()) {
+            bool removeAreaLight = false;
+            bool openAreaLight = ImGui::CollapsingHeader("Area Light", ImGuiTreeNodeFlags_DefaultOpen);
+            DrawComponentContextMenu<VE::AreaLightComponent>("##AreaLightCtx", "AreaLight", removeAreaLight);
+            if (openAreaLight) {
+                auto& al = m_SelectedEntity.GetComponent<VE::AreaLightComponent>();
+                ImGui::ColorEdit3("Color##AL", al.Color.data());
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Area Light Color");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Intensity##AL", &al.Intensity, 0.01f, 0.0f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Area Light Intensity");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Range##AL", &al.Range, 0.1f, 0.1f, 200.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Area Light Range");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Width##AL", &al.Width, 0.05f, 0.05f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Area Light Width");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+                ImGui::DragFloat("Height##AL", &al.Height, 0.05f, 0.05f, 100.0f);
+                if (ImGui::IsItemActivated()) m_CommandHistory.BeginPropertyEdit("Edit Area Light Height");
+                if (ImGui::IsItemDeactivatedAfterEdit()) m_CommandHistory.EndPropertyEdit();
+            }
+            if (removeAreaLight)
+                m_CommandHistory.Execute("Remove Area Light", [this]() {
+                    m_SelectedEntity.RemoveComponent<VE::AreaLightComponent>();
                 });
             ImGui::Separator();
         }
@@ -6563,6 +6600,11 @@ private:
                     m_SelectedEntity.AddComponent<VE::SpotLightComponent>();
                 }))
 
+            ADD_COMPONENT_ITEM("Area Light", VE::AreaLightComponent,
+                m_CommandHistory.Execute("Add Area Light", [this]() {
+                    m_SelectedEntity.AddComponent<VE::AreaLightComponent>();
+                }))
+
             ADD_COMPONENT_ITEM("Reflection Probe", VE::ReflectionProbeComponent,
                 m_CommandHistory.Execute("Add Reflection Probe", [this]() {
                     m_SelectedEntity.AddComponent<VE::ReflectionProbeComponent>();
@@ -7131,7 +7173,10 @@ private:
         out << "HPWaterDirectionalLightIntensity: " << d.HPWaterDirectionalLightIntensity << "\n";
         out << "HPWaterPointLightCount: " << d.HPWaterPointLightCount << "\n";
         out << "HPWaterSpotLightCount: " << d.HPWaterSpotLightCount << "\n";
+        out << "HPWaterAreaLightCount: " << d.HPWaterAreaLightCount << "\n";
         out << "HPWaterPunctualLightLoopEnabled: " << d.HPWaterPunctualLightLoopEnabled << "\n";
+        out << "HPWaterAreaLightApproximationEnabled: "
+            << d.HPWaterAreaLightApproximationEnabled << "\n";
         out << "HPWaterPunctualLightLayerFilteringEnabled: "
             << d.HPWaterPunctualLightLayerFilteringEnabled << "\n";
         out << "HPWaterPunctualLightInfluenceSortingEnabled: "
@@ -7140,18 +7185,27 @@ private:
             << d.HPWaterPunctualPointLightCandidates << "\n";
         out << "HPWaterPunctualSpotLightCandidates: "
             << d.HPWaterPunctualSpotLightCandidates << "\n";
+        out << "HPWaterAreaLightCandidates: "
+            << d.HPWaterAreaLightCandidates << "\n";
         out << "HPWaterPunctualPointLightCapacity: "
             << d.HPWaterPunctualPointLightCapacity << "\n";
         out << "HPWaterPunctualSpotLightCapacity: "
             << d.HPWaterPunctualSpotLightCapacity << "\n";
+        out << "HPWaterAreaLightCapacity: "
+            << d.HPWaterAreaLightCapacity << "\n";
         out << "HPWaterPunctualLightsLayerSkipped: "
             << d.HPWaterPunctualLightsLayerSkipped << "\n";
         out << "HPWaterPunctualLightsCapacitySkipped: "
             << d.HPWaterPunctualLightsCapacitySkipped << "\n";
+        out << "HPWaterAreaLightsCapacitySkipped: "
+            << d.HPWaterAreaLightsCapacitySkipped << "\n";
         out << "HPWaterVolumePointLightCount: " << d.HPWaterVolumePointLightCount << "\n";
         out << "HPWaterVolumeSpotLightCount: " << d.HPWaterVolumeSpotLightCount << "\n";
+        out << "HPWaterVolumeAreaLightCount: " << d.HPWaterVolumeAreaLightCount << "\n";
         out << "HPWaterVolumePunctualLightLoopEnabled: "
             << d.HPWaterVolumePunctualLightLoopEnabled << "\n";
+        out << "HPWaterVolumeAreaLightLoopEnabled: "
+            << d.HPWaterVolumeAreaLightLoopEnabled << "\n";
         out << "HPWaterSpectralOceanEnabled: " << d.HPWaterSpectralOceanEnabled << "\n";
         out << "HPWaterSpectralNormalParityEnabled: " << d.HPWaterSpectralNormalParityEnabled << "\n";
         out << "HPWaterSpectrumComputeRan: " << d.HPWaterSpectrumComputeRan << "\n";
@@ -7656,24 +7710,31 @@ private:
             d.HPWaterGGXEnergyCompensation,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d point=%u/%u spot=%u/%u cap=%u/%u layerFilter=%d influenceSort=%d layerSkip=%u capSkip=%u volumePunctual=%d vPoint=%u vSpot=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d areaApprox=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d influenceSort=%d layerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSurfaceShadowSamplingEnabled ? 1 : 0,
             d.HPWaterShadowCascadeDitherEnabled ? 1 : 0,
             d.HPWaterPunctualLightLoopEnabled ? 1 : 0,
+            d.HPWaterAreaLightApproximationEnabled ? 1 : 0,
             d.HPWaterPointLightCount,
             d.HPWaterPunctualPointLightCandidates,
             d.HPWaterSpotLightCount,
             d.HPWaterPunctualSpotLightCandidates,
+            d.HPWaterAreaLightCount,
+            d.HPWaterAreaLightCandidates,
             d.HPWaterPunctualPointLightCapacity,
             d.HPWaterPunctualSpotLightCapacity,
+            d.HPWaterAreaLightCapacity,
             d.HPWaterPunctualLightLayerFilteringEnabled ? 1 : 0,
             d.HPWaterPunctualLightInfluenceSortingEnabled ? 1 : 0,
             d.HPWaterPunctualLightsLayerSkipped,
             d.HPWaterPunctualLightsCapacitySkipped,
+            d.HPWaterAreaLightsCapacitySkipped,
             d.HPWaterVolumePunctualLightLoopEnabled ? 1 : 0,
+            d.HPWaterVolumeAreaLightLoopEnabled ? 1 : 0,
             d.HPWaterVolumePointLightCount,
             d.HPWaterVolumeSpotLightCount,
+            d.HPWaterVolumeAreaLightCount,
             d.HPWaterIndirectScatterIntegrationEnabled ? 1 : 0,
             d.HPWaterBSDFComponentWeightingEnabled ? 1 : 0,
             d.HPWaterSkyReflectionIntensity,

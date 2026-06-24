@@ -115,6 +115,16 @@ struct SpotLightComponent {
     SpotLightComponent() = default;
 };
 
+struct AreaLightComponent {
+    std::array<float, 3> Color = { 1.0f, 1.0f, 1.0f };
+    float Intensity = 1.0f;
+    float Range = 15.0f;
+    float Width = 4.0f;
+    float Height = 2.0f;
+
+    AreaLightComponent() = default;
+};
+
 enum class BodyType { Static, Kinematic, Dynamic };
 
 struct RigidbodyComponent {

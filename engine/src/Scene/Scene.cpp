@@ -1556,6 +1556,96 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             static_cast<uint32_t>(hpWaterSpotCandidates.size() - static_cast<size_t>(MAX_SPOT_LIGHTS));
     }
 
+    static constexpr int MAX_AREA_LIGHTS = 4;
+    int hpWaterNumAreaLights = 0;
+    uint32_t hpWaterAreaLightCandidates = 0;
+    uint32_t hpWaterAreaLightsCapacitySkipped = 0;
+    struct HPWaterAreaLightCandidate {
+        glm::vec3 Position{0.0f};
+        glm::vec3 Right{1.0f, 0.0f, 0.0f};
+        glm::vec3 Up{0.0f, 1.0f, 0.0f};
+        glm::vec3 Forward{0.0f, 0.0f, 1.0f};
+        glm::vec3 Color{1.0f};
+        float Intensity = 0.0f;
+        float Range = 0.0f;
+        float Width = 1.0f;
+        float Height = 1.0f;
+        float Score = 0.0f;
+    };
+    std::vector<HPWaterAreaLightCandidate> hpWaterAreaCandidates;
+    std::array<glm::vec3, MAX_AREA_LIGHTS> hpWaterAreaPositions = {};
+    std::array<glm::vec3, MAX_AREA_LIGHTS> hpWaterAreaRights = {};
+    std::array<glm::vec3, MAX_AREA_LIGHTS> hpWaterAreaUps = {};
+    std::array<glm::vec3, MAX_AREA_LIGHTS> hpWaterAreaForwards = {};
+    std::array<glm::vec3, MAX_AREA_LIGHTS> hpWaterAreaColors = {};
+    std::array<float, MAX_AREA_LIGHTS> hpWaterAreaIntensities = {};
+    std::array<float, MAX_AREA_LIGHTS> hpWaterAreaRanges = {};
+    std::array<float, MAX_AREA_LIGHTS> hpWaterAreaWidths = {};
+    std::array<float, MAX_AREA_LIGHTS> hpWaterAreaHeights = {};
+    {
+        auto areaView = m_Registry.view<TransformComponent, AreaLightComponent>();
+        for (auto areaEntity : areaView) {
+            if (!IsEntityActiveInHierarchy(areaEntity))
+                continue;
+            auto [tc, area] = areaView.get<TransformComponent, AreaLightComponent>(areaEntity);
+            if (!lightMatchesHPWaterLayer(areaEntity)) {
+                ++hpWaterPunctualLightsLayerSkipped;
+                continue;
+            }
+
+            glm::mat4 worldMat = GetWorldTransform(areaEntity);
+            const glm::vec3 position = glm::vec3(worldMat[3]);
+            const glm::vec3 right = glm::length(glm::vec3(worldMat[0])) > 0.0001f
+                ? glm::normalize(glm::vec3(worldMat[0]))
+                : glm::vec3(1.0f, 0.0f, 0.0f);
+            const glm::vec3 up = glm::length(glm::vec3(worldMat[1])) > 0.0001f
+                ? glm::normalize(glm::vec3(worldMat[1]))
+                : glm::vec3(0.0f, 1.0f, 0.0f);
+            const glm::vec3 forward = glm::length(glm::vec3(worldMat[2])) > 0.0001f
+                ? glm::normalize(glm::vec3(worldMat[2]))
+                : glm::vec3(0.0f, 0.0f, 1.0f);
+            const glm::vec3 color(area.Color[0], area.Color[1], area.Color[2]);
+            const float width = std::max(area.Width, 0.001f);
+            const float height = std::max(area.Height, 0.001f);
+            const float areaBoost = std::sqrt(width * height);
+            hpWaterAreaCandidates.push_back({
+                position,
+                right,
+                up,
+                forward,
+                color,
+                area.Intensity,
+                area.Range,
+                width,
+                height,
+                hpWaterPointLightInfluenceScore(position, color, area.Intensity * areaBoost, area.Range)
+            });
+        }
+    }
+    std::sort(hpWaterAreaCandidates.begin(), hpWaterAreaCandidates.end(),
+              [](const HPWaterAreaLightCandidate& a, const HPWaterAreaLightCandidate& b) {
+                  return a.Score > b.Score;
+              });
+    hpWaterAreaLightCandidates = static_cast<uint32_t>(hpWaterAreaCandidates.size());
+    hpWaterNumAreaLights = std::min(static_cast<int>(hpWaterAreaCandidates.size()), MAX_AREA_LIGHTS);
+    for (int i = 0; i < hpWaterNumAreaLights; ++i) {
+        const auto& candidate = hpWaterAreaCandidates[static_cast<size_t>(i)];
+        hpWaterAreaPositions[i] = candidate.Position;
+        hpWaterAreaRights[i] = candidate.Right;
+        hpWaterAreaUps[i] = candidate.Up;
+        hpWaterAreaForwards[i] = candidate.Forward;
+        hpWaterAreaColors[i] = candidate.Color;
+        hpWaterAreaIntensities[i] = candidate.Intensity;
+        hpWaterAreaRanges[i] = candidate.Range;
+        hpWaterAreaWidths[i] = candidate.Width;
+        hpWaterAreaHeights[i] = candidate.Height;
+    }
+    if (hpWaterAreaCandidates.size() > static_cast<size_t>(MAX_AREA_LIGHTS)) {
+        hpWaterAreaLightsCapacitySkipped =
+            static_cast<uint32_t>(hpWaterAreaCandidates.size() - static_cast<size_t>(MAX_AREA_LIGHTS));
+        hpWaterPunctualLightsCapacitySkipped += hpWaterAreaLightsCapacitySkipped;
+    }
+
     auto& ps = m_PipelineSettings;
     auto colorToVec3 = [](const std::array<float, 3>& color) {
         return glm::vec3(color[0], color[1], color[2]);
@@ -2693,22 +2783,30 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterDirectionalLightIntensity = lightIntensity;
         m_RenderDiagnostics.HPWaterPointLightCount = static_cast<uint32_t>(hpWaterNumPointLights);
         m_RenderDiagnostics.HPWaterSpotLightCount = static_cast<uint32_t>(hpWaterNumSpotLights);
+        m_RenderDiagnostics.HPWaterAreaLightCount = static_cast<uint32_t>(hpWaterNumAreaLights);
         m_RenderDiagnostics.HPWaterPunctualLightLoopEnabled =
             (hpWaterNumPointLights + hpWaterNumSpotLights) > 0;
+        m_RenderDiagnostics.HPWaterAreaLightApproximationEnabled = hpWaterNumAreaLights > 0;
         m_RenderDiagnostics.HPWaterPunctualLightLayerFilteringEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualLightInfluenceSortingEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualPointLightCandidates =
             hpWaterPunctualPointLightCandidates;
         m_RenderDiagnostics.HPWaterPunctualSpotLightCandidates =
             hpWaterPunctualSpotLightCandidates;
+        m_RenderDiagnostics.HPWaterAreaLightCandidates =
+            hpWaterAreaLightCandidates;
         m_RenderDiagnostics.HPWaterPunctualPointLightCapacity =
             static_cast<uint32_t>(MAX_POINT_LIGHTS);
         m_RenderDiagnostics.HPWaterPunctualSpotLightCapacity =
             static_cast<uint32_t>(MAX_SPOT_LIGHTS);
+        m_RenderDiagnostics.HPWaterAreaLightCapacity =
+            static_cast<uint32_t>(MAX_AREA_LIGHTS);
         m_RenderDiagnostics.HPWaterPunctualLightsLayerSkipped =
             hpWaterPunctualLightsLayerSkipped;
         m_RenderDiagnostics.HPWaterPunctualLightsCapacitySkipped =
             hpWaterPunctualLightsCapacitySkipped;
+        m_RenderDiagnostics.HPWaterAreaLightsCapacitySkipped =
+            hpWaterAreaLightsCapacitySkipped;
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;
@@ -2909,6 +3007,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterSpotRanges,
                                             hpWaterSpotInnerCos,
                                             hpWaterSpotOuterCos,
+                                            hpWaterNumAreaLights,
+                                            hpWaterAreaPositions,
+                                            hpWaterAreaRights,
+                                            hpWaterAreaUps,
+                                            hpWaterAreaForwards,
+                                            hpWaterAreaColors,
+                                            hpWaterAreaIntensities,
+                                            hpWaterAreaRanges,
+                                            hpWaterAreaWidths,
+                                            hpWaterAreaHeights,
                                             cameraView,
                                             hpWaterCascadeVP,
                                             hpWaterCascadeSplits,
@@ -2998,6 +3106,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        hpWaterSpotRanges,
                                                        hpWaterSpotInnerCos,
                                                        hpWaterSpotOuterCos,
+                                                       hpWaterNumAreaLights,
+                                                       hpWaterAreaPositions,
+                                                       hpWaterAreaRights,
+                                                       hpWaterAreaUps,
+                                                       hpWaterAreaForwards,
+                                                       hpWaterAreaColors,
+                                                       hpWaterAreaIntensities,
+                                                       hpWaterAreaRanges,
+                                                       hpWaterAreaWidths,
+                                                       hpWaterAreaHeights,
                                                        cameraPos,
                                                        inverseViewProjection,
                                                        cameraView,
@@ -3033,6 +3151,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.GetHPWaterVolumePointLightCount();
         m_RenderDiagnostics.HPWaterVolumeSpotLightCount =
             m_DeferredRenderer.GetHPWaterVolumeSpotLightCount();
+        m_RenderDiagnostics.HPWaterVolumeAreaLightCount =
+            m_DeferredRenderer.GetHPWaterVolumeAreaLightCount();
+        m_RenderDiagnostics.HPWaterVolumeAreaLightLoopEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
             m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
         m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =
@@ -3122,6 +3244,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterSpotRanges,
                                                 hpWaterSpotInnerCos,
                                                 hpWaterSpotOuterCos,
+                                                hpWaterNumAreaLights,
+                                                hpWaterAreaPositions,
+                                                hpWaterAreaRights,
+                                                hpWaterAreaUps,
+                                                hpWaterAreaForwards,
+                                                hpWaterAreaColors,
+                                                hpWaterAreaIntensities,
+                                                hpWaterAreaRanges,
+                                                hpWaterAreaWidths,
+                                                hpWaterAreaHeights,
                                                 cameraView,
                                                 hpWaterCascadeVP,
                                                 hpWaterCascadeSplits,
@@ -3224,6 +3356,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumePointLightCount();
     m_RenderDiagnostics.HPWaterVolumeSpotLightCount =
         m_DeferredRenderer.GetHPWaterVolumeSpotLightCount();
+    m_RenderDiagnostics.HPWaterVolumeAreaLightCount =
+        m_DeferredRenderer.GetHPWaterVolumeAreaLightCount();
+    m_RenderDiagnostics.HPWaterVolumeAreaLightLoopEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
         m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
     m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =

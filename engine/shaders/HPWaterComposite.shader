@@ -87,6 +87,16 @@ uniform float u_SpotLightIntensities[4];
 uniform float u_SpotLightRanges[4];
 uniform float u_SpotLightInnerCos[4];
 uniform float u_SpotLightOuterCos[4];
+uniform int u_NumAreaLights;
+uniform vec3 u_AreaLightPositions[4];
+uniform vec3 u_AreaLightRights[4];
+uniform vec3 u_AreaLightUps[4];
+uniform vec3 u_AreaLightForwards[4];
+uniform vec3 u_AreaLightColors[4];
+uniform float u_AreaLightIntensities[4];
+uniform float u_AreaLightRanges[4];
+uniform float u_AreaLightWidths[4];
+uniform float u_AreaLightHeights[4];
 uniform vec3 u_IndirectSkyColor;
 uniform vec3 u_IndirectGroundColor;
 uniform vec3 u_IndirectTint;
@@ -449,6 +459,39 @@ vec3 EvaluateHPWaterSpecularLight(vec3 N,
     float G = GeometrySmith(N, V, L, roughness);
     return (D * G * fresnel) / max(4.0 * NdotV * NdotL, 0.001) *
         radiance * NdotL * energyCompensation;
+}
+
+vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS, int lightIndex, out vec3 L) {
+    vec3 center = u_AreaLightPositions[lightIndex];
+    vec3 right = NormalizeOr(u_AreaLightRights[lightIndex], vec3(1.0, 0.0, 0.0));
+    vec3 up = NormalizeOr(u_AreaLightUps[lightIndex], vec3(0.0, 1.0, 0.0));
+    vec3 forward = NormalizeOr(u_AreaLightForwards[lightIndex], vec3(0.0, 0.0, 1.0));
+    float width = max(u_AreaLightWidths[lightIndex], 0.001);
+    float height = max(u_AreaLightHeights[lightIndex], 0.001);
+
+    vec3 toPoint = positionWS - center;
+    vec2 local = vec2(dot(toPoint, right), dot(toPoint, up));
+    vec2 halfSize = vec2(width, height) * 0.5;
+    vec2 clampedLocal = clamp(local, -halfSize, halfSize);
+    vec3 closest = center + right * clampedLocal.x + up * clampedLocal.y;
+
+    vec3 lightVector = closest - positionWS;
+    float distanceToLight = length(lightVector);
+    float range = max(u_AreaLightRanges[lightIndex], 0.001);
+    L = distanceToLight > 0.0001 ? lightVector / distanceToLight : forward;
+    if (distanceToLight >= range) {
+        return vec3(0.0);
+    }
+
+    float range01 = clamp(distanceToLight / range, 0.0, 1.0);
+    float rangeWindow = 1.0 - pow(range01, 4.0);
+    rangeWindow *= rangeWindow;
+    float emissionFacing = clamp(dot(forward, -L), 0.0, 1.0);
+    float areaScale = clamp(width * height * 0.25, 0.1, 8.0);
+    float attenuation = rangeWindow * emissionFacing * areaScale /
+        (distanceToLight * distanceToLight + 1.0);
+    return u_AreaLightColors[lightIndex] *
+        max(u_AreaLightIntensities[lightIndex], 0.0) * attenuation;
 }
 
 vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughness, float waterLinearDepth) {
@@ -861,6 +904,23 @@ void main() {
         rangeWindow *= rangeWindow;
         float attenuation = rangeWindow * spotFactor / (lightDistance * lightDistance + 1.0);
         vec3 radiance = u_SpotLightColors[i] * max(u_SpotLightIntensities[i], 0.0) * attenuation;
+        directSpecular += EvaluateHPWaterSpecularLight(
+            N, V, localL, radiance, roughness, F, energyCompensation);
+        punctualWaterLight += radiance * clamp(dot(N, localL), 0.0, 1.0);
+    }
+
+    int areaCount = clamp(u_NumAreaLights, 0, 4);
+    for (int i = 0; i < 4; ++i) {
+        if (i >= areaCount) {
+            break;
+        }
+
+        vec3 localL = vec3(0.0, 1.0, 0.0);
+        vec3 radiance = ComputeHPWaterAreaLightRadiance(waterWorldPos, i, localL);
+        if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001) {
+            continue;
+        }
+
         directSpecular += EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
         punctualWaterLight += radiance * clamp(dot(N, localL), 0.0, 1.0);
