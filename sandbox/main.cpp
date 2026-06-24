@@ -7298,6 +7298,9 @@ private:
         out << "HPWaterFluidStartFrameBakeEnabled: " << d.HPWaterFluidStartFrameBakeEnabled << "\n";
         out << "HPWaterFluidHeightCaptureCacheReused: " << d.HPWaterFluidHeightCaptureCacheReused << "\n";
         out << "HPWaterFluidLayerFilteringParityEnabled: " << d.HPWaterFluidLayerFilteringParityEnabled << "\n";
+        out << "HPWaterFluidRenderQueueParityEnabled: " << d.HPWaterFluidRenderQueueParityEnabled << "\n";
+        out << "HPWaterFluidSceneOpaqueOnlyCapture: " << d.HPWaterFluidSceneOpaqueOnlyCapture << "\n";
+        out << "HPWaterFluidWaterLayerOnlyCapture: " << d.HPWaterFluidWaterLayerOnlyCapture << "\n";
         out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
         out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
         out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";
@@ -7314,6 +7317,9 @@ private:
         out << "HPWaterFluidSceneHeightTexture: " << d.HPWaterFluidSceneHeightTexture << "\n";
         out << "HPWaterFluidWaterCaptureDraws: " << d.HPWaterFluidWaterCaptureDraws << "\n";
         out << "HPWaterFluidSceneCaptureDraws: " << d.HPWaterFluidSceneCaptureDraws << "\n";
+        out << "HPWaterFluidWaterLayerMask: " << d.HPWaterFluidWaterLayerMask << "\n";
+        out << "HPWaterFluidWaterLayerSkipped: " << d.HPWaterFluidWaterLayerSkipped << "\n";
+        out << "HPWaterFluidTransparentSkipped: " << d.HPWaterFluidTransparentSkipped << "\n";
         out << "HPWaterFluidObstacleCount: " << d.HPWaterFluidObstacleCount << "\n";
         out << "HPWaterFluidObstaclePixels: " << d.HPWaterFluidObstaclePixels << "\n";
 
@@ -7748,6 +7754,13 @@ private:
             d.HPWaterFluidSceneHeightTexture,
             d.HPWaterFluidWaterCaptureDraws,
             d.HPWaterFluidSceneCaptureDraws);
+        ImGui::Text("HPWater fluid capture parity: queue=%d sceneOpaque=%d waterLayer=%d mask=0x%08X skipped water=%u transparent=%u",
+            d.HPWaterFluidRenderQueueParityEnabled ? 1 : 0,
+            d.HPWaterFluidSceneOpaqueOnlyCapture ? 1 : 0,
+            d.HPWaterFluidWaterLayerOnlyCapture ? 1 : 0,
+            d.HPWaterFluidWaterLayerMask,
+            d.HPWaterFluidWaterLayerSkipped,
+            d.HPWaterFluidTransparentSkipped);
         ImGui::Text("HPWater GBuffer: init=%d attachments=%u rt0=%u rt1=%u rt2=%u depth=%u",
             d.HPWaterGBufferInitialized ? 1 : 0,
             d.HPWaterGBufferAttachmentCount,

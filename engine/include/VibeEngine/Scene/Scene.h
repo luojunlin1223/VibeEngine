@@ -363,6 +363,9 @@ struct RenderDiagnostics {
     bool HPWaterFluidStartFrameBakeEnabled = false;
     bool HPWaterFluidHeightCaptureCacheReused = false;
     bool HPWaterFluidLayerFilteringParityEnabled = false;
+    bool HPWaterFluidRenderQueueParityEnabled = false;
+    bool HPWaterFluidSceneOpaqueOnlyCapture = false;
+    bool HPWaterFluidWaterLayerOnlyCapture = false;
     uint32_t HPWaterFluidHeightTexture = 0;
     uint32_t HPWaterFluidResolution = 0;
     float HPWaterFluidWaveSpeed = 0.0f;
@@ -379,6 +382,9 @@ struct RenderDiagnostics {
     uint32_t HPWaterFluidSceneHeightTexture = 0;
     uint32_t HPWaterFluidWaterCaptureDraws = 0;
     uint32_t HPWaterFluidSceneCaptureDraws = 0;
+    uint32_t HPWaterFluidWaterLayerMask = 0;
+    uint32_t HPWaterFluidWaterLayerSkipped = 0;
+    uint32_t HPWaterFluidTransparentSkipped = 0;
     uint32_t HPWaterFluidObstacleCount = 0;
     uint32_t HPWaterFluidObstaclePixels = 0;
 
