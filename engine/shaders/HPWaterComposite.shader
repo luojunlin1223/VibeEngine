@@ -1026,7 +1026,7 @@ void main() {
         ssrConfidence = clamp(ssrReflection.a, 0.0, 1.0);
         ssrHit = ssrConfidence > 0.0001 ? 1.0 : 0.0;
         vec3 environmentSpecular =
-            ssrReflection.rgb * ssrConfidence +
+            ssrReflection.rgb +
             SampleHPWaterSpecularEnvironmentHierarchy(
                 R, waterWorldPos, N, V, roughness, ssrConfidence,
                 probeHierarchyWeight, skyHierarchyWeight);

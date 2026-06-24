@@ -379,6 +379,7 @@ public:
     uint32_t GetHPWaterSSRLightingTexture() const;
     bool IsHPWaterSSRLightingValid() const { return m_HPWaterSSRLightingValid; }
     bool DidHPWaterSSRLightingRun() const { return m_HPWaterSSRLightingRan; }
+    bool IsHPWaterSSRLightingRGBPreweighted() const { return m_HPWaterSSRLightingRGBPreweighted; }
 
     /// Get HPWater opaque scene-depth pyramid texture.
     uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
@@ -720,6 +721,7 @@ private:
     bool m_HPWaterCompositeValid = false;
     bool m_HPWaterSSRLightingValid = false;
     bool m_HPWaterSSRLightingRan = false;
+    bool m_HPWaterSSRLightingRGBPreweighted = false;
     bool m_HPWaterRefractionNDCMarchEnabled = false;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;
     bool m_HPWaterShadowCascadeDitherEnabled = false;

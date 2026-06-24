@@ -1,5 +1,5 @@
 // VibeEngine ShaderLab - HPWater screen-space reflection lighting buffer.
-// Matches HPWater/HDRP's _SsrLightingTexture contract: rgb stores traced
+// Matches HPWater/HDRP's _SsrLightingTexture contract: rgb stores weighted
 // reflection lighting and alpha stores the consumed reflection hierarchy weight.
 
 Shader "VibeEngine/HPWaterSSR" {
@@ -166,7 +166,7 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
                 float confidence = edgeFade * distanceFade * roughnessFade *
                     clamp(u_HPWaterSSRStrength, 0.0, 1.0);
                 float lod = roughness * float(max(u_SceneColorMipCount - 1, 0));
-                vec3 color = SampleSceneColorBlurred(uv, lod);
+                vec3 color = SampleSceneColorBlurred(uv, lod) * confidence;
                 return vec4(color, confidence);
             }
         }

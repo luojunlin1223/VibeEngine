@@ -277,6 +277,7 @@ struct RenderDiagnostics {
     bool HPWaterSSRHierarchyBlendEnabled = false;
     bool HPWaterSSRLightingBufferRan = false;
     bool HPWaterSSRLightingBufferValid = false;
+    bool HPWaterSSRLightingRGBPreweighted = false;
     uint32_t HPWaterSSRLightingBufferTexture = 0;
     bool HPWaterSSRDiagnosticsValid = false;
     uint32_t HPWaterSSRDiagnosticsTexture = 0;

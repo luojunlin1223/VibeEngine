@@ -1156,6 +1156,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
     m_RenderDiagnostics.HPWaterSSRLightingBufferRan = m_DeferredRenderer.DidHPWaterSSRLightingRun();
     m_RenderDiagnostics.HPWaterSSRLightingBufferValid = m_DeferredRenderer.IsHPWaterSSRLightingValid();
+    m_RenderDiagnostics.HPWaterSSRLightingRGBPreweighted =
+        m_DeferredRenderer.IsHPWaterSSRLightingRGBPreweighted();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();
     m_RenderDiagnostics.HPWaterDepthPyramidTexture = m_DeferredRenderer.GetHPWaterDepthPyramidTexture();
     m_RenderDiagnostics.HPWaterDepthPyramidMipCount = m_DeferredRenderer.GetHPWaterDepthPyramidMipCount();
@@ -3318,6 +3320,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
     m_RenderDiagnostics.HPWaterSSRLightingBufferRan = m_DeferredRenderer.DidHPWaterSSRLightingRun();
     m_RenderDiagnostics.HPWaterSSRLightingBufferValid = m_DeferredRenderer.IsHPWaterSSRLightingValid();
+    m_RenderDiagnostics.HPWaterSSRLightingRGBPreweighted =
+        m_DeferredRenderer.IsHPWaterSSRLightingRGBPreweighted();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();
     m_RenderDiagnostics.HPWaterSSRDiagnosticsTexture =
         m_DeferredRenderer.GetHPWaterSSRDiagnosticsTexture();
