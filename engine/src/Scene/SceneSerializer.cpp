@@ -603,6 +603,10 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "ForwardScatterStrength" << YAML::Value << w.ForwardScatterStrength;
         out << YAML::Key << "SpecularFGDStrength" << YAML::Value << w.SpecularFGDStrength;
         out << YAML::Key << "GGXEnergyCompensation" << YAML::Value << w.GGXEnergyCompensation;
+        out << YAML::Key << "VolumeShadowSoftness" << YAML::Value << w.VolumeShadowSoftness;
+        out << YAML::Key << "VolumeShadowMinFilterSize" << YAML::Value << w.VolumeShadowMinFilterSize;
+        out << YAML::Key << "VolumeShadowBlockerSamples" << YAML::Value << w.VolumeShadowBlockerSamples;
+        out << YAML::Key << "VolumeShadowFilterSamples" << YAML::Value << w.VolumeShadowFilterSamples;
         out << YAML::Key << "CausticsEnabled" << YAML::Value << w.CausticsEnabled;
         out << YAML::Key << "CausticStrength" << YAML::Value << w.CausticStrength;
         out << YAML::Key << "CausticScale" << YAML::Value << w.CausticScale;
@@ -1600,6 +1604,10 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["ForwardScatterStrength"]) w.ForwardScatterStrength = wNode["ForwardScatterStrength"].as<float>();
                 if (wNode["SpecularFGDStrength"]) w.SpecularFGDStrength = wNode["SpecularFGDStrength"].as<float>();
                 if (wNode["GGXEnergyCompensation"]) w.GGXEnergyCompensation = wNode["GGXEnergyCompensation"].as<float>();
+                if (wNode["VolumeShadowSoftness"]) w.VolumeShadowSoftness = wNode["VolumeShadowSoftness"].as<float>();
+                if (wNode["VolumeShadowMinFilterSize"]) w.VolumeShadowMinFilterSize = wNode["VolumeShadowMinFilterSize"].as<float>();
+                if (wNode["VolumeShadowBlockerSamples"]) w.VolumeShadowBlockerSamples = wNode["VolumeShadowBlockerSamples"].as<int>();
+                if (wNode["VolumeShadowFilterSamples"]) w.VolumeShadowFilterSamples = wNode["VolumeShadowFilterSamples"].as<int>();
                 if (wNode["CausticsEnabled"]) w.CausticsEnabled = wNode["CausticsEnabled"].as<bool>();
                 if (wNode["CausticStrength"]) w.CausticStrength = wNode["CausticStrength"].as<float>();
                 if (wNode["CausticScale"]) w.CausticScale = wNode["CausticScale"].as<float>();
@@ -1640,6 +1648,10 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.ForwardScatterStrength = std::clamp(w.ForwardScatterStrength, 0.0f, 3.0f);
                 w.SpecularFGDStrength = std::clamp(w.SpecularFGDStrength, 0.0f, 1.0f);
                 w.GGXEnergyCompensation = std::clamp(w.GGXEnergyCompensation, 0.0f, 2.0f);
+                w.VolumeShadowSoftness = std::clamp(w.VolumeShadowSoftness, 0.0f, 10.0f);
+                w.VolumeShadowMinFilterSize = std::clamp(w.VolumeShadowMinFilterSize, 0.0f, 8.0f);
+                w.VolumeShadowBlockerSamples = std::clamp(w.VolumeShadowBlockerSamples, 0, 16);
+                w.VolumeShadowFilterSamples = std::clamp(w.VolumeShadowFilterSamples, 1, 16);
                 w.CausticStrength = std::clamp(w.CausticStrength, 0.0f, 8.0f);
                 w.CausticScale = std::clamp(w.CausticScale, 0.1f, 128.0f);
                 w.CausticDepthFade = std::clamp(w.CausticDepthFade, 0.1f, 500.0f);

@@ -1177,6 +1177,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
+    m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
+    m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
+        m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
+    m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =
+        m_DeferredRenderer.GetHPWaterVolumeShadowMinFilterSize();
+    m_RenderDiagnostics.HPWaterVolumeShadowBlockerSamples =
+        m_DeferredRenderer.GetHPWaterVolumeShadowBlockerSamples();
+    m_RenderDiagnostics.HPWaterVolumeShadowFilterSamples =
+        m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
     m_RenderDiagnostics.HPWaterVolumeSampleCount =
         m_DeferredRenderer.GetHPWaterVolumeSampleCount();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
@@ -1447,6 +1457,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     bool hpWaterRefractionJitter = false;
     float hpWaterEnvironmentReflectionIntensity = 0.0f;
     float hpWaterMacroScatterStrength = 0.0f;
+    float hpWaterVolumeShadowSoftness = 2.0f;
+    float hpWaterVolumeShadowMinFilterSize = 1.0f;
+    int hpWaterVolumeShadowBlockerSamples = 8;
+    int hpWaterVolumeShadowFilterSamples = 16;
     float hpWaterThinSSSStrength = 0.0f;
     float hpWaterBacklitTransmissionStrength = 0.0f;
     float hpWaterForwardScatterStrength = 0.0f;
@@ -1626,6 +1640,18 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterMacroScatterStrength = std::max(
                     hpWaterMacroScatterStrength,
                     water->MacroScatterStrength);
+                hpWaterVolumeShadowSoftness = std::max(
+                    hpWaterVolumeShadowSoftness,
+                    std::clamp(water->VolumeShadowSoftness, 0.0f, 10.0f));
+                hpWaterVolumeShadowMinFilterSize = std::max(
+                    hpWaterVolumeShadowMinFilterSize,
+                    std::clamp(water->VolumeShadowMinFilterSize, 0.0f, 8.0f));
+                hpWaterVolumeShadowBlockerSamples = std::max(
+                    hpWaterVolumeShadowBlockerSamples,
+                    std::clamp(water->VolumeShadowBlockerSamples, 0, 16));
+                hpWaterVolumeShadowFilterSamples = std::max(
+                    hpWaterVolumeShadowFilterSamples,
+                    std::clamp(water->VolumeShadowFilterSamples, 1, 16));
                 hpWaterThinSSSStrength = std::max(
                     hpWaterThinSSSStrength,
                     water->ThinSSSStrength);
@@ -2474,12 +2500,26 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        shadowSettings.PCFQuality,
                                                        shadowSettings.CascadeBlendWidth,
                                                        hpWaterMacroScatterStrength,
+                                                       hpWaterVolumeShadowSoftness,
+                                                       hpWaterVolumeShadowMinFilterSize,
+                                                       hpWaterVolumeShadowBlockerSamples,
+                                                       hpWaterVolumeShadowFilterSamples,
                                                        hpWaterCausticVolumeStrength,
                                                        hpWaterFrameIndex);
         m_RenderDiagnostics.HPWaterVolumeExponentialIntegrationEnabled =
             m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
             m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
+        m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
+        m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
+            m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
+        m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =
+            m_DeferredRenderer.GetHPWaterVolumeShadowMinFilterSize();
+        m_RenderDiagnostics.HPWaterVolumeShadowBlockerSamples =
+            m_DeferredRenderer.GetHPWaterVolumeShadowBlockerSamples();
+        m_RenderDiagnostics.HPWaterVolumeShadowFilterSamples =
+            m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
         m_RenderDiagnostics.HPWaterVolumeSampleCount =
             m_DeferredRenderer.GetHPWaterVolumeSampleCount();
         const glm::mat4 previousWaterVP = m_HasPreviousHPWaterViewProjection
@@ -2565,6 +2605,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
+    m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
+    m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
+        m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
+    m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =
+        m_DeferredRenderer.GetHPWaterVolumeShadowMinFilterSize();
+    m_RenderDiagnostics.HPWaterVolumeShadowBlockerSamples =
+        m_DeferredRenderer.GetHPWaterVolumeShadowBlockerSamples();
+    m_RenderDiagnostics.HPWaterVolumeShadowFilterSamples =
+        m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
         m_DeferredRenderer.GetHPWaterVolumeMotionVectorTexture();
     m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =

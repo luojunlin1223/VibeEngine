@@ -360,6 +360,11 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
+    m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumeShadowSoftness = 0.0f;
+    m_HPWaterVolumeShadowMinFilterSize = 0.0f;
+    m_HPWaterVolumeShadowBlockerSamples = 0;
+    m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterCausticValid = false;
@@ -691,6 +696,11 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
+    m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumeShadowSoftness = 0.0f;
+    m_HPWaterVolumeShadowMinFilterSize = 0.0f;
+    m_HPWaterVolumeShadowBlockerSamples = 0;
+    m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterVolumeFilterIterations = 0;
@@ -1121,6 +1131,11 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
+    m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumeShadowSoftness = 0.0f;
+    m_HPWaterVolumeShadowMinFilterSize = 0.0f;
+    m_HPWaterVolumeShadowBlockerSamples = 0;
+    m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
@@ -1273,6 +1288,11 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
+    m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumeShadowSoftness = 0.0f;
+    m_HPWaterVolumeShadowMinFilterSize = 0.0f;
+    m_HPWaterVolumeShadowBlockerSamples = 0;
+    m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
@@ -1655,6 +1675,10 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                                int shadowPCFQuality,
                                                float shadowCascadeBlendWidth,
                                                float macroScatterStrength,
+                                               float volumeShadowSoftness,
+                                               float volumeShadowMinFilterSize,
+                                               int volumeShadowBlockerSamples,
+                                               int volumeShadowFilterSamples,
                                                float causticVolumeStrength,
                                                uint32_t frameIndex) {
     if (!m_HPWaterVolumeShader || !m_HPWaterVolumeFBO || !m_HPWaterCompositeFBO ||
@@ -1662,6 +1686,11 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         m_HPWaterVolumeValid = false;
         m_HPWaterVolumeExponentialIntegrationEnabled = false;
         m_HPWaterVolumeShadowSamplingEnabled = false;
+        m_HPWaterVolumeShadowParamsEnabled = false;
+        m_HPWaterVolumeShadowSoftness = 0.0f;
+        m_HPWaterVolumeShadowMinFilterSize = 0.0f;
+        m_HPWaterVolumeShadowBlockerSamples = 0;
+        m_HPWaterVolumeShadowFilterSamples = 0;
         m_HPWaterVolumeSampleCount = 0;
         return false;
     }
@@ -1715,6 +1744,12 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
 
     const bool shadowSamplingValid = shadowsEnabled && shadowDepthTextureArray != 0 &&
         shadowDepthResolution > 0;
+    const float clampedVolumeShadowSoftness = std::clamp(volumeShadowSoftness, 0.0f, 10.0f);
+    const float clampedVolumeShadowMinFilterSize = std::clamp(volumeShadowMinFilterSize, 0.0f, 8.0f);
+    const int clampedVolumeShadowBlockerSamples = std::clamp(volumeShadowBlockerSamples, 0, 16);
+    const int clampedVolumeShadowFilterSamples = std::clamp(volumeShadowFilterSamples, 1, 16);
+    const bool volumeShadowParamsEnabled = shadowSamplingValid &&
+        (clampedVolumeShadowSoftness > 0.0001f || clampedVolumeShadowMinFilterSize > 0.0001f);
     glActiveTexture(GL_TEXTURE9);
     glBindTexture(GL_TEXTURE_2D_ARRAY,
         shadowSamplingValid ? static_cast<GLuint>(shadowDepthTextureArray) : 0);
@@ -1744,6 +1779,16 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetInt("u_ShadowPCFQuality", std::clamp(shadowPCFQuality, 0, 2));
     m_HPWaterVolumeShader->SetFloat("u_ShadowCascadeBlendWidth",
         std::clamp(shadowCascadeBlendWidth, 0.0f, 1.0f));
+    m_HPWaterVolumeShader->SetInt("u_HPWaterVolumeShadowParamsEnabled",
+        volumeShadowParamsEnabled ? 1 : 0);
+    m_HPWaterVolumeShader->SetFloat("u_HPWaterVolumeShadowSoftness",
+        clampedVolumeShadowSoftness);
+    m_HPWaterVolumeShader->SetFloat("u_HPWaterVolumeShadowMinFilterSize",
+        clampedVolumeShadowMinFilterSize);
+    m_HPWaterVolumeShader->SetInt("u_HPWaterVolumeShadowBlockerSamples",
+        clampedVolumeShadowBlockerSamples);
+    m_HPWaterVolumeShader->SetInt("u_HPWaterVolumeShadowFilterSamples",
+        clampedVolumeShadowFilterSamples);
     for (int i = 0; i < 4; ++i) {
         m_HPWaterVolumeShader->SetMat4("u_ShadowLightVP[" + std::to_string(i) + "]",
                                        shadowLightVP[static_cast<size_t>(i)]);
@@ -1766,6 +1811,11 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterVolumeExponentialIntegrationEnabled = true;
     m_HPWaterVolumeShadowSamplingEnabled = shadowSamplingValid;
+    m_HPWaterVolumeShadowParamsEnabled = volumeShadowParamsEnabled;
+    m_HPWaterVolumeShadowSoftness = clampedVolumeShadowSoftness;
+    m_HPWaterVolumeShadowMinFilterSize = clampedVolumeShadowMinFilterSize;
+    m_HPWaterVolumeShadowBlockerSamples = static_cast<uint32_t>(clampedVolumeShadowBlockerSamples);
+    m_HPWaterVolumeShadowFilterSamples = static_cast<uint32_t>(clampedVolumeShadowFilterSamples);
     m_HPWaterVolumeSampleCount = hpWaterVolumeSampleCount;
     return true;
 }

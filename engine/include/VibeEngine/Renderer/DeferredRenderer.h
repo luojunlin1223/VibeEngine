@@ -187,6 +187,10 @@ public:
                                  int shadowPCFQuality,
                                  float shadowCascadeBlendWidth,
                                  float macroScatterStrength,
+                                 float volumeShadowSoftness,
+                                 float volumeShadowMinFilterSize,
+                                 int volumeShadowBlockerSamples,
+                                 int volumeShadowFilterSamples,
                                  float causticVolumeStrength,
                                  uint32_t frameIndex);
 
@@ -325,8 +329,23 @@ public:
     bool IsHPWaterVolumeShadowSamplingEnabled() const {
         return m_HPWaterVolumeShadowSamplingEnabled;
     }
+    bool IsHPWaterVolumeShadowParamsEnabled() const {
+        return m_HPWaterVolumeShadowParamsEnabled;
+    }
     uint32_t GetHPWaterVolumeSampleCount() const {
         return m_HPWaterVolumeSampleCount;
+    }
+    float GetHPWaterVolumeShadowSoftness() const {
+        return m_HPWaterVolumeShadowSoftness;
+    }
+    float GetHPWaterVolumeShadowMinFilterSize() const {
+        return m_HPWaterVolumeShadowMinFilterSize;
+    }
+    uint32_t GetHPWaterVolumeShadowBlockerSamples() const {
+        return m_HPWaterVolumeShadowBlockerSamples;
+    }
+    uint32_t GetHPWaterVolumeShadowFilterSamples() const {
+        return m_HPWaterVolumeShadowFilterSamples;
     }
     float GetHPWaterVolumeTemporalNeighborhoodClampStrength() const {
         return m_HPWaterVolumeTemporalNeighborhoodClampStrength;
@@ -551,7 +570,12 @@ private:
     bool m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
     bool m_HPWaterVolumeShadowSamplingEnabled = false;
+    bool m_HPWaterVolumeShadowParamsEnabled = false;
     uint32_t m_HPWaterVolumeSampleCount = 0;
+    float m_HPWaterVolumeShadowSoftness = 0.0f;
+    float m_HPWaterVolumeShadowMinFilterSize = 0.0f;
+    uint32_t m_HPWaterVolumeShadowBlockerSamples = 0;
+    uint32_t m_HPWaterVolumeShadowFilterSamples = 0;
     float m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
 
     // Full-resolution caustic energy consumed by the HPWater composite pass.

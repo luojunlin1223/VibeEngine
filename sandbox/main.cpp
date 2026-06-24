@@ -6303,6 +6303,15 @@ private:
                 ImGui::SliderFloat("Forward Scatter", &w.ForwardScatterStrength, 0.0f, 3.0f, "%.3f");
                 ImGui::SliderFloat("Specular FGD", &w.SpecularFGDStrength, 0.0f, 1.0f, "%.3f");
                 ImGui::SliderFloat("GGX Energy Compensation", &w.GGXEnergyCompensation, 0.0f, 2.0f, "%.3f");
+                ImGui::SeparatorText("Volume Shadows");
+                ImGui::SliderFloat("Shadow Softness", &w.VolumeShadowSoftness, 0.0f, 10.0f, "%.2f");
+                ImGui::SliderFloat("Min Filter Size", &w.VolumeShadowMinFilterSize, 0.0f, 8.0f, "%.2f");
+                int volumeShadowBlockers = w.VolumeShadowBlockerSamples;
+                if (ImGui::SliderInt("Blocker Samples", &volumeShadowBlockers, 0, 16))
+                    w.VolumeShadowBlockerSamples = std::clamp(volumeShadowBlockers, 0, 16);
+                int volumeShadowFilters = w.VolumeShadowFilterSamples;
+                if (ImGui::SliderInt("Filter Samples", &volumeShadowFilters, 1, 16))
+                    w.VolumeShadowFilterSamples = std::clamp(volumeShadowFilters, 1, 16);
                 ImGui::SeparatorText("Caustics");
                 ImGui::Checkbox("Caustics", &w.CausticsEnabled);
                 ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
@@ -7116,8 +7125,18 @@ private:
             << d.HPWaterVolumeExponentialIntegrationEnabled << "\n";
         out << "HPWaterVolumeShadowSamplingEnabled: "
             << d.HPWaterVolumeShadowSamplingEnabled << "\n";
+        out << "HPWaterVolumeShadowParamsEnabled: "
+            << d.HPWaterVolumeShadowParamsEnabled << "\n";
         out << "HPWaterVolumeSampleCount: "
             << d.HPWaterVolumeSampleCount << "\n";
+        out << "HPWaterVolumeShadowSoftness: "
+            << d.HPWaterVolumeShadowSoftness << "\n";
+        out << "HPWaterVolumeShadowMinFilterSize: "
+            << d.HPWaterVolumeShadowMinFilterSize << "\n";
+        out << "HPWaterVolumeShadowBlockerSamples: "
+            << d.HPWaterVolumeShadowBlockerSamples << "\n";
+        out << "HPWaterVolumeShadowFilterSamples: "
+            << d.HPWaterVolumeShadowFilterSamples << "\n";
         out << "HPWaterVolumeMotionVectorTexture: "
             << d.HPWaterVolumeMotionVectorTexture << "\n";
         out << "HPWaterVolumeTemporalNeighborhoodClampStrength: "
@@ -7464,6 +7483,13 @@ private:
             d.HPWaterVolumeTemporalMotionReprojectionEnabled ? 1 : 0,
             d.HPWaterVolumeExplicitMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalNeighborhoodClampStrength);
+        ImGui::Text("HPWater volume shadows: sampling=%d params=%d softness=%.2f minFilter=%.2f blockers=%u filters=%u",
+            d.HPWaterVolumeShadowSamplingEnabled ? 1 : 0,
+            d.HPWaterVolumeShadowParamsEnabled ? 1 : 0,
+            d.HPWaterVolumeShadowSoftness,
+            d.HPWaterVolumeShadowMinFilterSize,
+            d.HPWaterVolumeShadowBlockerSamples,
+            d.HPWaterVolumeShadowFilterSamples);
         ImGui::Text("HPWater mask: %ux%u tex=%u",
             d.HPWaterMaskWidth,
             d.HPWaterMaskHeight,

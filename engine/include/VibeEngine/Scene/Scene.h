@@ -239,7 +239,12 @@ struct RenderDiagnostics {
     bool HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool HPWaterVolumeExponentialIntegrationEnabled = false;
     bool HPWaterVolumeShadowSamplingEnabled = false;
+    bool HPWaterVolumeShadowParamsEnabled = false;
     uint32_t HPWaterVolumeSampleCount = 0;
+    float HPWaterVolumeShadowSoftness = 0.0f;
+    float HPWaterVolumeShadowMinFilterSize = 0.0f;
+    uint32_t HPWaterVolumeShadowBlockerSamples = 0;
+    uint32_t HPWaterVolumeShadowFilterSamples = 0;
     uint32_t HPWaterVolumeMotionVectorTexture = 0;
     float HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     bool HPWaterVolumeHistoryValid = false;

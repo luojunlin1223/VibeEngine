@@ -411,6 +411,10 @@ struct HPWaterComponent {
     float ForwardScatterStrength = 0.65f;
     float SpecularFGDStrength = 1.0f;
     float GGXEnergyCompensation = 1.0f;
+    float VolumeShadowSoftness = 2.0f;
+    float VolumeShadowMinFilterSize = 1.0f;
+    int   VolumeShadowBlockerSamples = 8;
+    int   VolumeShadowFilterSamples = 16;
 
     bool  CausticsEnabled = true;
     float CausticStrength = 1.0f;

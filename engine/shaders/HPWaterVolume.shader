@@ -54,6 +54,11 @@ uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform float u_CausticVolumeStrength;
 uniform float u_MacroScatterStrength;
+uniform int u_HPWaterVolumeShadowParamsEnabled;
+uniform float u_HPWaterVolumeShadowSoftness;
+uniform float u_HPWaterVolumeShadowMinFilterSize;
+uniform int u_HPWaterVolumeShadowBlockerSamples;
+uniform int u_HPWaterVolumeShadowFilterSamples;
 uniform int u_VolumeSampleCount;
 uniform int u_FrameIndex;
 uniform vec3 u_LightDir;
@@ -65,6 +70,24 @@ uniform mat4 u_InverseViewProjection;
 #include "shadows.glslinc"
 
 const float PI = 3.14159265358979323846;
+const vec2 HPWATER_VOLUME_SHADOW_OFFSETS[16] = vec2[16](
+    vec2(0.0, 0.0),
+    vec2(0.5381, 0.1856),
+    vec2(-0.4319, 0.2485),
+    vec2(0.0797, -0.4905),
+    vec2(-0.3565, -0.6235),
+    vec2(0.3328, -0.7964),
+    vec2(0.7750, -0.4321),
+    vec2(-0.7463, -0.2420),
+    vec2(-0.9000, 0.4137),
+    vec2(0.8349, 0.4614),
+    vec2(-0.2302, 0.9187),
+    vec2(0.4075, 0.8226),
+    vec2(-0.7221, -0.6911),
+    vec2(0.9715, -0.0713),
+    vec2(-0.0762, -0.9458),
+    vec2(0.1918, 0.4931)
+);
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -106,6 +129,109 @@ float InterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
 vec3 SafeNormalize(vec3 v, vec3 fallback) {
     float len2 = dot(v, v);
     return len2 > 0.000001 ? v * inversesqrt(len2) : fallback;
+}
+
+float SampleHPWaterVolumeShadowCascade(vec3 shadowCoord,
+                                       int cascade,
+                                       float bias,
+                                       float radiusTexels,
+                                       int sampleCount) {
+    if (shadowCoord.x < 0.0 || shadowCoord.x > 1.0 ||
+        shadowCoord.y < 0.0 || shadowCoord.y > 1.0 ||
+        shadowCoord.z < 0.0 || shadowCoord.z > 1.0)
+        return 1.0;
+
+    vec2 texelSize = 1.0 / vec2(textureSize(u_ShadowMap, 0).xy);
+    int clampedSampleCount = clamp(sampleCount, 1, 16);
+    float clampedRadius = max(radiusTexels, 0.0);
+    float visibility = 0.0;
+    for (int i = 0; i < 16; ++i) {
+        if (i >= clampedSampleCount)
+            break;
+        vec2 offset = HPWATER_VOLUME_SHADOW_OFFSETS[i] * texelSize * clampedRadius;
+        visibility += SampleShadowHard(vec3(shadowCoord.xy + offset, shadowCoord.z),
+                                       cascade,
+                                       bias);
+    }
+    return visibility / float(clampedSampleCount);
+}
+
+float EstimateHPWaterVolumeBlockerRatio(vec3 shadowCoord,
+                                        int cascade,
+                                        float bias,
+                                        float radiusTexels,
+                                        int sampleCount) {
+    int clampedSampleCount = clamp(sampleCount, 0, 16);
+    if (clampedSampleCount <= 0)
+        return 1.0 - SampleShadowHard(shadowCoord, cascade, bias);
+
+    float visibility = SampleHPWaterVolumeShadowCascade(shadowCoord,
+                                                        cascade,
+                                                        bias,
+                                                        max(radiusTexels, 1.0),
+                                                        clampedSampleCount);
+    return clamp(1.0 - visibility, 0.0, 1.0);
+}
+
+float ComputeHPWaterVolumeShadow(vec3 fragPosWorld, vec3 N) {
+    if (u_HPWaterVolumeShadowParamsEnabled == 0)
+        return ComputeShadow(fragPosWorld, N, 0.0);
+
+    if (u_ShadowsEnabled == 0)
+        return 1.0;
+
+    float viewDepth = abs((u_ShadowCameraView * vec4(fragPosWorld, 1.0)).z);
+    if (viewDepth > u_ShadowCascadeSplits[CSM_NUM_CASCADES - 1])
+        return 1.0;
+
+    int cascade = SelectCascade(viewDepth);
+    vec3 biasedPos = ShadowBiasedPosition(fragPosWorld, N);
+    float receiverBias = ShadowReceiverDepthBias(N);
+    float minFilterSize = clamp(u_HPWaterVolumeShadowMinFilterSize, 0.0, 8.0);
+    float softness = clamp(u_HPWaterVolumeShadowSoftness, 0.0, 10.0);
+    int blockerSamples = clamp(u_HPWaterVolumeShadowBlockerSamples, 0, 16);
+    int filterSamples = clamp(u_HPWaterVolumeShadowFilterSamples, 1, 16);
+
+    vec3 shadowCoord = ProjectToShadowCoord(biasedPos, cascade);
+    float blockerRatio = EstimateHPWaterVolumeBlockerRatio(shadowCoord,
+                                                           cascade,
+                                                           receiverBias,
+                                                           max(minFilterSize, 1.0),
+                                                           blockerSamples);
+    float filterRadius = max(minFilterSize, 0.0) + softness * (0.35 + blockerRatio * 1.65);
+    float shadow = SampleHPWaterVolumeShadowCascade(shadowCoord,
+                                                    cascade,
+                                                    receiverBias,
+                                                    filterRadius,
+                                                    filterSamples);
+
+    if (cascade < CSM_NUM_CASCADES - 1 && u_ShadowCascadeBlendWidth > 0.0) {
+        float cascadeEnd = u_ShadowCascadeSplits[cascade];
+        float blendStart = cascadeEnd * (1.0 - u_ShadowCascadeBlendWidth);
+        if (viewDepth > blendStart) {
+            float blendFactor = clamp(
+                (viewDepth - blendStart) / max(cascadeEnd - blendStart, 0.0001),
+                0.0,
+                1.0);
+            int nextCascade = cascade + 1;
+            vec3 nextCoord = ProjectToShadowCoord(biasedPos, nextCascade);
+            float nextBlockerRatio = EstimateHPWaterVolumeBlockerRatio(nextCoord,
+                                                                       nextCascade,
+                                                                       receiverBias,
+                                                                       max(minFilterSize, 1.0),
+                                                                       blockerSamples);
+            float nextFilterRadius = max(minFilterSize, 0.0) +
+                softness * (0.35 + nextBlockerRatio * 1.65);
+            float nextShadow = SampleHPWaterVolumeShadowCascade(nextCoord,
+                                                                nextCascade,
+                                                                receiverBias,
+                                                                nextFilterRadius,
+                                                                filterSamples);
+            shadow = mix(shadow, nextShadow, blendFactor);
+        }
+    }
+
+    return clamp(shadow, 0.0, 1.0);
 }
 
 void main() {
@@ -188,7 +314,7 @@ void main() {
         vec3 sampleToCamera = SafeNormalize(u_CameraPosition - samplePos, V);
         float cosTheta = clamp(dot(sampleToCamera, L), -1.0, 1.0);
         vec3 phase = ScatterPhase(cosTheta);
-        float shadowVisibility = ComputeShadow(samplePos, N, 0.0);
+        float shadowVisibility = ComputeHPWaterVolumeShadow(samplePos, N);
         float volumeShadow = mix(0.35, 1.0, shadowVisibility);
         vec3 stepTransmittance = exp(-extinction * segment);
         vec3 extinguished = vec3(1.0) - stepTransmittance;
