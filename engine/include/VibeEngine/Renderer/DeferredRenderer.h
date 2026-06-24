@@ -338,6 +338,8 @@ public:
     bool IsHPWaterCausticComputeIrradianceValid() const { return m_HPWaterCausticComputeIrradianceValid; }
     bool DidRunHPWaterCausticComputeIrradiance() const { return m_HPWaterCausticComputeIrradianceRan; }
     uint32_t GetHPWaterCausticComputeAtomicTexture() const { return m_HPWaterCausticComputeAtomicTextures[0]; }
+    uint32_t GetHPWaterCausticComputeWidth() const { return m_HPWaterCausticComputeWidth; }
+    uint32_t GetHPWaterCausticComputeHeight() const { return m_HPWaterCausticComputeHeight; }
     bool IsHPWaterCausticComputeAtomicEnabled() const { return m_HPWaterCausticComputeAtomicEnabled; }
     bool IsHPWaterCausticShadowDepthConsumed() const { return m_HPWaterCausticShadowDepthConsumed; }
     bool IsHPWaterCausticRGBReceiverProjectionEnabled() const { return m_HPWaterCausticRGBReceiverProjectionEnabled; }
@@ -403,7 +405,7 @@ private:
     void CreateHPWaterCompositeFBO();
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterCausticFBO();
-    void CreateHPWaterCausticComputeTexture();
+    void CreateHPWaterCausticComputeTexture(uint32_t width = 0, uint32_t height = 0);
     void CreateHPWaterFGDLUT();
     void CreateHPWaterCausticAtlasFBO(uint32_t tileResolution);
     void CreateHPWaterGBuffer();
@@ -513,6 +515,8 @@ private:
     uint32_t m_HPWaterCausticFilterIterations = 0;
     uint32_t m_HPWaterCausticComputeIrradianceTexture = 0;
     uint32_t m_HPWaterCausticComputeAtomicTextures[4] = {};
+    uint32_t m_HPWaterCausticComputeWidth = 0;
+    uint32_t m_HPWaterCausticComputeHeight = 0;
     bool m_HPWaterCausticComputeIrradianceValid = false;
     bool m_HPWaterCausticComputeIrradianceRan = false;
     bool m_HPWaterCausticComputeAtomicEnabled = false;

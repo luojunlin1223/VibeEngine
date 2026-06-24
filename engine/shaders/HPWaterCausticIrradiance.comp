@@ -29,6 +29,8 @@ uniform sampler2DArray u_ShadowDepthCascadeAtlas;
 
 uniform int u_OutputWidth;
 uniform int u_OutputHeight;
+uniform int u_InputWidth;
+uniform int u_InputHeight;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticAtlasEnabled;
 uniform int u_ShadowDepthCascadeAtlasEnabled;
@@ -354,10 +356,10 @@ void ScatterChannel(vec2 receiverUV, int channel, float energy) {
 
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    if (pixel.x >= u_OutputWidth || pixel.y >= u_OutputHeight)
+    if (pixel.x >= u_InputWidth || pixel.y >= u_InputHeight)
         return;
 
-    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(u_OutputWidth, u_OutputHeight);
+    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(u_InputWidth, u_InputHeight);
     float waterDepth = texture(u_HPWaterDepth, uv).r;
     float waterMask = u_HPWaterMaskEnabled == 1
         ? texture(u_HPWaterMask, uv).r
