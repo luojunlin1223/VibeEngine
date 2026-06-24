@@ -415,6 +415,15 @@ struct HPWaterComponent {
     float VolumeShadowMinFilterSize = 1.0f;
     int   VolumeShadowBlockerSamples = 8;
     int   VolumeShadowFilterSamples = 16;
+    float VolumeTemporalBlendFactor = 0.9f;
+    bool  VolumeSpatialFilterEnabled = true;
+    int   VolumeSpatialFilterIterations = 2;
+    bool  VolumeMotionVectorsEnabled = true;
+    float VolumeMotionVectorVelocityScale = 0.1f;
+    bool  VolumeTemporalDepthRejection = true;
+    float VolumeTemporalDepthThreshold = 0.5f;
+    bool  VolumeSpatialDepthAware = true;
+    float VolumeSpatialDepthSensitivity = 100.0f;
 
     bool  CausticsEnabled = true;
     float CausticStrength = 1.0f;

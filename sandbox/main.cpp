@@ -6312,6 +6312,18 @@ private:
                 int volumeShadowFilters = w.VolumeShadowFilterSamples;
                 if (ImGui::SliderInt("Filter Samples", &volumeShadowFilters, 1, 16))
                     w.VolumeShadowFilterSamples = std::clamp(volumeShadowFilters, 1, 16);
+                ImGui::SeparatorText("Volume Temporal / Filter");
+                ImGui::SliderFloat("Temporal Blend", &w.VolumeTemporalBlendFactor, 0.0f, 0.98f, "%.3f");
+                ImGui::Checkbox("Spatial Filter", &w.VolumeSpatialFilterEnabled);
+                int volumeSpatialIterations = w.VolumeSpatialFilterIterations;
+                if (ImGui::SliderInt("Spatial Iterations", &volumeSpatialIterations, 1, 3))
+                    w.VolumeSpatialFilterIterations = std::clamp(volumeSpatialIterations, 1, 3);
+                ImGui::Checkbox("Motion Vectors", &w.VolumeMotionVectorsEnabled);
+                ImGui::SliderFloat("Velocity Rejection Scale", &w.VolumeMotionVectorVelocityScale, 0.0f, 10.0f, "%.3f");
+                ImGui::Checkbox("Temporal Depth Rejection", &w.VolumeTemporalDepthRejection);
+                ImGui::SliderFloat("Temporal Depth Threshold", &w.VolumeTemporalDepthThreshold, 0.0001f, 10.0f, "%.4f");
+                ImGui::Checkbox("Spatial Depth Aware", &w.VolumeSpatialDepthAware);
+                ImGui::SliderFloat("Spatial Depth Sensitivity", &w.VolumeSpatialDepthSensitivity, 0.0f, 1000.0f, "%.2f");
                 ImGui::SeparatorText("Caustics");
                 ImGui::Checkbox("Caustics", &w.CausticsEnabled);
                 ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
@@ -7139,6 +7151,24 @@ private:
             << d.HPWaterVolumeShadowFilterSamples << "\n";
         out << "HPWaterVolumeMotionVectorTexture: "
             << d.HPWaterVolumeMotionVectorTexture << "\n";
+        out << "HPWaterVolumeTemporalBlendFactor: "
+            << d.HPWaterVolumeTemporalBlendFactor << "\n";
+        out << "HPWaterVolumeSpatialFilterEnabled: "
+            << d.HPWaterVolumeSpatialFilterEnabled << "\n";
+        out << "HPWaterVolumeSpatialFilterIterations: "
+            << d.HPWaterVolumeSpatialFilterIterations << "\n";
+        out << "HPWaterVolumeMotionVectorsEnabled: "
+            << d.HPWaterVolumeMotionVectorsEnabled << "\n";
+        out << "HPWaterVolumeMotionVectorVelocityScale: "
+            << d.HPWaterVolumeMotionVectorVelocityScale << "\n";
+        out << "HPWaterVolumeTemporalDepthRejectionEnabled: "
+            << d.HPWaterVolumeTemporalDepthRejectionEnabled << "\n";
+        out << "HPWaterVolumeTemporalDepthThreshold: "
+            << d.HPWaterVolumeTemporalDepthThreshold << "\n";
+        out << "HPWaterVolumeSpatialDepthAwareEnabled: "
+            << d.HPWaterVolumeSpatialDepthAwareEnabled << "\n";
+        out << "HPWaterVolumeSpatialDepthSensitivity: "
+            << d.HPWaterVolumeSpatialDepthSensitivity << "\n";
         out << "HPWaterVolumeTemporalNeighborhoodClampStrength: "
             << d.HPWaterVolumeTemporalNeighborhoodClampStrength << "\n";
         out << "HPWaterVolumeHistoryValid: " << d.HPWaterVolumeHistoryValid << "\n";
@@ -7483,6 +7513,16 @@ private:
             d.HPWaterVolumeTemporalMotionReprojectionEnabled ? 1 : 0,
             d.HPWaterVolumeExplicitMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalNeighborhoodClampStrength);
+        ImGui::Text("HPWater volume filter params: blend=%.3f spatial=%d iter=%u mv=%d vel=%.3f depthReject=%d threshold=%.3f depthAware=%d sensitivity=%.1f",
+            d.HPWaterVolumeTemporalBlendFactor,
+            d.HPWaterVolumeSpatialFilterEnabled ? 1 : 0,
+            d.HPWaterVolumeSpatialFilterIterations,
+            d.HPWaterVolumeMotionVectorsEnabled ? 1 : 0,
+            d.HPWaterVolumeMotionVectorVelocityScale,
+            d.HPWaterVolumeTemporalDepthRejectionEnabled ? 1 : 0,
+            d.HPWaterVolumeTemporalDepthThreshold,
+            d.HPWaterVolumeSpatialDepthAwareEnabled ? 1 : 0,
+            d.HPWaterVolumeSpatialDepthSensitivity);
         ImGui::Text("HPWater volume shadows: sampling=%d params=%d softness=%.2f minFilter=%.2f blockers=%u filters=%u",
             d.HPWaterVolumeShadowSamplingEnabled ? 1 : 0,
             d.HPWaterVolumeShadowParamsEnabled ? 1 : 0,

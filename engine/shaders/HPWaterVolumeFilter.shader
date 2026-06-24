@@ -40,6 +40,8 @@ uniform sampler2D u_VolumeColor;
 uniform sampler2D u_VolumeTransmittance;
 uniform sampler2D u_VolumeDepth;
 uniform float u_FilterStep;
+uniform int u_SpatialDepthAwareEnabled;
+uniform float u_SpatialDepthSensitivity;
 
 float KernelWeight(int offset) {
     int a = abs(offset);
@@ -81,7 +83,12 @@ void main() {
             float spatialWeight = KernelWeight(x) * KernelWeight(y);
             float depthDelta = abs(sampleDepth.r - centerDepth.r);
             float rayDelta = abs(sampleDepth.g - centerDepth.g);
-            float depthWeight = exp(-depthDelta * 7.5 - rayDelta * 0.45);
+            float depthWeight = 1.0;
+            if (u_SpatialDepthAwareEnabled == 1) {
+                float sensitivity = max(u_SpatialDepthSensitivity, 0.0);
+                depthWeight = exp(-depthDelta * sensitivity * 0.075 -
+                    rayDelta * sensitivity * 0.0045);
+            }
             float w = spatialWeight * depthWeight * valid;
 
             colorAccum += sampleColor.rgb * w;

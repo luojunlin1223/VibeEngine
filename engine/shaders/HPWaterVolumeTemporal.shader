@@ -51,9 +51,10 @@ uniform mat4 u_CurrentViewProjection;
 uniform mat4 u_PreviousViewProjection;
 uniform int u_HistoryValid;
 uniform int u_MotionVectorValid;
+uniform int u_DepthRejectionEnabled;
 uniform float u_HistoryBlend;
 uniform float u_DepthRejectionThreshold;
-uniform float u_VelocityRejectionScale;
+uniform float u_MotionVectorVelocityScale;
 uniform float u_NeighborhoodClampStrength;
 
 struct NeighborhoodBounds {
@@ -165,12 +166,15 @@ void main() {
     historyColor.rgb = mix(historyColor.rgb, clampedHistoryColor, clampStrength);
     historyTransmittance.rgb = mix(historyTransmittance.rgb, clampedHistoryTransmittance, clampStrength);
 
-    float depthThreshold = max(u_DepthRejectionThreshold, 0.0001) * max(currentDepth.r, 1.0);
-    float depthDiff = abs(currentDepth.r - historyDepth.r);
-    float depthWeight = 1.0 - smoothstep(depthThreshold * 0.35, depthThreshold, depthDiff);
-    float depthBoundsDiff = max(bounds.depthMin - historyDepth.r, historyDepth.r - bounds.depthMax);
-    float depthBoundsWeight = 1.0 - smoothstep(depthThreshold * 0.25, depthThreshold, max(depthBoundsDiff, 0.0));
-    depthWeight *= depthBoundsWeight;
+    float depthWeight = 1.0;
+    if (u_DepthRejectionEnabled == 1) {
+        float depthThreshold = max(u_DepthRejectionThreshold, 0.0001) * max(currentDepth.r, 1.0);
+        float depthDiff = abs(currentDepth.r - historyDepth.r);
+        depthWeight = 1.0 - smoothstep(depthThreshold * 0.35, depthThreshold, depthDiff);
+        float depthBoundsDiff = max(bounds.depthMin - historyDepth.r, historyDepth.r - bounds.depthMax);
+        float depthBoundsWeight = 1.0 - smoothstep(depthThreshold * 0.25, depthThreshold, max(depthBoundsDiff, 0.0));
+        depthWeight *= depthBoundsWeight;
+    }
 
     bool currentProjectValid = false;
     vec2 currentUV = ProjectUV(u_CurrentViewProjection, refractWorld.xyz, currentProjectValid);
@@ -183,7 +187,7 @@ void main() {
         : (historyUV - currentUV);
     vec2 velocityPixels = motionVectorUV * vec2(textureSize(u_CurrentColor, 0));
     float velocity = length(velocityPixels);
-    float velocityWeight = exp(-velocity * max(u_VelocityRejectionScale, 0.0) * 0.01);
+    float velocityWeight = exp(-velocity * max(u_MotionVectorVelocityScale, 0.0));
 
     float historyWeight = Saturate(u_HistoryBlend) * depthWeight * velocityWeight;
     vec3 blendedColor = mix(currentColor.rgb, historyColor.rgb, historyWeight);

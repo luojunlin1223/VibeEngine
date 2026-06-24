@@ -196,10 +196,18 @@ public:
 
     /// Reproject and blend low-resolution HPWater volume data with previous frame history.
     bool TemporalFilterHPWaterVolume(const glm::mat4& currentViewProjection,
-                                     const glm::mat4& previousViewProjection);
+                                     const glm::mat4& previousViewProjection,
+                                     float temporalBlendFactor,
+                                     bool motionVectorsEnabled,
+                                     float motionVectorVelocityScale,
+                                     bool temporalDepthRejectionEnabled,
+                                     float temporalDepthThreshold);
 
     /// Run multi-iteration depth-aware a-trous filtering over low-resolution HPWater volume buffers.
-    bool FilterHPWaterVolume();
+    bool FilterHPWaterVolume(bool spatialFilterEnabled,
+                             int iterations,
+                             bool spatialDepthAwareEnabled,
+                             float spatialDepthSensitivity);
 
     /// Resolve filtered low-resolution HPWater volume buffers into full-resolution textures.
     bool UpsampleHPWaterVolume(float nearClip, float farClip);
@@ -350,6 +358,33 @@ public:
     float GetHPWaterVolumeTemporalNeighborhoodClampStrength() const {
         return m_HPWaterVolumeTemporalNeighborhoodClampStrength;
     }
+    float GetHPWaterVolumeTemporalBlendFactor() const {
+        return m_HPWaterVolumeTemporalBlendFactor;
+    }
+    bool IsHPWaterVolumeSpatialFilterEnabled() const {
+        return m_HPWaterVolumeSpatialFilterEnabled;
+    }
+    uint32_t GetHPWaterVolumeSpatialFilterIterations() const {
+        return m_HPWaterVolumeSpatialFilterIterations;
+    }
+    bool IsHPWaterVolumeMotionVectorsEnabled() const {
+        return m_HPWaterVolumeMotionVectorsEnabled;
+    }
+    float GetHPWaterVolumeMotionVectorVelocityScale() const {
+        return m_HPWaterVolumeMotionVectorVelocityScale;
+    }
+    bool IsHPWaterVolumeTemporalDepthRejectionEnabled() const {
+        return m_HPWaterVolumeTemporalDepthRejectionEnabled;
+    }
+    float GetHPWaterVolumeTemporalDepthThreshold() const {
+        return m_HPWaterVolumeTemporalDepthThreshold;
+    }
+    bool IsHPWaterVolumeSpatialDepthAwareEnabled() const {
+        return m_HPWaterVolumeSpatialDepthAwareEnabled;
+    }
+    float GetHPWaterVolumeSpatialDepthSensitivity() const {
+        return m_HPWaterVolumeSpatialDepthSensitivity;
+    }
     uint32_t GetHPWaterVolumeMotionVectorTexture() const;
     bool IsHPWaterVolumeUpsampledValid() const { return m_HPWaterVolumeUpsampledValid; }
     void InvalidateHPWaterVolumeHistory();
@@ -487,7 +522,9 @@ private:
     void CommitHPWaterVolumeHistory();
     bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
                                     const std::shared_ptr<Framebuffer>& outputFBO,
-                                    float stride);
+                                    float stride,
+                                    bool spatialDepthAwareEnabled,
+                                    float spatialDepthSensitivity);
     bool RunHPWaterCausticFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
                                      const std::shared_ptr<Framebuffer>& outputFBO,
                                      float stride,
@@ -577,6 +614,15 @@ private:
     uint32_t m_HPWaterVolumeShadowBlockerSamples = 0;
     uint32_t m_HPWaterVolumeShadowFilterSamples = 0;
     float m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
+    float m_HPWaterVolumeTemporalBlendFactor = 0.0f;
+    bool m_HPWaterVolumeSpatialFilterEnabled = false;
+    uint32_t m_HPWaterVolumeSpatialFilterIterations = 0;
+    bool m_HPWaterVolumeMotionVectorsEnabled = false;
+    float m_HPWaterVolumeMotionVectorVelocityScale = 0.0f;
+    bool m_HPWaterVolumeTemporalDepthRejectionEnabled = false;
+    float m_HPWaterVolumeTemporalDepthThreshold = 0.0f;
+    bool m_HPWaterVolumeSpatialDepthAwareEnabled = false;
+    float m_HPWaterVolumeSpatialDepthSensitivity = 0.0f;
 
     // Full-resolution caustic energy consumed by the HPWater composite pass.
     std::shared_ptr<Framebuffer> m_HPWaterCausticFBO;

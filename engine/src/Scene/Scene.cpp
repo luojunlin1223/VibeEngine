@@ -1461,6 +1461,15 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterVolumeShadowMinFilterSize = 1.0f;
     int hpWaterVolumeShadowBlockerSamples = 8;
     int hpWaterVolumeShadowFilterSamples = 16;
+    float hpWaterVolumeTemporalBlendFactor = 0.0f;
+    bool hpWaterVolumeSpatialFilterEnabled = false;
+    int hpWaterVolumeSpatialFilterIterations = 1;
+    bool hpWaterVolumeMotionVectorsEnabled = false;
+    float hpWaterVolumeMotionVectorVelocityScale = 0.0f;
+    bool hpWaterVolumeTemporalDepthRejection = false;
+    float hpWaterVolumeTemporalDepthThreshold = 0.0f;
+    bool hpWaterVolumeSpatialDepthAware = false;
+    float hpWaterVolumeSpatialDepthSensitivity = 0.0f;
     float hpWaterThinSSSStrength = 0.0f;
     float hpWaterBacklitTransmissionStrength = 0.0f;
     float hpWaterForwardScatterStrength = 0.0f;
@@ -1652,6 +1661,29 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterVolumeShadowFilterSamples = std::max(
                     hpWaterVolumeShadowFilterSamples,
                     std::clamp(water->VolumeShadowFilterSamples, 1, 16));
+                hpWaterVolumeTemporalBlendFactor = std::max(
+                    hpWaterVolumeTemporalBlendFactor,
+                    std::clamp(water->VolumeTemporalBlendFactor, 0.0f, 0.98f));
+                hpWaterVolumeSpatialFilterEnabled =
+                    hpWaterVolumeSpatialFilterEnabled || water->VolumeSpatialFilterEnabled;
+                hpWaterVolumeSpatialFilterIterations = std::max(
+                    hpWaterVolumeSpatialFilterIterations,
+                    std::clamp(water->VolumeSpatialFilterIterations, 1, 3));
+                hpWaterVolumeMotionVectorsEnabled =
+                    hpWaterVolumeMotionVectorsEnabled || water->VolumeMotionVectorsEnabled;
+                hpWaterVolumeMotionVectorVelocityScale = std::max(
+                    hpWaterVolumeMotionVectorVelocityScale,
+                    std::clamp(water->VolumeMotionVectorVelocityScale, 0.0f, 10.0f));
+                hpWaterVolumeTemporalDepthRejection =
+                    hpWaterVolumeTemporalDepthRejection || water->VolumeTemporalDepthRejection;
+                hpWaterVolumeTemporalDepthThreshold = std::max(
+                    hpWaterVolumeTemporalDepthThreshold,
+                    std::clamp(water->VolumeTemporalDepthThreshold, 0.0001f, 10.0f));
+                hpWaterVolumeSpatialDepthAware =
+                    hpWaterVolumeSpatialDepthAware || water->VolumeSpatialDepthAware;
+                hpWaterVolumeSpatialDepthSensitivity = std::max(
+                    hpWaterVolumeSpatialDepthSensitivity,
+                    std::clamp(water->VolumeSpatialDepthSensitivity, 0.0f, 1000.0f));
                 hpWaterThinSSSStrength = std::max(
                     hpWaterThinSSSStrength,
                     water->ThinSSSStrength);
@@ -2522,18 +2554,47 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
         m_RenderDiagnostics.HPWaterVolumeSampleCount =
             m_DeferredRenderer.GetHPWaterVolumeSampleCount();
+        m_RenderDiagnostics.HPWaterVolumeTemporalBlendFactor =
+            m_DeferredRenderer.GetHPWaterVolumeTemporalBlendFactor();
+        m_RenderDiagnostics.HPWaterVolumeSpatialFilterEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeSpatialFilterEnabled();
+        m_RenderDiagnostics.HPWaterVolumeSpatialFilterIterations =
+            m_DeferredRenderer.GetHPWaterVolumeSpatialFilterIterations();
+        m_RenderDiagnostics.HPWaterVolumeMotionVectorsEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeMotionVectorsEnabled();
+        m_RenderDiagnostics.HPWaterVolumeMotionVectorVelocityScale =
+            m_DeferredRenderer.GetHPWaterVolumeMotionVectorVelocityScale();
+        m_RenderDiagnostics.HPWaterVolumeTemporalDepthRejectionEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeTemporalDepthRejectionEnabled();
+        m_RenderDiagnostics.HPWaterVolumeTemporalDepthThreshold =
+            m_DeferredRenderer.GetHPWaterVolumeTemporalDepthThreshold();
+        m_RenderDiagnostics.HPWaterVolumeSpatialDepthAwareEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeSpatialDepthAwareEnabled();
+        m_RenderDiagnostics.HPWaterVolumeSpatialDepthSensitivity =
+            m_DeferredRenderer.GetHPWaterVolumeSpatialDepthSensitivity();
         const glm::mat4 previousWaterVP = m_HasPreviousHPWaterViewProjection
             ? m_PreviousHPWaterViewProjection
             : viewProjection;
         m_RenderDiagnostics.HPWaterVolumeTemporalRan =
             m_RenderDiagnostics.HPWaterVolumeRan &&
-            m_DeferredRenderer.TemporalFilterHPWaterVolume(viewProjection, previousWaterVP);
+            m_DeferredRenderer.TemporalFilterHPWaterVolume(viewProjection,
+                                                           previousWaterVP,
+                                                           hpWaterVolumeTemporalBlendFactor,
+                                                           hpWaterVolumeMotionVectorsEnabled,
+                                                           hpWaterVolumeMotionVectorVelocityScale,
+                                                           hpWaterVolumeTemporalDepthRejection,
+                                                           hpWaterVolumeTemporalDepthThreshold);
         m_RenderDiagnostics.HPWaterVolumeFilterRan =
-            m_RenderDiagnostics.HPWaterVolumeRan && m_DeferredRenderer.FilterHPWaterVolume();
+            m_RenderDiagnostics.HPWaterVolumeRan &&
+            m_DeferredRenderer.FilterHPWaterVolume(hpWaterVolumeSpatialFilterEnabled,
+                                                   hpWaterVolumeSpatialFilterIterations,
+                                                   hpWaterVolumeSpatialDepthAware,
+                                                   hpWaterVolumeSpatialDepthSensitivity);
         m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
         m_RenderDiagnostics.HPWaterVolumeFilterIterations = m_DeferredRenderer.GetHPWaterVolumeFilterIterations();
         m_RenderDiagnostics.HPWaterVolumeUpsampleRan =
-            m_RenderDiagnostics.HPWaterVolumeFilterRan &&
+            m_RenderDiagnostics.HPWaterVolumeRan &&
+            (!hpWaterVolumeSpatialFilterEnabled || m_RenderDiagnostics.HPWaterVolumeFilterRan) &&
             m_DeferredRenderer.UpsampleHPWaterVolume(nearClip, farClip);
         m_RenderDiagnostics.HPWaterCompositeRan =
             m_DeferredRenderer.CompositeHPWater(nearClip,
@@ -2617,6 +2678,24 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
         m_DeferredRenderer.GetHPWaterVolumeMotionVectorTexture();
+    m_RenderDiagnostics.HPWaterVolumeTemporalBlendFactor =
+        m_DeferredRenderer.GetHPWaterVolumeTemporalBlendFactor();
+    m_RenderDiagnostics.HPWaterVolumeSpatialFilterEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeSpatialFilterEnabled();
+    m_RenderDiagnostics.HPWaterVolumeSpatialFilterIterations =
+        m_DeferredRenderer.GetHPWaterVolumeSpatialFilterIterations();
+    m_RenderDiagnostics.HPWaterVolumeMotionVectorsEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeMotionVectorsEnabled();
+    m_RenderDiagnostics.HPWaterVolumeMotionVectorVelocityScale =
+        m_DeferredRenderer.GetHPWaterVolumeMotionVectorVelocityScale();
+    m_RenderDiagnostics.HPWaterVolumeTemporalDepthRejectionEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeTemporalDepthRejectionEnabled();
+    m_RenderDiagnostics.HPWaterVolumeTemporalDepthThreshold =
+        m_DeferredRenderer.GetHPWaterVolumeTemporalDepthThreshold();
+    m_RenderDiagnostics.HPWaterVolumeSpatialDepthAwareEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeSpatialDepthAwareEnabled();
+    m_RenderDiagnostics.HPWaterVolumeSpatialDepthSensitivity =
+        m_DeferredRenderer.GetHPWaterVolumeSpatialDepthSensitivity();
     m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =
         m_DeferredRenderer.GetHPWaterVolumeTemporalNeighborhoodClampStrength();
     m_RenderDiagnostics.HPWaterVolumeHistoryValid = m_DeferredRenderer.HasHPWaterVolumeHistory();
