@@ -72,10 +72,7 @@ vec2 WorldToFluidUV(vec3 worldPos) {
 }
 
 float SampleFluidHeight(vec2 uv) {
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-        return 0.0;
-    }
-    return texture(u_HPFluidHeightTexture, clamp(uv, vec2(0.001), vec2(0.999))).r;
+    return texture(u_HPFluidHeightTexture, clamp(uv, vec2(0.0), vec2(1.0))).r;
 }
 
 vec3 SampleFluidNormal(vec3 worldPos, out float centerHeight) {

@@ -2534,6 +2534,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterFluidEdgeAbsorptionParityEnabled =
         m_DeferredRenderer.IsHPWaterFluidEdgeAbsorptionParityEnabled();
     m_RenderDiagnostics.HPWaterFluidSourceClampEnabled = m_DeferredRenderer.IsHPWaterFluidSourceClampEnabled();
+    m_RenderDiagnostics.HPWaterFluidSampleClampParityEnabled =
+        m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
     m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;
