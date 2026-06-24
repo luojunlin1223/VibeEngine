@@ -353,6 +353,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterCausticValid = false;
@@ -678,6 +679,7 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterVolumeFilterIterations = 0;
@@ -1071,6 +1073,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
@@ -1222,6 +1225,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeSampleCount = 0;
     m_HPWaterCausticValid = false;
     m_HPWaterCausticFilteredValid = false;
@@ -1591,6 +1595,16 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                                float lightIntensity,
                                                const glm::vec3& cameraPosition,
                                                const glm::mat4& inverseViewProjection,
+                                               const glm::mat4& shadowCameraView,
+                                               const std::array<glm::mat4, 4>& shadowLightVP,
+                                               const std::array<float, 4>& shadowCascadeSplits,
+                                               uint32_t shadowDepthTextureArray,
+                                               uint32_t shadowDepthResolution,
+                                               bool shadowsEnabled,
+                                               float shadowDepthBias,
+                                               float shadowNormalBias,
+                                               int shadowPCFQuality,
+                                               float shadowCascadeBlendWidth,
                                                float macroScatterStrength,
                                                float causticVolumeStrength,
                                                uint32_t frameIndex) {
@@ -1598,6 +1612,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterVolumeValid = false;
         m_HPWaterVolumeExponentialIntegrationEnabled = false;
+        m_HPWaterVolumeShadowSamplingEnabled = false;
         m_HPWaterVolumeSampleCount = 0;
         return false;
     }
@@ -1649,6 +1664,13 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         : 0);
     m_HPWaterVolumeShader->SetInt("u_HPWaterCaustic", 8);
 
+    const bool shadowSamplingValid = shadowsEnabled && shadowDepthTextureArray != 0 &&
+        shadowDepthResolution > 0;
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D_ARRAY,
+        shadowSamplingValid ? static_cast<GLuint>(shadowDepthTextureArray) : 0);
+    m_HPWaterVolumeShader->SetInt("u_ShadowMap", 9);
+
     m_HPWaterVolumeShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterVolumeShader->SetFloat("u_FarClip", farClip);
     m_HPWaterVolumeShader->SetVec3("u_LightDir", lightDir);
@@ -1666,6 +1688,19 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetInt("u_HPWaterCausticEnabled", causticVolumeValid ? 1 : 0);
     m_HPWaterVolumeShader->SetFloat("u_CausticVolumeStrength",
         std::clamp(causticVolumeStrength, 0.0f, 4.0f));
+    m_HPWaterVolumeShader->SetInt("u_ShadowsEnabled", shadowSamplingValid ? 1 : 0);
+    m_HPWaterVolumeShader->SetMat4("u_ShadowCameraView", shadowCameraView);
+    m_HPWaterVolumeShader->SetFloat("u_ShadowDepthBias", shadowDepthBias);
+    m_HPWaterVolumeShader->SetFloat("u_ShadowNormalBias", shadowNormalBias);
+    m_HPWaterVolumeShader->SetInt("u_ShadowPCFQuality", std::clamp(shadowPCFQuality, 0, 2));
+    m_HPWaterVolumeShader->SetFloat("u_ShadowCascadeBlendWidth",
+        std::clamp(shadowCascadeBlendWidth, 0.0f, 1.0f));
+    for (int i = 0; i < 4; ++i) {
+        m_HPWaterVolumeShader->SetMat4("u_ShadowLightVP[" + std::to_string(i) + "]",
+                                       shadowLightVP[static_cast<size_t>(i)]);
+        m_HPWaterVolumeShader->SetFloat("u_ShadowCascadeSplits[" + std::to_string(i) + "]",
+                                        shadowCascadeSplits[static_cast<size_t>(i)]);
+    }
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -1681,6 +1716,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterVolumeExponentialIntegrationEnabled = true;
+    m_HPWaterVolumeShadowSamplingEnabled = shadowSamplingValid;
     m_HPWaterVolumeSampleCount = hpWaterVolumeSampleCount;
     return true;
 }

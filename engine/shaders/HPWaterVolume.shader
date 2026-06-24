@@ -62,6 +62,8 @@ uniform float u_LightIntensity;
 uniform vec3 u_CameraPosition;
 uniform mat4 u_InverseViewProjection;
 
+#include "shadows.glslinc"
+
 const float PI = 3.14159265358979323846;
 
 float LinearizeDepth(float depth) {
@@ -186,11 +188,13 @@ void main() {
         vec3 sampleToCamera = SafeNormalize(u_CameraPosition - samplePos, V);
         float cosTheta = clamp(dot(sampleToCamera, L), -1.0, 1.0);
         vec3 phase = ScatterPhase(cosTheta);
+        float shadowVisibility = ComputeShadow(samplePos, N, 0.0);
+        float volumeShadow = mix(0.35, 1.0, shadowVisibility);
         vec3 stepTransmittance = exp(-extinction * segment);
         vec3 extinguished = vec3(1.0) - stepTransmittance;
         float depthWeight = 0.55 + 0.45 * smoothstep(0.0, 1.0, midD);
 
-        directScatter += accumTransmittance * baseDirectLight * extinguished *
+        directScatter += accumTransmittance * baseDirectLight * volumeShadow * extinguished *
             scatteringAlbedo * (phase * 2.6) * macroScatter * depthWeight;
 
         vec3 refractedSceneColor = texture(u_SceneColor, sampleUV).rgb;

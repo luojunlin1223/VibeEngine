@@ -7102,6 +7102,8 @@ private:
             << d.HPWaterVolumeExplicitMotionVectorEnabled << "\n";
         out << "HPWaterVolumeExponentialIntegrationEnabled: "
             << d.HPWaterVolumeExponentialIntegrationEnabled << "\n";
+        out << "HPWaterVolumeShadowSamplingEnabled: "
+            << d.HPWaterVolumeShadowSamplingEnabled << "\n";
         out << "HPWaterVolumeSampleCount: "
             << d.HPWaterVolumeSampleCount << "\n";
         out << "HPWaterVolumeMotionVectorTexture: "

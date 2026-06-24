@@ -176,6 +176,16 @@ public:
                                  float lightIntensity,
                                  const glm::vec3& cameraPosition,
                                  const glm::mat4& inverseViewProjection,
+                                 const glm::mat4& shadowCameraView,
+                                 const std::array<glm::mat4, 4>& shadowLightVP,
+                                 const std::array<float, 4>& shadowCascadeSplits,
+                                 uint32_t shadowDepthTextureArray,
+                                 uint32_t shadowDepthResolution,
+                                 bool shadowsEnabled,
+                                 float shadowDepthBias,
+                                 float shadowNormalBias,
+                                 int shadowPCFQuality,
+                                 float shadowCascadeBlendWidth,
                                  float macroScatterStrength,
                                  float causticVolumeStrength,
                                  uint32_t frameIndex);
@@ -302,6 +312,9 @@ public:
     }
     bool IsHPWaterVolumeExponentialIntegrationEnabled() const {
         return m_HPWaterVolumeExponentialIntegrationEnabled;
+    }
+    bool IsHPWaterVolumeShadowSamplingEnabled() const {
+        return m_HPWaterVolumeShadowSamplingEnabled;
     }
     uint32_t GetHPWaterVolumeSampleCount() const {
         return m_HPWaterVolumeSampleCount;
@@ -515,6 +528,7 @@ private:
     bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     bool m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
+    bool m_HPWaterVolumeShadowSamplingEnabled = false;
     uint32_t m_HPWaterVolumeSampleCount = 0;
     float m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
 
