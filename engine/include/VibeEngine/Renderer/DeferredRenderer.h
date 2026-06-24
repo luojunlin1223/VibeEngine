@@ -257,6 +257,11 @@ public:
     bool BeginHPWaterFluidSceneHeightCapture(uint32_t resolution,
                                              const glm::vec3& boxCenter,
                                              const glm::vec3& boxSize);
+    void BeginHPWaterFluidHeightCaptureFrame(bool startFrameBakeEnabled);
+    bool CanReuseHPWaterFluidHeightCapture(uint32_t resolution,
+                                           const glm::vec3& boxCenter,
+                                           const glm::vec3& boxSize) const;
+    void MarkHPWaterFluidHeightCaptureCacheReused();
     void EndHPWaterFluidWaterHeightCapture(bool valid);
     void EndHPWaterFluidSceneHeightCapture(bool valid);
 
@@ -398,6 +403,7 @@ public:
     bool IsHPWaterFluidHeightFieldValid() const { return m_HPWaterFluidHeightFieldValid; }
     bool DidHPWaterFluidHeightCaptureRun() const { return m_HPWaterFluidHeightCaptureRan; }
     bool IsHPWaterFluidHeightCaptureValid() const { return m_HPWaterFluidHeightCaptureValid; }
+    bool WasHPWaterFluidHeightCaptureCacheReused() const { return m_HPWaterFluidHeightCaptureCacheReused; }
     glm::vec3 GetHPWaterFluidBoxCenter() const { return m_HPWaterFluidBoxCenter; }
     glm::vec3 GetHPWaterFluidBoxSize() const { return m_HPWaterFluidBoxSize; }
 
@@ -580,6 +586,7 @@ private:
     bool m_HPWaterFluidHeightFieldValid = false;
     bool m_HPWaterFluidHeightCaptureRan = false;
     bool m_HPWaterFluidHeightCaptureValid = false;
+    bool m_HPWaterFluidHeightCaptureCacheReused = false;
     bool m_HPWaterFluidWaterHeightCaptured = false;
     bool m_HPWaterFluidSceneHeightCaptured = false;
     uint32_t m_HPWaterFluidObstacleTexture = 0;

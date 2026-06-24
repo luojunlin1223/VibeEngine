@@ -6328,6 +6328,7 @@ private:
                 ImGui::DragFloat("Fluid Impulse Radius", &w.FluidImpulseRadius, 0.25f, 1.0f, 128.0f, "%.2f");
                 ImGui::DragFloat("Fluid Impulse Strength", &w.FluidImpulseStrength, 0.001f, -1.0f, 1.0f, "%.3f");
                 ImGui::Checkbox("Fluid Obstacles", &w.FluidObstaclesEnabled);
+                ImGui::Checkbox("Start Frame Bake", &w.FluidStartFrameBake);
                 ImGui::DragFloat("Obstacle Padding", &w.FluidObstaclePadding, 0.1f, 0.0f, 20.0f, "%.2f");
                 ImGui::DragFloat("Obstacle Height Range", &w.FluidObstacleHeightRange, 0.1f, 0.0f, 50.0f, "%.2f");
             }
@@ -7169,6 +7170,8 @@ private:
         out << "HPWaterFluidSourceClampEnabled: " << d.HPWaterFluidSourceClampEnabled << "\n";
         out << "HPWaterFluidWaveEquationParityEnabled: " << d.HPWaterFluidWaveEquationParityEnabled << "\n";
         out << "HPWaterFluidSampleClampParityEnabled: " << d.HPWaterFluidSampleClampParityEnabled << "\n";
+        out << "HPWaterFluidStartFrameBakeEnabled: " << d.HPWaterFluidStartFrameBakeEnabled << "\n";
+        out << "HPWaterFluidHeightCaptureCacheReused: " << d.HPWaterFluidHeightCaptureCacheReused << "\n";
         out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
         out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
         out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";

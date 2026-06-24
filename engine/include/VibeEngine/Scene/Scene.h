@@ -300,6 +300,8 @@ struct RenderDiagnostics {
     bool HPWaterFluidSourceClampEnabled = false;
     bool HPWaterFluidWaveEquationParityEnabled = false;
     bool HPWaterFluidSampleClampParityEnabled = false;
+    bool HPWaterFluidStartFrameBakeEnabled = false;
+    bool HPWaterFluidHeightCaptureCacheReused = false;
     uint32_t HPWaterFluidHeightTexture = 0;
     uint32_t HPWaterFluidResolution = 0;
     float HPWaterFluidWaveSpeed = 0.0f;

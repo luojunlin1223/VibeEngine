@@ -1459,6 +1459,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     glm::vec3 hpWaterFluidBoxCenter(0.0f);
     glm::vec3 hpWaterFluidBoxSize(1.0f);
     bool hpWaterFluidObstaclesEnabled = false;
+    bool hpWaterFluidStartFrameBake = false;
     float hpWaterFluidObstaclePadding = 1.0f;
     float hpWaterFluidObstacleHeightRange = 4.0f;
     float hpWaterFluidSurfaceY = 0.0f;
@@ -1628,6 +1629,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     hpWaterFluidSourceRadius = water->FluidImpulseRadius;
                     hpWaterFluidSourceIntensity = water->AutoImpulse ? water->FluidImpulseStrength : 0.0f;
                     hpWaterFluidObstaclesEnabled = water->FluidObstaclesEnabled;
+                    hpWaterFluidStartFrameBake = water->FluidStartFrameBake;
                     hpWaterFluidObstaclePadding = std::max(water->FluidObstaclePadding, 0.0f);
                     hpWaterFluidObstacleHeightRange = std::max(water->FluidObstacleHeightRange, 0.0f);
                     if (water->AutoImpulse) {
@@ -1788,7 +1790,17 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         uint32_t gpuWaterCaptureDraws = 0;
         uint32_t gpuSceneCaptureDraws = 0;
         auto heightCaptureShader = m_DeferredRenderer.GetHPWaterFluidHeightCaptureShader();
-        if (heightCaptureShader) {
+        m_DeferredRenderer.BeginHPWaterFluidHeightCaptureFrame(hpWaterFluidStartFrameBake);
+        const bool reuseHeightCapture =
+            hpWaterFluidStartFrameBake &&
+            m_DeferredRenderer.CanReuseHPWaterFluidHeightCapture(hpWaterFluidResolution,
+                                                                 hpWaterFluidBoxCenter,
+                                                                 hpWaterFluidBoxSize);
+        if (reuseHeightCapture) {
+            m_DeferredRenderer.MarkHPWaterFluidHeightCaptureCacheReused();
+            gpuHeightCaptureValid = m_DeferredRenderer.IsHPWaterFluidHeightCaptureValid();
+        }
+        if (heightCaptureShader && !reuseHeightCapture) {
             if (m_DeferredRenderer.BeginHPWaterFluidWaterHeightCapture(hpWaterFluidResolution,
                                                                        hpWaterFluidBoxCenter,
                                                                        hpWaterFluidBoxSize)) {
@@ -1963,6 +1975,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.DidHPWaterFluidHeightCaptureRun();
         m_RenderDiagnostics.HPWaterFluidHeightCaptureValid = gpuHeightCaptureValid;
         m_RenderDiagnostics.HPWaterFluidCaptureSpaceParityEnabled = true;
+        m_RenderDiagnostics.HPWaterFluidStartFrameBakeEnabled = hpWaterFluidStartFrameBake;
+        m_RenderDiagnostics.HPWaterFluidHeightCaptureCacheReused =
+            m_DeferredRenderer.WasHPWaterFluidHeightCaptureCacheReused();
         m_RenderDiagnostics.HPWaterFluidDisplacedWaterHeightCapture = displacedWaterHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidSceneGeometryHeightCapture = sceneGeometryHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidWaterCaptureDraws = gpuWaterCaptureDraws;
@@ -2539,6 +2554,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterFluidWaveEquationParityEnabled();
     m_RenderDiagnostics.HPWaterFluidSampleClampParityEnabled =
         m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
+    m_RenderDiagnostics.HPWaterFluidHeightCaptureCacheReused =
+        m_DeferredRenderer.WasHPWaterFluidHeightCaptureCacheReused();
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
     m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;

@@ -383,6 +383,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidHeightFieldValid = false;
     m_HPWaterFluidHeightCaptureRan = false;
     m_HPWaterFluidHeightCaptureValid = false;
+    m_HPWaterFluidHeightCaptureCacheReused = false;
     m_HPWaterFluidWaterHeightCaptured = false;
     m_HPWaterFluidSceneHeightCaptured = false;
     m_HPWaterFluidObstacleResolution = 0;
@@ -752,6 +753,40 @@ void DeferredRenderer::DestroyHPWaterFluidHeightFieldTextures() {
     }
     m_HPWaterFluidHeightFieldResolution = 0;
     m_HPWaterFluidHeightFieldValid = m_HPWaterFluidHeightCaptureValid;
+}
+
+void DeferredRenderer::BeginHPWaterFluidHeightCaptureFrame(bool startFrameBakeEnabled) {
+    m_HPWaterFluidHeightCaptureRan = false;
+    m_HPWaterFluidHeightCaptureCacheReused = false;
+    if (!startFrameBakeEnabled) {
+        m_HPWaterFluidHeightCaptureValid = false;
+        m_HPWaterFluidWaterHeightCaptured = false;
+        m_HPWaterFluidSceneHeightCaptured = false;
+    }
+}
+
+bool DeferredRenderer::CanReuseHPWaterFluidHeightCapture(uint32_t resolution,
+                                                         const glm::vec3& boxCenter,
+                                                         const glm::vec3& boxSize) const {
+    resolution = std::clamp(resolution, 16u, 1024u);
+    if (!m_HPWaterFluidWaterHeightFBO || !m_HPWaterFluidSceneHeightFBO)
+        return false;
+    if (!m_HPWaterFluidHeightCaptureValid ||
+        !m_HPWaterFluidWaterHeightCaptured ||
+        !m_HPWaterFluidSceneHeightCaptured)
+        return false;
+    if (m_HPWaterFluidHeightCaptureResolution != resolution)
+        return false;
+
+    const glm::vec3 safeBoxSize = glm::max(boxSize, glm::vec3(0.001f));
+    return glm::length(m_HPWaterFluidBoxCenter - boxCenter) < 0.0001f &&
+           glm::length(m_HPWaterFluidBoxSize - safeBoxSize) < 0.0001f;
+}
+
+void DeferredRenderer::MarkHPWaterFluidHeightCaptureCacheReused() {
+    m_HPWaterFluidHeightCaptureRan = false;
+    m_HPWaterFluidHeightCaptureCacheReused = true;
+    m_HPWaterFluidHeightFieldValid = m_HPWaterFluidHeightCaptureValid || m_HPWaterFluidHeightFieldValid;
 }
 
 bool DeferredRenderer::BeginHPWaterFluidHeightCaptureTarget(const std::shared_ptr<Framebuffer>& target,

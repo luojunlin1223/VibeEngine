@@ -432,6 +432,7 @@ struct HPWaterComponent {
     float FluidImpulseRadius = 5.0f;
     float FluidImpulseStrength = 0.035f;
     bool  FluidObstaclesEnabled = true;
+    bool  FluidStartFrameBake = false;
     float FluidObstaclePadding = 1.0f;
     float FluidObstacleHeightRange = 4.0f;
 

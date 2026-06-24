@@ -622,6 +622,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "FluidImpulseRadius" << YAML::Value << w.FluidImpulseRadius;
         out << YAML::Key << "FluidImpulseStrength" << YAML::Value << w.FluidImpulseStrength;
         out << YAML::Key << "FluidObstaclesEnabled" << YAML::Value << w.FluidObstaclesEnabled;
+        out << YAML::Key << "FluidStartFrameBake" << YAML::Value << w.FluidStartFrameBake;
         out << YAML::Key << "FluidObstaclePadding" << YAML::Value << w.FluidObstaclePadding;
         out << YAML::Key << "FluidObstacleHeightRange" << YAML::Value << w.FluidObstacleHeightRange;
         out << YAML::EndMap;
@@ -1613,6 +1614,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["FluidImpulseRadius"]) w.FluidImpulseRadius = wNode["FluidImpulseRadius"].as<float>();
                 if (wNode["FluidImpulseStrength"]) w.FluidImpulseStrength = wNode["FluidImpulseStrength"].as<float>();
                 if (wNode["FluidObstaclesEnabled"]) w.FluidObstaclesEnabled = wNode["FluidObstaclesEnabled"].as<bool>();
+                if (wNode["FluidStartFrameBake"]) w.FluidStartFrameBake = wNode["FluidStartFrameBake"].as<bool>();
                 if (wNode["FluidObstaclePadding"]) w.FluidObstaclePadding = wNode["FluidObstaclePadding"].as<float>();
                 if (wNode["FluidObstacleHeightRange"]) w.FluidObstacleHeightRange = wNode["FluidObstacleHeightRange"].as<float>();
                 w.RefractionSampleCount = std::clamp(w.RefractionSampleCount, 4, 64);
