@@ -235,6 +235,11 @@ struct RenderDiagnostics {
     bool HPWaterVolumePunctualLightLoopEnabled = false;
     bool HPWaterSpectralOceanEnabled = false;
     bool HPWaterSpectralNormalParityEnabled = false;
+    bool HPWaterSpectrumComputeRan = false;
+    bool HPWaterSpectrumComputeValid = false;
+    bool HPWaterSpectrumTextureConsumed = false;
+    uint32_t HPWaterSpectrumTexture = 0;
+    uint32_t HPWaterSpectrumResolution = 0;
     float HPWaterSpectrumAmplitude = 0.0f;
     float HPWaterSpectrumNormalStrength = 0.0f;
     bool HPWaterSkyTextureReflectionBound = false;

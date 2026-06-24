@@ -62,6 +62,8 @@ uniform float u_HPSpectrumWindAngle;
 uniform float u_HPSpectrumTime;
 uniform float u_HPSpectrumNormalStrength;
 uniform float u_HPChoppiness;
+uniform sampler2D u_HPSpectrumTexture;
+uniform int   u_HPSpectrumTextureEnabled;
 uniform sampler2D u_HPFluidHeightTexture;
 uniform int   u_HPFluidDynamicsEnabled;
 uniform vec3  u_HPFluidBoxCenter;
@@ -159,8 +161,16 @@ void main() {
     vec3 N = normalize(v_Normal);
     float roughness = clamp(u_HPRoughness, 0.015, 0.75);
     float spectrumHeightSignal = 0.0;
-    vec3 spectrumNormal = SampleSpectrumNormal(v_FragPos, spectrumHeightSignal);
     if (u_HPSpectrumWaves == 1) {
+        vec3 spectrumNormal;
+        if (u_HPSpectrumTextureEnabled == 1) {
+            vec2 spectrumUV = WorldToFluidUV(v_FragPos);
+            vec4 spectrumPayload = texture(u_HPSpectrumTexture, clamp(spectrumUV, vec2(0.0), vec2(1.0)));
+            spectrumNormal = normalize(spectrumPayload.rgb * 2.0 - 1.0);
+            spectrumHeightSignal = clamp(spectrumPayload.a, 0.0, 1.0);
+        } else {
+            spectrumNormal = SampleSpectrumNormal(v_FragPos, spectrumHeightSignal);
+        }
         float spectrumBlend = clamp(u_HPSpectrumNormalStrength, 0.0, 3.0) * 0.65;
         N = normalize(mix(N, spectrumNormal, clamp(spectrumBlend, 0.0, 0.95)));
     }

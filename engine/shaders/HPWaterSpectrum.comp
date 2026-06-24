@@ -1,0 +1,80 @@
+#version 460 core
+
+// Generates a reusable HPWater ocean spectrum payload.
+// RGBA16F layout: encodedNormal.xyz + normalizedHeightSignal.
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(binding = 0, rgba16f) writeonly uniform image2D u_SpectrumOutput;
+
+uniform vec3  u_BoxSize;
+uniform float u_Amplitude;
+uniform float u_WindAngle;
+uniform float u_Time;
+uniform float u_NormalStrength;
+uniform float u_Choppiness;
+uniform int   u_Enabled;
+
+float SpectrumWave(vec2 localXZ, vec2 dir, float wavelength, float amplitude, float phaseOffset,
+                   out vec2 gradient) {
+    const float PI = 3.14159265358979323846;
+    const float TWO_PI = PI * 2.0;
+    const float GRAVITY = 9.81;
+    float k = TWO_PI / max(wavelength, 0.25);
+    float omega = sqrt(GRAVITY * k);
+    float phase = k * dot(dir, localXZ) + omega * u_Time + phaseOffset;
+    float s = sin(phase);
+    float c = cos(phase);
+    gradient = dir * (c * amplitude * k);
+    return s * amplitude;
+}
+
+void main() {
+    ivec2 size = imageSize(u_SpectrumOutput);
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    if (coord.x >= size.x || coord.y >= size.y)
+        return;
+
+    if (u_Enabled == 0 || u_Amplitude <= 0.0) {
+        imageStore(u_SpectrumOutput, coord, vec4(0.5, 1.0, 0.5, 0.0));
+        return;
+    }
+
+    vec2 uv = (vec2(coord) + vec2(0.5)) / vec2(max(size, ivec2(1)));
+    vec2 localXZ = (uv - vec2(0.5)) * max(abs(u_BoxSize.xz), vec2(0.001));
+
+    float windRad = radians(u_WindAngle);
+    vec2 wind = normalize(vec2(cos(windRad), sin(windRad)));
+    vec2 side = vec2(-wind.y, wind.x);
+    float domain = max(max(abs(u_BoxSize.x), abs(u_BoxSize.z)), 1.0);
+    vec2 totalGradient = vec2(0.0);
+    float totalHeight = 0.0;
+
+    const float wavelengthFactors[16] = float[16](
+        0.46, 0.32, 0.22, 0.155, 0.108, 0.076, 0.054, 0.038,
+        0.027, 0.019, 0.0135, 0.0095, 0.0068, 0.0048, 0.0034, 0.0024);
+    const float directionOffsets[16] = float[16](
+        0.00, 0.16, -0.21, 0.34, -0.43, 0.56, -0.69, 0.82,
+        -0.96, 1.10, -1.26, 1.42, -1.58, 1.74, -1.92, 2.10);
+    const float phaseOffsets[16] = float[16](
+        0.0, 1.7, 3.1, 4.6, 2.4, 5.2, 0.9, 3.9,
+        5.8, 2.8, 4.2, 1.2, 3.6, 5.0, 0.45, 2.15);
+
+    for (int i = 0; i < 16; ++i) {
+        vec2 dir = normalize(wind + side * directionOffsets[i]);
+        float octave = float(i);
+        float swell = exp(-octave * 0.34);
+        float capillaryFade = 1.0 / (1.0 + pow(max(octave - 9.0, 0.0), 1.35) * 0.36);
+        float directionalEnergy = pow(max(dot(dir, wind), 0.0), 2.0) * 0.72 + 0.28;
+        float amplitude = u_Amplitude * swell * capillaryFade * directionalEnergy;
+        float wavelength = max(domain * wavelengthFactors[i], 0.25);
+        vec2 gradient;
+        totalHeight += SpectrumWave(localXZ, dir, wavelength, amplitude, phaseOffsets[i], gradient);
+        totalGradient += gradient * u_NormalStrength * (1.15 + octave * 0.045) *
+                         (1.0 + clamp(u_Choppiness, 0.0, 4.0) * 0.08);
+    }
+
+    vec3 normal = normalize(vec3(-totalGradient.x, 1.0, -totalGradient.y));
+    float heightSignal = clamp(abs(totalHeight) / max(abs(u_Amplitude) * 2.5, 0.001), 0.0, 1.0);
+    imageStore(u_SpectrumOutput, coord, vec4(normal * 0.5 + 0.5, heightSignal));
+}

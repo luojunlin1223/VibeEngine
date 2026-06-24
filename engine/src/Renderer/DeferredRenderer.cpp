@@ -271,6 +271,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterFluidDynamics.comp");
     }
 
+    m_HPWaterSpectrumComputeShader = ComputeShader::CreateFromFile("shaders/HPWaterSpectrum.comp");
+    if (!m_HPWaterSpectrumComputeShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterSpectrum.comp");
+    }
+
     m_HPWaterDepthPyramidShader = Shader::CreateFromFile("shaders/HPWaterDepthPyramid.shader");
     if (!m_HPWaterDepthPyramidShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterDepthPyramid.shader");
@@ -358,6 +363,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticResolveShader.reset();
     m_HPWaterCausticFilterComputeShader.reset();
     m_HPWaterFluidComputeShader.reset();
+    m_HPWaterSpectrumComputeShader.reset();
     m_HPWaterDepthPyramidShader.reset();
     m_HPWaterDepthMergeShader.reset();
     m_HPWaterNormalMergeShader.reset();
@@ -430,6 +436,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidHeightCaptureRan = false;
     m_HPWaterFluidHeightCaptureValid = false;
     m_HPWaterFluidHeightCaptureCacheReused = false;
+    DestroyHPWaterSpectrumTexture();
     m_HPWaterFluidWaterHeightCaptured = false;
     m_HPWaterFluidSceneHeightCaptured = false;
     m_HPWaterFluidObstacleResolution = 0;
@@ -1088,6 +1095,42 @@ void DeferredRenderer::ClearHPWaterFluidFBOs() {
     m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
     m_HPWaterFluidSourceClampEnabled = false;
     m_HPWaterFluidInitialized = true;
+}
+
+void DeferredRenderer::CreateHPWaterSpectrumTexture(uint32_t resolution) {
+    resolution = std::clamp(resolution, 16u, 2048u);
+    if (m_HPWaterSpectrumTexture != 0 && m_HPWaterSpectrumResolution == resolution)
+        return;
+
+    DestroyHPWaterSpectrumTexture();
+
+    glGenTextures(1, &m_HPWaterSpectrumTexture);
+    VE_GPU_TRACK(GPUResourceType::Texture, m_HPWaterSpectrumTexture);
+    glBindTexture(GL_TEXTURE_2D, m_HPWaterSpectrumTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
+                 static_cast<GLsizei>(resolution),
+                 static_cast<GLsizei>(resolution),
+                 0, GL_RGBA, GL_HALF_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    m_HPWaterSpectrumResolution = resolution;
+    m_HPWaterSpectrumComputeValid = false;
+}
+
+void DeferredRenderer::DestroyHPWaterSpectrumTexture() {
+    if (m_HPWaterSpectrumTexture != 0) {
+        VE_GPU_UNTRACK(GPUResourceType::Texture, m_HPWaterSpectrumTexture);
+        GLuint texture = static_cast<GLuint>(m_HPWaterSpectrumTexture);
+        glDeleteTextures(1, &texture);
+    }
+    m_HPWaterSpectrumTexture = 0;
+    m_HPWaterSpectrumResolution = 0;
+    m_HPWaterSpectrumComputeValid = false;
+    m_HPWaterSpectrumComputeRan = false;
 }
 
 void DeferredRenderer::CreateHPWaterGBuffer() {
@@ -3413,6 +3456,47 @@ uint32_t DeferredRenderer::GetHPWaterCausticAtlasHeight() const {
 uint32_t DeferredRenderer::GetHPWaterFluidHeightTexture() const {
     if (!m_HPWaterFluidCurrentFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterFluidCurrentFBO->GetColorAttachmentID());
+}
+
+bool DeferredRenderer::UpdateHPWaterSpectrumTexture(uint32_t resolution,
+                                                    const glm::vec3& boxSize,
+                                                    bool enabled,
+                                                    float amplitude,
+                                                    float windAngle,
+                                                    float time,
+                                                    float normalStrength,
+                                                    float choppiness) {
+    m_HPWaterSpectrumComputeRan = false;
+    m_HPWaterSpectrumComputeValid = false;
+
+    if (!m_HPWaterSpectrumComputeShader || !enabled || amplitude <= 0.0f)
+        return false;
+
+    const uint32_t safeResolution = std::clamp(resolution, 16u, 2048u);
+    CreateHPWaterSpectrumTexture(safeResolution);
+    if (m_HPWaterSpectrumTexture == 0)
+        return false;
+
+    m_HPWaterSpectrumComputeShader->Bind();
+    glBindImageTexture(0, static_cast<GLuint>(m_HPWaterSpectrumTexture), 0, GL_FALSE, 0,
+                       GL_WRITE_ONLY, GL_RGBA16F);
+    m_HPWaterSpectrumComputeShader->SetVec3("u_BoxSize", glm::max(boxSize, glm::vec3(0.001f)));
+    m_HPWaterSpectrumComputeShader->SetFloat("u_Amplitude", std::max(amplitude, 0.0f));
+    m_HPWaterSpectrumComputeShader->SetFloat("u_WindAngle", windAngle);
+    m_HPWaterSpectrumComputeShader->SetFloat("u_Time", time);
+    m_HPWaterSpectrumComputeShader->SetFloat("u_NormalStrength", std::clamp(normalStrength, 0.0f, 4.0f));
+    m_HPWaterSpectrumComputeShader->SetFloat("u_Choppiness", std::clamp(choppiness, 0.0f, 4.0f));
+    m_HPWaterSpectrumComputeShader->SetInt("u_Enabled", 1);
+    m_HPWaterSpectrumComputeShader->Dispatch((safeResolution + 15u) / 16u,
+                                             (safeResolution + 15u) / 16u,
+                                             1u);
+    m_HPWaterSpectrumComputeShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    m_HPWaterSpectrumComputeShader->Unbind();
+
+    m_HPWaterSpectrumComputeRan = true;
+    m_HPWaterSpectrumComputeValid = true;
+    return true;
 }
 
 uint32_t DeferredRenderer::GetHPWaterFluidWaterHeightTexture() const {

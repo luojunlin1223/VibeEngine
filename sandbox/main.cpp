@@ -7138,6 +7138,11 @@ private:
             << d.HPWaterVolumePunctualLightLoopEnabled << "\n";
         out << "HPWaterSpectralOceanEnabled: " << d.HPWaterSpectralOceanEnabled << "\n";
         out << "HPWaterSpectralNormalParityEnabled: " << d.HPWaterSpectralNormalParityEnabled << "\n";
+        out << "HPWaterSpectrumComputeRan: " << d.HPWaterSpectrumComputeRan << "\n";
+        out << "HPWaterSpectrumComputeValid: " << d.HPWaterSpectrumComputeValid << "\n";
+        out << "HPWaterSpectrumTextureConsumed: " << d.HPWaterSpectrumTextureConsumed << "\n";
+        out << "HPWaterSpectrumTexture: " << d.HPWaterSpectrumTexture << "\n";
+        out << "HPWaterSpectrumResolution: " << d.HPWaterSpectrumResolution << "\n";
         out << "HPWaterSpectrumAmplitude: " << d.HPWaterSpectrumAmplitude << "\n";
         out << "HPWaterSpectrumNormalStrength: " << d.HPWaterSpectrumNormalStrength << "\n";
         out << "HPWaterSkyTextureReflectionBound: " << d.HPWaterSkyTextureReflectionBound << "\n";
@@ -7422,6 +7427,12 @@ private:
             SaveTextureBMP(d.HPWaterFluidHeightTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_fluid_height.bmp");
         }
+        if (dr.IsInitialized() && d.HPWaterSpectrumTexture != 0 && d.HPWaterSpectrumResolution > 0) {
+            writeProbe("HPWaterSpectrum",
+                ProbeTexture(d.HPWaterSpectrumTexture, d.HPWaterSpectrumResolution, d.HPWaterSpectrumResolution));
+            SaveTextureBMP(d.HPWaterSpectrumTexture, d.HPWaterSpectrumResolution, d.HPWaterSpectrumResolution,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_spectrum.bmp");
+        }
         if (dr.IsInitialized() && d.HPWaterFluidObstacleTexture != 0 && d.HPWaterFluidResolution > 0) {
             writeProbe("HPWaterFluidObstacle",
                 ProbeTexture(d.HPWaterFluidObstacleTexture, d.HPWaterFluidResolution, d.HPWaterFluidResolution));
@@ -7638,9 +7649,14 @@ private:
             d.HPWaterSkyReflectionIntensity,
             d.HPWaterIndirectDiffuseIntensity,
             d.HPWaterDirectionalLightIntensity);
-        ImGui::Text("HPWater spectrum: ocean=%d normal=%d amp=%.3f normalStrength=%.3f",
+        ImGui::Text("HPWater spectrum: ocean=%d normal=%d compute=%d/%d consumed=%d tex=%u res=%u amp=%.3f normalStrength=%.3f",
             d.HPWaterSpectralOceanEnabled ? 1 : 0,
             d.HPWaterSpectralNormalParityEnabled ? 1 : 0,
+            d.HPWaterSpectrumComputeRan ? 1 : 0,
+            d.HPWaterSpectrumComputeValid ? 1 : 0,
+            d.HPWaterSpectrumTextureConsumed ? 1 : 0,
+            d.HPWaterSpectrumTexture,
+            d.HPWaterSpectrumResolution,
             d.HPWaterSpectrumAmplitude,
             d.HPWaterSpectrumNormalStrength);
         ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d box=%d (%u/%u) intensity=%.3f blend=%.3f influence=%.3f hierarchy=%.3f",

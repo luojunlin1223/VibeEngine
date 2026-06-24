@@ -527,6 +527,18 @@ public:
     uint32_t GetHPWaterCausticAtlasCascadeCount() const { return 4; }
 
     uint32_t GetHPWaterFluidHeightTexture() const;
+    bool UpdateHPWaterSpectrumTexture(uint32_t resolution,
+                                      const glm::vec3& boxSize,
+                                      bool enabled,
+                                      float amplitude,
+                                      float windAngle,
+                                      float time,
+                                      float normalStrength,
+                                      float choppiness);
+    uint32_t GetHPWaterSpectrumTexture() const { return m_HPWaterSpectrumTexture; }
+    uint32_t GetHPWaterSpectrumResolution() const { return m_HPWaterSpectrumResolution; }
+    bool IsHPWaterSpectrumComputeValid() const { return m_HPWaterSpectrumComputeValid; }
+    bool DidHPWaterSpectrumComputeRun() const { return m_HPWaterSpectrumComputeRan; }
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
     uint32_t GetHPWaterFluidWaterHeightTexture() const;
     uint32_t GetHPWaterFluidSceneHeightTexture() const;
@@ -581,6 +593,8 @@ private:
     void CreateHPWaterMaskFBO();
     void CreateHPWaterDepthPyramid();
     void CreateHPWaterFluidFBO(uint32_t resolution);
+    void CreateHPWaterSpectrumTexture(uint32_t resolution);
+    void DestroyHPWaterSpectrumTexture();
     void CreateHPWaterFluidHeightCaptureFBO(uint32_t resolution);
     void DestroyHPWaterFluidObstacleTexture();
     void DestroyHPWaterFluidHeightFieldTextures();
@@ -771,6 +785,12 @@ private:
     glm::vec3 m_HPWaterFluidBoxCenter = glm::vec3(0.0f);
     glm::vec3 m_HPWaterFluidBoxSize = glm::vec3(1.0f);
 
+    // GPU-generated ocean spectrum payload consumed by the HPWater G-buffer.
+    uint32_t m_HPWaterSpectrumTexture = 0;
+    uint32_t m_HPWaterSpectrumResolution = 0;
+    bool m_HPWaterSpectrumComputeRan = false;
+    bool m_HPWaterSpectrumComputeValid = false;
+
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
     std::shared_ptr<Shader> m_HPWaterGBufferShader;
@@ -788,6 +808,7 @@ private:
     std::shared_ptr<ComputeShader> m_HPWaterCausticResolveShader;
     std::shared_ptr<ComputeShader> m_HPWaterCausticFilterComputeShader;
     std::shared_ptr<ComputeShader> m_HPWaterFluidComputeShader;
+    std::shared_ptr<ComputeShader> m_HPWaterSpectrumComputeShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterDepthMergeShader;
     std::shared_ptr<Shader> m_HPWaterNormalMergeShader;

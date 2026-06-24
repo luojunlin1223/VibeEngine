@@ -2214,6 +2214,23 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterShader->SetFloat("u_HPSpectrumTime", water->_OceanTime);
                 hpWaterShader->SetFloat("u_HPSpectrumNormalStrength", water->SpectrumNormalStrength);
                 hpWaterShader->SetFloat("u_HPChoppiness", water->Choppiness);
+                const uint32_t spectrumResolution =
+                    static_cast<uint32_t>(std::clamp(water->Resolution * 2, 32, 512));
+                const bool spectrumComputeValid =
+                    m_DeferredRenderer.UpdateHPWaterSpectrumTexture(spectrumResolution,
+                                                                    hpWaterFluidBoxSize,
+                                                                    water->SpectrumWaves,
+                                                                    water->SpectrumAmplitude,
+                                                                    water->SpectrumWindAngle,
+                                                                    water->_OceanTime,
+                                                                    water->SpectrumNormalStrength,
+                                                                    water->Choppiness);
+                glActiveTexture(GL_TEXTURE9);
+                glBindTexture(GL_TEXTURE_2D, spectrumComputeValid
+                    ? static_cast<GLuint>(m_DeferredRenderer.GetHPWaterSpectrumTexture())
+                    : 0);
+                hpWaterShader->SetInt("u_HPSpectrumTexture", 9);
+                hpWaterShader->SetInt("u_HPSpectrumTextureEnabled", spectrumComputeValid ? 1 : 0);
                 const bool fluidValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid() && water->FluidDynamicsEnabled;
                 glActiveTexture(GL_TEXTURE8);
                 glBindTexture(GL_TEXTURE_2D, fluidValid
@@ -2232,6 +2249,20 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     m_RenderDiagnostics.HPWaterSpectralNormalParityEnabled ||
                     (water->SpectrumWaves && water->SpectrumAmplitude > 0.0f &&
                      water->SpectrumNormalStrength > 0.0f);
+                m_RenderDiagnostics.HPWaterSpectrumComputeRan =
+                    m_RenderDiagnostics.HPWaterSpectrumComputeRan ||
+                    m_DeferredRenderer.DidHPWaterSpectrumComputeRun();
+                m_RenderDiagnostics.HPWaterSpectrumComputeValid =
+                    m_RenderDiagnostics.HPWaterSpectrumComputeValid ||
+                    m_DeferredRenderer.IsHPWaterSpectrumComputeValid();
+                m_RenderDiagnostics.HPWaterSpectrumTextureConsumed =
+                    m_RenderDiagnostics.HPWaterSpectrumTextureConsumed || spectrumComputeValid;
+                if (spectrumComputeValid) {
+                    m_RenderDiagnostics.HPWaterSpectrumTexture =
+                        m_DeferredRenderer.GetHPWaterSpectrumTexture();
+                    m_RenderDiagnostics.HPWaterSpectrumResolution =
+                        m_DeferredRenderer.GetHPWaterSpectrumResolution();
+                }
                 m_RenderDiagnostics.HPWaterSpectrumAmplitude =
                     std::max(m_RenderDiagnostics.HPWaterSpectrumAmplitude, water->SpectrumAmplitude);
                 m_RenderDiagnostics.HPWaterSpectrumNormalStrength =
