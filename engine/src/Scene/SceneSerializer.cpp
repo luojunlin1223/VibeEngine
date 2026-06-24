@@ -601,6 +601,8 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "ThinSSSStrength" << YAML::Value << w.ThinSSSStrength;
         out << YAML::Key << "BacklitTransmissionStrength" << YAML::Value << w.BacklitTransmissionStrength;
         out << YAML::Key << "ForwardScatterStrength" << YAML::Value << w.ForwardScatterStrength;
+        out << YAML::Key << "ForwardScatterBlurDensity" << YAML::Value << w.ForwardScatterBlurDensity;
+        out << YAML::Key << "MultiScatterScale" << YAML::Value << w.MultiScatterScale;
         out << YAML::Key << "SpecularFGDStrength" << YAML::Value << w.SpecularFGDStrength;
         out << YAML::Key << "GGXEnergyCompensation" << YAML::Value << w.GGXEnergyCompensation;
         out << YAML::Key << "VolumeShadowSoftness" << YAML::Value << w.VolumeShadowSoftness;
@@ -1611,6 +1613,8 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["ThinSSSStrength"]) w.ThinSSSStrength = wNode["ThinSSSStrength"].as<float>();
                 if (wNode["BacklitTransmissionStrength"]) w.BacklitTransmissionStrength = wNode["BacklitTransmissionStrength"].as<float>();
                 if (wNode["ForwardScatterStrength"]) w.ForwardScatterStrength = wNode["ForwardScatterStrength"].as<float>();
+                if (wNode["ForwardScatterBlurDensity"]) w.ForwardScatterBlurDensity = wNode["ForwardScatterBlurDensity"].as<float>();
+                if (wNode["MultiScatterScale"]) w.MultiScatterScale = wNode["MultiScatterScale"].as<float>();
                 if (wNode["SpecularFGDStrength"]) w.SpecularFGDStrength = wNode["SpecularFGDStrength"].as<float>();
                 if (wNode["GGXEnergyCompensation"]) w.GGXEnergyCompensation = wNode["GGXEnergyCompensation"].as<float>();
                 if (wNode["VolumeShadowSoftness"]) w.VolumeShadowSoftness = wNode["VolumeShadowSoftness"].as<float>();
@@ -1664,6 +1668,8 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.ThinSSSStrength = std::clamp(w.ThinSSSStrength, 0.0f, 3.0f);
                 w.BacklitTransmissionStrength = std::clamp(w.BacklitTransmissionStrength, 0.0f, 3.0f);
                 w.ForwardScatterStrength = std::clamp(w.ForwardScatterStrength, 0.0f, 3.0f);
+                w.ForwardScatterBlurDensity = std::clamp(w.ForwardScatterBlurDensity, 0.0f, 4.0f);
+                w.MultiScatterScale = std::clamp(w.MultiScatterScale, 0.0f, 32.0f);
                 w.SpecularFGDStrength = std::clamp(w.SpecularFGDStrength, 0.0f, 1.0f);
                 w.GGXEnergyCompensation = std::clamp(w.GGXEnergyCompensation, 0.0f, 2.0f);
                 w.VolumeShadowSoftness = std::clamp(w.VolumeShadowSoftness, 0.0f, 10.0f);

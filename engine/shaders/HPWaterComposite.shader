@@ -63,6 +63,8 @@ uniform float u_EnvironmentReflectionIntensity;
 uniform float u_ThinSSSStrength;
 uniform float u_BacklitTransmissionStrength;
 uniform float u_ForwardScatterStrength;
+uniform float u_ForwardScatterBlurDensity;
+uniform float u_MultiScatterScale;
 uniform float u_SpecularFGDStrength;
 uniform float u_GGXEnergyCompensation;
 uniform vec3 u_ViewPos;
@@ -101,6 +103,8 @@ uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
 
 const float PI = 3.14159265358979323846;
+const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 10.0;
+const float HPWATER_FORWARD_SCALING_FACTOR = 1.0;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -324,6 +328,15 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
 
     float maxLod = float(max(u_SceneColorMipCount - 1, 0));
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
+}
+
+float CalculateHPWaterMipLevel(float depth, float scalingFactor, float scatterDensity, float maxBlurLevel) {
+    float effectiveScale =
+        scalingFactor +
+        scatterDensity * clamp(u_ForwardScatterBlurDensity, 0.0, 4.0) *
+            HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE;
+    float mipLevel = log2(1.0 + max(depth, 0.0) * max(effectiveScale, 0.0));
+    return clamp(mipLevel, 0.0, maxBlurLevel);
 }
 
 vec2 FindRefractedUV(vec2 uv,
@@ -594,11 +607,20 @@ void main() {
     vec3 reflected = skyReflection + directSpecular * clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0);
     float forwardPhase = HenyeyGreenstein(lightViewAlignment, 0.72);
     float forwardStrength = clamp(u_ForwardScatterStrength, 0.0, 3.0);
-    float forwardBlurLOD = mix(1.0, 5.5, normalizedThickness) * (0.35 + 0.65 * (1.0 - roughness));
+    float scatterDensity = clamp(dot(scatterColor, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+    float hpWaterRayLength = min(rayLength, clamp(u_MaxRefractionCrossDistance, 0.1, 200.0));
+    float forwardBlurLOD = max(
+        2.0,
+        CalculateHPWaterMipLevel(
+            hpWaterRayLength,
+            HPWATER_FORWARD_SCALING_FACTOR,
+            scatterDensity,
+            6.0));
     vec3 forwardBlur = SampleSceneColorBlurred(refractUV, forwardBlurLOD);
     vec3 directWaterLight = u_LightColor * max(u_LightIntensity, 0.0);
     vec3 forwardScatter = (scatterColor * directWaterLight * forwardPhase * 0.08 +
-        forwardBlur * scatterColor * 0.22) * normalizedThickness * forwardStrength;
+        forwardBlur * scatterColor * 0.22 * clamp(u_MultiScatterScale, 0.0, 32.0)) *
+        normalizedThickness * forwardStrength;
     vec3 thinSSS = scatterColor * (vec3(1.0) - fallbackTransmittance) *
         (0.18 + 0.82 * (1.0 - normalizedThickness)) *
         clamp(u_ThinSSSStrength, 0.0, 3.0);

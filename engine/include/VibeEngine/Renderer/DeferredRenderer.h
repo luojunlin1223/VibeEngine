@@ -141,6 +141,8 @@ public:
                           float thinSSSStrength,
                           float backlitTransmissionStrength,
                           float forwardScatterStrength,
+                          float forwardScatterBlurDensity,
+                          float multiScatterScale,
                           float specularFGDStrength,
                           float ggxEnergyCompensation,
                           const glm::vec3& cameraPosition,
