@@ -1182,6 +1182,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeSceneMotionVectorEnabled =
         m_DeferredRenderer.IsHPWaterVolumeSceneMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeMotionVectorHistoryEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeExponentialIntegrationEnabled =
         m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
@@ -2975,6 +2977,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeSceneMotionVectorEnabled =
         m_DeferredRenderer.IsHPWaterVolumeSceneMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeMotionVectorHistoryEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
     m_RenderDiagnostics.HPWaterSurfaceShadowSamplingEnabled =

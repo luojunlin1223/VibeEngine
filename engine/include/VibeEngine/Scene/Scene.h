@@ -276,6 +276,7 @@ struct RenderDiagnostics {
     bool HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     bool HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool HPWaterVolumeSceneMotionVectorEnabled = false;
+    bool HPWaterVolumeMotionVectorHistoryEnabled = false;
     bool HPWaterVolumeExponentialIntegrationEnabled = false;
     bool HPWaterVolumeShadowSamplingEnabled = false;
     bool HPWaterVolumeShadowParamsEnabled = false;

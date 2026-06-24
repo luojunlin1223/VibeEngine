@@ -1,7 +1,7 @@
 // VibeEngine ShaderLab - HPWater low-resolution volume motion vectors.
-// Generates an explicit velocity texture for the volume temporal filter. This
-// keeps the temporal pass aligned with HPWater/HDRP-style history validation,
-// where motion is a sampled input rather than only an inline matrix fallback.
+// Generates an explicit velocity texture for the volume temporal filter. The
+// stored vector follows HPWater's sampled motion-vector convention:
+// historyUV = currentUV - motionVector.
 
 Shader "VibeEngine/HPWaterVolumeMotionVector" {
     Properties {
@@ -74,7 +74,7 @@ bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
         return false;
     }
 
-    motionVector = previousUV - currentUV;
+    motionVector = currentUV - previousUV;
     return true;
 }
 

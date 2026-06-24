@@ -1,7 +1,7 @@
 // VibeEngine ShaderLab - HPWater low-resolution volume temporal filter
-// Reprojects the previous low-resolution volume history through current and
-// previous view-projection matrices, then blends with depth and velocity
-// rejection before the a-trous spatial filter.
+// Reprojects the previous low-resolution volume history through an explicit
+// HPWater-style motion-vector texture when available, then falls back to
+// matrix reprojection before depth and velocity rejection.
 
 Shader "VibeEngine/HPWaterVolumeTemporal" {
     Properties {
@@ -136,9 +136,25 @@ void main() {
     }
 
     vec4 refractWorld = texture(u_HPWaterRefractionWorldData, v_UV);
-    bool reprojectValid = false;
-    vec2 historyUV = ProjectUV(u_PreviousViewProjection, refractWorld.xyz, reprojectValid);
-    if (!reprojectValid) {
+    vec2 motionVectorUV = vec2(0.0);
+    bool usedExplicitMotionVector = u_MotionVectorValid == 1;
+    vec2 historyUV = v_UV;
+
+    if (usedExplicitMotionVector) {
+        motionVectorUV = texture(u_VolumeMotionVector, v_UV).rg;
+        historyUV = v_UV - motionVectorUV;
+    } else {
+        bool reprojectValid = false;
+        historyUV = ProjectUV(u_PreviousViewProjection, refractWorld.xyz, reprojectValid);
+        if (!reprojectValid) {
+            TemporalColor = currentColor;
+            TemporalTransmittance = currentTransmittance;
+            TemporalDepth = currentDepth;
+            return;
+        }
+    }
+
+    if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) {
         TemporalColor = currentColor;
         TemporalTransmittance = currentTransmittance;
         TemporalDepth = currentDepth;
@@ -176,18 +192,11 @@ void main() {
         depthWeight *= depthBoundsWeight;
     }
 
-    bool currentProjectValid = false;
-    vec2 currentUV = ProjectUV(u_CurrentViewProjection, refractWorld.xyz, currentProjectValid);
-    if (!currentProjectValid) {
-        currentUV = v_UV;
-    }
-
-    vec2 motionVectorUV = u_MotionVectorValid == 1
-        ? texture(u_VolumeMotionVector, v_UV).rg
-        : (historyUV - currentUV);
     vec2 velocityPixels = motionVectorUV * vec2(textureSize(u_CurrentColor, 0));
     float velocity = length(velocityPixels);
-    float velocityWeight = exp(-velocity * max(u_MotionVectorVelocityScale, 0.0));
+    float velocityWeight = usedExplicitMotionVector
+        ? Saturate(1.0 - velocity * max(u_MotionVectorVelocityScale, 0.0))
+        : 1.0;
 
     float historyWeight = Saturate(u_HistoryBlend) * depthWeight * velocityWeight;
     vec3 blendedColor = mix(currentColor.rgb, historyColor.rgb, historyWeight);
