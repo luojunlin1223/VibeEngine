@@ -591,6 +591,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "FoamIntensity" << YAML::Value << w.FoamIntensity;
         out << YAML::Key << "Roughness" << YAML::Value << w.Roughness;
         out << YAML::Key << "RefractionStrength" << YAML::Value << w.RefractionStrength;
+        out << YAML::Key << "WaterDispersionStrength" << YAML::Value << w.WaterDispersionStrength;
         out << YAML::Key << "DepthTintDistance" << YAML::Value << w.DepthTintDistance;
         out << YAML::Key << "RefractionSampleCount" << YAML::Value << w.RefractionSampleCount;
         out << YAML::Key << "MaxRefractionCrossDistance" << YAML::Value << w.MaxRefractionCrossDistance;
@@ -1603,6 +1604,8 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["FoamIntensity"])       w.FoamIntensity = wNode["FoamIntensity"].as<float>();
                 if (wNode["Roughness"])           w.Roughness = wNode["Roughness"].as<float>();
                 if (wNode["RefractionStrength"])  w.RefractionStrength = wNode["RefractionStrength"].as<float>();
+                if (wNode["WaterDispersionStrength"])
+                    w.WaterDispersionStrength = std::clamp(wNode["WaterDispersionStrength"].as<float>(), 0.0f, 2.0f);
                 if (wNode["DepthTintDistance"])   w.DepthTintDistance = wNode["DepthTintDistance"].as<float>();
                 if (wNode["RefractionSampleCount"]) w.RefractionSampleCount = wNode["RefractionSampleCount"].as<int>();
                 if (wNode["MaxRefractionCrossDistance"]) w.MaxRefractionCrossDistance = wNode["MaxRefractionCrossDistance"].as<float>();

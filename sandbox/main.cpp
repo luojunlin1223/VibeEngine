@@ -6286,6 +6286,7 @@ private:
                 ImGui::SliderFloat("Foam Intensity", &w.FoamIntensity, 0.0f, 2.0f, "%.3f");
                 ImGui::SliderFloat("Roughness", &w.Roughness, 0.01f, 0.75f, "%.3f");
                 ImGui::SliderFloat("Refraction", &w.RefractionStrength, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Water Dispersion", &w.WaterDispersionStrength, 0.0f, 2.0f, "%.3f");
                 ImGui::DragFloat("Depth Tint Distance", &w.DepthTintDistance, 0.1f, 0.1f, 100.0f);
                 int refractionSamples = w.RefractionSampleCount;
                 if (ImGui::SliderInt("Refraction Samples", &refractionSamples, 4, 64))
@@ -7091,6 +7092,7 @@ private:
         out << "HPWaterDepthPyramidMipCount: " << d.HPWaterDepthPyramidMipCount << "\n";
         out << "HPWaterDepthPyramidSize: " << d.HPWaterDepthPyramidWidth << "x" << d.HPWaterDepthPyramidHeight << "\n";
         out << "HPWaterRefractionStrength: " << d.HPWaterRefractionStrength << "\n";
+        out << "HPWaterWaterDispersionStrength: " << d.HPWaterWaterDispersionStrength << "\n";
         out << "HPWaterMaxRefractionCrossDistance: " << d.HPWaterMaxRefractionCrossDistance << "\n";
         out << "HPWaterRefractionThicknessOffset: " << d.HPWaterRefractionThicknessOffset << "\n";
         out << "HPWaterRefractionSampleCount: " << d.HPWaterRefractionSampleCount << "\n";
@@ -7556,9 +7558,10 @@ private:
             d.HPWaterMaskWidth,
             d.HPWaterMaskHeight,
             d.HPWaterMaskTexture);
-        ImGui::Text("HPWater refraction: ndc=%d strength=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
+        ImGui::Text("HPWater refraction: ndc=%d strength=%.3f dispersion=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
             d.HPWaterRefractionNDCMarchEnabled ? 1 : 0,
             d.HPWaterRefractionStrength,
+            d.HPWaterWaterDispersionStrength,
             d.HPWaterMaxRefractionCrossDistance,
             d.HPWaterRefractionThicknessOffset,
             d.HPWaterRefractionSampleCount,

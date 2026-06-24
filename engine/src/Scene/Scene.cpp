@@ -1451,6 +1451,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     std::vector<VisibleEntity> transparentEntities;
     std::vector<VisibleEntity> hpWaterEntities;
     float hpWaterRefractionStrength = 0.0f;
+    float hpWaterWaterDispersionStrength = 0.0f;
     float hpWaterMaxRefractionCrossDistance = 0.1f;
     float hpWaterRefractionThicknessOffset = 0.01f;
     uint32_t hpWaterRefractionSampleCount = 4;
@@ -1637,6 +1638,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterEntities.push_back({ entityID, model, 0.0f });
             if (auto* water = m_Registry.try_get<HPWaterComponent>(entityID)) {
                 hpWaterRefractionStrength = std::max(hpWaterRefractionStrength, water->RefractionStrength);
+                hpWaterWaterDispersionStrength = std::max(
+                    hpWaterWaterDispersionStrength,
+                    std::clamp(water->WaterDispersionStrength, 0.0f, 2.0f));
                 hpWaterMaxRefractionCrossDistance = std::max(
                     hpWaterMaxRefractionCrossDistance, water->MaxRefractionCrossDistance);
                 hpWaterRefractionThicknessOffset = std::max(
@@ -2455,6 +2459,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticScatterBoost = hpWaterCausticScatterBoost;
         m_RenderDiagnostics.HPWaterCausticRGBDispersion = hpWaterCausticRGBDispersion;
         m_RenderDiagnostics.HPWaterCausticDispersionStrength = hpWaterCausticDispersionStrength;
+        m_RenderDiagnostics.HPWaterWaterDispersionStrength = hpWaterWaterDispersionStrength;
         m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = hpWaterCausticAtlasResolution;
         m_RenderDiagnostics.HPWaterCausticAtlasCascades = m_DeferredRenderer.GetHPWaterCausticAtlasCascadeCount();
         m_RenderDiagnostics.HPWaterCausticAtlasDrawn = hpWaterCausticAtlasDrawn;
@@ -2483,6 +2488,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.CompositeHPWater(nearClip,
                                             farClip,
                                             hpWaterRefractionStrength,
+                                            hpWaterWaterDispersionStrength,
                                             hpWaterMaxRefractionCrossDistance,
                                             hpWaterRefractionThicknessOffset,
                                             static_cast<int>(hpWaterRefractionSampleCount),
@@ -2640,6 +2646,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.CompositeHPWater(nearClip,
                                                 farClip,
                                                 hpWaterRefractionStrength,
+                                                hpWaterWaterDispersionStrength,
                                                 hpWaterMaxRefractionCrossDistance,
                                                 hpWaterRefractionThicknessOffset,
                                                 static_cast<int>(hpWaterRefractionSampleCount),

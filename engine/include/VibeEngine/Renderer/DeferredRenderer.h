@@ -132,6 +132,7 @@ public:
     bool CompositeHPWater(float nearClip,
                           float farClip,
                           float refractionStrength,
+                          float waterDispersionStrength,
                           float maxRefractionCrossDistance,
                           float refractionThicknessOffset,
                           int refractionSampleCount,

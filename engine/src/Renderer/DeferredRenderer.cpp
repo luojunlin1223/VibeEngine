@@ -1478,6 +1478,7 @@ bool DeferredRenderer::BuildHPWaterMask() {
 bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         float farClip,
                                         float refractionStrength,
+                                        float waterDispersionStrength,
                                         float maxRefractionCrossDistance,
                                         float refractionThicknessOffset,
                                         int refractionSampleCount,
@@ -1649,6 +1650,8 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterCompositeShader->SetFloat("u_FarClip", farClip);
     m_HPWaterCompositeShader->SetFloat("u_RefractionStrength", std::clamp(refractionStrength, 0.0f, 2.0f));
+    m_HPWaterCompositeShader->SetFloat("u_WaterDispersionStrength",
+        std::clamp(waterDispersionStrength, 0.0f, 2.0f));
     m_HPWaterCompositeShader->SetFloat("u_MaxRefractionCrossDistance",
         std::clamp(maxRefractionCrossDistance, 0.1f, 200.0f));
     m_HPWaterCompositeShader->SetFloat("u_RefractionThicknessOffset",

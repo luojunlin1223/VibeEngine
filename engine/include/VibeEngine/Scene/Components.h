@@ -399,6 +399,7 @@ struct HPWaterComponent {
     float FoamIntensity = 0.35f;
     float Roughness = 0.06f;
     float RefractionStrength = 0.16f;
+    float WaterDispersionStrength = 0.1f;
     float DepthTintDistance = 12.0f;
     int   RefractionSampleCount = 16;
     float MaxRefractionCrossDistance = 20.0f;

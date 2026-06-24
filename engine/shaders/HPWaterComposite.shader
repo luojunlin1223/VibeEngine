@@ -57,6 +57,7 @@ uniform samplerCube u_ReflectionProbeSecondary;
 uniform float u_NearClip;
 uniform float u_FarClip;
 uniform float u_RefractionStrength;
+uniform float u_WaterDispersionStrength;
 uniform float u_MaxRefractionCrossDistance;
 uniform float u_RefractionThicknessOffset;
 uniform float u_EnvironmentReflectionIntensity;
@@ -105,6 +106,7 @@ uniform mat4 u_InverseViewProjection;
 const float PI = 3.14159265358979323846;
 const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 10.0;
 const float HPWATER_FORWARD_SCALING_FACTOR = 1.0;
+const float HPWATER_WATER_DISPERSION_UV_CLAMP = 0.01;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -328,6 +330,39 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
 
     float maxLod = float(max(u_SceneColorMipCount - 1, 0));
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
+}
+
+vec2 HPWaterDispersionJitter(vec2 uv) {
+    ivec2 sceneSize = max(textureSize(u_SceneColor, 0), ivec2(1));
+    vec2 pixel = uv * vec2(sceneSize);
+    float noiseA = InterleavedGradientNoise(pixel, u_FrameIndex);
+    float noiseB = InterleavedGradientNoise(pixel + vec2(17.0, 29.0), u_FrameIndex + 11);
+    float angle = noiseA * (PI * 2.0) + float(u_FrameIndex & 63) * 2.39996323;
+    float radius = sqrt(clamp(noiseB, 0.0, 1.0));
+    return vec2(cos(angle), sin(angle)) * radius;
+}
+
+vec3 SampleHPWaterDispersedSceneColor(vec2 baseUV, vec2 refractedUV, float lod) {
+    float dispersionStrength = clamp(u_WaterDispersionStrength, 0.0, 2.0);
+    if (dispersionStrength <= 0.0001) {
+        return SampleSceneColorBlurred(refractedUV, lod);
+    }
+
+    vec2 refractionDeltaUV = refractedUV - baseUV;
+    vec2 dispersionUV = clamp(
+        refractionDeltaUV * dispersionStrength,
+        vec2(-HPWATER_WATER_DISPERSION_UV_CLAMP),
+        vec2( HPWATER_WATER_DISPERSION_UV_CLAMP));
+    dispersionUV *= HPWaterDispersionJitter(baseUV);
+
+    vec3 sampleLong = SampleSceneColorBlurred(clamp(refractedUV - dispersionUV, vec2(0.0), vec2(1.0)), lod);
+    vec3 sampleMid = SampleSceneColorBlurred(refractedUV, lod);
+    vec3 sampleShort = SampleSceneColorBlurred(clamp(refractedUV + dispersionUV, vec2(0.0), vec2(1.0)), lod);
+
+    return vec3(
+        dot(vec3(0.90, 0.05, 0.05), vec3(sampleLong.r, sampleMid.r, sampleShort.r)),
+        dot(vec3(0.05, 0.90, 0.05), vec3(sampleLong.g, sampleMid.g, sampleShort.g)),
+        dot(vec3(0.05, 0.05, 0.90), vec3(sampleLong.b, sampleMid.b, sampleShort.b)));
 }
 
 float CalculateHPWaterMipLevel(float depth, float scalingFactor, float scatterDensity, float maxBlurLevel) {
@@ -616,7 +651,7 @@ void main() {
             HPWATER_FORWARD_SCALING_FACTOR,
             scatterDensity,
             6.0));
-    vec3 forwardBlur = SampleSceneColorBlurred(refractUV, forwardBlurLOD);
+    vec3 forwardBlur = SampleHPWaterDispersedSceneColor(v_UV, refractUV, forwardBlurLOD);
     vec3 directWaterLight = u_LightColor * max(u_LightIntensity, 0.0);
     vec3 forwardScatter = (scatterColor * directWaterLight * forwardPhase * 0.08 +
         forwardBlur * scatterColor * 0.22 * clamp(u_MultiScatterScale, 0.0, 32.0)) *

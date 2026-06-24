@@ -195,6 +195,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterDepthPyramidWidth = 0;
     uint32_t HPWaterDepthPyramidHeight = 0;
     float HPWaterRefractionStrength = 0.0f;
+    float HPWaterWaterDispersionStrength = 0.0f;
     float HPWaterMaxRefractionCrossDistance = 0.0f;
     float HPWaterRefractionThicknessOffset = 0.0f;
     uint32_t HPWaterRefractionSampleCount = 0;
