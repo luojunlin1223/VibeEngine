@@ -7119,6 +7119,7 @@ private:
         out << "HPWaterPreintegratedFGDLUTResolution: " << d.HPWaterPreintegratedFGDLUTResolution << "\n";
         out << "HPWaterLightLoopInputsValid: " << d.HPWaterLightLoopInputsValid << "\n";
         out << "HPWaterIndirectScatterIntegrationEnabled: " << d.HPWaterIndirectScatterIntegrationEnabled << "\n";
+        out << "HPWaterBSDFComponentWeightingEnabled: " << d.HPWaterBSDFComponentWeightingEnabled << "\n";
         out << "HPWaterSkyReflectionIntensity: " << d.HPWaterSkyReflectionIntensity << "\n";
         out << "HPWaterIndirectDiffuseIntensity: " << d.HPWaterIndirectDiffuseIntensity << "\n";
         out << "HPWaterDirectionalLightIntensity: " << d.HPWaterDirectionalLightIntensity << "\n";
@@ -7589,9 +7590,10 @@ private:
             d.HPWaterGGXEnergyCompensation,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d indirectScatter=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterIndirectScatterIntegrationEnabled ? 1 : 0,
+            d.HPWaterBSDFComponentWeightingEnabled ? 1 : 0,
             d.HPWaterSkyReflectionIntensity,
             d.HPWaterIndirectDiffuseIntensity,
             d.HPWaterDirectionalLightIntensity);

@@ -111,6 +111,10 @@ const float HPWATER_FORWARD_SCALING_FACTOR = 1.0;
 const float HPWATER_WATER_DISPERSION_UV_CLAMP = 0.01;
 const int HPWATER_INDIRECT_SAMPLE_COUNT = 16;
 const float HPWATER_INDIRECT_EXP_FACTOR = 32.0;
+const float HPWATER_SSS_PATH_SCALE = 20.0;
+const float HPWATER_SSS_NONLINEAR_STRENGTH = 0.5;
+const float HPWATER_SSS_SCATTER_BOOST = 2.0;
+const float HPWATER_BACKLIT_PATH_SCALE = 20.0;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -195,6 +199,20 @@ float HenyeyGreenstein(float cosTheta, float g) {
     return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
 }
 
+float HPWaterHenyeyPhase(float cosTheta, float g) {
+    float g2 = g * g;
+    float denom = max(1.0 + g2 - 2.0 * g * cosTheta, 0.0001);
+    return min((1.0 - g2) / pow(denom, 1.5), 64.0);
+}
+
+vec3 HPWaterScatterPhase(float cosTheta, float phaseG) {
+    const vec3 betaRayleigh = vec3(5.8e-6, 13.5e-6, 33.1e-6);
+    float rayleighPhase = (1.0 + cosTheta * cosTheta) * (3.0 / (16.0 * PI));
+    vec3 rayleighScatter = betaRayleigh * rayleighPhase * 1.0e6;
+    float mieScatter = HPWaterHenyeyPhase(cosTheta, phaseG);
+    return rayleighScatter * 0.05 + vec3(mieScatter) * 0.95;
+}
+
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
     float a = roughness * roughness;
     float a2 = a * a;
@@ -256,6 +274,19 @@ vec3 HPWaterScatteredLight(vec3 originLight,
                            vec3 phase) {
     vec3 extinctionCoeff = max(absorptionCoeff + scatteringCoeff, vec3(0.00001));
     vec3 transmittance = exp(-extinctionCoeff * max(crossDistance, 0.00001));
+    vec3 extinguishedLight = originLight * (vec3(1.0) - transmittance);
+    vec3 scatteringAlbedo = scatteringCoeff / extinctionCoeff;
+    return extinguishedLight * scatteringAlbedo * phase;
+}
+
+vec3 HPWaterScatteredLightWithTransmittance(vec3 originLight,
+                                            vec3 absorptionCoeff,
+                                            vec3 scatteringCoeff,
+                                            float crossDistance,
+                                            vec3 phase,
+                                            out vec3 transmittance) {
+    vec3 extinctionCoeff = max(absorptionCoeff + scatteringCoeff, vec3(0.00001));
+    transmittance = exp(-extinctionCoeff * max(crossDistance, 0.00001));
     vec3 extinguishedLight = originLight * (vec3(1.0) - transmittance);
     vec3 scatteringAlbedo = scatteringCoeff / extinctionCoeff;
     return extinguishedLight * scatteringAlbedo * phase;
@@ -648,7 +679,8 @@ void main() {
     vec3 L = length(u_LightDir) > 0.0001 ? normalize(u_LightDir) : normalize(vec3(-0.35, 0.82, 0.44));
     vec3 H = length(V + L) > 0.0001 ? normalize(V + L) : N;
     float NdotV = clamp(dot(N, V), 0.0, 1.0);
-    float NdotL = clamp(dot(N, L), 0.0, 1.0);
+    float NdotLRaw = dot(N, L);
+    float NdotL = clamp(NdotLRaw, 0.0, 1.0);
     float lightViewAlignment = clamp(dot(-V, L), -1.0, 1.0);
     float backlit = pow(clamp(lightViewAlignment * 0.5 + 0.5, 0.0, 1.0), 1.5) *
         smoothstep(0.0, 0.7, 1.0 - NdotL);
@@ -704,15 +736,54 @@ void main() {
             6.0));
     vec3 forwardBlur = SampleHPWaterDispersedSceneColor(v_UV, refractUV, forwardBlurLOD);
     vec3 directWaterLight = u_LightColor * max(u_LightIntensity, 0.0);
-    vec3 forwardScatter = (scatterColor * directWaterLight * forwardPhase * 0.08 +
-        forwardBlur * scatterColor * 0.22 * clamp(u_MultiScatterScale, 0.0, 32.0)) *
-        normalizedThickness * forwardStrength;
-    vec3 thinSSS = scatterColor * (vec3(1.0) - fallbackTransmittance) *
-        (0.18 + 0.82 * (1.0 - normalizedThickness)) *
+
+    // HPWaterBSDFLibary component split:
+    // diffR = T_entry * G_entry * S_volume
+    // diffT = thinLayerSSS + backlitTransmission
+    vec3 extinctionCoeff = max(absorptionColor + scatterColor, vec3(0.00001));
+    vec3 T_entry = vec3(1.0) - vec3(SchlickFresnel(NdotL, 0.02037));
+    float G_entry = NdotL;
+    vec3 forwardScatterColor = forwardBlur * clamp(u_MultiScatterScale, 0.0, 32.0);
+    vec3 volumePhase = HPWaterScatterPhase(lightViewAlignment, clamp(u_PhaseG, -0.95, 0.95));
+    vec3 S_volume = HPWaterScatteredLight(
+        directWaterLight + forwardScatterColor * 0.22,
+        absorptionColor,
+        scatterColor,
+        max(hpWaterRayLength, 0.01),
+        mix(vec3(forwardPhase), volumePhase, 0.65));
+    S_volume *= (0.15 + 0.85 * normalizedThickness) * forwardStrength;
+    vec3 macroScattering = S_volume * T_entry * G_entry;
+
+    float sssThickness = max(normalizedThickness, 0.001);
+    float scatterStrength = dot(scatterColor, vec3(0.2126, 0.7152, 0.0722));
+    float L_linear = sssThickness * HPWATER_SSS_PATH_SCALE;
+    float L_nonlinear = sssThickness * sssThickness * HPWATER_SSS_PATH_SCALE * (1.0 + scatterStrength);
+    float opticalDepth = dot(extinctionCoeff, vec3(0.2126, 0.7152, 0.0722)) *
+        sssThickness * HPWATER_SSS_PATH_SCALE;
+    float nonlinearWeight = clamp(opticalDepth * HPWATER_SSS_NONLINEAR_STRENGTH, 0.0, 1.0);
+    float sssPathLength = mix(L_linear, L_nonlinear, nonlinearWeight);
+    vec3 sssTransmittance;
+    vec3 S_sss = HPWaterScatteredLightWithTransmittance(
+        directWaterLight,
+        absorptionColor,
+        scatterColor,
+        sssPathLength,
+        HPWaterScatterPhase(dot(-V, L), clamp(u_PhaseG, -0.95, 0.95)),
+        sssTransmittance);
+    float G_sss = 1.0 - G_entry;
+    float sssWeight = clamp(1.0 - dot(sssTransmittance, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+    vec3 thinLayerSSS = S_sss * G_sss * HPWATER_SSS_SCATTER_BOOST *
         clamp(u_ThinSSSStrength, 0.0, 3.0);
-    vec3 backTransmission = scatterColor * directWaterLight * backlit * (0.12 + 0.88 * normalizedThickness) *
+    thinLayerSSS = mix(S_volume * G_sss, thinLayerSSS, sssWeight);
+
+    float G_backlit = clamp(-NdotLRaw, 0.0, 1.0);
+    float backlitPathLength = sssThickness * HPWATER_BACKLIT_PATH_SCALE;
+    vec3 T_backlit = exp(-extinctionCoeff * backlitPathLength);
+    float P_backlit = HPWaterHenyeyPhase(dot(V, -L), 0.9998);
+    vec3 backlitTransmission = directWaterLight * G_backlit * T_backlit * P_backlit *
         clamp(u_BacklitTransmissionStrength, 0.0, 3.0);
-    bodyColor += forwardScatter + thinSSS + backTransmission + indirectBody;
+
+    bodyColor += macroScattering + thinLayerSSS + backlitTransmission + indirectBody;
 
     if (u_HPWaterCausticEnabled == 1) {
         vec4 caustic = texture(u_HPWaterCaustic, v_UV);
