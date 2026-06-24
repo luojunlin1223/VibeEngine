@@ -275,6 +275,8 @@ struct RenderDiagnostics {
     bool HPWaterEnvSpecularMultiBounceEnabled = false;
     bool HPWaterSSRReflectionEnabled = false;
     bool HPWaterSSRHierarchyBlendEnabled = false;
+    bool HPWaterSSRDiagnosticsValid = false;
+    uint32_t HPWaterSSRDiagnosticsTexture = 0;
     uint32_t HPWaterSSRMaxSteps = 0;
     float HPWaterSSRStepSize = 0.0f;
     float HPWaterSSRThickness = 0.0f;

@@ -3313,6 +3313,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
+    m_RenderDiagnostics.HPWaterSSRDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterSSRDiagnosticsTexture();
+    m_RenderDiagnostics.HPWaterSSRDiagnosticsValid =
+        m_RenderDiagnostics.HPWaterSSRDiagnosticsTexture != 0 &&
+        m_RenderDiagnostics.HPWaterSSRHierarchyBlendEnabled;
     m_RenderDiagnostics.HPWaterRefractionNDCMarchEnabled =
         m_DeferredRenderer.IsHPWaterRefractionNDCMarchEnabled();
     m_RenderDiagnostics.HPWaterMaskTexture = m_DeferredRenderer.GetHPWaterMaskTexture();

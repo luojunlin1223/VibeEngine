@@ -36,6 +36,7 @@ layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 RefractData;
 layout(location = 2) out vec4 RefractMeta;
+layout(location = 3) out vec4 SSRDiagnostics;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -797,6 +798,7 @@ void main() {
         FragColor = sceneColor;
         RefractData = vec4(0.0);
         RefractMeta = vec4(v_UV, 1.0, 0.0);
+        SSRDiagnostics = vec4(0.0);
         return;
     }
 
@@ -807,6 +809,7 @@ void main() {
         FragColor = sceneColor;
         RefractData = vec4(0.0);
         RefractMeta = vec4(v_UV, sceneDepth, 0.0);
+        SSRDiagnostics = vec4(0.0);
         return;
     }
 
@@ -959,14 +962,19 @@ void main() {
 
     vec3 skyReflection = vec3(0.0);
     vec3 indirectBody = vec3(0.0);
+    float ssrConfidence = 0.0;
+    float ssrHit = 0.0;
+    float probeHierarchyWeight = 0.0;
     if (u_IndirectLightingEnabled == 1) {
         vec3 R = reflect(-V, N);
         float roughnessFade = mix(1.0, 0.25, roughness);
         vec3 environmentSpecular = SampleEnvironment(R, R, waterWorldPos, N, V, roughness, false);
         vec4 ssrReflection = TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear);
-        environmentSpecular = mix(environmentSpecular, ssrReflection.rgb, clamp(ssrReflection.a, 0.0, 1.0));
+        ssrConfidence = clamp(ssrReflection.a, 0.0, 1.0);
+        ssrHit = ssrConfidence > 0.0001 ? 1.0 : 0.0;
+        environmentSpecular = mix(environmentSpecular, ssrReflection.rgb, ssrConfidence);
         vec3 environmentDiffuse = SampleEnvironment(N, N, waterWorldPos, N, V, 1.0, true);
-        float probeHierarchyWeight = u_HasReflectionProbe == 1
+        probeHierarchyWeight = u_HasReflectionProbe == 1
             ? clamp(u_ReflectionProbeHierarchyWeight, 0.0, 1.0)
             : 0.0;
         float environmentIntensity = mix(
@@ -1071,6 +1079,10 @@ void main() {
     FragColor = vec4(mix(sceneColor.rgb, waterColor, waterAlpha), sceneColor.a);
     RefractData = vec4(refractedWorldPos, rayLength);
     RefractMeta = vec4(refractUV, refractedSceneDepth, normalizedThickness);
+    SSRDiagnostics = vec4(ssrConfidence,
+                          ssrHit,
+                          probeHierarchyWeight,
+                          clamp(u_HPWaterSSRStrength, 0.0, 1.0));
 }
 #endif
 

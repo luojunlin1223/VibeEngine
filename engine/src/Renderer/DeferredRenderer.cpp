@@ -475,6 +475,7 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
         { GL_RGBA16F }, // RT0: Final HPWater composite color
         { GL_RGBA16F }, // RT1: Refracted world position.xyz + ray length
         { GL_RGBA16F }, // RT2: Refract UV.xy + scene depth + normalized thickness
+        { GL_RGBA16F }, // RT3: SSR confidence, hit mask, hierarchy weight, enabled strength
     };
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
@@ -3490,6 +3491,11 @@ uint32_t DeferredRenderer::GetHPWaterRefractionDataTexture() const {
 uint32_t DeferredRenderer::GetHPWaterRefractionMetaTexture() const {
     if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 3) return 0;
     return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(2));
+}
+
+uint32_t DeferredRenderer::GetHPWaterSSRDiagnosticsTexture() const {
+    if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 4) return 0;
+    return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(3));
 }
 
 uint32_t DeferredRenderer::GetHPWaterMaskTexture() const {

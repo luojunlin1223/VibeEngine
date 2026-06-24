@@ -374,6 +374,9 @@ public:
     /// Get the HPWater refraction metadata texture.
     uint32_t GetHPWaterRefractionMetaTexture() const;
 
+    /// Get the HPWater SSR hierarchy diagnostic texture.
+    uint32_t GetHPWaterSSRDiagnosticsTexture() const;
+
     /// Get HPWater opaque scene-depth pyramid texture.
     uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
     uint32_t GetHPWaterDepthPyramidMipCount() const { return m_HPWaterDepthPyramidMipCount; }
