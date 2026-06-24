@@ -378,6 +378,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumePunctualLightLoopEnabled = false;
+    m_HPWaterVolumePointLightCount = 0;
+    m_HPWaterVolumeSpotLightCount = 0;
     m_HPWaterVolumeShadowSoftness = 0.0f;
     m_HPWaterVolumeShadowMinFilterSize = 0.0f;
     m_HPWaterVolumeShadowBlockerSamples = 0;
@@ -729,6 +732,9 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumePunctualLightLoopEnabled = false;
+    m_HPWaterVolumePointLightCount = 0;
+    m_HPWaterVolumeSpotLightCount = 0;
     m_HPWaterVolumeShadowSoftness = 0.0f;
     m_HPWaterVolumeShadowMinFilterSize = 0.0f;
     m_HPWaterVolumeShadowBlockerSamples = 0;
@@ -1173,6 +1179,9 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumePunctualLightLoopEnabled = false;
+    m_HPWaterVolumePointLightCount = 0;
+    m_HPWaterVolumeSpotLightCount = 0;
     m_HPWaterVolumeShadowSoftness = 0.0f;
     m_HPWaterVolumeShadowMinFilterSize = 0.0f;
     m_HPWaterVolumeShadowBlockerSamples = 0;
@@ -1352,6 +1361,9 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
     m_HPWaterVolumeShadowParamsEnabled = false;
+    m_HPWaterVolumePunctualLightLoopEnabled = false;
+    m_HPWaterVolumePointLightCount = 0;
+    m_HPWaterVolumeSpotLightCount = 0;
     m_HPWaterVolumeShadowSoftness = 0.0f;
     m_HPWaterVolumeShadowMinFilterSize = 0.0f;
     m_HPWaterVolumeShadowBlockerSamples = 0;
@@ -2056,6 +2068,19 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                                const glm::vec3& lightDir,
                                                const glm::vec3& lightColor,
                                                float lightIntensity,
+                                               int pointLightCount,
+                                               const std::array<glm::vec3, 8>& pointLightPositions,
+                                               const std::array<glm::vec3, 8>& pointLightColors,
+                                               const std::array<float, 8>& pointLightIntensities,
+                                               const std::array<float, 8>& pointLightRanges,
+                                               int spotLightCount,
+                                               const std::array<glm::vec3, 4>& spotLightPositions,
+                                               const std::array<glm::vec3, 4>& spotLightDirections,
+                                               const std::array<glm::vec3, 4>& spotLightColors,
+                                               const std::array<float, 4>& spotLightIntensities,
+                                               const std::array<float, 4>& spotLightRanges,
+                                               const std::array<float, 4>& spotLightInnerCos,
+                                               const std::array<float, 4>& spotLightOuterCos,
                                                const glm::vec3& cameraPosition,
                                                const glm::mat4& inverseViewProjection,
                                                const glm::mat4& shadowCameraView,
@@ -2082,6 +2107,9 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         m_HPWaterVolumeShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
         m_HPWaterVolumeShadowParamsEnabled = false;
+        m_HPWaterVolumePunctualLightLoopEnabled = false;
+        m_HPWaterVolumePointLightCount = 0;
+        m_HPWaterVolumeSpotLightCount = 0;
         m_HPWaterVolumeShadowSoftness = 0.0f;
         m_HPWaterVolumeShadowMinFilterSize = 0.0f;
         m_HPWaterVolumeShadowBlockerSamples = 0;
@@ -2157,6 +2185,38 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetVec3("u_LightDir", lightDir);
     m_HPWaterVolumeShader->SetVec3("u_LightColor", lightColor);
     m_HPWaterVolumeShader->SetFloat("u_LightIntensity", lightIntensity);
+    const int clampedPointLightCount = std::clamp(pointLightCount, 0, 8);
+    m_HPWaterVolumeShader->SetInt("u_NumPointLights", clampedPointLightCount);
+    for (int i = 0; i < clampedPointLightCount; ++i) {
+        const std::string index = std::to_string(i);
+        m_HPWaterVolumeShader->SetVec3("u_PointLightPositions[" + index + "]",
+                                       pointLightPositions[i]);
+        m_HPWaterVolumeShader->SetVec3("u_PointLightColors[" + index + "]",
+                                       pointLightColors[i]);
+        m_HPWaterVolumeShader->SetFloat("u_PointLightIntensities[" + index + "]",
+                                        std::max(pointLightIntensities[i], 0.0f));
+        m_HPWaterVolumeShader->SetFloat("u_PointLightRanges[" + index + "]",
+                                        std::max(pointLightRanges[i], 0.001f));
+    }
+    const int clampedSpotLightCount = std::clamp(spotLightCount, 0, 4);
+    m_HPWaterVolumeShader->SetInt("u_NumSpotLights", clampedSpotLightCount);
+    for (int i = 0; i < clampedSpotLightCount; ++i) {
+        const std::string index = std::to_string(i);
+        m_HPWaterVolumeShader->SetVec3("u_SpotLightPositions[" + index + "]",
+                                       spotLightPositions[i]);
+        m_HPWaterVolumeShader->SetVec3("u_SpotLightDirections[" + index + "]",
+                                       spotLightDirections[i]);
+        m_HPWaterVolumeShader->SetVec3("u_SpotLightColors[" + index + "]",
+                                       spotLightColors[i]);
+        m_HPWaterVolumeShader->SetFloat("u_SpotLightIntensities[" + index + "]",
+                                        std::max(spotLightIntensities[i], 0.0f));
+        m_HPWaterVolumeShader->SetFloat("u_SpotLightRanges[" + index + "]",
+                                        std::max(spotLightRanges[i], 0.001f));
+        m_HPWaterVolumeShader->SetFloat("u_SpotLightInnerCos[" + index + "]",
+                                        spotLightInnerCos[i]);
+        m_HPWaterVolumeShader->SetFloat("u_SpotLightOuterCos[" + index + "]",
+                                        spotLightOuterCos[i]);
+    }
     m_HPWaterVolumeShader->SetVec3("u_CameraPosition", cameraPosition);
     m_HPWaterVolumeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterVolumeShader->SetFloat("u_MacroScatterStrength",
@@ -2219,6 +2279,9 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShadowBlockerSamples = static_cast<uint32_t>(clampedVolumeShadowBlockerSamples);
     m_HPWaterVolumeShadowFilterSamples = static_cast<uint32_t>(clampedVolumeShadowFilterSamples);
     m_HPWaterVolumeSampleCount = hpWaterVolumeSampleCount;
+    m_HPWaterVolumePunctualLightLoopEnabled = (clampedPointLightCount + clampedSpotLightCount) > 0;
+    m_HPWaterVolumePointLightCount = static_cast<uint32_t>(clampedPointLightCount);
+    m_HPWaterVolumeSpotLightCount = static_cast<uint32_t>(clampedSpotLightCount);
     return true;
 }
 

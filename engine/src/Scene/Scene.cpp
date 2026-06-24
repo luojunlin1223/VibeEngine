@@ -2701,6 +2701,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        lightDir,
                                                        lightColor,
                                                        lightIntensity,
+                                                       numPointLights,
+                                                       pointPositions,
+                                                       pointColors,
+                                                       pointIntensities,
+                                                       pointRanges,
+                                                       numSpotLights,
+                                                       spotPositions,
+                                                       spotDirections,
+                                                       spotColors,
+                                                       spotIntensities,
+                                                       spotRanges,
+                                                       spotInnerCos,
+                                                       spotOuterCos,
                                                        cameraPos,
                                                        inverseViewProjection,
                                                        cameraView,
@@ -2730,6 +2743,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterShadowCascadeDitherEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
             m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
+        m_RenderDiagnostics.HPWaterVolumePunctualLightLoopEnabled =
+            m_DeferredRenderer.IsHPWaterVolumePunctualLightLoopEnabled();
+        m_RenderDiagnostics.HPWaterVolumePointLightCount =
+            m_DeferredRenderer.GetHPWaterVolumePointLightCount();
+        m_RenderDiagnostics.HPWaterVolumeSpotLightCount =
+            m_DeferredRenderer.GetHPWaterVolumeSpotLightCount();
         m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
             m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
         m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =
@@ -2911,6 +2930,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterShadowCascadeDitherEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
+    m_RenderDiagnostics.HPWaterVolumePunctualLightLoopEnabled =
+        m_DeferredRenderer.IsHPWaterVolumePunctualLightLoopEnabled();
+    m_RenderDiagnostics.HPWaterVolumePointLightCount =
+        m_DeferredRenderer.GetHPWaterVolumePointLightCount();
+    m_RenderDiagnostics.HPWaterVolumeSpotLightCount =
+        m_DeferredRenderer.GetHPWaterVolumeSpotLightCount();
     m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
         m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
     m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =

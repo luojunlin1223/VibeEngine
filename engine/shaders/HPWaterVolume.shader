@@ -64,6 +64,19 @@ uniform int u_FrameIndex;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
+uniform int u_NumPointLights;
+uniform vec3 u_PointLightPositions[8];
+uniform vec3 u_PointLightColors[8];
+uniform float u_PointLightIntensities[8];
+uniform float u_PointLightRanges[8];
+uniform int u_NumSpotLights;
+uniform vec3 u_SpotLightPositions[4];
+uniform vec3 u_SpotLightDirections[4];
+uniform vec3 u_SpotLightColors[4];
+uniform float u_SpotLightIntensities[4];
+uniform float u_SpotLightRanges[4];
+uniform float u_SpotLightInnerCos[4];
+uniform float u_SpotLightOuterCos[4];
 uniform vec3 u_CameraPosition;
 uniform mat4 u_InverseViewProjection;
 
@@ -129,6 +142,69 @@ float InterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
 vec3 SafeNormalize(vec3 v, vec3 fallback) {
     float len2 = dot(v, v);
     return len2 > 0.000001 ? v * inversesqrt(len2) : fallback;
+}
+
+float HPWaterRangeAttenuation(float distanceToLight, float range) {
+    float safeRange = max(range, 0.001);
+    float range01 = clamp(distanceToLight / safeRange, 0.0, 1.0);
+    float rangeWindow = 1.0 - pow(range01, 4.0);
+    rangeWindow *= rangeWindow;
+    return rangeWindow / (distanceToLight * distanceToLight + 1.0);
+}
+
+vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
+                                          vec3 sampleToCamera,
+                                          float normalizedThickness) {
+    vec3 punctual = vec3(0.0);
+    int pointCount = clamp(u_NumPointLights, 0, 8);
+    for (int i = 0; i < 8; ++i) {
+        if (i >= pointCount)
+            break;
+
+        vec3 lightVector = u_PointLightPositions[i] - samplePos;
+        float lightDistance = length(lightVector);
+        float lightRange = max(u_PointLightRanges[i], 0.001);
+        if (lightDistance <= 0.0001 || lightDistance >= lightRange)
+            continue;
+
+        vec3 Lp = lightVector / lightDistance;
+        float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange);
+        float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
+        vec3 phase = ScatterPhase(cosTheta);
+        vec3 radiance = u_PointLightColors[i] *
+            max(u_PointLightIntensities[i], 0.0) * attenuation;
+        punctual += radiance * phase * 2.2;
+    }
+
+    int spotCount = clamp(u_NumSpotLights, 0, 4);
+    for (int i = 0; i < 4; ++i) {
+        if (i >= spotCount)
+            break;
+
+        vec3 lightVector = u_SpotLightPositions[i] - samplePos;
+        float lightDistance = length(lightVector);
+        float lightRange = max(u_SpotLightRanges[i], 0.001);
+        if (lightDistance <= 0.0001 || lightDistance >= lightRange)
+            continue;
+
+        vec3 Lp = lightVector / lightDistance;
+        vec3 spotForward = SafeNormalize(-u_SpotLightDirections[i], vec3(0.0, -1.0, 0.0));
+        float theta = dot(Lp, spotForward);
+        float epsilon = max(u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i], 0.001);
+        float spotFactor = clamp((theta - u_SpotLightOuterCos[i]) / epsilon, 0.0, 1.0);
+        spotFactor *= spotFactor;
+        if (spotFactor <= 0.0001)
+            continue;
+
+        float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange) * spotFactor;
+        float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
+        vec3 phase = ScatterPhase(cosTheta);
+        vec3 radiance = u_SpotLightColors[i] *
+            max(u_SpotLightIntensities[i], 0.0) * attenuation;
+        punctual += radiance * phase * 2.2;
+    }
+
+    return punctual * (0.55 + 0.45 * normalizedThickness);
 }
 
 float SampleHPWaterVolumeShadowCascade(vec3 shadowCoord,
@@ -327,8 +403,12 @@ void main() {
         vec3 extinguished = vec3(1.0) - stepTransmittance;
         float depthWeight = 0.55 + 0.45 * smoothstep(0.0, 1.0, midD);
 
-        directScatter += accumTransmittance * baseDirectLight * volumeShadow * extinguished *
-            scatteringAlbedo * (phase * 2.6) * macroScatter * depthWeight;
+        vec3 directionalScatter = baseDirectLight * volumeShadow * (phase * 2.6);
+        vec3 punctualScatter = ComputeHPWaterVolumePunctualLighting(samplePos,
+                                                                    sampleToCamera,
+                                                                    normalizedThickness);
+        directScatter += accumTransmittance * (directionalScatter + punctualScatter) *
+            extinguished * scatteringAlbedo * macroScatter * depthWeight;
 
         vec3 refractedSceneColor = texture(u_SceneColor, sampleUV).rgb;
         sceneInScatter += accumTransmittance * refractedSceneColor * scatterCoeff *

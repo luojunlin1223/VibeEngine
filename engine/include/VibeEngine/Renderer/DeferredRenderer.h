@@ -218,6 +218,19 @@ public:
                                  const glm::vec3& lightDir,
                                  const glm::vec3& lightColor,
                                  float lightIntensity,
+                                 int pointLightCount,
+                                 const std::array<glm::vec3, 8>& pointLightPositions,
+                                 const std::array<glm::vec3, 8>& pointLightColors,
+                                 const std::array<float, 8>& pointLightIntensities,
+                                 const std::array<float, 8>& pointLightRanges,
+                                 int spotLightCount,
+                                 const std::array<glm::vec3, 4>& spotLightPositions,
+                                 const std::array<glm::vec3, 4>& spotLightDirections,
+                                 const std::array<glm::vec3, 4>& spotLightColors,
+                                 const std::array<float, 4>& spotLightIntensities,
+                                 const std::array<float, 4>& spotLightRanges,
+                                 const std::array<float, 4>& spotLightInnerCos,
+                                 const std::array<float, 4>& spotLightOuterCos,
                                  const glm::vec3& cameraPosition,
                                  const glm::mat4& inverseViewProjection,
                                  const glm::mat4& shadowCameraView,
@@ -394,6 +407,15 @@ public:
     }
     bool IsHPWaterVolumeShadowParamsEnabled() const {
         return m_HPWaterVolumeShadowParamsEnabled;
+    }
+    bool IsHPWaterVolumePunctualLightLoopEnabled() const {
+        return m_HPWaterVolumePunctualLightLoopEnabled;
+    }
+    uint32_t GetHPWaterVolumePointLightCount() const {
+        return m_HPWaterVolumePointLightCount;
+    }
+    uint32_t GetHPWaterVolumeSpotLightCount() const {
+        return m_HPWaterVolumeSpotLightCount;
     }
     uint32_t GetHPWaterVolumeSampleCount() const {
         return m_HPWaterVolumeSampleCount;
@@ -670,6 +692,9 @@ private:
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
     bool m_HPWaterVolumeShadowSamplingEnabled = false;
     bool m_HPWaterVolumeShadowParamsEnabled = false;
+    bool m_HPWaterVolumePunctualLightLoopEnabled = false;
+    uint32_t m_HPWaterVolumePointLightCount = 0;
+    uint32_t m_HPWaterVolumeSpotLightCount = 0;
     uint32_t m_HPWaterVolumeSampleCount = 0;
     float m_HPWaterVolumeShadowSoftness = 0.0f;
     float m_HPWaterVolumeShadowMinFilterSize = 0.0f;
