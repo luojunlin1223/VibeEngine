@@ -177,8 +177,12 @@ vec4 SampleHPWaterAreaLightLTC(float roughness, float nDotV) {
         return vec4(1.0, 0.5, 0.35, 1.0);
     }
 
-    return texture(u_AreaLightLTCLUT,
-        vec2(clamp(nDotV, 0.0, 1.0), clamp(roughness, 0.0, 1.0)));
+    vec2 lutSize = vec2(max(textureSize(u_AreaLightLTCLUT, 0), ivec2(1)));
+    vec2 uv = vec2(
+        clamp(sqrt(max(roughness, 0.0)), 0.0, 1.0),
+        clamp(nDotV, 0.0, 1.0));
+    uv = (uv * (lutSize - vec2(1.0)) + vec2(0.5)) / lutSize;
+    return texture(u_AreaLightLTCLUT, uv);
 }
 
 void AccumulateHPWaterAreaLightSample(vec3 samplePos,
