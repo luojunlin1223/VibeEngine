@@ -192,6 +192,8 @@ struct RenderDiagnostics {
     bool HPWaterDepthPyramidRan = false;
     bool HPWaterDepthMergedToSceneDepth = false;
     bool HPWaterNormalMergedToSceneGBuffer = false;
+    bool HPWaterStencilMarkedInSceneDepth = false;
+    uint32_t HPWaterStencilRef = 0;
     uint32_t HPWaterDepthPyramidTexture = 0;
     uint32_t HPWaterDepthPyramidMipCount = 0;
     uint32_t HPWaterDepthPyramidWidth = 0;

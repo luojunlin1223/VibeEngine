@@ -1161,6 +1161,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterDepthMergedToSceneDepth();
     m_RenderDiagnostics.HPWaterNormalMergedToSceneGBuffer =
         m_DeferredRenderer.IsHPWaterNormalMergedToSceneGBuffer();
+    m_RenderDiagnostics.HPWaterStencilMarkedInSceneDepth =
+        m_DeferredRenderer.IsHPWaterStencilMarkedInSceneDepth();
+    m_RenderDiagnostics.HPWaterStencilRef = m_DeferredRenderer.GetHPWaterStencilRef();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTValid = m_DeferredRenderer.IsHPWaterFGDLUTValid();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTTexture = m_DeferredRenderer.GetHPWaterFGDLUTTexture();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTResolution = m_DeferredRenderer.GetHPWaterFGDLUTResolution();
@@ -2229,6 +2232,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 m_RenderDiagnostics.HPWaterNormalMergedToSceneGBuffer =
                     m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth &&
                     m_DeferredRenderer.MergeHPWaterNormalIntoSceneGBuffer();
+                m_RenderDiagnostics.HPWaterStencilMarkedInSceneDepth =
+                    m_DeferredRenderer.IsHPWaterStencilMarkedInSceneDepth();
+                m_RenderDiagnostics.HPWaterStencilRef = m_DeferredRenderer.GetHPWaterStencilRef();
             }
 
             if (!hpWaterEntities.empty() && hpWaterCausticAtlasEnabled &&
@@ -2877,6 +2883,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterDepthMergedToSceneDepth();
     m_RenderDiagnostics.HPWaterNormalMergedToSceneGBuffer =
         m_DeferredRenderer.IsHPWaterNormalMergedToSceneGBuffer();
+    m_RenderDiagnostics.HPWaterStencilMarkedInSceneDepth =
+        m_DeferredRenderer.IsHPWaterStencilMarkedInSceneDepth();
+    m_RenderDiagnostics.HPWaterStencilRef = m_DeferredRenderer.GetHPWaterStencilRef();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {

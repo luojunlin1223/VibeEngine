@@ -347,6 +347,8 @@ public:
     bool IsHPWaterDepthPyramidValid() const { return m_HPWaterDepthPyramidValid; }
     bool IsHPWaterDepthMergedToSceneDepth() const { return m_HPWaterDepthMergedToSceneDepth; }
     bool IsHPWaterNormalMergedToSceneGBuffer() const { return m_HPWaterNormalMergedToSceneGBuffer; }
+    bool IsHPWaterStencilMarkedInSceneDepth() const { return m_HPWaterStencilMarkedInSceneDepth; }
+    uint32_t GetHPWaterStencilRef() const { return m_HPWaterStencilRef; }
     bool IsHPWaterRefractionNDCMarchEnabled() const { return m_HPWaterRefractionNDCMarchEnabled; }
     uint32_t GetHPWaterSceneColorMipCount() const { return m_HPWaterSceneColorMipCount; }
     bool IsHPWaterSceneColorMipValid() const { return m_HPWaterSceneColorMipValid; }
@@ -645,6 +647,8 @@ private:
     bool m_HPWaterDepthPyramidValid = false;
     bool m_HPWaterDepthMergedToSceneDepth = false;
     bool m_HPWaterNormalMergedToSceneGBuffer = false;
+    bool m_HPWaterStencilMarkedInSceneDepth = false;
+    uint32_t m_HPWaterStencilRef = 0;
 
     // Low-resolution HPWater volume accumulation targets.
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFBO;

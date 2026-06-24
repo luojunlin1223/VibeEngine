@@ -17,6 +17,11 @@
 
 namespace VE {
 
+static constexpr GLuint kHPWaterStencilTraceReflectionRay = 1u << 3u;
+static constexpr GLuint kHPWaterStencilWaterSurface = 1u << 5u;
+static constexpr GLuint kHPWaterStencilRef =
+    kHPWaterStencilTraceReflectionRay | kHPWaterStencilWaterSurface;
+
 static uint32_t CalculateMipCount(uint32_t width, uint32_t height) {
     uint32_t maxDim = std::max(width, height);
     uint32_t mipCount = 1;
@@ -410,6 +415,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterDepthMergedToSceneDepth = false;
     m_HPWaterNormalMergedToSceneGBuffer = false;
+    m_HPWaterStencilMarkedInSceneDepth = false;
+    m_HPWaterStencilRef = 0;
     m_HPWaterFluidValid = false;
     m_HPWaterFluidInitialized = false;
     m_HPWaterFluidComputeRan = false;
@@ -1196,6 +1203,8 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterDepthMergedToSceneDepth = false;
     m_HPWaterNormalMergedToSceneGBuffer = false;
+    m_HPWaterStencilMarkedInSceneDepth = false;
+    m_HPWaterStencilRef = 0;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
 }
@@ -1205,7 +1214,9 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
 
     m_HPWaterGBuffer->Bind();
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glStencilMask(0xFF);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     m_HPWaterMaskValid = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
@@ -1227,12 +1238,17 @@ void DeferredRenderer::BeginGeometryPass() {
     ClearHPWaterGBuffer();
     m_HPWaterDepthMergedToSceneDepth = false;
     m_HPWaterNormalMergedToSceneGBuffer = false;
+    m_HPWaterStencilMarkedInSceneDepth = false;
+    m_HPWaterStencilRef = 0;
 
     m_GBuffer->Bind();
 
     // Clear all G-buffer attachments to zero
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glStencilMask(0xFF);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glDisable(GL_STENCIL_TEST);
 
     // Standard opaque render state
     glEnable(GL_DEPTH_TEST);
@@ -1468,12 +1484,16 @@ bool DeferredRenderer::BuildHPWaterDepthPyramid() {
 bool DeferredRenderer::MergeHPWaterDepthIntoSceneDepth() {
     if (!m_HPWaterDepthMergeShader || !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterDepthMergedToSceneDepth = false;
+        m_HPWaterStencilMarkedInSceneDepth = false;
+        m_HPWaterStencilRef = 0;
         return false;
     }
 
     const GLuint hpWaterDepth = static_cast<GLuint>(m_HPWaterGBuffer->GetDepthAttachmentID());
     if (hpWaterDepth == 0) {
         m_HPWaterDepthMergedToSceneDepth = false;
+        m_HPWaterStencilMarkedInSceneDepth = false;
+        m_HPWaterStencilRef = 0;
         return false;
     }
 
@@ -1490,14 +1510,33 @@ bool DeferredRenderer::MergeHPWaterDepthIntoSceneDepth() {
     GLboolean previousColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
     glGetBooleanv(GL_COLOR_WRITEMASK, previousColorMask);
     const bool previousDepthTest = glIsEnabled(GL_DEPTH_TEST) == GL_TRUE;
+    const bool previousStencilTest = glIsEnabled(GL_STENCIL_TEST) == GL_TRUE;
     const bool previousCullFace = glIsEnabled(GL_CULL_FACE) == GL_TRUE;
     const bool previousBlend = glIsEnabled(GL_BLEND) == GL_TRUE;
+    GLint previousStencilFunc = GL_ALWAYS;
+    GLint previousStencilRef = 0;
+    GLint previousStencilValueMask = 0xFF;
+    GLint previousStencilWriteMask = 0xFF;
+    GLint previousStencilFail = GL_KEEP;
+    GLint previousStencilDepthFail = GL_KEEP;
+    GLint previousStencilDepthPass = GL_KEEP;
+    glGetIntegerv(GL_STENCIL_FUNC, &previousStencilFunc);
+    glGetIntegerv(GL_STENCIL_REF, &previousStencilRef);
+    glGetIntegerv(GL_STENCIL_VALUE_MASK, &previousStencilValueMask);
+    glGetIntegerv(GL_STENCIL_WRITEMASK, &previousStencilWriteMask);
+    glGetIntegerv(GL_STENCIL_FAIL, &previousStencilFail);
+    glGetIntegerv(GL_STENCIL_PASS_DEPTH_FAIL, &previousStencilDepthFail);
+    glGetIntegerv(GL_STENCIL_PASS_DEPTH_PASS, &previousStencilDepthPass);
 
     m_GBuffer->Bind();
     glViewport(0, 0, static_cast<GLsizei>(m_Width), static_cast<GLsizei>(m_Height));
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_TRUE);
+    glEnable(GL_STENCIL_TEST);
+    glStencilMask(kHPWaterStencilRef);
+    glStencilFunc(GL_ALWAYS, static_cast<GLint>(kHPWaterStencilRef), kHPWaterStencilRef);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
     glDisable(GL_CULL_FACE);
     glDisable(GL_BLEND);
@@ -1517,10 +1556,21 @@ bool DeferredRenderer::MergeHPWaterDepthIntoSceneDepth() {
                 previousColorMask[3]);
     glDepthFunc(static_cast<GLenum>(previousDepthFunc));
     glDepthMask(previousDepthMask);
+    glStencilMask(static_cast<GLuint>(previousStencilWriteMask));
+    glStencilFunc(static_cast<GLenum>(previousStencilFunc),
+                  previousStencilRef,
+                  static_cast<GLuint>(previousStencilValueMask));
+    glStencilOp(static_cast<GLenum>(previousStencilFail),
+                static_cast<GLenum>(previousStencilDepthFail),
+                static_cast<GLenum>(previousStencilDepthPass));
     if (previousDepthTest)
         glEnable(GL_DEPTH_TEST);
     else
         glDisable(GL_DEPTH_TEST);
+    if (previousStencilTest)
+        glEnable(GL_STENCIL_TEST);
+    else
+        glDisable(GL_STENCIL_TEST);
     if (previousCullFace)
         glEnable(GL_CULL_FACE);
     else
@@ -1534,6 +1584,8 @@ bool DeferredRenderer::MergeHPWaterDepthIntoSceneDepth() {
     glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
 
     m_HPWaterDepthMergedToSceneDepth = true;
+    m_HPWaterStencilMarkedInSceneDepth = true;
+    m_HPWaterStencilRef = kHPWaterStencilRef;
     return true;
 }
 

@@ -7095,6 +7095,8 @@ private:
         out << "HPWaterDepthPyramidRan: " << d.HPWaterDepthPyramidRan << "\n";
         out << "HPWaterDepthMergedToSceneDepth: " << d.HPWaterDepthMergedToSceneDepth << "\n";
         out << "HPWaterNormalMergedToSceneGBuffer: " << d.HPWaterNormalMergedToSceneGBuffer << "\n";
+        out << "HPWaterStencilMarkedInSceneDepth: " << d.HPWaterStencilMarkedInSceneDepth << "\n";
+        out << "HPWaterStencilRef: " << d.HPWaterStencilRef << "\n";
         out << "HPWaterDepthPyramidTexture: " << d.HPWaterDepthPyramidTexture << "\n";
         out << "HPWaterDepthPyramidMipCount: " << d.HPWaterDepthPyramidMipCount << "\n";
         out << "HPWaterDepthPyramidSize: " << d.HPWaterDepthPyramidWidth << "x" << d.HPWaterDepthPyramidHeight << "\n";
@@ -7540,11 +7542,13 @@ private:
             d.HPWaterQueued,
             d.HPWaterDrawn,
             d.HPWaterCulled);
-        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d depthMerge=%d normalMerge=%d mask=%d hiz=%d/%u volume=%d temporal=%d history=%d filter=%d/%u upsample=%d compositeTex=%u refractWorld=%u refractMeta=%u",
+        ImGui::Text("HPWater pass: gbufferDrawn=%u composite=%d depthMerge=%d normalMerge=%d stencil=%d/0x%02X mask=%d hiz=%d/%u volume=%d temporal=%d history=%d filter=%d/%u upsample=%d compositeTex=%u refractWorld=%u refractMeta=%u",
             d.HPWaterGBufferDrawn,
             d.HPWaterCompositeRan ? 1 : 0,
             d.HPWaterDepthMergedToSceneDepth ? 1 : 0,
             d.HPWaterNormalMergedToSceneGBuffer ? 1 : 0,
+            d.HPWaterStencilMarkedInSceneDepth ? 1 : 0,
+            d.HPWaterStencilRef,
             d.HPWaterMaskRan ? 1 : 0,
             d.HPWaterDepthPyramidRan ? 1 : 0,
             d.HPWaterDepthPyramidMipCount,
