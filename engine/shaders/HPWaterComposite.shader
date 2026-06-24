@@ -50,6 +50,7 @@ uniform sampler2D u_HPWaterVolumeColor;
 uniform sampler2D u_HPWaterVolumeTransmittance;
 uniform sampler2D u_HPWaterVolumeDepth;
 uniform sampler2D u_HPWaterCaustic;
+uniform sampler2D u_HPWaterSSRLighting;
 uniform sampler2D u_SkyTexture;
 uniform sampler2D u_PreintegratedFGDLUT;
 uniform samplerCube u_ReflectionProbe;
@@ -128,6 +129,7 @@ uniform int u_HPWaterDepthPyramidMipCount;
 uniform int u_SceneColorMipEnabled;
 uniform int u_SceneColorMipCount;
 uniform int u_HPWaterMaskEnabled;
+uniform int u_HPWaterSSRLightingEnabled;
 uniform int u_RefractionSampleCount;
 uniform int u_RefractionJitterEnabled;
 uniform int u_HPWaterSSREnabled;
@@ -1018,7 +1020,9 @@ void main() {
     if (u_IndirectLightingEnabled == 1) {
         vec3 R = reflect(-V, N);
         float roughnessFade = mix(1.0, 0.25, roughness);
-        vec4 ssrReflection = TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear);
+        vec4 ssrReflection = u_HPWaterSSRLightingEnabled == 1
+            ? texture(u_HPWaterSSRLighting, v_UV)
+            : vec4(0.0);
         ssrConfidence = clamp(ssrReflection.a, 0.0, 1.0);
         ssrHit = ssrConfidence > 0.0001 ? 1.0 : 0.0;
         vec3 environmentSpecular =

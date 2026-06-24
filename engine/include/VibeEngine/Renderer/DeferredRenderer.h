@@ -376,6 +376,9 @@ public:
 
     /// Get the HPWater SSR hierarchy diagnostic texture.
     uint32_t GetHPWaterSSRDiagnosticsTexture() const;
+    uint32_t GetHPWaterSSRLightingTexture() const;
+    bool IsHPWaterSSRLightingValid() const { return m_HPWaterSSRLightingValid; }
+    bool DidHPWaterSSRLightingRun() const { return m_HPWaterSSRLightingRan; }
 
     /// Get HPWater opaque scene-depth pyramid texture.
     uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
@@ -619,6 +622,7 @@ public:
 private:
     void CreateLightingFBO();
     void CreateHPWaterCompositeFBO();
+    void CreateHPWaterSSRFBO();
     void CreateHPWaterVolumeFBO();
     void CreateHPWaterCausticFBO();
     void CreateHPWaterCausticComputeTexture(uint32_t width = 0, uint32_t height = 0);
@@ -680,6 +684,17 @@ private:
                                             float shadowAlphaClipThreshold,
                                             bool rgbDispersion,
                                             float dispersionStrength);
+    bool RenderHPWaterSSRLighting(uint32_t sceneColorTexture,
+                                  float nearClip,
+                                  float farClip,
+                                  const glm::vec3& cameraPosition,
+                                  bool hpWaterSSREnabled,
+                                  int hpWaterSSRMaxSteps,
+                                  float hpWaterSSRStepSize,
+                                  float hpWaterSSRThickness,
+                                  float hpWaterSSRMaxDistance,
+                                  const glm::mat4& viewProjection,
+                                  const glm::mat4& inverseViewProjection);
     static uint32_t GetHalfResolution(uint32_t value);
 
     uint32_t m_Width = 0;
@@ -701,7 +716,10 @@ private:
 
     // HPWater final composite output and precomputed refraction payload.
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterSSRFBO;
     bool m_HPWaterCompositeValid = false;
+    bool m_HPWaterSSRLightingValid = false;
+    bool m_HPWaterSSRLightingRan = false;
     bool m_HPWaterRefractionNDCMarchEnabled = false;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;
     bool m_HPWaterShadowCascadeDitherEnabled = false;
@@ -834,6 +852,7 @@ private:
     std::shared_ptr<Shader> m_GBufferShader;
     std::shared_ptr<Shader> m_HPWaterGBufferShader;
     std::shared_ptr<Shader> m_HPWaterMaskShader;
+    std::shared_ptr<Shader> m_HPWaterSSRShader;
     std::shared_ptr<Shader> m_HPWaterCompositeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeMotionVectorShader;

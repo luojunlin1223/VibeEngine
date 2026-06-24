@@ -7273,6 +7273,9 @@ private:
             << d.HPWaterEnvSpecularMultiBounceEnabled << "\n";
         out << "HPWaterSSRReflectionEnabled: " << d.HPWaterSSRReflectionEnabled << "\n";
         out << "HPWaterSSRHierarchyBlendEnabled: " << d.HPWaterSSRHierarchyBlendEnabled << "\n";
+        out << "HPWaterSSRLightingBufferRan: " << d.HPWaterSSRLightingBufferRan << "\n";
+        out << "HPWaterSSRLightingBufferValid: " << d.HPWaterSSRLightingBufferValid << "\n";
+        out << "HPWaterSSRLightingBufferTexture: " << d.HPWaterSSRLightingBufferTexture << "\n";
         out << "HPWaterSSRDiagnosticsValid: " << d.HPWaterSSRDiagnosticsValid << "\n";
         out << "HPWaterSSRDiagnosticsTexture: " << d.HPWaterSSRDiagnosticsTexture << "\n";
         out << "HPWaterSSRMaxSteps: " << d.HPWaterSSRMaxSteps << "\n";
@@ -7496,6 +7499,11 @@ private:
             writeProbe("HPWaterSSRDiagnostics", ProbeTexture(dr.GetHPWaterSSRDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetHPWaterSSRDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_diagnostics.bmp");
+        }
+        if (dr.IsInitialized() && dr.GetHPWaterSSRLightingTexture() != 0) {
+            writeProbe("HPWaterSSRLighting", ProbeTexture(dr.GetHPWaterSSRLightingTexture(), dr.GetWidth(), dr.GetHeight()));
+            SaveTextureBMP(dr.GetHPWaterSSRLightingTexture(), dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_lighting.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterDepthPyramidTexture != 0 &&
             d.HPWaterDepthPyramidWidth > 0 && d.HPWaterDepthPyramidHeight > 0) {
@@ -7818,9 +7826,12 @@ private:
             d.HPWaterReflectionProbeBlend,
             d.HPWaterReflectionProbeInfluenceWeight,
             d.HPWaterReflectionProbeHierarchyWeight);
-        ImGui::Text("HPWater SSR hierarchy: enabled=%d blend=%d diag=%d (%u) steps=%u step=%.3f thickness=%.3f maxDist=%.1f",
+        ImGui::Text("HPWater SSR hierarchy: enabled=%d blend=%d ssrBuf=%d/%d (%u) diag=%d (%u) steps=%u step=%.3f thickness=%.3f maxDist=%.1f",
             d.HPWaterSSRReflectionEnabled ? 1 : 0,
             d.HPWaterSSRHierarchyBlendEnabled ? 1 : 0,
+            d.HPWaterSSRLightingBufferRan ? 1 : 0,
+            d.HPWaterSSRLightingBufferValid ? 1 : 0,
+            d.HPWaterSSRLightingBufferTexture,
             d.HPWaterSSRDiagnosticsValid ? 1 : 0,
             d.HPWaterSSRDiagnosticsTexture,
             d.HPWaterSSRMaxSteps,
