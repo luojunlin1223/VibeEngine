@@ -671,9 +671,11 @@ void DeferredRenderer::CreateHPWaterAreaLightLTCLUT() {
 
     std::vector<float> pixels(static_cast<size_t>(resolution) * static_cast<size_t>(resolution) * 4u);
     for (uint32_t y = 0; y < resolution; ++y) {
-        const float nDotV = (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution);
+        const float cosThetaParam = (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution);
+        const float nDotV = std::clamp(1.0f - cosThetaParam * cosThetaParam, 0.0f, 1.0f);
         for (uint32_t x = 0; x < resolution; ++x) {
-            // Match HDRP _LtcData addressing: U = perceptual roughness, V = cos(theta).
+            // Match HDRP _LtcData addressing: U = perceptual roughness,
+            // V = sqrt(1 - clamped NdotV).
             const float perceptualRoughness = (static_cast<float>(x) + 0.5f) /
                                               static_cast<float>(resolution);
             const float roughness = perceptualRoughness * perceptualRoughness;
