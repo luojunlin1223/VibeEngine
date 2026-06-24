@@ -360,6 +360,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+    m_HPWaterCausticExponentialLightStepsEnabled = false;
+    m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterFGDLUTValid = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
@@ -444,6 +446,8 @@ void DeferredRenderer::DestroyHPWaterCausticComputeTexture() {
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+    m_HPWaterCausticExponentialLightStepsEnabled = false;
+    m_HPWaterCausticFrameDitherEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
@@ -486,6 +490,8 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+    m_HPWaterCausticExponentialLightStepsEnabled = false;
+    m_HPWaterCausticFrameDitherEnabled = false;
 }
 
 void DeferredRenderer::DestroyHPWaterFGDLUT() {
@@ -1046,6 +1052,8 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterCausticAtlasConsumed = false;
     m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+    m_HPWaterCausticExponentialLightStepsEnabled = false;
+    m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
@@ -1064,6 +1072,8 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+    m_HPWaterCausticExponentialLightStepsEnabled = false;
+    m_HPWaterCausticFrameDitherEnabled = false;
 }
 
 void DeferredRenderer::BeginGeometryPass() {
@@ -1927,6 +1937,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
                                                  const std::array<float, 4>& waterCascadeSplits,
                                                  uint32_t shadowDepthTextureArray,
                                                  uint32_t shadowDepthResolution,
+                                                 uint32_t frameIndex,
                                                  float strength,
                                                  float scale,
                                                  float depthFade,
@@ -1943,6 +1954,8 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticAtlasConsumed = false;
         m_HPWaterCausticShadowDepthConsumed = false;
         m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+        m_HPWaterCausticExponentialLightStepsEnabled = false;
+        m_HPWaterCausticFrameDitherEnabled = false;
         return false;
     }
 
@@ -1956,6 +1969,8 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticAtlasConsumed = false;
         m_HPWaterCausticShadowDepthConsumed = false;
         m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+        m_HPWaterCausticExponentialLightStepsEnabled = false;
+        m_HPWaterCausticFrameDitherEnabled = false;
         return false;
     }
 
@@ -1963,7 +1978,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         RunHPWaterCausticComputeIrradiance(
             nearClip, farClip, lightDir, lightIntensity, viewProjection,
             inverseViewProjection, waterCascadeVP, waterCascadeSplits,
-            shadowDepthTextureArray, shadowDepthResolution, strength, scale, depthFade,
+            shadowDepthTextureArray, shadowDepthResolution, frameIndex, strength, scale, depthFade,
             rgbDispersion, dispersionStrength);
 
     m_HPWaterCausticFBO->Bind();
@@ -2061,6 +2076,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
                                                           const std::array<float, 4>& waterCascadeSplits,
                                                           uint32_t shadowDepthTextureArray,
                                                           uint32_t shadowDepthResolution,
+                                                          uint32_t frameIndex,
                                                           float strength,
                                                           float scale,
                                                           float depthFade,
@@ -2071,6 +2087,8 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+    m_HPWaterCausticExponentialLightStepsEnabled = false;
+    m_HPWaterCausticFrameDitherEnabled = false;
 
     if (!m_HPWaterCausticComputeShader || !m_HPWaterCausticResolveShader ||
         m_HPWaterCausticComputeIrradianceTexture == 0 ||
@@ -2166,6 +2184,9 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeShader->SetFloat("u_ShadowDepthResolution", shadowDepthValid
         ? static_cast<float>(shadowDepthResolution)
         : 0.0f);
+    m_HPWaterCausticComputeShader->SetInt("u_FrameIndex", static_cast<int>(frameIndex & 0x7fffffffu));
+    m_HPWaterCausticComputeShader->SetInt("u_EnableFrameDither", shadowDepthValid ? 1 : 0);
+    m_HPWaterCausticComputeShader->SetInt("u_EnableExponentialLightSteps", shadowDepthValid ? 1 : 0);
     for (int i = 0; i < 4; ++i) {
         m_HPWaterCausticComputeShader->SetMat4("u_WaterCascadeVP[" + std::to_string(i) + "]",
                                                waterCascadeVP[static_cast<size_t>(i)]);
@@ -2216,6 +2237,8 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticShadowDepthConsumed = shadowDepthValid;
     m_HPWaterCausticRGBReceiverProjectionEnabled =
         rgbDispersion && shadowDepthValid && dispersionStrength > 0.0001f;
+    m_HPWaterCausticExponentialLightStepsEnabled = shadowDepthValid;
+    m_HPWaterCausticFrameDitherEnabled = shadowDepthValid;
     return true;
 }
 

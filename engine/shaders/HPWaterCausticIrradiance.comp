@@ -33,6 +33,9 @@ uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticAtlasEnabled;
 uniform int u_ShadowDepthCascadeAtlasEnabled;
 uniform int u_CausticRGBDispersion;
+uniform int u_FrameIndex;
+uniform int u_EnableFrameDither;
+uniform int u_EnableExponentialLightSteps;
 uniform float u_HPWaterCausticAtlasWidth;
 uniform float u_HPWaterCausticAtlasHeight;
 uniform float u_CausticStrength;
@@ -61,6 +64,12 @@ float Hash21(vec2 p) {
     p = fract(p * vec2(123.34, 345.45));
     p += dot(p, p + 34.345);
     return fract(p.x * p.y);
+}
+
+float R2Dither(vec2 samplePosition, float frameCount) {
+    vec2 coord = samplePosition + vec2(mod(frameCount * 2.0, 1000.0));
+    vec2 alpha = vec2(0.75487765, 0.56984026);
+    return fract(alpha.x * coord.x + alpha.y * coord.y);
 }
 
 float CausticStrands(vec2 causticUV) {
@@ -164,12 +173,21 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
         return false;
 
     float maxDistance = clamp(max(thickness, 1.0) * 1.9, 2.0, 90.0);
-    float previousT = 0.0;
     const int coarseSteps = 16;
+    const float expFactor = 16.0;
+    const float invExpDenom = 1.0 / (expFactor - 1.0);
+    const float invCoarseSteps = 1.0 / float(coarseSteps);
+    const float expStep = pow(expFactor, invCoarseSteps);
+    float currentExp = pow(expFactor, clamp(jitter, 0.0, 1.0) * invCoarseSteps);
+    float previousT = 0.0;
 
     for (int i = 0; i < coarseSteps; ++i) {
-        float step01 = (float(i) + 0.35 + jitter * 0.3) / float(coarseSteps);
-        float t = maxDistance * (exp2(step01 * 4.0) - 1.0) / 15.0;
+        float t = maxDistance * (float(i) + 0.5) * invCoarseSteps;
+        if (u_EnableExponentialLightSteps == 1) {
+            float step01 = (currentExp - 1.0) * invExpDenom;
+            t = maxDistance * step01;
+            currentExp *= expStep;
+        }
         vec3 sampleWorld = waterWorldPos + refracted * t;
         vec3 cascadeCoord = ProjectWorldToWaterCascade(sampleWorld, cascadeIndex);
         if (any(lessThan(cascadeCoord, vec3(0.0))) ||
@@ -361,7 +379,9 @@ void main() {
         waterCascadeIndex,
         thickness,
         0.0,
-        Hash21(uv * vec2(u_OutputWidth, u_OutputHeight)),
+        u_EnableFrameDither == 1
+            ? R2Dither(vec2(pixel), float(u_FrameIndex))
+            : Hash21(uv * vec2(u_OutputWidth, u_OutputHeight)),
         shadowReceiver,
         shadowReceiverWeight,
         shadowReceiverDistance);

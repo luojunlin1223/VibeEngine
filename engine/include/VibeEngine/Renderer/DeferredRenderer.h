@@ -201,6 +201,7 @@ public:
                                    const std::array<float, 4>& waterCascadeSplits,
                                    uint32_t shadowDepthTextureArray,
                                    uint32_t shadowDepthResolution,
+                                   uint32_t frameIndex,
                                    float strength,
                                    float scale,
                                    float depthFade,
@@ -340,6 +341,8 @@ public:
     bool IsHPWaterCausticComputeAtomicEnabled() const { return m_HPWaterCausticComputeAtomicEnabled; }
     bool IsHPWaterCausticShadowDepthConsumed() const { return m_HPWaterCausticShadowDepthConsumed; }
     bool IsHPWaterCausticRGBReceiverProjectionEnabled() const { return m_HPWaterCausticRGBReceiverProjectionEnabled; }
+    bool IsHPWaterCausticExponentialLightStepsEnabled() const { return m_HPWaterCausticExponentialLightStepsEnabled; }
+    bool IsHPWaterCausticFrameDitherEnabled() const { return m_HPWaterCausticFrameDitherEnabled; }
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
     uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
@@ -440,6 +443,7 @@ private:
                                             const std::array<float, 4>& waterCascadeSplits,
                                             uint32_t shadowDepthTextureArray,
                                             uint32_t shadowDepthResolution,
+                                            uint32_t frameIndex,
                                             float strength,
                                             float scale,
                                             float depthFade,
@@ -513,6 +517,8 @@ private:
     bool m_HPWaterCausticComputeAtomicEnabled = false;
     bool m_HPWaterCausticShadowDepthConsumed = false;
     bool m_HPWaterCausticRGBReceiverProjectionEnabled = false;
+    bool m_HPWaterCausticExponentialLightStepsEnabled = false;
+    bool m_HPWaterCausticFrameDitherEnabled = false;
 
     // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
     std::shared_ptr<Framebuffer> m_HPWaterCausticAtlasFBO;
