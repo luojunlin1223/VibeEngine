@@ -105,6 +105,30 @@ vec3 ProjectWorldToCamera(vec3 worldPos) {
     return clip.xyz / clip.w * 0.5 + 0.5;
 }
 
+vec3 ComputeHPWaterRefractedLightDir(vec3 waterNormal, vec3 surfaceToLight, float etaOffset) {
+    vec3 incident = normalize(-surfaceToLight);
+    vec3 N = normalize(waterNormal);
+    N = dot(incident, N) < 0.0 ? N : -N;
+
+    float eta = max(0.01, 1.0 / 1.333 + etaOffset);
+    vec3 refracted = refract(incident, N, eta);
+
+    vec3 flatN = dot(incident, vec3(0.0, 1.0, 0.0)) < 0.0
+        ? vec3(0.0, 1.0, 0.0)
+        : vec3(0.0, -1.0, 0.0);
+    vec3 flatRefracted = refract(incident, flatN, eta);
+
+    if (dot(flatRefracted, flatRefracted) > 0.000001 &&
+        dot(refracted, refracted) > 0.000001) {
+        return normalize(refracted - flatRefracted + incident);
+    }
+
+    if (dot(refracted, refracted) > 0.000001)
+        return normalize(refracted);
+
+    return vec3(0.0);
+}
+
 float SampleShadowReceiverDepth(vec2 uv, int cascadeIndex) {
     if (u_ShadowDepthResolution <= 1.0)
         return texture(u_ShadowDepthCascadeAtlas, vec3(uv, float(cascadeIndex))).r;
@@ -123,6 +147,7 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
                                          vec3 surfaceToLight,
                                          int cascadeIndex,
                                          float thickness,
+                                         float etaOffset,
                                          float jitter,
                                          out vec2 receiverUV,
                                          out float hitWeight,
@@ -134,21 +159,9 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
     if (u_ShadowDepthCascadeAtlasEnabled == 0)
         return false;
 
-    vec3 incident = normalize(-surfaceToLight);
-    vec3 N = normalize(waterNormal);
-    N = dot(incident, N) < 0.0 ? N : -N;
-
-    const float etaAirToWater = 1.0 / 1.333;
-    vec3 refracted = refract(incident, N, etaAirToWater);
-    vec3 flatRefracted = refract(incident, vec3(0.0, 1.0, 0.0), etaAirToWater);
-    if (dot(flatRefracted, flatRefracted) > 0.000001 &&
-        dot(refracted, refracted) > 0.000001) {
-        refracted = normalize(refracted - flatRefracted + incident);
-    } else if (dot(refracted, refracted) > 0.000001) {
-        refracted = normalize(refracted);
-    } else {
+    vec3 refracted = ComputeHPWaterRefractedLightDir(waterNormal, surfaceToLight, etaOffset);
+    if (dot(refracted, refracted) <= 0.000001)
         return false;
-    }
 
     float maxDistance = clamp(max(thickness, 1.0) * 1.9, 2.0, 90.0);
     float previousT = 0.0;
@@ -194,6 +207,29 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
     }
 
     return false;
+}
+
+bool ProjectRefractedChannelToCameraReceiver(vec3 waterWorldPos,
+                                             vec3 waterNormal,
+                                             vec3 surfaceToLight,
+                                             float etaOffset,
+                                             float hitDistance,
+                                             out vec2 receiverUV) {
+    receiverUV = vec2(0.0);
+
+    vec3 refracted = ComputeHPWaterRefractedLightDir(waterNormal, surfaceToLight, etaOffset);
+    if (dot(refracted, refracted) <= 0.000001)
+        return false;
+
+    vec3 cameraCoord = ProjectWorldToCamera(waterWorldPos + refracted * max(hitDistance, 0.0));
+    if (cameraCoord.x < 0.0 || cameraCoord.x > 1.0 ||
+        cameraCoord.y < 0.0 || cameraCoord.y > 1.0 ||
+        cameraCoord.z < 0.0 || cameraCoord.z > 1.0) {
+        return false;
+    }
+
+    receiverUV = cameraCoord.xy;
+    return true;
 }
 
 float AtlasFocus(vec3 waterWorldPos, float waterViewDepth, vec2 causticUV, vec3 waterNormal, vec3 lightDir, float thickness) {
@@ -324,6 +360,7 @@ void main() {
         L,
         waterCascadeIndex,
         thickness,
+        0.0,
         Hash21(uv * vec2(u_OutputWidth, u_OutputHeight)),
         shadowReceiver,
         shadowReceiverWeight,
@@ -334,12 +371,32 @@ void main() {
     }
 
     vec2 dispersionAxis = normalize(N.xz * 0.7 + L.xz * 0.3 + vec2(0.001));
+    float etaDispersion = u_CausticRGBDispersion == 1
+        ? clamp(u_CausticDispersionStrength, 0.0, 2.0) * 0.001
+        : 0.0;
     float dispersion = u_CausticRGBDispersion == 1
         ? clamp(u_CausticDispersionStrength, 0.0, 2.0) * (0.003 + clamp(thickness, 0.0, 80.0) * 0.00008)
         : 0.0;
 
-    ScatterChannel(baseReceiver + dispersionAxis * dispersion, 0, sharedEnergy);
-    ScatterChannel(baseReceiver, 1, sharedEnergy);
-    ScatterChannel(baseReceiver - dispersionAxis * dispersion, 2, sharedEnergy);
+    vec2 receiverR = baseReceiver + dispersionAxis * dispersion;
+    vec2 receiverG = baseReceiver;
+    vec2 receiverB = baseReceiver - dispersionAxis * dispersion;
+    if (shadowReceiverHit && etaDispersion > 0.0) {
+        vec2 channelReceiver = receiverR;
+        if (ProjectRefractedChannelToCameraReceiver(
+                waterWorldPos, N, L, etaDispersion, shadowReceiverDistance, channelReceiver)) {
+            receiverR = mix(receiverR, channelReceiver, 0.9);
+        }
+
+        channelReceiver = receiverB;
+        if (ProjectRefractedChannelToCameraReceiver(
+                waterWorldPos, N, L, -etaDispersion, shadowReceiverDistance, channelReceiver)) {
+            receiverB = mix(receiverB, channelReceiver, 0.9);
+        }
+    }
+
+    ScatterChannel(receiverR, 0, sharedEnergy);
+    ScatterChannel(receiverG, 1, sharedEnergy);
+    ScatterChannel(receiverB, 2, sharedEnergy);
     ScatterChannel(baseReceiver, 3, max(max(sharedEnergy, 0.0), 0.0));
 }

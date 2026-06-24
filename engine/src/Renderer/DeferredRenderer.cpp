@@ -359,6 +359,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
+    m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     m_HPWaterFGDLUTValid = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
@@ -442,6 +443,7 @@ void DeferredRenderer::DestroyHPWaterCausticComputeTexture() {
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
+    m_HPWaterCausticRGBReceiverProjectionEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
@@ -483,6 +485,7 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture() {
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
+    m_HPWaterCausticRGBReceiverProjectionEnabled = false;
 }
 
 void DeferredRenderer::DestroyHPWaterFGDLUT() {
@@ -1042,6 +1045,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticAtlasConsumed = false;
     m_HPWaterCausticShadowDepthConsumed = false;
+    m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
@@ -1059,6 +1063,7 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticShadowDepthConsumed = false;
+    m_HPWaterCausticRGBReceiverProjectionEnabled = false;
 }
 
 void DeferredRenderer::BeginGeometryPass() {
@@ -1929,6 +1934,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticFilterIterations = 0;
         m_HPWaterCausticAtlasConsumed = false;
         m_HPWaterCausticShadowDepthConsumed = false;
+        m_HPWaterCausticRGBReceiverProjectionEnabled = false;
         return false;
     }
 
@@ -1941,6 +1947,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticFilterIterations = 0;
         m_HPWaterCausticAtlasConsumed = false;
         m_HPWaterCausticShadowDepthConsumed = false;
+        m_HPWaterCausticRGBReceiverProjectionEnabled = false;
         return false;
     }
 
@@ -2055,6 +2062,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
     m_HPWaterCausticShadowDepthConsumed = false;
+    m_HPWaterCausticRGBReceiverProjectionEnabled = false;
 
     if (!m_HPWaterCausticComputeShader || !m_HPWaterCausticResolveShader ||
         m_HPWaterCausticComputeIrradianceTexture == 0 ||
@@ -2198,6 +2206,8 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeIrradianceValid = true;
     m_HPWaterCausticComputeAtomicEnabled = true;
     m_HPWaterCausticShadowDepthConsumed = shadowDepthValid;
+    m_HPWaterCausticRGBReceiverProjectionEnabled =
+        rgbDispersion && shadowDepthValid && dispersionStrength > 0.0001f;
     return true;
 }
 

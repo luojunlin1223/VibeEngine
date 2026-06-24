@@ -2368,6 +2368,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterCausticComputeAtomicTexture();
     m_RenderDiagnostics.HPWaterCausticShadowDepthConsumed =
         m_DeferredRenderer.IsHPWaterCausticShadowDepthConsumed();
+    m_RenderDiagnostics.HPWaterCausticRGBReceiverProjectionEnabled =
+        m_DeferredRenderer.IsHPWaterCausticRGBReceiverProjectionEnabled();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();

@@ -337,6 +337,7 @@ public:
     uint32_t GetHPWaterCausticComputeAtomicTexture() const { return m_HPWaterCausticComputeAtomicTextures[0]; }
     bool IsHPWaterCausticComputeAtomicEnabled() const { return m_HPWaterCausticComputeAtomicEnabled; }
     bool IsHPWaterCausticShadowDepthConsumed() const { return m_HPWaterCausticShadowDepthConsumed; }
+    bool IsHPWaterCausticRGBReceiverProjectionEnabled() const { return m_HPWaterCausticRGBReceiverProjectionEnabled; }
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
     uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
@@ -508,6 +509,7 @@ private:
     bool m_HPWaterCausticComputeIrradianceRan = false;
     bool m_HPWaterCausticComputeAtomicEnabled = false;
     bool m_HPWaterCausticShadowDepthConsumed = false;
+    bool m_HPWaterCausticRGBReceiverProjectionEnabled = false;
 
     // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
     std::shared_ptr<Framebuffer> m_HPWaterCausticAtlasFBO;
