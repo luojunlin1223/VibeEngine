@@ -2,7 +2,7 @@
 
 Source target: https://github.com/AshenOneArt/HPWater, inspected at upstream commit `1253e5b`.
 
-This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture driven by an OpenGL compute wave update, HPWater-style top-down water/scene height-field resources for fluid obstacle boundaries, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload, a half-resolution volumetric accumulation/filter/composite path with an explicit low-resolution motion-vector texture for temporal rejection, a full-resolution caustic energy texture that can be filtered and consumed by both water composite and volume lighting, a directional-light cascade water atlas capture pass, an OpenGL compute caustic irradiance path with four-channel R32UI atomic accumulation plus RGBA16F RGB resolve that samples the real light-space cascade atlas, and serialized BSDF controls for environment reflection, macro scatter, thin SSS, backlit transmission, forward scatter, preintegrated FGD LUT sampling, and GGX energy compensation. It is not feature-complete.
+This document is the implementation contract for porting HPWater's Unity HDRP water pipeline into VibeEngine. The current VibeEngine implementation now has the first dedicated HPWater deferred path: a dynamic HPWater component, CPU wave mesh updates, a GPU R16F fluid height ping-pong texture driven by an OpenGL compute wave update, HPWater-style top-down water/scene height-field resources for fluid obstacle boundaries, a dedicated water GBuffer, an explicit water mask, a scene-depth pyramid for refraction, a full-resolution refraction payload with HPWater-style world-space refracted rays projected into NDC for depth-pyramid marching, a half-resolution volumetric accumulation/filter/composite path with an explicit low-resolution motion-vector texture for temporal rejection, a full-resolution caustic energy texture that can be filtered and consumed by both water composite and volume lighting, a directional-light cascade water atlas capture pass, an OpenGL compute caustic irradiance path with four-channel R32UI atomic accumulation plus RGBA16F RGB resolve that samples the real light-space cascade atlas, and serialized BSDF controls for environment reflection, macro scatter, thin SSS, backlit transmission, forward scatter, preintegrated FGD LUT sampling, and GGX energy compensation. It is not feature-complete.
 
 ## Current VibeEngine Coverage
 
@@ -11,7 +11,7 @@ This document is the implementation contract for porting HPWater's Unity HDRP wa
 - `HPWaterGBuffer.shader` renders water into a dedicated three-target resource set: normal/roughness, scatter/thickness, and absorption/foam.
 - `HPWaterMask.shader` builds a full-resolution R8 water coverage mask from the dedicated HPWater depth buffer as the current OpenGL equivalent of HPWater's stencil isolation.
 - `HPWaterDepthPyramid.shader` builds an opaque scene-depth mip chain for HPWater refraction.
-- `HPWaterComposite.shader` performs the first Hi-Z-assisted full-resolution refraction payload generation and final water composite, including HPWater-style frame-indexed IGN step jitter and tunable max refraction cross distance / thickness offset controls.
+- `HPWaterComposite.shader` performs Hi-Z-assisted full-resolution refraction payload generation and final water composite, including HPWater-style world-space refracted ray construction, NDC projection, exponential depth-pyramid marching, frame-indexed IGN step jitter, and tunable max refraction cross distance / thickness offset controls.
 - `HPWaterVolume.shader` performs a first half-resolution volume accumulation pass for in-scattering, transmittance, and refracted depth.
 - `HPWaterVolumeMotionVector.shader` generates an explicit half-resolution RG16F volume velocity texture from current/previous view-projection reprojection of the refracted world payload.
 - `HPWaterVolumeTemporal.shader` performs low-resolution temporal reprojection/history blend before spatial filtering, consuming the explicit motion-vector texture for velocity rejection while retaining current/previous view-projection reprojection as fallback, plus depth rejection and HPWater/HDRP-style 3x3 current-neighborhood color/transmittance clamp.
@@ -53,7 +53,7 @@ HPWater generates a full-resolution refraction texture where:
 - It can use either a cheaper normal-offset path or ray marching.
 - The ray marching path uses the scene depth pyramid excluding water, exponential stepping, IGN jitter, and a max cross distance.
 
-VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid and uses coarse mip sampling with mip-0 binary refinement for the screen-space refraction march. The march now has HPWater-style frame-indexed IGN step jitter plus serialized controls for sample count, max refraction cross distance, and thickness offset. Refraction, volume accumulation, and volume upsample now share the explicit HPWater mask. Closer full 3D NDC ray parity remains pending.
+VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid, computes a HPWater-style world-space refracted ray from the camera-to-water direction, water normal, flat-normal subtraction, and water-cross direction, projects the ray into NDC, then marches that 3D NDC line with exponential steps, depth-pyramid coarse sampling, and mip-0 binary refinement. The march has HPWater-style frame-indexed IGN step jitter plus serialized controls for sample count, max refraction cross distance, and thickness offset. Refraction, volume accumulation, and volume upsample now share the explicit HPWater mask. Remaining refraction parity work is closer validation against HPWater's exact Unity projection conventions and edge-case tuning.
 
 ### Volumetric Water Lighting
 
@@ -126,7 +126,8 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
    - Done: add a dedicated opaque scene-depth pyramid for Hi-Z-assisted ray-marched refraction.
    - Done: add HPWater-style IGN step jitter and max-cross-distance / thickness controls.
    - Done: route refraction through the explicit HPWater mask.
-   - Pending: closer full 3D NDC ray parity.
+   - Done: replace the transitional 2D normal-offset march with HPWater-style world-space refracted rays projected into NDC, using exponential/dithered depth-pyramid marching and diagnostics.
+   - Pending: closer validation against HPWater's exact Unity projection conventions and edge-case tuning.
 
 4. Volumetric pass
    - Done: add low-resolution water volume accumulation.
@@ -180,7 +181,7 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
 - A scene with `HPWaterOcean` produces non-empty HPWater GBuffer textures.
 - A scene with `HPWaterOcean` produces a non-empty HPWater mask texture and exports `render_diagnostics_hpwater_mask.bmp`.
 - A scene with `HPWaterOcean` builds a valid HPWater scene-depth pyramid with more than one mip.
-- The refraction buffer changes when water normals change and remains masked to water pixels.
+- The refraction buffer changes when water normals change, remains masked to water pixels, and reports `HPWaterRefractionNDCMarchEnabled=1` when the NDC depth-pyramid march is active.
 - Water volume color/transmittance changes with absorption and scatter settings; temporal volume filtering reports `HPWaterVolumeTemporalNeighborhoodClampEnabled=1`, `HPWaterVolumeTemporalMotionReprojectionEnabled=1`, `HPWaterVolumeExplicitMotionVectorEnabled=1`, a non-zero `HPWaterVolumeMotionVectorTexture`, and a positive `HPWaterVolumeTemporalNeighborhoodClampStrength` when history filtering runs.
 - Caustics appear under shallow waves, change with directional light direction, and produce non-empty `render_diagnostics_hpwater_caustic.bmp` and `render_diagnostics_hpwater_caustic_filtered.bmp`.
 - Light-space caustic atlas capture runs when HPWater and shadows are enabled, produces a non-empty `render_diagnostics_hpwater_caustic_atlas.bmp`, and reports `HPWaterCausticAtlasRan=1`, `HPWaterCausticAtlasValid=1`, `HPWaterCausticAtlasConsumed=1`, and four cascade draws in `render_diagnostics.txt`.

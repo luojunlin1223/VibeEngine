@@ -90,6 +90,7 @@ uniform int u_HPWaterMaskEnabled;
 uniform int u_RefractionSampleCount;
 uniform int u_RefractionJitterEnabled;
 uniform int u_FrameIndex;
+uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
 
 const float PI = 3.14159265358979323846;
@@ -106,6 +107,43 @@ vec3 ReconstructWorldPosition(vec2 uv, float depth) {
     vec4 world = u_InverseViewProjection * vec4(ndcXY, ndcZ, 1.0);
     float invW = abs(world.w) > 0.00001 ? 1.0 / world.w : 0.0;
     return world.xyz * invW;
+}
+
+vec3 NormalizeOr(vec3 v, vec3 fallback) {
+    float len2 = dot(v, v);
+    return len2 > 0.000001 ? v * inversesqrt(len2) : fallback;
+}
+
+vec3 ProjectWorldToNDCLinear(vec3 worldPos) {
+    vec4 clip = u_ViewProjection * vec4(worldPos, 1.0);
+    if (clip.w <= 0.00001) {
+        return vec3(-1.0);
+    }
+
+    vec3 ndc = clip.xyz / clip.w;
+    vec2 uv = ndc.xy * 0.5 + 0.5;
+    float rawDepth = ndc.z * 0.5 + 0.5;
+    return vec3(uv, LinearizeDepth(clamp(rawDepth, 0.0, 1.0)));
+}
+
+vec3 ComputeHPWaterRefractionDirection(vec3 waterWorldPos, vec3 sceneWorldPos, vec3 waterNormal) {
+    const float eta = 1.0 / 1.33;
+    vec3 cameraToWater = NormalizeOr(waterWorldPos - u_ViewPos, vec3(0.0, 0.0, 1.0));
+    vec3 waterCrossDir = NormalizeOr(sceneWorldPos - waterWorldPos, cameraToWater);
+    vec3 normalGain = vec3(clamp(u_RefractionStrength, 0.0, 2.0), 1.0, clamp(u_RefractionStrength, 0.0, 2.0));
+    vec3 refracted = refract(cameraToWater, normalize(waterNormal * normalGain), eta);
+    vec3 flatRefracted = refract(cameraToWater, vec3(0.0, 1.0, 0.0), eta);
+
+    if (dot(refracted, refracted) <= 0.000001) {
+        return vec3(0.0);
+    }
+
+    vec3 bent = refracted;
+    if (dot(flatRefracted, flatRefracted) > 0.000001) {
+        bent = refracted - flatRefracted + waterCrossDir;
+    }
+
+    return NormalizeOr(bent, waterCrossDir);
 }
 
 float ScreenEdgeFade(vec2 uv) {
@@ -254,27 +292,46 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
 }
 
-vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float sceneLinearDepth, float depthTintDistance) {
-    float directionLength = length(direction);
-    if (directionLength < 0.00001) {
+vec2 FindRefractedUV(vec2 uv,
+                     vec3 waterWorldPos,
+                     vec3 sceneWorldPos,
+                     vec3 waterNormal,
+                     float waterLinearDepth,
+                     float sceneLinearDepth) {
+    vec3 refractDir = ComputeHPWaterRefractionDirection(waterWorldPos, sceneWorldPos, waterNormal);
+    if (dot(refractDir, refractDir) <= 0.000001) {
         return uv;
     }
 
-    vec2 rayDirection = direction / directionLength;
-    float maxTravel = clamp(directionLength, 0.0, 0.16) * ScreenEdgeFade(uv);
+    float maxCrossDistance = clamp(u_MaxRefractionCrossDistance, 0.1, 200.0);
+    vec3 startNDC = ProjectWorldToNDCLinear(waterWorldPos);
+    vec3 endNDC = ProjectWorldToNDCLinear(waterWorldPos + refractDir * maxCrossDistance);
+    if (any(lessThan(startNDC.xy, vec2(0.0))) || any(greaterThan(startNDC.xy, vec2(1.0))) ||
+        endNDC.z < 0.0) {
+        return uv;
+    }
+
+    vec3 ndcDir = endNDC - startNDC;
+    float maxTravel = length(ndcDir.xy);
     if (maxTravel <= 0.00001) {
         return uv;
     }
 
+    float fallbackDistance = max(length(sceneWorldPos - waterWorldPos), 0.05);
+    vec3 fallbackNDC = ProjectWorldToNDCLinear(waterWorldPos + refractDir * fallbackDistance);
+    bool fallbackValid =
+        !any(lessThan(fallbackNDC.xy, vec2(0.0))) &&
+        !any(greaterThan(fallbackNDC.xy, vec2(1.0))) &&
+        fallbackNDC.z >= 0.0;
+    vec3 hitNDC = fallbackValid ? fallbackNDC : vec3(uv, sceneLinearDepth);
+
     const float expFactor = 8.0;
     int sampleCount = clamp(u_RefractionSampleCount, 4, 64);
-    float maxCrossDistance = clamp(u_MaxRefractionCrossDistance, 0.1, 200.0);
     float hitTolerance = clamp(u_RefractionThicknessOffset, 0.01, 8.0);
-    vec2 bestUV = clamp(uv + rayDirection * maxTravel, vec2(0.001), vec2(0.999));
-    bool hit = false;
     float previousD = 0.0;
     float dither = RefractionStepJitter(uv);
     float invSampleCount = 1.0 / float(sampleCount);
+    bool hit = false;
 
     for (int i = 1; i <= sampleCount; ++i) {
         float linearStep = (float(i - 1) + dither) * invSampleCount;
@@ -282,17 +339,21 @@ vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float scen
         if (i == sampleCount) {
             d = 1.0;
         }
-        vec2 sampleUV = clamp(uv + rayDirection * maxTravel * d, vec2(0.001), vec2(0.999));
-        float sampleDepth = SampleSceneDepth(sampleUV, DepthPyramidLOD(d, maxTravel));
 
+        vec3 sampleNDC = startNDC + ndcDir * d;
+        if (any(lessThan(sampleNDC.xy, vec2(0.0))) || any(greaterThan(sampleNDC.xy, vec2(1.0)))) {
+            break;
+        }
+
+        vec2 sampleUV = clamp(sampleNDC.xy, vec2(0.001), vec2(0.999));
+        float sampleDepth = SampleSceneDepth(sampleUV, DepthPyramidLOD(d, maxTravel));
         if (sampleDepth >= 0.9999) {
             previousD = d;
             continue;
         }
 
         float sampleLinear = LinearizeDepth(sampleDepth);
-        float rayLinear = waterLinearDepth + maxCrossDistance * d;
-
+        float rayLinear = sampleNDC.z;
         if (sampleLinear <= waterLinearDepth + 0.02) {
             previousD = d;
             continue;
@@ -303,19 +364,19 @@ vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float scen
             float hi = d;
             for (int refine = 0; refine < 5; ++refine) {
                 float mid = (lo + hi) * 0.5;
-                vec2 refineUV = clamp(uv + rayDirection * maxTravel * mid, vec2(0.001), vec2(0.999));
+                vec3 refineNDC = startNDC + ndcDir * mid;
+                vec2 refineUV = clamp(refineNDC.xy, vec2(0.001), vec2(0.999));
                 float fineDepth = SampleSceneDepth(refineUV, 0.0);
                 float fineLinear = LinearizeDepth(fineDepth);
-                float fineRayLinear = waterLinearDepth + maxCrossDistance * mid;
                 if (fineDepth < 0.9999 &&
                     fineLinear > waterLinearDepth + 0.02 &&
-                    (abs(fineRayLinear - fineLinear) <= hitTolerance || fineRayLinear >= fineLinear)) {
+                    (abs(refineNDC.z - fineLinear) <= hitTolerance || refineNDC.z >= fineLinear)) {
                     hi = mid;
                 } else {
                     lo = mid;
                 }
             }
-            bestUV = clamp(uv + rayDirection * maxTravel * hi, vec2(0.001), vec2(0.999));
+            hitNDC = startNDC + ndcDir * hi;
             hit = true;
             break;
         }
@@ -327,7 +388,9 @@ vec2 FindRefractedUV(vec2 uv, vec2 direction, float waterLinearDepth, float scen
         return uv;
     }
 
-    return bestUV;
+    vec2 uvOffset = clamp(hitNDC.xy, vec2(0.001), vec2(0.999)) - uv;
+    float edgeFade = pow(ScreenEdgeFade(uv), 0.5);
+    return clamp(uv + uvOffset * edgeFade, vec2(0.001), vec2(0.999));
 }
 
 struct VolumeSample {
@@ -422,12 +485,15 @@ void main() {
     float thickness = max(sceneLinear - waterLinear, 0.0);
     float normalizedThickness = clamp(thickness / depthTintDistance, 0.0, 1.0);
 
-    // HPWater-style refraction slice: march a normal-driven screen ray against
-    // the opaque scene-depth pyramid, then refine the hit at mip 0.
-    vec2 distortion = N.xz * (0.018 + 0.032 * (1.0 - roughness)) *
-        clamp(u_RefractionStrength, 0.0, 2.0) *
-        (0.25 + 0.75 * normalizedThickness);
-    vec2 refractUV = FindRefractedUV(v_UV, distortion, waterLinear, sceneLinear, depthTintDistance);
+    vec3 waterWorldPos = ReconstructWorldPosition(v_UV, waterDepth);
+    vec3 sceneWorldPos = sceneDepth >= 0.9999
+        ? waterWorldPos + NormalizeOr(waterWorldPos - u_ViewPos, vec3(0.0, 0.0, 1.0)) * depthTintDistance
+        : ReconstructWorldPosition(v_UV, sceneDepth);
+
+    // HPWater-style refraction slice: compute a world-space refracted ray,
+    // project it into NDC, then march the 3D NDC line against the opaque
+    // scene-depth pyramid with exponential steps and mip-0 refinement.
+    vec2 refractUV = FindRefractedUV(v_UV, waterWorldPos, sceneWorldPos, N, waterLinear, sceneLinear);
 
     float refractedSceneDepth = SampleSceneDepth(refractUV, 0.0);
     if (refractedSceneDepth < waterDepth - 0.00005) {
@@ -436,7 +502,6 @@ void main() {
     }
 
     vec3 refractedColor = texture(u_SceneColor, refractUV).rgb;
-    vec3 waterWorldPos = ReconstructWorldPosition(v_UV, waterDepth);
     float worldDepth = refractedSceneDepth >= 0.9999 ? waterDepth : refractedSceneDepth;
     vec3 refractedWorldPos = ReconstructWorldPosition(refractUV, worldDepth);
     float rayLength = length(refractedWorldPos - waterWorldPos);

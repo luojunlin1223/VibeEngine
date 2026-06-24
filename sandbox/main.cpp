@@ -7064,6 +7064,7 @@ private:
         out << "HPWaterRefractionThicknessOffset: " << d.HPWaterRefractionThicknessOffset << "\n";
         out << "HPWaterRefractionSampleCount: " << d.HPWaterRefractionSampleCount << "\n";
         out << "HPWaterRefractionJitterEnabled: " << d.HPWaterRefractionJitterEnabled << "\n";
+        out << "HPWaterRefractionNDCMarchEnabled: " << d.HPWaterRefractionNDCMarchEnabled << "\n";
         out << "HPWaterEnvironmentReflectionIntensity: " << d.HPWaterEnvironmentReflectionIntensity << "\n";
         out << "HPWaterMacroScatterStrength: " << d.HPWaterMacroScatterStrength << "\n";
         out << "HPWaterThinSSSStrength: " << d.HPWaterThinSSSStrength << "\n";
@@ -7419,7 +7420,8 @@ private:
             d.HPWaterMaskWidth,
             d.HPWaterMaskHeight,
             d.HPWaterMaskTexture);
-        ImGui::Text("HPWater refraction: strength=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
+        ImGui::Text("HPWater refraction: ndc=%d strength=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
+            d.HPWaterRefractionNDCMarchEnabled ? 1 : 0,
             d.HPWaterRefractionStrength,
             d.HPWaterMaxRefractionCrossDistance,
             d.HPWaterRefractionThicknessOffset,

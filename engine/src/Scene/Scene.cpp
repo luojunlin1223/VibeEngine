@@ -2224,6 +2224,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterReflectionProbeBound,
                                             hpWaterReflectionProbeIntensity,
                                             hpWaterReflectionProbeBlend,
+                                            viewProjection,
                                             inverseViewProjection);
         m_RenderDiagnostics.HPWaterCausticRan =
             hpWaterCausticsEnabled &&
@@ -2303,6 +2304,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterReflectionProbeBound,
                                                 hpWaterReflectionProbeIntensity,
                                                 hpWaterReflectionProbeBlend,
+                                                viewProjection,
                                                 inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
@@ -2317,6 +2319,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCompositeTexture = m_DeferredRenderer.GetHPWaterCompositeTexture();
     m_RenderDiagnostics.HPWaterRefractionDataTexture = m_DeferredRenderer.GetHPWaterRefractionDataTexture();
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
+    m_RenderDiagnostics.HPWaterRefractionNDCMarchEnabled =
+        m_DeferredRenderer.IsHPWaterRefractionNDCMarchEnabled();
     m_RenderDiagnostics.HPWaterMaskTexture = m_DeferredRenderer.GetHPWaterMaskTexture();
     m_RenderDiagnostics.HPWaterMaskWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterMaskHeight = m_DeferredRenderer.GetHeight();

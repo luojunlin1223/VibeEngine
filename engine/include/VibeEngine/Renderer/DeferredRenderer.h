@@ -159,6 +159,7 @@ public:
                           bool hasReflectionProbe,
                           float reflectionProbeIntensity,
                           float reflectionProbeBlend,
+                          const glm::mat4& viewProjection,
                           const glm::mat4& inverseViewProjection);
 
     /// Build the opaque scene-depth pyramid used by HPWater refraction.
@@ -266,6 +267,7 @@ public:
     uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
     uint32_t GetHPWaterDepthPyramidMipCount() const { return m_HPWaterDepthPyramidMipCount; }
     bool IsHPWaterDepthPyramidValid() const { return m_HPWaterDepthPyramidValid; }
+    bool IsHPWaterRefractionNDCMarchEnabled() const { return m_HPWaterRefractionNDCMarchEnabled; }
     uint32_t GetHPWaterSceneColorMipCount() const { return m_HPWaterSceneColorMipCount; }
     bool IsHPWaterSceneColorMipValid() const { return m_HPWaterSceneColorMipValid; }
     uint32_t GetHPWaterFGDLUTTexture() const { return m_HPWaterFGDLUTTexture; }
@@ -465,6 +467,7 @@ private:
     // HPWater final composite output and precomputed refraction payload.
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     bool m_HPWaterCompositeValid = false;
+    bool m_HPWaterRefractionNDCMarchEnabled = false;
     uint32_t m_HPWaterSceneColorMipCount = 1;
     bool m_HPWaterSceneColorMipValid = false;
     uint32_t m_HPWaterFGDLUTTexture = 0;

@@ -1349,10 +1349,12 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         bool hasReflectionProbe,
                                         float reflectionProbeIntensity,
                                         float reflectionProbeBlend,
+                                        const glm::mat4& viewProjection,
                                         const glm::mat4& inverseViewProjection) {
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterCompositeValid = false;
+        m_HPWaterRefractionNDCMarchEnabled = false;
         return false;
     }
 
@@ -1505,6 +1507,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         std::clamp(indirectDiffuseIntensity, 0.0f, 4.0f));
     m_HPWaterCompositeShader->SetFloat("u_SkyReflectionIntensity",
         std::clamp(skyReflectionIntensity, 0.0f, 4.0f));
+    m_HPWaterCompositeShader->SetMat4("u_ViewProjection", viewProjection);
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",
         (m_HPWaterVolumeValid || m_HPWaterVolumeFilteredValid || m_HPWaterVolumeUpsampledValid) ? 1 : 0);
@@ -1526,6 +1529,11 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
 
     m_HPWaterCompositeFBO->Unbind();
     m_HPWaterCompositeValid = true;
+    m_HPWaterRefractionNDCMarchEnabled =
+        m_HPWaterDepthPyramidValid &&
+        refractionSampleCount > 0 &&
+        refractionStrength > 0.0001f &&
+        maxRefractionCrossDistance > 0.0001f;
     return true;
 }
 
