@@ -2370,6 +2370,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;
         uint32_t hpWaterReflectionProbeSecondaryTexture = 0;
+        glm::vec3 hpWaterReflectionProbeCenter(0.0f);
+        glm::vec3 hpWaterReflectionProbeBoxSize(1.0f);
+        glm::vec3 hpWaterReflectionProbeSecondaryCenter(0.0f);
+        glm::vec3 hpWaterReflectionProbeSecondaryBoxSize(1.0f);
         float hpWaterReflectionProbeIntensity = 0.0f;
         float hpWaterReflectionProbeBlend = 0.0f;
         {
@@ -2385,17 +2389,26 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     continue;
 
                 glm::vec3 probePos = glm::vec3(GetWorldTransform(probeEntity)[3]);
+                glm::vec3 probeBoxSize = glm::max(
+                    glm::vec3(probe.BoxSize[0], probe.BoxSize[1], probe.BoxSize[2]),
+                    glm::vec3(0.001f));
                 glm::vec3 toCamera = probePos - cameraPos;
                 float distanceSq = glm::dot(toCamera, toCamera);
                 if (distanceSq < bestDistanceSq) {
                     secondDistanceSq = bestDistanceSq;
                     hpWaterReflectionProbeSecondaryTexture = hpWaterReflectionProbeTexture;
+                    hpWaterReflectionProbeSecondaryCenter = hpWaterReflectionProbeCenter;
+                    hpWaterReflectionProbeSecondaryBoxSize = hpWaterReflectionProbeBoxSize;
                     bestDistanceSq = distanceSq;
                     hpWaterReflectionProbeTexture = probe._Probe->GetCubemapID();
+                    hpWaterReflectionProbeCenter = probePos;
+                    hpWaterReflectionProbeBoxSize = probeBoxSize;
                     hpWaterReflectionProbeIntensity = 1.0f;
                 } else if (distanceSq < secondDistanceSq) {
                     secondDistanceSq = distanceSq;
                     hpWaterReflectionProbeSecondaryTexture = probe._Probe->GetCubemapID();
+                    hpWaterReflectionProbeSecondaryCenter = probePos;
+                    hpWaterReflectionProbeSecondaryBoxSize = probeBoxSize;
                 }
             }
 
@@ -2415,6 +2428,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterReflectionProbeSecondaryTexture = hpWaterReflectionProbeSecondaryTexture;
         m_RenderDiagnostics.HPWaterReflectionProbeIntensity = hpWaterReflectionProbeIntensity;
         m_RenderDiagnostics.HPWaterReflectionProbeBlend = hpWaterReflectionProbeBlend;
+        m_RenderDiagnostics.HPWaterReflectionProbeBoxProjectionEnabled = hpWaterReflectionProbeBound;
+        m_RenderDiagnostics.HPWaterReflectionProbeCenter = hpWaterReflectionProbeCenter;
+        m_RenderDiagnostics.HPWaterReflectionProbeBoxSize = hpWaterReflectionProbeBoxSize;
+        m_RenderDiagnostics.HPWaterReflectionProbeSecondaryCenter =
+            hpWaterReflectionProbeSecondaryTexture != 0 ? hpWaterReflectionProbeSecondaryCenter : hpWaterReflectionProbeCenter;
+        m_RenderDiagnostics.HPWaterReflectionProbeSecondaryBoxSize =
+            hpWaterReflectionProbeSecondaryTexture != 0 ? hpWaterReflectionProbeSecondaryBoxSize : hpWaterReflectionProbeBoxSize;
         m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
         m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
@@ -2480,6 +2500,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterReflectionProbeBound,
                                             hpWaterReflectionProbeIntensity,
                                             hpWaterReflectionProbeBlend,
+                                            hpWaterReflectionProbeCenter,
+                                            hpWaterReflectionProbeBoxSize,
+                                            hpWaterReflectionProbeSecondaryTexture != 0
+                                                ? hpWaterReflectionProbeSecondaryCenter
+                                                : hpWaterReflectionProbeCenter,
+                                            hpWaterReflectionProbeSecondaryTexture != 0
+                                                ? hpWaterReflectionProbeSecondaryBoxSize
+                                                : hpWaterReflectionProbeBoxSize,
                                             viewProjection,
                                             inverseViewProjection);
         m_RenderDiagnostics.HPWaterCausticRan =
@@ -2627,6 +2655,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterReflectionProbeBound,
                                                 hpWaterReflectionProbeIntensity,
                                                 hpWaterReflectionProbeBlend,
+                                                hpWaterReflectionProbeCenter,
+                                                hpWaterReflectionProbeBoxSize,
+                                                hpWaterReflectionProbeSecondaryTexture != 0
+                                                    ? hpWaterReflectionProbeSecondaryCenter
+                                                    : hpWaterReflectionProbeCenter,
+                                                hpWaterReflectionProbeSecondaryTexture != 0
+                                                    ? hpWaterReflectionProbeSecondaryBoxSize
+                                                    : hpWaterReflectionProbeBoxSize,
                                                 viewProjection,
                                                 inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)

@@ -1505,6 +1505,10 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         bool hasReflectionProbe,
                                         float reflectionProbeIntensity,
                                         float reflectionProbeBlend,
+                                        const glm::vec3& reflectionProbeCenter,
+                                        const glm::vec3& reflectionProbeBoxSize,
+                                        const glm::vec3& reflectionProbeSecondaryCenter,
+                                        const glm::vec3& reflectionProbeSecondaryBoxSize,
                                         const glm::mat4& viewProjection,
                                         const glm::mat4& inverseViewProjection) {
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
@@ -1620,6 +1624,20 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         reflectionProbeValid ? std::clamp(reflectionProbeIntensity, 0.0f, 4.0f) : 0.0f);
     m_HPWaterCompositeShader->SetFloat("u_ReflectionProbeBlend",
         reflectionProbeSecondaryValid ? std::clamp(reflectionProbeBlend, 0.0f, 1.0f) : 0.0f);
+    const glm::vec3 primaryBoxSize = glm::max(reflectionProbeBoxSize, glm::vec3(0.001f));
+    const glm::vec3 secondaryBoxSize = glm::max(reflectionProbeSecondaryBoxSize, glm::vec3(0.001f));
+    m_HPWaterCompositeShader->SetInt("u_ReflectionProbeBoxProjectionEnabled", reflectionProbeValid ? 1 : 0);
+    m_HPWaterCompositeShader->SetVec3("u_ReflectionProbeCenter", reflectionProbeCenter);
+    m_HPWaterCompositeShader->SetVec3("u_ReflectionProbeBoxMin", reflectionProbeCenter - primaryBoxSize * 0.5f);
+    m_HPWaterCompositeShader->SetVec3("u_ReflectionProbeBoxMax", reflectionProbeCenter + primaryBoxSize * 0.5f);
+    m_HPWaterCompositeShader->SetVec3("u_ReflectionProbeSecondaryCenter",
+        reflectionProbeSecondaryValid ? reflectionProbeSecondaryCenter : reflectionProbeCenter);
+    m_HPWaterCompositeShader->SetVec3("u_ReflectionProbeSecondaryBoxMin",
+        (reflectionProbeSecondaryValid ? reflectionProbeSecondaryCenter : reflectionProbeCenter) -
+            (reflectionProbeSecondaryValid ? secondaryBoxSize : primaryBoxSize) * 0.5f);
+    m_HPWaterCompositeShader->SetVec3("u_ReflectionProbeSecondaryBoxMax",
+        (reflectionProbeSecondaryValid ? reflectionProbeSecondaryCenter : reflectionProbeCenter) +
+            (reflectionProbeSecondaryValid ? secondaryBoxSize : primaryBoxSize) * 0.5f);
 
     glActiveTexture(GL_TEXTURE14);
     glBindTexture(GL_TEXTURE_2D, m_HPWaterFGDLUTValid ? m_HPWaterFGDLUTTexture : 0);

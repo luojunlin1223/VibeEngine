@@ -77,11 +77,18 @@ uniform float u_IndirectDiffuseIntensity;
 uniform float u_SkyReflectionIntensity;
 uniform float u_ReflectionProbeIntensity;
 uniform float u_ReflectionProbeBlend;
+uniform vec3 u_ReflectionProbeCenter;
+uniform vec3 u_ReflectionProbeBoxMin;
+uniform vec3 u_ReflectionProbeBoxMax;
+uniform vec3 u_ReflectionProbeSecondaryCenter;
+uniform vec3 u_ReflectionProbeSecondaryBoxMin;
+uniform vec3 u_ReflectionProbeSecondaryBoxMax;
 uniform int u_HPWaterVolumeEnabled;
 uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
 uniform int u_HasSkyTexture;
 uniform int u_HasReflectionProbe;
+uniform int u_ReflectionProbeBoxProjectionEnabled;
 uniform int u_PreintegratedFGDLUTEnabled;
 uniform int u_HPWaterDepthPyramidMipCount;
 uniform int u_SceneColorMipEnabled;
@@ -247,13 +254,40 @@ vec3 SampleSkyTexture(vec3 dir, float roughness) {
     return textureLod(u_SkyTexture, uv, lod).rgb * u_IndirectTint;
 }
 
-vec3 SampleEnvironment(vec3 dir, vec3 fallbackDir, float roughness, bool diffuseSample) {
+vec3 BoxProjectedReflectionDirection(vec3 worldPos, vec3 dir, vec3 probeCenter, vec3 boxMin, vec3 boxMax) {
+    vec3 r = NormalizeOr(dir, vec3(0.0, 1.0, 0.0));
+    vec3 safeR = vec3(
+        abs(r.x) < 0.0001 ? (r.x < 0.0 ? -0.0001 : 0.0001) : r.x,
+        abs(r.y) < 0.0001 ? (r.y < 0.0 ? -0.0001 : 0.0001) : r.y,
+        abs(r.z) < 0.0001 ? (r.z < 0.0 ? -0.0001 : 0.0001) : r.z);
+
+    vec3 t0 = (boxMin - worldPos) / safeR;
+    vec3 t1 = (boxMax - worldPos) / safeR;
+    vec3 tFar = max(t0, t1);
+    float t = min(min(tFar.x, tFar.y), tFar.z);
+    if (t <= 0.0001 || t > 100000.0) {
+        return r;
+    }
+
+    return NormalizeOr(worldPos + r * t - probeCenter, r);
+}
+
+vec3 SampleEnvironment(vec3 dir, vec3 fallbackDir, vec3 worldPos, float roughness, bool diffuseSample) {
     if (u_HasReflectionProbe == 1) {
         int levels = textureQueryLevels(u_ReflectionProbe);
         float maxMip = float(max(levels - 1, 0));
         float lod = diffuseSample ? maxMip : clamp(roughness * maxMip, 0.0, maxMip);
-        vec3 primary = textureLod(u_ReflectionProbe, normalize(dir), lod).rgb;
-        vec3 secondary = textureLod(u_ReflectionProbeSecondary, normalize(dir), lod).rgb;
+        vec3 primaryDir = normalize(dir);
+        vec3 secondaryDir = primaryDir;
+        if (u_ReflectionProbeBoxProjectionEnabled == 1 && !diffuseSample) {
+            primaryDir = BoxProjectedReflectionDirection(
+                worldPos, primaryDir, u_ReflectionProbeCenter, u_ReflectionProbeBoxMin, u_ReflectionProbeBoxMax);
+            secondaryDir = BoxProjectedReflectionDirection(
+                worldPos, secondaryDir, u_ReflectionProbeSecondaryCenter,
+                u_ReflectionProbeSecondaryBoxMin, u_ReflectionProbeSecondaryBoxMax);
+        }
+        vec3 primary = textureLod(u_ReflectionProbe, primaryDir, lod).rgb;
+        vec3 secondary = textureLod(u_ReflectionProbeSecondary, secondaryDir, lod).rgb;
         return mix(primary, secondary, clamp(u_ReflectionProbeBlend, 0.0, 1.0));
     }
 
@@ -543,8 +577,8 @@ void main() {
     if (u_IndirectLightingEnabled == 1) {
         vec3 R = reflect(-V, N);
         float roughnessFade = mix(1.0, 0.25, roughness);
-        vec3 environmentSpecular = SampleEnvironment(R, R, roughness, false);
-        vec3 environmentDiffuse = SampleEnvironment(N, N, 1.0, true);
+        vec3 environmentSpecular = SampleEnvironment(R, R, waterWorldPos, roughness, false);
+        vec3 environmentDiffuse = SampleEnvironment(N, N, waterWorldPos, 1.0, true);
         float environmentIntensity = u_HasReflectionProbe == 1
             ? clamp(u_ReflectionProbeIntensity, 0.0, 4.0)
             : clamp(u_SkyReflectionIntensity, 0.0, 4.0);

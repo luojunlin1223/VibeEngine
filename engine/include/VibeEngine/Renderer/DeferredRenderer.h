@@ -159,6 +159,10 @@ public:
                           bool hasReflectionProbe,
                           float reflectionProbeIntensity,
                           float reflectionProbeBlend,
+                          const glm::vec3& reflectionProbeCenter,
+                          const glm::vec3& reflectionProbeBoxSize,
+                          const glm::vec3& reflectionProbeSecondaryCenter,
+                          const glm::vec3& reflectionProbeSecondaryBoxSize,
                           const glm::mat4& viewProjection,
                           const glm::mat4& inverseViewProjection);
 

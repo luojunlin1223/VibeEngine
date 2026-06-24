@@ -7119,6 +7119,24 @@ private:
         out << "HPWaterReflectionProbeSecondaryTexture: " << d.HPWaterReflectionProbeSecondaryTexture << "\n";
         out << "HPWaterReflectionProbeIntensity: " << d.HPWaterReflectionProbeIntensity << "\n";
         out << "HPWaterReflectionProbeBlend: " << d.HPWaterReflectionProbeBlend << "\n";
+        out << "HPWaterReflectionProbeBoxProjectionEnabled: "
+            << d.HPWaterReflectionProbeBoxProjectionEnabled << "\n";
+        out << "HPWaterReflectionProbeCenter: "
+            << d.HPWaterReflectionProbeCenter.x << ","
+            << d.HPWaterReflectionProbeCenter.y << ","
+            << d.HPWaterReflectionProbeCenter.z << "\n";
+        out << "HPWaterReflectionProbeBoxSize: "
+            << d.HPWaterReflectionProbeBoxSize.x << ","
+            << d.HPWaterReflectionProbeBoxSize.y << ","
+            << d.HPWaterReflectionProbeBoxSize.z << "\n";
+        out << "HPWaterReflectionProbeSecondaryCenter: "
+            << d.HPWaterReflectionProbeSecondaryCenter.x << ","
+            << d.HPWaterReflectionProbeSecondaryCenter.y << ","
+            << d.HPWaterReflectionProbeSecondaryCenter.z << "\n";
+        out << "HPWaterReflectionProbeSecondaryBoxSize: "
+            << d.HPWaterReflectionProbeSecondaryBoxSize.x << ","
+            << d.HPWaterReflectionProbeSecondaryBoxSize.y << ","
+            << d.HPWaterReflectionProbeSecondaryBoxSize.z << "\n";
         out << "HPWaterForwardScatterMipEnabled: " << d.HPWaterForwardScatterMipEnabled << "\n";
         out << "HPWaterForwardScatterMipCount: " << d.HPWaterForwardScatterMipCount << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
@@ -7561,10 +7579,11 @@ private:
             d.HPWaterSpectralNormalParityEnabled ? 1 : 0,
             d.HPWaterSpectrumAmplitude,
             d.HPWaterSpectrumNormalStrength);
-        ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d (%u/%u) intensity=%.3f blend=%.3f",
+        ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d box=%d (%u/%u) intensity=%.3f blend=%.3f",
             d.HPWaterSkyTextureReflectionBound ? 1 : 0,
             d.HPWaterSkyTexture,
             d.HPWaterReflectionProbeBound ? 1 : 0,
+            d.HPWaterReflectionProbeBoxProjectionEnabled ? 1 : 0,
             d.HPWaterReflectionProbeTexture,
             d.HPWaterReflectionProbeSecondaryTexture,
             d.HPWaterReflectionProbeIntensity,
