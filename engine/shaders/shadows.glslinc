@@ -13,6 +13,8 @@ uniform float u_ShadowDepthBias;
 uniform float u_ShadowNormalBias;
 uniform int   u_ShadowPCFQuality;         // 0=Hard, 1=3x3, 2=5x5
 uniform float u_ShadowCascadeBlendWidth;
+uniform int   u_ShadowCascadeDitherEnabled;
+uniform int   u_ShadowFrameIndex;
 
 // 鈹€鈹€ Cascade selection by view-space depth 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
@@ -22,6 +24,12 @@ int SelectCascade(float viewDepth) {
             return i;
     }
     return CSM_NUM_CASCADES - 1;
+}
+
+float ShadowInterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
+    const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+    vec2 scrolled = pixelPos + vec2(float(frameIndex & 63)) * vec2(5.588238, 5.588238);
+    return fract(magic.z * fract(dot(scrolled, magic.xy)));
 }
 
 // 鈹€鈹€ Shadow sampling functions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -155,8 +163,15 @@ float ComputeShadow(vec3 fragPosWorld, vec3 N, float viewDepth) {
             int nextCascade = cascade + 1;
             vec3 nextCoord = ProjectToShadowCoord(biasedPos, nextCascade);
 
-            float nextShadow = SampleShadowCascade(nextCoord, nextCascade, receiverBias);
-            shadow = mix(shadow, nextShadow, blendFactor);
+            if (u_ShadowCascadeDitherEnabled != 0) {
+                float dither = ShadowInterleavedGradientNoise(gl_FragCoord.xy, u_ShadowFrameIndex);
+                if (dither < blendFactor) {
+                    shadow = SampleShadowCascade(nextCoord, nextCascade, receiverBias);
+                }
+            } else {
+                float nextShadow = SampleShadowCascade(nextCoord, nextCascade, receiverBias);
+                shadow = mix(shadow, nextShadow, blendFactor);
+            }
         }
     }
 

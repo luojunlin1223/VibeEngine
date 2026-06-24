@@ -7119,6 +7119,7 @@ private:
         out << "HPWaterPreintegratedFGDLUTResolution: " << d.HPWaterPreintegratedFGDLUTResolution << "\n";
         out << "HPWaterLightLoopInputsValid: " << d.HPWaterLightLoopInputsValid << "\n";
         out << "HPWaterSurfaceShadowSamplingEnabled: " << d.HPWaterSurfaceShadowSamplingEnabled << "\n";
+        out << "HPWaterShadowCascadeDitherEnabled: " << d.HPWaterShadowCascadeDitherEnabled << "\n";
         out << "HPWaterIndirectScatterIntegrationEnabled: " << d.HPWaterIndirectScatterIntegrationEnabled << "\n";
         out << "HPWaterBSDFComponentWeightingEnabled: " << d.HPWaterBSDFComponentWeightingEnabled << "\n";
         out << "HPWaterSkyReflectionIntensity: " << d.HPWaterSkyReflectionIntensity << "\n";
@@ -7604,9 +7605,10 @@ private:
             d.HPWaterGGXEnergyCompensation,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d punctual=%d point=%u spot=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d point=%u spot=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSurfaceShadowSamplingEnabled ? 1 : 0,
+            d.HPWaterShadowCascadeDitherEnabled ? 1 : 0,
             d.HPWaterPunctualLightLoopEnabled ? 1 : 0,
             d.HPWaterPointLightCount,
             d.HPWaterSpotLightCount,

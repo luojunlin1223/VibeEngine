@@ -227,7 +227,14 @@ float ComputeHPWaterVolumeShadow(vec3 fragPosWorld, vec3 N) {
                                                                 receiverBias,
                                                                 nextFilterRadius,
                                                                 filterSamples);
-            shadow = mix(shadow, nextShadow, blendFactor);
+            if (u_ShadowCascadeDitherEnabled != 0) {
+                float dither = ShadowInterleavedGradientNoise(gl_FragCoord.xy, u_ShadowFrameIndex);
+                if (dither < blendFactor) {
+                    shadow = nextShadow;
+                }
+            } else {
+                shadow = mix(shadow, nextShadow, blendFactor);
+            }
         }
     }
 

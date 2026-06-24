@@ -444,6 +444,7 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
     m_HPWaterSurfaceShadowSamplingEnabled = false;
+    m_HPWaterShadowCascadeDitherEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticFBO() {
@@ -1551,6 +1552,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterCompositeValid = false;
         m_HPWaterRefractionNDCMarchEnabled = false;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
+        m_HPWaterShadowCascadeDitherEnabled = false;
         return false;
     }
 
@@ -1657,6 +1659,8 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
 
     const bool surfaceShadowSamplingValid = shadowsEnabled && shadowDepthTextureArray != 0 &&
         shadowDepthResolution > 0;
+    const bool shadowCascadeDitherEnabled = surfaceShadowSamplingValid &&
+        shadowCascadeBlendWidth > 0.0001f;
     glActiveTexture(GL_TEXTURE16);
     glBindTexture(GL_TEXTURE_2D_ARRAY, surfaceShadowSamplingValid
         ? static_cast<GLuint>(shadowDepthTextureArray)
@@ -1761,6 +1765,9 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetInt("u_ShadowPCFQuality", std::clamp(shadowPCFQuality, 0, 2));
     m_HPWaterCompositeShader->SetFloat("u_ShadowCascadeBlendWidth",
         std::clamp(shadowCascadeBlendWidth, 0.0f, 1.0f));
+    m_HPWaterCompositeShader->SetInt("u_ShadowCascadeDitherEnabled",
+        shadowCascadeDitherEnabled ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_ShadowFrameIndex", static_cast<int>(frameIndex & 0x7fffffffU));
     for (int i = 0; i < 4; ++i) {
         const std::string index = std::to_string(i);
         m_HPWaterCompositeShader->SetMat4("u_ShadowLightVP[" + index + "]",
@@ -1809,6 +1816,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeFBO->Unbind();
     m_HPWaterCompositeValid = true;
     m_HPWaterSurfaceShadowSamplingEnabled = surfaceShadowSamplingValid;
+    m_HPWaterShadowCascadeDitherEnabled = shadowCascadeDitherEnabled;
     m_HPWaterRefractionNDCMarchEnabled =
         m_HPWaterDepthPyramidValid &&
         refractionSampleCount > 0 &&
@@ -1846,6 +1854,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         m_HPWaterVolumeValid = false;
         m_HPWaterVolumeExponentialIntegrationEnabled = false;
         m_HPWaterVolumeShadowSamplingEnabled = false;
+        m_HPWaterShadowCascadeDitherEnabled = false;
         m_HPWaterVolumeShadowParamsEnabled = false;
         m_HPWaterVolumeShadowSoftness = 0.0f;
         m_HPWaterVolumeShadowMinFilterSize = 0.0f;
@@ -1904,6 +1913,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
 
     const bool shadowSamplingValid = shadowsEnabled && shadowDepthTextureArray != 0 &&
         shadowDepthResolution > 0;
+    const bool shadowCascadeDitherEnabled = shadowSamplingValid &&
+        shadowCascadeBlendWidth > 0.0001f;
     const float clampedVolumeShadowSoftness = std::clamp(volumeShadowSoftness, 0.0f, 10.0f);
     const float clampedVolumeShadowMinFilterSize = std::clamp(volumeShadowMinFilterSize, 0.0f, 8.0f);
     const int clampedVolumeShadowBlockerSamples = std::clamp(volumeShadowBlockerSamples, 0, 16);
@@ -1939,6 +1950,9 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetInt("u_ShadowPCFQuality", std::clamp(shadowPCFQuality, 0, 2));
     m_HPWaterVolumeShader->SetFloat("u_ShadowCascadeBlendWidth",
         std::clamp(shadowCascadeBlendWidth, 0.0f, 1.0f));
+    m_HPWaterVolumeShader->SetInt("u_ShadowCascadeDitherEnabled",
+        shadowCascadeDitherEnabled ? 1 : 0);
+    m_HPWaterVolumeShader->SetInt("u_ShadowFrameIndex", static_cast<int>(frameIndex & 0x7fffffffU));
     m_HPWaterVolumeShader->SetInt("u_HPWaterVolumeShadowParamsEnabled",
         volumeShadowParamsEnabled ? 1 : 0);
     m_HPWaterVolumeShader->SetFloat("u_HPWaterVolumeShadowSoftness",
@@ -1971,6 +1985,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterVolumeExponentialIntegrationEnabled = true;
     m_HPWaterVolumeShadowSamplingEnabled = shadowSamplingValid;
+    m_HPWaterShadowCascadeDitherEnabled =
+        m_HPWaterShadowCascadeDitherEnabled || shadowCascadeDitherEnabled;
     m_HPWaterVolumeShadowParamsEnabled = volumeShadowParamsEnabled;
     m_HPWaterVolumeShadowSoftness = clampedVolumeShadowSoftness;
     m_HPWaterVolumeShadowMinFilterSize = clampedVolumeShadowMinFilterSize;
