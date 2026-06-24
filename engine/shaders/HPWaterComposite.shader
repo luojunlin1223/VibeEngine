@@ -147,6 +147,7 @@ const float HPWATER_SSS_PATH_SCALE = 20.0;
 const float HPWATER_SSS_NONLINEAR_STRENGTH = 0.5;
 const float HPWATER_SSS_SCATTER_BOOST = 2.0;
 const float HPWATER_BACKLIT_PATH_SCALE = 20.0;
+const float HPWATER_WATER_F0 = 0.02037;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -840,8 +841,7 @@ void main() {
     float lightViewAlignment = clamp(dot(-V, L), -1.0, 1.0);
     float backlit = pow(clamp(lightViewAlignment * 0.5 + 0.5, 0.0, 1.0), 1.5) *
         smoothstep(0.0, 0.7, 1.0 - NdotL);
-    float fresnel = SchlickFresnel(NdotV, 0.02037);
-    vec3 F0 = vec3(0.02037);
+    vec3 F0 = vec3(HPWATER_WATER_F0);
     vec3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
     vec3 Fgd = ApplyFGD(F, F0, roughness, NdotV);
     float energyCompensation = GGXEnergyCompensation(F0, roughness);
@@ -980,7 +980,7 @@ void main() {
     // diffR = T_entry * G_entry * S_volume
     // diffT = thinLayerSSS + backlitTransmission
     vec3 extinctionCoeff = max(absorptionColor + scatterColor, vec3(0.00001));
-    vec3 T_entry = vec3(1.0) - vec3(SchlickFresnel(NdotL, 0.02037));
+    vec3 T_entry = vec3(1.0) - vec3(SchlickFresnel(NdotL, HPWATER_WATER_F0));
     float G_entry = NdotL;
     vec3 forwardScatterColor = forwardBlur * clamp(u_MultiScatterScale, 0.0, 32.0);
     vec3 volumePhase = HPWaterScatterPhase(lightViewAlignment, clamp(u_PhaseG, -0.95, 0.95));
@@ -1030,8 +1030,11 @@ void main() {
         bodyColor += caustic.rgb * receiverWeight;
     }
 
+    vec3 T_exit = vec3(1.0) - vec3(SchlickFresnel(NdotV, HPWATER_WATER_F0));
+    vec3 exitedBodyColor = bodyColor * T_exit;
+
     vec3 foamColor = mix(vec3(0.88, 0.94, 0.98), vec3(1.0), foam);
-    vec3 waterColor = mix(bodyColor + reflected, foamColor, foam * 0.65);
+    vec3 waterColor = mix(exitedBodyColor + reflected, foamColor, foam * 0.65);
     float waterAlpha = clamp(0.28 + normalizedThickness * 0.62 + foam * 0.45, 0.0, 0.92);
 
     FragColor = vec4(mix(sceneColor.rgb, waterColor, waterAlpha), sceneColor.a);

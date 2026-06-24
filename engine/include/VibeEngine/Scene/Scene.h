@@ -224,6 +224,8 @@ struct RenderDiagnostics {
     bool HPWaterShadowCascadeDitherEnabled = false;
     bool HPWaterIndirectScatterIntegrationEnabled = false;
     bool HPWaterBSDFComponentWeightingEnabled = false;
+    bool HPWaterExitFresnelEnabled = false;
+    float HPWaterExitFresnelF0 = 0.0f;
     float HPWaterSkyReflectionIntensity = 0.0f;
     float HPWaterIndirectDiffuseIntensity = 0.0f;
     float HPWaterDirectionalLightIntensity = 0.0f;

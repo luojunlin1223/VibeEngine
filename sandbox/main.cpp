@@ -7168,6 +7168,8 @@ private:
         out << "HPWaterShadowCascadeDitherEnabled: " << d.HPWaterShadowCascadeDitherEnabled << "\n";
         out << "HPWaterIndirectScatterIntegrationEnabled: " << d.HPWaterIndirectScatterIntegrationEnabled << "\n";
         out << "HPWaterBSDFComponentWeightingEnabled: " << d.HPWaterBSDFComponentWeightingEnabled << "\n";
+        out << "HPWaterExitFresnelEnabled: " << d.HPWaterExitFresnelEnabled << "\n";
+        out << "HPWaterExitFresnelF0: " << d.HPWaterExitFresnelF0 << "\n";
         out << "HPWaterSkyReflectionIntensity: " << d.HPWaterSkyReflectionIntensity << "\n";
         out << "HPWaterIndirectDiffuseIntensity: " << d.HPWaterIndirectDiffuseIntensity << "\n";
         out << "HPWaterDirectionalLightIntensity: " << d.HPWaterDirectionalLightIntensity << "\n";
@@ -7696,7 +7698,7 @@ private:
             d.HPWaterRefractionThicknessOffset,
             d.HPWaterRefractionSampleCount,
             d.HPWaterRefractionJitterEnabled ? 1 : 0);
-        ImGui::Text("HPWater BSDF: env=%.3f indirect=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f blur=%.3f multi=%.2f phaseG=%.2f fgd=%.3f energy=%.3f lut=%d/%u",
+        ImGui::Text("HPWater BSDF: env=%.3f indirect=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f blur=%.3f multi=%.2f phaseG=%.2f fgd=%.3f energy=%.3f exitF=%d/%.5f lut=%d/%u",
             d.HPWaterEnvironmentReflectionIntensity,
             d.HPWaterIndirectLightStrength,
             d.HPWaterMacroScatterStrength,
@@ -7708,6 +7710,8 @@ private:
             d.HPWaterPhaseG,
             d.HPWaterSpecularFGDStrength,
             d.HPWaterGGXEnergyCompensation,
+            d.HPWaterExitFresnelEnabled ? 1 : 0,
+            d.HPWaterExitFresnelF0,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
         ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d areaApprox=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d influenceSort=%d layerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",

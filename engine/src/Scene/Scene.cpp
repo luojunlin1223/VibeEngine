@@ -2777,6 +2777,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterForwardScatterStrength > 0.0001f ||
             hpWaterThinSSSStrength > 0.0001f ||
             hpWaterBacklitTransmissionStrength > 0.0001f;
+        m_RenderDiagnostics.HPWaterExitFresnelEnabled = true;
+        m_RenderDiagnostics.HPWaterExitFresnelF0 = 0.02037f;
         m_RenderDiagnostics.HPWaterSkyReflectionIntensity = ps.SkyReflectionIntensity;
         m_RenderDiagnostics.HPWaterIndirectDiffuseIntensity =
             ps.IndirectLightingEnabled ? ps.IndirectDiffuseIntensity * hpWaterIndirectLightStrength : 0.0f;
@@ -3326,6 +3328,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {
         m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled = false;
         m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled = false;
+        m_RenderDiagnostics.HPWaterExitFresnelEnabled = false;
+        m_RenderDiagnostics.HPWaterExitFresnelF0 = 0.0f;
     }
     m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
     m_RenderDiagnostics.HPWaterVolumeTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(1);
