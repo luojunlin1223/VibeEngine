@@ -65,6 +65,7 @@ uniform int u_FrameIndex;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform float u_LightIntensity;
+uniform float u_PhaseG;
 uniform int u_NumPointLights;
 uniform vec3 u_PointLightPositions[8];
 uniform vec3 u_PointLightColors[8];
@@ -138,15 +139,15 @@ float HenyeyGreenstein(float cosTheta, float g) {
     return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
 }
 
-vec3 ScatterPhase(float cosTheta) {
+vec3 ScatterPhase(float cosTheta, float phaseG) {
     vec3 betaRayleigh = vec3(5.8e-6, 13.5e-6, 33.1e-6) * 1.0e6;
     float rayleighPhase = (1.0 + cosTheta * cosTheta) * (3.0 / (16.0 * PI));
-    float miePhase = HenyeyGreenstein(cosTheta, 0.72);
+    float miePhase = HenyeyGreenstein(cosTheta, clamp(phaseG, -0.95, 0.95));
     return betaRayleigh * rayleighPhase * 0.05 + vec3(miePhase) * 0.95;
 }
 
 vec3 HPWaterEffectiveScatterPhase(float cosTheta, vec3 scatteringAlbedo) {
-    vec3 phase = ScatterPhase(cosTheta);
+    vec3 phase = ScatterPhase(cosTheta, u_PhaseG);
     float albedoScalar = clamp(Luminance(scatteringAlbedo), 0.0, 1.0);
     float isotropicWeight = smoothstep(0.0, 0.5, albedoScalar);
     return mix(phase, vec3(1.0), isotropicWeight);

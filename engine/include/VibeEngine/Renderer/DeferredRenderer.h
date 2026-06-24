@@ -263,6 +263,7 @@ public:
                                  float shadowNormalBias,
                                  int shadowPCFQuality,
                                  float shadowCascadeBlendWidth,
+                                 float phaseG,
                                  float macroScatterStrength,
                                  float volumeShadowSoftness,
                                  float volumeShadowMinFilterSize,

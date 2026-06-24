@@ -1197,6 +1197,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
     m_RenderDiagnostics.HPWaterVolumeAlbedoPhaseBlendEnabled =
         m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterMacroScatterStrength > 0.0001f;
+    m_RenderDiagnostics.HPWaterVolumePhaseGEnabled =
+        m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterPhaseG > -0.951f;
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
     m_RenderDiagnostics.HPWaterSurfaceShadowSamplingEnabled =
@@ -3149,6 +3151,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                        shadowSettings.NormalBias,
                                                        shadowSettings.PCFQuality,
                                                        shadowSettings.CascadeBlendWidth,
+                                                       hpWaterPhaseG,
                                                        hpWaterMacroScatterStrength,
                                                        hpWaterVolumeShadowSoftness,
                                                        hpWaterVolumeShadowMinFilterSize,
@@ -3160,6 +3163,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
         m_RenderDiagnostics.HPWaterVolumeAlbedoPhaseBlendEnabled =
             m_RenderDiagnostics.HPWaterVolumeRan && hpWaterMacroScatterStrength > 0.0001f;
+        m_RenderDiagnostics.HPWaterVolumePhaseGEnabled =
+            m_RenderDiagnostics.HPWaterVolumeRan && hpWaterPhaseG > -0.951f;
         m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
             m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
         m_RenderDiagnostics.HPWaterSurfaceShadowSamplingEnabled =
@@ -3383,6 +3388,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
     m_RenderDiagnostics.HPWaterVolumeAlbedoPhaseBlendEnabled =
         m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterMacroScatterStrength > 0.0001f;
+    m_RenderDiagnostics.HPWaterVolumePhaseGEnabled =
+        m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterPhaseG > -0.951f;
     m_RenderDiagnostics.HPWaterSurfaceShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterSurfaceShadowSamplingEnabled();
     m_RenderDiagnostics.HPWaterShadowCascadeDitherEnabled =

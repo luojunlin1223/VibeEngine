@@ -2408,6 +2408,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                                float shadowNormalBias,
                                                int shadowPCFQuality,
                                                float shadowCascadeBlendWidth,
+                                               float phaseG,
                                                float macroScatterStrength,
                                                float volumeShadowSoftness,
                                                float volumeShadowMinFilterSize,
@@ -2507,6 +2508,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetVec3("u_LightDir", lightDir);
     m_HPWaterVolumeShader->SetVec3("u_LightColor", lightColor);
     m_HPWaterVolumeShader->SetFloat("u_LightIntensity", lightIntensity);
+    m_HPWaterVolumeShader->SetFloat("u_PhaseG", std::clamp(phaseG, -0.95f, 0.95f));
     const int clampedPointLightCount = std::clamp(pointLightCount, 0, 8);
     m_HPWaterVolumeShader->SetInt("u_NumPointLights", clampedPointLightCount);
     for (int i = 0; i < clampedPointLightCount; ++i) {
