@@ -162,6 +162,25 @@ float HPWaterRangeAttenuation(float distanceToLight, float range) {
     return rangeWindow / (distanceToLight * distanceToLight + 1.0);
 }
 
+void AccumulateHPWaterAreaLightSample(vec3 samplePos,
+                                      vec3 samplePoint,
+                                      vec3 forward,
+                                      float lightRange,
+                                      inout vec3 weightedDirection,
+                                      inout float weightSum) {
+    vec3 lightVector = samplePoint - samplePos;
+    float lightDistance = length(lightVector);
+    if (lightDistance <= 0.0001 || lightDistance >= lightRange) {
+        return;
+    }
+
+    vec3 sampleL = lightVector / lightDistance;
+    float emissionFacing = clamp(dot(forward, -sampleL), 0.0, 1.0);
+    float sampleWeight = HPWaterRangeAttenuation(lightDistance, lightRange) * emissionFacing;
+    weightedDirection += sampleL * sampleWeight;
+    weightSum += sampleWeight;
+}
+
 vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos, int lightIndex, out vec3 Lp) {
     vec3 center = u_AreaLightPositions[lightIndex];
     vec3 right = SafeNormalize(u_AreaLightRights[lightIndex], vec3(1.0, 0.0, 0.0));
@@ -169,27 +188,30 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos, int lightIndex, out vec3 Lp
     vec3 forward = SafeNormalize(u_AreaLightForwards[lightIndex], vec3(0.0, 0.0, 1.0));
     float width = max(u_AreaLightWidths[lightIndex], 0.001);
     float height = max(u_AreaLightHeights[lightIndex], 0.001);
-
-    vec3 toSample = samplePos - center;
-    vec2 local = vec2(dot(toSample, right), dot(toSample, up));
-    vec2 halfSize = vec2(width, height) * 0.5;
-    vec2 clampedLocal = clamp(local, -halfSize, halfSize);
-    vec3 closest = center + right * clampedLocal.x + up * clampedLocal.y;
-
-    vec3 lightVector = closest - samplePos;
-    float lightDistance = length(lightVector);
     float lightRange = max(u_AreaLightRanges[lightIndex], 0.001);
-    Lp = lightDistance > 0.0001 ? lightVector / lightDistance : forward;
-    if (lightDistance >= lightRange) {
+    vec2 halfSize = vec2(width, height) * 0.5;
+
+    vec3 weightedDirection = vec3(0.0);
+    float weightSum = 0.0;
+    AccumulateHPWaterAreaLightSample(samplePos, center, forward, lightRange, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(samplePos, center + right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+        forward, lightRange, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(samplePos, center - right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+        forward, lightRange, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(samplePos, center + right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+        forward, lightRange, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(samplePos, center - right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+        forward, lightRange, weightedDirection, weightSum);
+
+    Lp = SafeNormalize(weightedDirection, forward);
+    if (weightSum <= 0.0) {
         return vec3(0.0);
     }
 
-    float emissionFacing = clamp(dot(forward, -Lp), 0.0, 1.0);
     float areaScale = clamp(width * height * 0.25, 0.1, 8.0);
     return u_AreaLightColors[lightIndex] *
         max(u_AreaLightIntensities[lightIndex], 0.0) *
-        HPWaterRangeAttenuation(lightDistance, lightRange) *
-        emissionFacing * areaScale;
+        (weightSum / 5.0) * areaScale;
 }
 
 vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,

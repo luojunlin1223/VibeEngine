@@ -2794,6 +2794,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterPunctualLightLoopEnabled =
             (hpWaterNumPointLights + hpWaterNumSpotLights) > 0;
         m_RenderDiagnostics.HPWaterAreaLightApproximationEnabled = hpWaterNumAreaLights > 0;
+        m_RenderDiagnostics.HPWaterAreaLightRectangleSamplingEnabled = hpWaterNumAreaLights > 0;
         m_RenderDiagnostics.HPWaterPunctualLightLayerFilteringEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualLightInfluenceSortingEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualPointLightCandidates =
@@ -3168,6 +3169,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.GetHPWaterVolumeAreaLightCount();
         m_RenderDiagnostics.HPWaterVolumeAreaLightLoopEnabled =
             m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled();
+        m_RenderDiagnostics.HPWaterVolumeAreaLightRectangleSamplingEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
             m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
         m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =
@@ -3384,6 +3387,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeAreaLightCount =
         m_DeferredRenderer.GetHPWaterVolumeAreaLightCount();
     m_RenderDiagnostics.HPWaterVolumeAreaLightLoopEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled();
+    m_RenderDiagnostics.HPWaterVolumeAreaLightRectangleSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
         m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();

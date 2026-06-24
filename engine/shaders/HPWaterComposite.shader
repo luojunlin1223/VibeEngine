@@ -545,6 +545,29 @@ vec3 EvaluateHPWaterSpecularLight(vec3 N,
         radiance * NdotL * energyCompensation;
 }
 
+void AccumulateHPWaterAreaLightSample(vec3 positionWS,
+                                      vec3 samplePoint,
+                                      vec3 forward,
+                                      float range,
+                                      inout vec3 weightedDirection,
+                                      inout float weightSum) {
+    vec3 lightVector = samplePoint - positionWS;
+    float distanceToLight = length(lightVector);
+    if (distanceToLight <= 0.0001 || distanceToLight >= range) {
+        return;
+    }
+
+    vec3 sampleL = lightVector / distanceToLight;
+    float range01 = clamp(distanceToLight / range, 0.0, 1.0);
+    float rangeWindow = 1.0 - pow(range01, 4.0);
+    rangeWindow *= rangeWindow;
+    float emissionFacing = clamp(dot(forward, -sampleL), 0.0, 1.0);
+    float sampleWeight = rangeWindow * emissionFacing /
+        (distanceToLight * distanceToLight + 1.0);
+    weightedDirection += sampleL * sampleWeight;
+    weightSum += sampleWeight;
+}
+
 vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS, int lightIndex, out vec3 L) {
     vec3 center = u_AreaLightPositions[lightIndex];
     vec3 right = NormalizeOr(u_AreaLightRights[lightIndex], vec3(1.0, 0.0, 0.0));
@@ -552,28 +575,28 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS, int lightIndex, out vec3 L
     vec3 forward = NormalizeOr(u_AreaLightForwards[lightIndex], vec3(0.0, 0.0, 1.0));
     float width = max(u_AreaLightWidths[lightIndex], 0.001);
     float height = max(u_AreaLightHeights[lightIndex], 0.001);
-
-    vec3 toPoint = positionWS - center;
-    vec2 local = vec2(dot(toPoint, right), dot(toPoint, up));
-    vec2 halfSize = vec2(width, height) * 0.5;
-    vec2 clampedLocal = clamp(local, -halfSize, halfSize);
-    vec3 closest = center + right * clampedLocal.x + up * clampedLocal.y;
-
-    vec3 lightVector = closest - positionWS;
-    float distanceToLight = length(lightVector);
     float range = max(u_AreaLightRanges[lightIndex], 0.001);
-    L = distanceToLight > 0.0001 ? lightVector / distanceToLight : forward;
-    if (distanceToLight >= range) {
+    vec2 halfSize = vec2(width, height) * 0.5;
+
+    vec3 weightedDirection = vec3(0.0);
+    float weightSum = 0.0;
+    AccumulateHPWaterAreaLightSample(positionWS, center, forward, range, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(positionWS, center + right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+        forward, range, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(positionWS, center - right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+        forward, range, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(positionWS, center + right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+        forward, range, weightedDirection, weightSum);
+    AccumulateHPWaterAreaLightSample(positionWS, center - right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+        forward, range, weightedDirection, weightSum);
+
+    L = NormalizeOr(weightedDirection, forward);
+    if (weightSum <= 0.0) {
         return vec3(0.0);
     }
 
-    float range01 = clamp(distanceToLight / range, 0.0, 1.0);
-    float rangeWindow = 1.0 - pow(range01, 4.0);
-    rangeWindow *= rangeWindow;
-    float emissionFacing = clamp(dot(forward, -L), 0.0, 1.0);
     float areaScale = clamp(width * height * 0.25, 0.1, 8.0);
-    float attenuation = rangeWindow * emissionFacing * areaScale /
-        (distanceToLight * distanceToLight + 1.0);
+    float attenuation = (weightSum / 5.0) * areaScale;
     return u_AreaLightColors[lightIndex] *
         max(u_AreaLightIntensities[lightIndex], 0.0) * attenuation;
 }

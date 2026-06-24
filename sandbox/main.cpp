@@ -1345,6 +1345,29 @@ private:
         ensureProbe("HPWater Reflection Probe Secondary", { 32.0f, 2.5f, 22.0f }, { 80.0f, 24.0f, 80.0f });
     }
 
+    void EnsureLauncherHPWaterAreaLight() {
+        auto areaLightEntity = FindEntityByName("HPWater Area Light");
+        if (!areaLightEntity)
+            areaLightEntity = m_Scene->CreateEntity("HPWater Area Light");
+
+        auto& tag = areaLightEntity.GetComponent<VE::TagComponent>();
+        tag.Layer = 4;
+
+        auto& tc = areaLightEntity.GetComponent<VE::TransformComponent>();
+        tc.Position = { -8.0f, 5.0f, 28.0f };
+        tc.Rotation = EulerFromForwardDirection(glm::vec3(0.35f, -0.75f, 0.55f));
+        tc.Scale = { 1.0f, 1.0f, 1.0f };
+
+        auto& area = areaLightEntity.HasComponent<VE::AreaLightComponent>()
+            ? areaLightEntity.GetComponent<VE::AreaLightComponent>()
+            : areaLightEntity.AddComponent<VE::AreaLightComponent>();
+        area.Color = { 0.55f, 0.82f, 1.0f };
+        area.Intensity = 2.4f;
+        area.Range = 42.0f;
+        area.Width = 14.0f;
+        area.Height = 7.0f;
+    }
+
     VE::Entity CreateLauncherImportedMesh(const std::string& name,
                                           const std::string& meshPath,
                                           const glm::vec3& position,
@@ -1464,6 +1487,7 @@ private:
         EnsureLauncherImportedTextures();
         EnsureLauncherWater();
         EnsureLauncherReflectionProbe();
+        EnsureLauncherHPWaterAreaLight();
 
         if (!m_PlayMode)
             return;
@@ -7214,6 +7238,8 @@ private:
         out << "HPWaterPunctualLightLoopEnabled: " << d.HPWaterPunctualLightLoopEnabled << "\n";
         out << "HPWaterAreaLightApproximationEnabled: "
             << d.HPWaterAreaLightApproximationEnabled << "\n";
+        out << "HPWaterAreaLightRectangleSamplingEnabled: "
+            << d.HPWaterAreaLightRectangleSamplingEnabled << "\n";
         out << "HPWaterPunctualLightLayerFilteringEnabled: "
             << d.HPWaterPunctualLightLayerFilteringEnabled << "\n";
         out << "HPWaterPunctualLightInfluenceSortingEnabled: "
@@ -7243,6 +7269,8 @@ private:
             << d.HPWaterVolumePunctualLightLoopEnabled << "\n";
         out << "HPWaterVolumeAreaLightLoopEnabled: "
             << d.HPWaterVolumeAreaLightLoopEnabled << "\n";
+        out << "HPWaterVolumeAreaLightRectangleSamplingEnabled: "
+            << d.HPWaterVolumeAreaLightRectangleSamplingEnabled << "\n";
         out << "HPWaterSpectralOceanEnabled: " << d.HPWaterSpectralOceanEnabled << "\n";
         out << "HPWaterSpectralNormalParityEnabled: " << d.HPWaterSpectralNormalParityEnabled << "\n";
         out << "HPWaterSpectrumComputeRan: " << d.HPWaterSpectrumComputeRan << "\n";
@@ -7773,12 +7801,13 @@ private:
             d.HPWaterExitFresnelF0,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d areaApprox=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d influenceSort=%d layerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d areaApprox=%d areaRect=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d influenceSort=%d layerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d volumeAreaRect=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSurfaceShadowSamplingEnabled ? 1 : 0,
             d.HPWaterShadowCascadeDitherEnabled ? 1 : 0,
             d.HPWaterPunctualLightLoopEnabled ? 1 : 0,
             d.HPWaterAreaLightApproximationEnabled ? 1 : 0,
+            d.HPWaterAreaLightRectangleSamplingEnabled ? 1 : 0,
             d.HPWaterPointLightCount,
             d.HPWaterPunctualPointLightCandidates,
             d.HPWaterSpotLightCount,
@@ -7795,6 +7824,7 @@ private:
             d.HPWaterAreaLightsCapacitySkipped,
             d.HPWaterVolumePunctualLightLoopEnabled ? 1 : 0,
             d.HPWaterVolumeAreaLightLoopEnabled ? 1 : 0,
+            d.HPWaterVolumeAreaLightRectangleSamplingEnabled ? 1 : 0,
             d.HPWaterVolumePointLightCount,
             d.HPWaterVolumeSpotLightCount,
             d.HPWaterVolumeAreaLightCount,
