@@ -271,6 +271,7 @@ struct RenderDiagnostics {
     bool HPWaterReflectionProbeInfluenceBlendEnabled = false;
     bool HPWaterReflectionProbeBoxProjectionEnabled = false;
     bool HPWaterEnvSpecularDominantDirEnabled = false;
+    bool HPWaterEnvSpecularDominantDirExactFormulaEnabled = false;
     bool HPWaterEnvSpecularMultiBounceEnabled = false;
     bool HPWaterSSRReflectionEnabled = false;
     bool HPWaterSSRHierarchyBlendEnabled = false;

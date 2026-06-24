@@ -7232,6 +7232,8 @@ private:
             << d.HPWaterReflectionProbeBoxProjectionEnabled << "\n";
         out << "HPWaterEnvSpecularDominantDirEnabled: "
             << d.HPWaterEnvSpecularDominantDirEnabled << "\n";
+        out << "HPWaterEnvSpecularDominantDirExactFormulaEnabled: "
+            << d.HPWaterEnvSpecularDominantDirExactFormulaEnabled << "\n";
         out << "HPWaterEnvSpecularMultiBounceEnabled: "
             << d.HPWaterEnvSpecularMultiBounceEnabled << "\n";
         out << "HPWaterSSRReflectionEnabled: " << d.HPWaterSSRReflectionEnabled << "\n";
@@ -7758,12 +7760,13 @@ private:
             d.HPWaterSpectrumResolution,
             d.HPWaterSpectrumAmplitude,
             d.HPWaterSpectrumNormalStrength);
-        ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d box=%d dominant=%d multiBounce=%d (%u/%u) intensity=%.3f blend=%.3f influence=%.3f hierarchy=%.3f",
+        ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d box=%d dominant=%d exact=%d multiBounce=%d (%u/%u) intensity=%.3f blend=%.3f influence=%.3f hierarchy=%.3f",
             d.HPWaterSkyTextureReflectionBound ? 1 : 0,
             d.HPWaterSkyTexture,
             d.HPWaterReflectionProbeBound ? 1 : 0,
             d.HPWaterReflectionProbeBoxProjectionEnabled ? 1 : 0,
             d.HPWaterEnvSpecularDominantDirEnabled ? 1 : 0,
+            d.HPWaterEnvSpecularDominantDirExactFormulaEnabled ? 1 : 0,
             d.HPWaterEnvSpecularMultiBounceEnabled ? 1 : 0,
             d.HPWaterReflectionProbeTexture,
             d.HPWaterReflectionProbeSecondaryTexture,
