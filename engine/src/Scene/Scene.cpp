@@ -147,6 +147,30 @@ static HPWaterSpectrumSample SampleHPWaterSpectrum(const HPWaterComponent& water
     return sample;
 }
 
+static float SampleHPWaterLocalHeight(const HPWaterComponent& water, float localX, float localZ) {
+    const int n = ClampHPWaterResolution(water.Resolution);
+    float dynamicHeight = 0.0f;
+    if (n > 1 && water._Current.size() == static_cast<size_t>(n * n)) {
+        const float u = glm::clamp(localX / std::max(water.WorldSizeX, 0.001f) + 0.5f, 0.0f, 1.0f);
+        const float v = glm::clamp(localZ / std::max(water.WorldSizeZ, 0.001f) + 0.5f, 0.0f, 1.0f);
+        const float fx = u * static_cast<float>(n - 1);
+        const float fz = v * static_cast<float>(n - 1);
+        const int x0 = std::clamp(static_cast<int>(std::floor(fx)), 0, n - 1);
+        const int z0 = std::clamp(static_cast<int>(std::floor(fz)), 0, n - 1);
+        const int x1 = std::min(x0 + 1, n - 1);
+        const int z1 = std::min(z0 + 1, n - 1);
+        const float tx = fx - static_cast<float>(x0);
+        const float tz = fz - static_cast<float>(z0);
+        const float h00 = water._Current[HPWaterIndex(x0, z0, n)];
+        const float h10 = water._Current[HPWaterIndex(x1, z0, n)];
+        const float h01 = water._Current[HPWaterIndex(x0, z1, n)];
+        const float h11 = water._Current[HPWaterIndex(x1, z1, n)];
+        dynamicHeight = glm::mix(glm::mix(h00, h10, tx), glm::mix(h01, h11, tx), tz) * water.HeightScale;
+    }
+
+    return water.BaseHeight + dynamicHeight + SampleHPWaterSpectrum(water, localX, localZ).Height;
+}
+
 static void AddHPWaterImpulse(HPWaterComponent& water, float u, float v, float radiusWorld, float strength) {
     const int n = ClampHPWaterResolution(water.Resolution);
     if (water._Current.size() != static_cast<size_t>(n * n))
@@ -1733,6 +1757,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
         bool gpuHeightCaptureValid = false;
         bool gpuWaterHeightCaptured = false;
+        bool displacedWaterHeightCaptured = false;
         uint32_t gpuWaterCaptureDraws = 0;
         uint32_t gpuSceneCaptureDraws = 0;
         auto heightCaptureShader = m_DeferredRenderer.GetHPWaterFluidHeightCaptureShader();
@@ -1740,12 +1765,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             if (m_DeferredRenderer.BeginHPWaterFluidWaterHeightCapture(hpWaterFluidResolution,
                                                                        hpWaterFluidBoxCenter,
                                                                        hpWaterFluidBoxSize)) {
-                glClearColor(normalizedWaterHeight, 0.0f, 0.0f, 1.0f);
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
                 heightCaptureShader->Bind();
                 heightCaptureShader->SetVec3("u_BoxCenter", hpWaterFluidBoxCenter);
                 heightCaptureShader->SetVec3("u_BoxSize", glm::max(hpWaterFluidBoxSize, glm::vec3(0.001f)));
-                heightCaptureShader->SetFloat("u_ForceHeight", normalizedWaterHeight);
+                heightCaptureShader->SetFloat("u_ForceHeight", -1.0f);
                 for (const auto& ve : hpWaterEntities) {
                     auto* mr = m_Registry.try_get<MeshRendererComponent>(ve.ID);
                     if (!mr || !mr->Mesh)
@@ -1754,6 +1779,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     heightCaptureShader->SetMat4("u_TopDownMVP", topDownVP * ve.Model);
                     RenderCommand::DrawIndexed(mr->Mesh);
                     gpuWaterHeightCaptured = true;
+                    displacedWaterHeightCaptured = true;
                     ++gpuWaterCaptureDraws;
                 }
                 m_DeferredRenderer.EndHPWaterFluidWaterHeightCapture(gpuWaterHeightCaptured);
@@ -1792,6 +1818,57 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         uint32_t obstaclePixels = 0;
 
         std::fill(waterHeights.begin(), waterHeights.end(), normalizedWaterHeight);
+        if (!hpWaterEntities.empty()) {
+            struct WaterHeightSampleSource {
+                HPWaterComponent* Water = nullptr;
+                glm::mat4 Model {1.0f};
+                glm::mat4 InverseModel {1.0f};
+            };
+
+            std::vector<WaterHeightSampleSource> waterSampleSources;
+            waterSampleSources.reserve(hpWaterEntities.size());
+            for (const auto& ve : hpWaterEntities) {
+                auto* water = m_Registry.try_get<HPWaterComponent>(ve.ID);
+                if (!water)
+                    continue;
+
+                waterSampleSources.push_back({ water, ve.Model, glm::inverse(ve.Model) });
+            }
+
+            const float halfX = hpWaterFluidBoxSize.x * 0.5f;
+            const float halfZ = hpWaterFluidBoxSize.z * 0.5f;
+            const float waterMinX = hpWaterFluidBoxCenter.x - halfX;
+            const float waterMinZ = hpWaterFluidBoxCenter.z - halfZ;
+            bool cpuDisplacedWaterHeights = false;
+            for (uint32_t z = 0; z < hpWaterFluidResolution; ++z) {
+                const float worldZ = waterMinZ +
+                    (static_cast<float>(z) + 0.5f) / static_cast<float>(hpWaterFluidResolution) * hpWaterFluidBoxSize.z;
+                for (uint32_t x = 0; x < hpWaterFluidResolution; ++x) {
+                    const float worldX = waterMinX +
+                        (static_cast<float>(x) + 0.5f) / static_cast<float>(hpWaterFluidResolution) * hpWaterFluidBoxSize.x;
+                    float bestHeight = -std::numeric_limits<float>::max();
+                    bool foundWater = false;
+                    for (const auto& source : waterSampleSources) {
+                        const glm::vec3 local = glm::vec3(source.InverseModel * glm::vec4(worldX, hpWaterFluidSurfaceY, worldZ, 1.0f));
+                        if (std::abs(local.x) > source.Water->WorldSizeX * 0.5f ||
+                            std::abs(local.z) > source.Water->WorldSizeZ * 0.5f) {
+                            continue;
+                        }
+
+                        const float localHeight = SampleHPWaterLocalHeight(*source.Water, local.x, local.z);
+                        const float worldHeight = glm::vec3(source.Model * glm::vec4(local.x, localHeight, local.z, 1.0f)).y;
+                        bestHeight = std::max(bestHeight, normalizeHeight(worldHeight));
+                        foundWater = true;
+                    }
+
+                    if (foundWater) {
+                        waterHeights[static_cast<size_t>(z) * hpWaterFluidResolution + x] = bestHeight;
+                        cpuDisplacedWaterHeights = true;
+                    }
+                }
+            }
+            displacedWaterHeightCaptured = displacedWaterHeightCaptured || cpuDisplacedWaterHeights;
+        }
 
         if (hpWaterFluidObstaclesEnabled) {
             const float halfX = hpWaterFluidBoxSize.x * 0.5f;
@@ -1857,6 +1934,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterFluidHeightCaptureRan =
             m_DeferredRenderer.DidHPWaterFluidHeightCaptureRun();
         m_RenderDiagnostics.HPWaterFluidHeightCaptureValid = gpuHeightCaptureValid;
+        m_RenderDiagnostics.HPWaterFluidDisplacedWaterHeightCapture = displacedWaterHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidWaterCaptureDraws = gpuWaterCaptureDraws;
         m_RenderDiagnostics.HPWaterFluidSceneCaptureDraws = gpuSceneCaptureDraws;
         if (!gpuHeightCaptureValid) {
