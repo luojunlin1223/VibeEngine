@@ -203,6 +203,9 @@ public:
     /// Build the opaque scene-depth pyramid used by HPWater refraction.
     bool BuildHPWaterDepthPyramid();
 
+    /// Merge dedicated HPWater surface depth into the main scene depth buffer.
+    bool MergeHPWaterDepthIntoSceneDepth();
+
     /// Build the explicit full-resolution HPWater coverage mask.
     bool BuildHPWaterMask();
 
@@ -339,6 +342,7 @@ public:
     uint32_t GetHPWaterDepthPyramidTexture() const { return m_HPWaterDepthPyramidTexture; }
     uint32_t GetHPWaterDepthPyramidMipCount() const { return m_HPWaterDepthPyramidMipCount; }
     bool IsHPWaterDepthPyramidValid() const { return m_HPWaterDepthPyramidValid; }
+    bool IsHPWaterDepthMergedToSceneDepth() const { return m_HPWaterDepthMergedToSceneDepth; }
     bool IsHPWaterRefractionNDCMarchEnabled() const { return m_HPWaterRefractionNDCMarchEnabled; }
     uint32_t GetHPWaterSceneColorMipCount() const { return m_HPWaterSceneColorMipCount; }
     bool IsHPWaterSceneColorMipValid() const { return m_HPWaterSceneColorMipValid; }
@@ -635,6 +639,7 @@ private:
     uint32_t m_HPWaterDepthPyramidFBO = 0;
     uint32_t m_HPWaterDepthPyramidMipCount = 0;
     bool m_HPWaterDepthPyramidValid = false;
+    bool m_HPWaterDepthMergedToSceneDepth = false;
 
     // Low-resolution HPWater volume accumulation targets.
     std::shared_ptr<Framebuffer> m_HPWaterVolumeFBO;
@@ -750,6 +755,7 @@ private:
     std::shared_ptr<ComputeShader> m_HPWaterCausticFilterComputeShader;
     std::shared_ptr<ComputeShader> m_HPWaterFluidComputeShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
+    std::shared_ptr<Shader> m_HPWaterDepthMergeShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
     std::shared_ptr<Shader> m_HPWaterFluidHeightCaptureShader;
     std::shared_ptr<Shader> m_LightingShader;

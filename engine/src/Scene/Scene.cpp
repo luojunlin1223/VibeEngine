@@ -1157,6 +1157,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterDepthPyramidMipCount = m_DeferredRenderer.GetHPWaterDepthPyramidMipCount();
     m_RenderDiagnostics.HPWaterDepthPyramidWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterDepthPyramidHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth =
+        m_DeferredRenderer.IsHPWaterDepthMergedToSceneDepth();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTValid = m_DeferredRenderer.IsHPWaterFGDLUTValid();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTTexture = m_DeferredRenderer.GetHPWaterFGDLUTTexture();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTResolution = m_DeferredRenderer.GetHPWaterFGDLUTResolution();
@@ -2217,6 +2219,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             }
 
             m_DeferredRenderer.EndHPWaterGBufferPass();
+            if (m_RenderDiagnostics.HPWaterGBufferDrawn > 0) {
+                m_RenderDiagnostics.HPWaterDepthPyramidRan =
+                    m_DeferredRenderer.BuildHPWaterDepthPyramid();
+                m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth =
+                    m_DeferredRenderer.MergeHPWaterDepthIntoSceneDepth();
+            }
 
             if (!hpWaterEntities.empty() && hpWaterCausticAtlasEnabled &&
                 ps.ShadowsEnabled && m_ShadowMap.IsInitialized()) {
@@ -2550,7 +2558,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticFilterLuminanceWeight = hpWaterCausticFilterLuminanceWeight;
         m_RenderDiagnostics.HPWaterCausticVolumeStrength = hpWaterCausticVolumeStrength;
         const uint32_t hpWaterFrameIndex = static_cast<uint32_t>(m_RenderDiagnostics.FrameIndex & 0xffffffffULL);
-        m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
+        if (!m_RenderDiagnostics.HPWaterDepthPyramidRan &&
+            !m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth) {
+            m_RenderDiagnostics.HPWaterDepthPyramidRan = m_DeferredRenderer.BuildHPWaterDepthPyramid();
+        }
         m_RenderDiagnostics.HPWaterMaskRan = m_DeferredRenderer.BuildHPWaterMask();
         std::array<glm::mat4, 4> hpWaterCascadeVP{};
         std::array<float, 4> hpWaterCascadeSplits{};
@@ -2857,6 +2868,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterDepthPyramidMipCount = m_DeferredRenderer.GetHPWaterDepthPyramidMipCount();
     m_RenderDiagnostics.HPWaterDepthPyramidWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterDepthPyramidHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth =
+        m_DeferredRenderer.IsHPWaterDepthMergedToSceneDepth();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {
