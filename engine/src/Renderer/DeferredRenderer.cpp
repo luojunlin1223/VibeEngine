@@ -276,6 +276,11 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterDepthMerge.shader");
     }
 
+    m_HPWaterNormalMergeShader = Shader::CreateFromFile("shaders/HPWaterNormalMerge.shader");
+    if (!m_HPWaterNormalMergeShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterNormalMerge.shader");
+    }
+
     m_HPWaterFluidShader = Shader::CreateFromFile("shaders/HPWaterFluidDynamics.shader");
     if (!m_HPWaterFluidShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterFluidDynamics.shader");
@@ -350,6 +355,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidComputeShader.reset();
     m_HPWaterDepthPyramidShader.reset();
     m_HPWaterDepthMergeShader.reset();
+    m_HPWaterNormalMergeShader.reset();
     m_HPWaterFluidShader.reset();
     m_HPWaterFluidHeightCaptureShader.reset();
     m_LightingShader.reset();
@@ -403,6 +409,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticAtlasTileResolution = 0;
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterDepthMergedToSceneDepth = false;
+    m_HPWaterNormalMergedToSceneGBuffer = false;
     m_HPWaterFluidValid = false;
     m_HPWaterFluidInitialized = false;
     m_HPWaterFluidComputeRan = false;
@@ -1187,6 +1194,8 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
     m_HPWaterDepthPyramidValid = false;
+    m_HPWaterDepthMergedToSceneDepth = false;
+    m_HPWaterNormalMergedToSceneGBuffer = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
 }
@@ -1217,6 +1226,7 @@ void DeferredRenderer::BeginGeometryPass() {
 
     ClearHPWaterGBuffer();
     m_HPWaterDepthMergedToSceneDepth = false;
+    m_HPWaterNormalMergedToSceneGBuffer = false;
 
     m_GBuffer->Bind();
 
@@ -1524,6 +1534,90 @@ bool DeferredRenderer::MergeHPWaterDepthIntoSceneDepth() {
     glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
 
     m_HPWaterDepthMergedToSceneDepth = true;
+    return true;
+}
+
+bool DeferredRenderer::MergeHPWaterNormalIntoSceneGBuffer() {
+    if (!m_HPWaterNormalMergeShader || !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
+        m_HPWaterNormalMergedToSceneGBuffer = false;
+        return false;
+    }
+
+    const GLuint hpWaterDepth = static_cast<GLuint>(m_HPWaterGBuffer->GetDepthAttachmentID());
+    const GLuint hpWaterNormalRoughness = static_cast<GLuint>(m_HPWaterGBuffer->GetColorAttachmentID(0));
+    if (hpWaterDepth == 0 || hpWaterNormalRoughness == 0) {
+        m_HPWaterNormalMergedToSceneGBuffer = false;
+        return false;
+    }
+
+    GLint previousViewport[4] = {};
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    GLint previousDrawFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFBO);
+    GLint previousReadFBO = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFBO);
+    GLint previousDepthFunc = GL_LESS;
+    glGetIntegerv(GL_DEPTH_FUNC, &previousDepthFunc);
+    GLboolean previousDepthMask = GL_TRUE;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+    GLboolean previousColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    glGetBooleanv(GL_COLOR_WRITEMASK, previousColorMask);
+    const bool previousDepthTest = glIsEnabled(GL_DEPTH_TEST) == GL_TRUE;
+    const bool previousCullFace = glIsEnabled(GL_CULL_FACE) == GL_TRUE;
+    const bool previousBlend = glIsEnabled(GL_BLEND) == GL_TRUE;
+
+    m_GBuffer->Bind();
+    glViewport(0, 0, static_cast<GLsizei>(m_Width), static_cast<GLsizei>(m_Height));
+    glDrawBuffer(GL_COLOR_ATTACHMENT1);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_FALSE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+
+    m_HPWaterNormalMergeShader->Bind();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, hpWaterDepth);
+    m_HPWaterNormalMergeShader->SetInt("u_HPWaterDepth", 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, hpWaterNormalRoughness);
+    m_HPWaterNormalMergeShader->SetInt("u_HPWaterNormalRoughness", 1);
+
+    glBindVertexArray(m_QuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    GLenum drawBuffers[4] = {
+        GL_COLOR_ATTACHMENT0,
+        GL_COLOR_ATTACHMENT1,
+        GL_COLOR_ATTACHMENT2,
+        GL_COLOR_ATTACHMENT3
+    };
+    glDrawBuffers(4, drawBuffers);
+    glColorMask(previousColorMask[0],
+                previousColorMask[1],
+                previousColorMask[2],
+                previousColorMask[3]);
+    glDepthFunc(static_cast<GLenum>(previousDepthFunc));
+    glDepthMask(previousDepthMask);
+    if (previousDepthTest)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
+    if (previousCullFace)
+        glEnable(GL_CULL_FACE);
+    else
+        glDisable(GL_CULL_FACE);
+    if (previousBlend)
+        glEnable(GL_BLEND);
+    else
+        glDisable(GL_BLEND);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(previousDrawFBO));
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previousReadFBO));
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+
+    m_HPWaterNormalMergedToSceneGBuffer = true;
     return true;
 }
 

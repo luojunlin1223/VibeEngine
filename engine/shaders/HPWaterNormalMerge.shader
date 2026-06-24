@@ -1,21 +1,20 @@
-// VibeEngine ShaderLab - HPWater scene depth merge
-// Writes dedicated HPWater surface depth into the main scene depth buffer.
-// This mirrors HPWater/Unity's prepass behavior where water depth is visible
-// to later screen-space passes without copying water payloads into the opaque
-// G-buffer color attachments.
+// VibeEngine ShaderLab - HPWater scene normal merge
+// Writes dedicated HPWater normal/roughness into the main scene G-buffer RT1.
+// HPWater's Unity path writes water normals into the prepass normal buffer so
+// later screen-space effects see the water surface instead of hidden opaque data.
 
-Shader "VibeEngine/HPWaterDepthMerge" {
+Shader "VibeEngine/HPWaterNormalMerge" {
     Properties {
     }
 
     SubShader {
-        Tags { "RenderType"="Opaque" "Queue"="Overlay" "LightMode"="HPWaterDepthMerge" }
+        Tags { "RenderType"="Opaque" "Queue"="Overlay" "LightMode"="HPWaterNormalMerge" }
 
         Pass {
-            Name "HPWaterDepthMergePass"
+            Name "HPWaterNormalMergePass"
 
             Cull Off
-            ZWrite On
+            ZWrite Off
             ZTest LEqual
 
             GLSLPROGRAM
@@ -35,8 +34,10 @@ void main() {
 
 #ifdef FRAGMENT
 layout(location = 0) in vec2 v_UV;
+layout(location = 0) out vec4 OutNormalRoughness;
 
 uniform sampler2D u_HPWaterDepth;
+uniform sampler2D u_HPWaterNormalRoughness;
 
 void main() {
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
@@ -44,6 +45,7 @@ void main() {
         discard;
 
     gl_FragDepth = waterDepth;
+    OutNormalRoughness = texture(u_HPWaterNormalRoughness, v_UV);
 }
 #endif
 
@@ -51,5 +53,5 @@ void main() {
         }
     }
 
-    FallBack "VibeEngine/HPWaterMask"
+    FallBack "VibeEngine/HPWaterDepthMerge"
 }

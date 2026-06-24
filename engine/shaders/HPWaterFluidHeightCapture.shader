@@ -46,6 +46,8 @@ void main() {
 #ifdef FRAGMENT
 in float v_NormalizedHeight;
 
+uniform float u_ForceHeight;
+
 layout(location = 0) out float gHeight;
 
 void main() {

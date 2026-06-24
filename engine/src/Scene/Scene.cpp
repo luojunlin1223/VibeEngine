@@ -1159,6 +1159,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterDepthPyramidHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth =
         m_DeferredRenderer.IsHPWaterDepthMergedToSceneDepth();
+    m_RenderDiagnostics.HPWaterNormalMergedToSceneGBuffer =
+        m_DeferredRenderer.IsHPWaterNormalMergedToSceneGBuffer();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTValid = m_DeferredRenderer.IsHPWaterFGDLUTValid();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTTexture = m_DeferredRenderer.GetHPWaterFGDLUTTexture();
     m_RenderDiagnostics.HPWaterPreintegratedFGDLUTResolution = m_DeferredRenderer.GetHPWaterFGDLUTResolution();
@@ -2224,6 +2226,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     m_DeferredRenderer.BuildHPWaterDepthPyramid();
                 m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth =
                     m_DeferredRenderer.MergeHPWaterDepthIntoSceneDepth();
+                m_RenderDiagnostics.HPWaterNormalMergedToSceneGBuffer =
+                    m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth &&
+                    m_DeferredRenderer.MergeHPWaterNormalIntoSceneGBuffer();
             }
 
             if (!hpWaterEntities.empty() && hpWaterCausticAtlasEnabled &&
@@ -2870,6 +2875,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterDepthPyramidHeight = m_DeferredRenderer.GetHeight();
     m_RenderDiagnostics.HPWaterDepthMergedToSceneDepth =
         m_DeferredRenderer.IsHPWaterDepthMergedToSceneDepth();
+    m_RenderDiagnostics.HPWaterNormalMergedToSceneGBuffer =
+        m_DeferredRenderer.IsHPWaterNormalMergedToSceneGBuffer();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {
