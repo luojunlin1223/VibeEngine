@@ -6308,6 +6308,9 @@ private:
                 ImGui::SliderFloat("Caustic Strength", &w.CausticStrength, 0.0f, 8.0f, "%.3f");
                 ImGui::DragFloat("Caustic Scale", &w.CausticScale, 0.1f, 0.1f, 128.0f, "%.2f");
                 ImGui::DragFloat("Caustic Depth Fade", &w.CausticDepthFade, 0.1f, 0.1f, 500.0f, "%.2f");
+                ImGui::SliderFloat("Caustic Transmittance", &w.CausticTransmittanceStrength, 0.0f, 8.0f, "%.3f");
+                ImGui::SliderFloat("Caustic Leak Reduction", &w.CausticLeakReduction, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Caustic Scatter Boost", &w.CausticScatterBoost, 0.0f, 4.0f, "%.3f");
                 ImGui::Checkbox("RGB Caustic", &w.CausticRGBDispersion);
                 ImGui::SliderFloat("Caustic Dispersion", &w.CausticDispersionStrength, 0.0f, 2.0f, "%.3f");
                 ImGui::Checkbox("Light-Space Atlas", &w.CausticLightSpaceAtlasEnabled);
@@ -7156,6 +7159,10 @@ private:
         out << "HPWaterCausticStrength: " << d.HPWaterCausticStrength << "\n";
         out << "HPWaterCausticScale: " << d.HPWaterCausticScale << "\n";
         out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
+        out << "HPWaterCausticTransmittanceMaskEnabled: " << d.HPWaterCausticTransmittanceMaskEnabled << "\n";
+        out << "HPWaterCausticTransmittanceStrength: " << d.HPWaterCausticTransmittanceStrength << "\n";
+        out << "HPWaterCausticLeakReduction: " << d.HPWaterCausticLeakReduction << "\n";
+        out << "HPWaterCausticScatterBoost: " << d.HPWaterCausticScatterBoost << "\n";
         out << "HPWaterCausticRGBDispersion: " << d.HPWaterCausticRGBDispersion << "\n";
         out << "HPWaterCausticDispersionStrength: " << d.HPWaterCausticDispersionStrength << "\n";
         out << "HPWaterCausticAtlasRan: " << d.HPWaterCausticAtlasRan << "\n";
@@ -7510,7 +7517,7 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f trans=%.2f leak=%.2f scatter=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
@@ -7532,6 +7539,9 @@ private:
             d.HPWaterCausticStrength,
             d.HPWaterCausticScale,
             d.HPWaterCausticDepthFade,
+            d.HPWaterCausticTransmittanceStrength,
+            d.HPWaterCausticLeakReduction,
+            d.HPWaterCausticScatterBoost,
             d.HPWaterCausticRGBDispersion ? 1 : 0,
             d.HPWaterCausticDispersionStrength,
             d.HPWaterCausticFilterRadius,

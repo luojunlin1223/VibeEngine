@@ -607,6 +607,9 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "CausticStrength" << YAML::Value << w.CausticStrength;
         out << YAML::Key << "CausticScale" << YAML::Value << w.CausticScale;
         out << YAML::Key << "CausticDepthFade" << YAML::Value << w.CausticDepthFade;
+        out << YAML::Key << "CausticTransmittanceStrength" << YAML::Value << w.CausticTransmittanceStrength;
+        out << YAML::Key << "CausticLeakReduction" << YAML::Value << w.CausticLeakReduction;
+        out << YAML::Key << "CausticScatterBoost" << YAML::Value << w.CausticScatterBoost;
         out << YAML::Key << "CausticRGBDispersion" << YAML::Value << w.CausticRGBDispersion;
         out << YAML::Key << "CausticDispersionStrength" << YAML::Value << w.CausticDispersionStrength;
         out << YAML::Key << "CausticLightSpaceAtlasEnabled" << YAML::Value << w.CausticLightSpaceAtlasEnabled;
@@ -1600,6 +1603,9 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["CausticStrength"]) w.CausticStrength = wNode["CausticStrength"].as<float>();
                 if (wNode["CausticScale"]) w.CausticScale = wNode["CausticScale"].as<float>();
                 if (wNode["CausticDepthFade"]) w.CausticDepthFade = wNode["CausticDepthFade"].as<float>();
+                if (wNode["CausticTransmittanceStrength"]) w.CausticTransmittanceStrength = wNode["CausticTransmittanceStrength"].as<float>();
+                if (wNode["CausticLeakReduction"]) w.CausticLeakReduction = wNode["CausticLeakReduction"].as<float>();
+                if (wNode["CausticScatterBoost"]) w.CausticScatterBoost = wNode["CausticScatterBoost"].as<float>();
                 if (wNode["CausticRGBDispersion"]) w.CausticRGBDispersion = wNode["CausticRGBDispersion"].as<bool>();
                 if (wNode["CausticDispersionStrength"]) w.CausticDispersionStrength = wNode["CausticDispersionStrength"].as<float>();
                 if (wNode["CausticLightSpaceAtlasEnabled"]) w.CausticLightSpaceAtlasEnabled = wNode["CausticLightSpaceAtlasEnabled"].as<bool>();
@@ -1635,6 +1641,9 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.CausticStrength = std::clamp(w.CausticStrength, 0.0f, 8.0f);
                 w.CausticScale = std::clamp(w.CausticScale, 0.1f, 128.0f);
                 w.CausticDepthFade = std::clamp(w.CausticDepthFade, 0.1f, 500.0f);
+                w.CausticTransmittanceStrength = std::clamp(w.CausticTransmittanceStrength, 0.0f, 8.0f);
+                w.CausticLeakReduction = std::clamp(w.CausticLeakReduction, 0.0f, 1.0f);
+                w.CausticScatterBoost = std::clamp(w.CausticScatterBoost, 0.0f, 4.0f);
                 w.CausticDispersionStrength = std::clamp(w.CausticDispersionStrength, 0.0f, 2.0f);
                 w.CausticAtlasResolution = std::clamp(w.CausticAtlasResolution, 128, 2048);
                 w.CausticFilterRadius = std::clamp(w.CausticFilterRadius, 0.25f, 8.0f);

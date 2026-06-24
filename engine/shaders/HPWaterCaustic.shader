@@ -54,6 +54,9 @@ uniform float u_LightIntensity;
 uniform float u_CausticStrength;
 uniform float u_CausticScale;
 uniform float u_CausticDepthFade;
+uniform float u_CausticTransmittanceStrength;
+uniform float u_CausticLeakReduction;
+uniform float u_CausticScatterBoost;
 uniform int u_CausticRGBDispersion;
 uniform float u_CausticDispersionStrength;
 uniform float u_NearClip;
@@ -255,6 +258,9 @@ void main() {
         : LinearizeDepth(sceneDepth);
     float thickness = max(sceneLinear - waterLinear, 0.0);
     float depthFade = exp(-thickness / max(u_CausticDepthFade, 0.1));
+    float receiverThicknessMask = sceneDepth < 0.9999
+        ? smoothstep(0.015, 0.55, thickness)
+        : 0.25;
 
     vec2 refractedOffset = N.xz * (0.65 + max(thickness, 0.0) * 0.02);
     vec2 lightDrift = normalize(L.xz + vec2(0.001)) * 0.17;
@@ -262,7 +268,14 @@ void main() {
 
     float slopeFocus = smoothstep(0.025, 0.45, length(N.xz));
     float foamOcclusion = 1.0 - clamp(absorptionFoam.a, 0.0, 1.0) * 0.65;
-    float sharedEnergy = slopeFocus * sunFacing * depthFade * foamOcclusion;
+    float absorptionLum = dot(max(absorptionFoam.rgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
+    float scatterLum = dot(max(scatterThickness.rgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)) * 0.1;
+    float transmissionGate = exp(-absorptionLum * max(thickness, 0.0) *
+        clamp(u_CausticTransmittanceStrength, 0.0, 8.0) * 0.18);
+    float leakGate = mix(1.0, receiverThicknessMask, clamp(u_CausticLeakReduction, 0.0, 1.0));
+    float scatterBoost = 1.0 + scatterLum * clamp(u_CausticScatterBoost, 0.0, 4.0);
+    float sharedEnergy = slopeFocus * sunFacing * depthFade * foamOcclusion *
+        transmissionGate * leakGate * scatterBoost;
     sharedEnergy *= clamp(u_CausticStrength, 0.0, 8.0) * max(u_LightIntensity, 0.0);
     sharedEnergy *= SampleAtlasFocus(v_UV, causticUV, N, L, thickness);
 
@@ -282,7 +295,8 @@ void main() {
 
     vec3 absorption = max(absorptionFoam.rgb, vec3(0.0001));
     vec3 waterTint = mix(vec3(1.0), scatterThickness.rgb, 0.24);
-    vec3 attenuation = exp(-absorption * (0.45 + thickness * 0.12));
+    vec3 attenuation = exp(-absorption * (0.45 + thickness * 0.12 *
+        (1.0 + clamp(u_CausticTransmittanceStrength, 0.0, 8.0) * 0.35)));
     vec3 caustic = max(u_LightColor, vec3(0.0)) * waterTint * attenuation * energyRGB;
     float energy = max(max(energyRGB.r, energyRGB.g), energyRGB.b);
 

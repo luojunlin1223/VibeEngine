@@ -216,6 +216,9 @@ public:
                                    float strength,
                                    float scale,
                                    float depthFade,
+                                   float transmittanceStrength,
+                                   float leakReduction,
+                                   float scatterBoost,
                                    bool rgbDispersion,
                                    float dispersionStrength);
 

@@ -1452,6 +1452,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterCausticStrength = 0.0f;
     float hpWaterCausticScale = 12.0f;
     float hpWaterCausticDepthFade = 20.0f;
+    float hpWaterCausticTransmittanceStrength = 1.0f;
+    float hpWaterCausticLeakReduction = 0.65f;
+    float hpWaterCausticScatterBoost = 0.35f;
     bool hpWaterCausticRGBDispersion = false;
     float hpWaterCausticDispersionStrength = 0.0f;
     bool hpWaterCausticAtlasEnabled = false;
@@ -1637,6 +1640,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterCausticStrength = std::max(hpWaterCausticStrength, water->CausticStrength);
                 hpWaterCausticScale = std::max(hpWaterCausticScale, water->CausticScale);
                 hpWaterCausticDepthFade = std::max(hpWaterCausticDepthFade, water->CausticDepthFade);
+                hpWaterCausticTransmittanceStrength = std::max(
+                    hpWaterCausticTransmittanceStrength, water->CausticTransmittanceStrength);
+                hpWaterCausticLeakReduction = std::max(
+                    hpWaterCausticLeakReduction, water->CausticLeakReduction);
+                hpWaterCausticScatterBoost = std::max(
+                    hpWaterCausticScatterBoost, water->CausticScatterBoost);
                 hpWaterCausticRGBDispersion = hpWaterCausticRGBDispersion || water->CausticRGBDispersion;
                 hpWaterCausticDispersionStrength = std::max(
                     hpWaterCausticDispersionStrength, water->CausticDispersionStrength);
@@ -2343,6 +2352,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticStrength = hpWaterCausticStrength;
         m_RenderDiagnostics.HPWaterCausticScale = hpWaterCausticScale;
         m_RenderDiagnostics.HPWaterCausticDepthFade = hpWaterCausticDepthFade;
+        m_RenderDiagnostics.HPWaterCausticTransmittanceMaskEnabled =
+            hpWaterCausticTransmittanceStrength > 0.0001f || hpWaterCausticLeakReduction > 0.0001f;
+        m_RenderDiagnostics.HPWaterCausticTransmittanceStrength = hpWaterCausticTransmittanceStrength;
+        m_RenderDiagnostics.HPWaterCausticLeakReduction = hpWaterCausticLeakReduction;
+        m_RenderDiagnostics.HPWaterCausticScatterBoost = hpWaterCausticScatterBoost;
         m_RenderDiagnostics.HPWaterCausticRGBDispersion = hpWaterCausticRGBDispersion;
         m_RenderDiagnostics.HPWaterCausticDispersionStrength = hpWaterCausticDispersionStrength;
         m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = hpWaterCausticAtlasResolution;
@@ -2418,6 +2432,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                          hpWaterCausticStrength,
                                                          hpWaterCausticScale,
                                                          hpWaterCausticDepthFade,
+                                                         hpWaterCausticTransmittanceStrength,
+                                                         hpWaterCausticLeakReduction,
+                                                         hpWaterCausticScatterBoost,
                                                          hpWaterCausticRGBDispersion,
                                                          hpWaterCausticDispersionStrength);
         m_RenderDiagnostics.HPWaterCausticFilterRan =
