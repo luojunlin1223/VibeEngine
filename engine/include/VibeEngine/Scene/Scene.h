@@ -262,6 +262,7 @@ struct RenderDiagnostics {
     bool HPWaterCausticRGBReceiverProjectionEnabled = false;
     bool HPWaterCausticExponentialLightStepsEnabled = false;
     bool HPWaterCausticFrameDitherEnabled = false;
+    bool HPWaterCausticAtlasReceiverOutputEnabled = false;
     bool HPWaterCausticFilterRan = false;
     bool HPWaterCausticFilteredValid = false;
     uint32_t HPWaterCausticFilteredTexture = 0;

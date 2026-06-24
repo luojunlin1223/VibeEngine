@@ -63,6 +63,9 @@ uniform int u_HPWaterCausticAtlasEnabled;
 uniform int u_HPWaterCausticComputeEnabled;
 uniform float u_HPWaterCausticAtlasWidth;
 uniform float u_HPWaterCausticAtlasHeight;
+uniform mat4 u_InverseViewProjection;
+uniform mat4 u_WaterCascadeVP[4];
+uniform float u_WaterCascadeSplits[4];
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
@@ -82,6 +85,57 @@ float CausticStrands(vec2 causticUV) {
     float bandC = sin((causticUV.x + causticUV.y) * 6.5 + Hash21(floor(causticUV)) * 1.2);
     float interference = (bandA + bandB + bandC) * 0.3333;
     return smoothstep(0.42, 0.95, interference);
+}
+
+vec3 ReconstructWorldPosition(vec2 uv, float depth) {
+    vec2 ndcXY = uv * 2.0 - 1.0;
+    float ndcZ = depth * 2.0 - 1.0;
+    vec4 world = u_InverseViewProjection * vec4(ndcXY, ndcZ, 1.0);
+    float invW = abs(world.w) > 0.00001 ? 1.0 / world.w : 0.0;
+    return world.xyz * invW;
+}
+
+int SelectWaterCascade(float viewDepth) {
+    for (int i = 0; i < 4; ++i) {
+        if (viewDepth <= u_WaterCascadeSplits[i])
+            return i;
+    }
+    return 3;
+}
+
+vec2 LocalToAtlasUV(vec2 localUV, int cascadeIndex) {
+    vec2 tile = vec2(float(cascadeIndex % 2), float(cascadeIndex / 2));
+    return (tile + localUV) * 0.5;
+}
+
+vec3 ProjectWorldToWaterCascade(vec3 worldPos, int cascadeIndex) {
+    vec4 clip = u_WaterCascadeVP[cascadeIndex] * vec4(worldPos, 1.0);
+    if (abs(clip.w) <= 0.00001)
+        return vec3(-1.0);
+    return clip.xyz / clip.w * 0.5 + 0.5;
+}
+
+vec4 SampleComputeIrradiance(vec2 screenUV, float waterDepth, float sceneDepth) {
+    if (u_HPWaterCausticComputeEnabled != 1)
+        return vec4(0.0);
+
+    if (u_HPWaterCausticAtlasEnabled != 1 ||
+        u_HPWaterCausticAtlasWidth <= 1.0 ||
+        u_HPWaterCausticAtlasHeight <= 1.0) {
+        return texture(u_HPWaterCausticComputeIrradiance, screenUV);
+    }
+
+    float receiverDepth = sceneDepth < 0.9999 ? sceneDepth : waterDepth;
+    float receiverLinear = LinearizeDepth(receiverDepth);
+    vec3 receiverWorldPos = ReconstructWorldPosition(screenUV, receiverDepth);
+    int cascadeIndex = SelectWaterCascade(receiverLinear);
+    vec3 cascadeCoord = ProjectWorldToWaterCascade(receiverWorldPos, cascadeIndex);
+    if (any(lessThan(cascadeCoord, vec3(0.0))) ||
+        any(greaterThan(cascadeCoord, vec3(1.0)))) {
+        return vec4(0.0);
+    }
+
+    return texture(u_HPWaterCausticComputeIrradiance, LocalToAtlasUV(cascadeCoord.xy, cascadeIndex));
 }
 
 float SampleAtlasFocus(vec2 screenUV, vec2 causticUV, vec3 waterNormal, vec3 lightDir, float thickness) {
@@ -161,9 +215,7 @@ void main() {
     sharedEnergy *= clamp(u_CausticStrength, 0.0, 8.0) * max(u_LightIntensity, 0.0);
     sharedEnergy *= SampleAtlasFocus(v_UV, causticUV, N, L, thickness);
 
-    vec4 computeIrradiance = u_HPWaterCausticComputeEnabled == 1
-        ? texture(u_HPWaterCausticComputeIrradiance, v_UV)
-        : vec4(0.0);
+    vec4 computeIrradiance = SampleComputeIrradiance(v_UV, waterDepth, sceneDepth);
     float centerStrands = CausticStrands(causticUV);
     vec3 energyRGB = vec3(centerStrands) * sharedEnergy;
     if (u_CausticRGBDispersion == 1) {

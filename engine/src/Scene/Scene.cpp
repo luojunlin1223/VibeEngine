@@ -1193,6 +1193,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticExponentialLightStepsEnabled();
     m_RenderDiagnostics.HPWaterCausticFrameDitherEnabled =
         m_DeferredRenderer.IsHPWaterCausticFrameDitherEnabled();
+    m_RenderDiagnostics.HPWaterCausticAtlasReceiverOutputEnabled =
+        m_DeferredRenderer.IsHPWaterCausticAtlasReceiverOutputEnabled();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
@@ -2465,6 +2467,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticExponentialLightStepsEnabled();
     m_RenderDiagnostics.HPWaterCausticFrameDitherEnabled =
         m_DeferredRenderer.IsHPWaterCausticFrameDitherEnabled();
+    m_RenderDiagnostics.HPWaterCausticAtlasReceiverOutputEnabled =
+        m_DeferredRenderer.IsHPWaterCausticAtlasReceiverOutputEnabled();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();

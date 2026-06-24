@@ -343,6 +343,7 @@ public:
     bool IsHPWaterCausticRGBReceiverProjectionEnabled() const { return m_HPWaterCausticRGBReceiverProjectionEnabled; }
     bool IsHPWaterCausticExponentialLightStepsEnabled() const { return m_HPWaterCausticExponentialLightStepsEnabled; }
     bool IsHPWaterCausticFrameDitherEnabled() const { return m_HPWaterCausticFrameDitherEnabled; }
+    bool IsHPWaterCausticAtlasReceiverOutputEnabled() const { return m_HPWaterCausticAtlasReceiverOutputEnabled; }
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
     uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
@@ -519,6 +520,7 @@ private:
     bool m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     bool m_HPWaterCausticExponentialLightStepsEnabled = false;
     bool m_HPWaterCausticFrameDitherEnabled = false;
+    bool m_HPWaterCausticAtlasReceiverOutputEnabled = false;
 
     // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
     std::shared_ptr<Framebuffer> m_HPWaterCausticAtlasFBO;

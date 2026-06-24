@@ -7130,6 +7130,7 @@ private:
         out << "HPWaterCausticRGBReceiverProjectionEnabled: " << d.HPWaterCausticRGBReceiverProjectionEnabled << "\n";
         out << "HPWaterCausticExponentialLightStepsEnabled: " << d.HPWaterCausticExponentialLightStepsEnabled << "\n";
         out << "HPWaterCausticFrameDitherEnabled: " << d.HPWaterCausticFrameDitherEnabled << "\n";
+        out << "HPWaterCausticAtlasReceiverOutputEnabled: " << d.HPWaterCausticAtlasReceiverOutputEnabled << "\n";
         out << "HPWaterCausticFilterRan: " << d.HPWaterCausticFilterRan << "\n";
         out << "HPWaterCausticFilteredValid: " << d.HPWaterCausticFilteredValid << "\n";
         out << "HPWaterCausticFilteredTexture: " << d.HPWaterCausticFilteredTexture << "\n";
@@ -7473,7 +7474,7 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u exp=%d dither=%d filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u exp=%d dither=%d atlasRecv=%d filtered=%d/%u tex=%u strength=%.3f scale=%.2f depthFade=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
@@ -7483,6 +7484,7 @@ private:
             d.HPWaterCausticComputeTexture,
             d.HPWaterCausticExponentialLightStepsEnabled ? 1 : 0,
             d.HPWaterCausticFrameDitherEnabled ? 1 : 0,
+            d.HPWaterCausticAtlasReceiverOutputEnabled ? 1 : 0,
             d.HPWaterCausticFilteredValid ? 1 : 0,
             d.HPWaterCausticFilterIterations,
             d.HPWaterCausticFilteredTexture,

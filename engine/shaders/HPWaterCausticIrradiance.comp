@@ -36,6 +36,7 @@ uniform int u_CausticRGBDispersion;
 uniform int u_FrameIndex;
 uniform int u_EnableFrameDither;
 uniform int u_EnableExponentialLightSteps;
+uniform int u_EnableAtlasReceiverOutput;
 uniform float u_HPWaterCausticAtlasWidth;
 uniform float u_HPWaterCausticAtlasHeight;
 uniform float u_CausticStrength;
@@ -207,14 +208,22 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
         if (depthDelta >= -depthBias && depthDelta <= 0.055) {
             float refinedT = mix(previousT, t, clamp((depthBias + depthDelta) / 0.0565, 0.0, 1.0));
             vec3 hitWorld = waterWorldPos + refracted * refinedT;
-            vec3 cameraCoord = ProjectWorldToCamera(hitWorld);
-            if (cameraCoord.x < 0.0 || cameraCoord.x > 1.0 ||
-                cameraCoord.y < 0.0 || cameraCoord.y > 1.0 ||
-                cameraCoord.z < 0.0 || cameraCoord.z > 1.0) {
-                return false;
+            if (u_EnableAtlasReceiverOutput == 1) {
+                vec3 hitCascadeCoord = ProjectWorldToWaterCascade(hitWorld, cascadeIndex);
+                if (any(lessThan(hitCascadeCoord, vec3(0.0))) ||
+                    any(greaterThan(hitCascadeCoord, vec3(1.0)))) {
+                    return false;
+                }
+                receiverUV = LocalToAtlasUV(hitCascadeCoord.xy, cascadeIndex);
+            } else {
+                vec3 cameraCoord = ProjectWorldToCamera(hitWorld);
+                if (cameraCoord.x < 0.0 || cameraCoord.x > 1.0 ||
+                    cameraCoord.y < 0.0 || cameraCoord.y > 1.0 ||
+                    cameraCoord.z < 0.0 || cameraCoord.z > 1.0) {
+                    return false;
+                }
+                receiverUV = cameraCoord.xy;
             }
-
-            receiverUV = cameraCoord.xy;
             hitWeight = 1.0 - smoothstep(0.0, 0.055, abs(depthDelta));
             hitWeight *= 1.0 - smoothstep(maxDistance * 0.15, maxDistance, refinedT);
             hitDistance = refinedT;
@@ -247,6 +256,29 @@ bool ProjectRefractedChannelToCameraReceiver(vec3 waterWorldPos,
     }
 
     receiverUV = cameraCoord.xy;
+    return true;
+}
+
+bool ProjectRefractedChannelToAtlasReceiver(vec3 waterWorldPos,
+                                            vec3 waterNormal,
+                                            vec3 surfaceToLight,
+                                            int cascadeIndex,
+                                            float etaOffset,
+                                            float hitDistance,
+                                            out vec2 receiverUV) {
+    receiverUV = vec2(0.0);
+
+    vec3 refracted = ComputeHPWaterRefractedLightDir(waterNormal, surfaceToLight, etaOffset);
+    if (dot(refracted, refracted) <= 0.000001)
+        return false;
+
+    vec3 cascadeCoord = ProjectWorldToWaterCascade(waterWorldPos + refracted * max(hitDistance, 0.0), cascadeIndex);
+    if (any(lessThan(cascadeCoord, vec3(0.0))) ||
+        any(greaterThan(cascadeCoord, vec3(1.0)))) {
+        return false;
+    }
+
+    receiverUV = LocalToAtlasUV(cascadeCoord.xy, cascadeIndex);
     return true;
 }
 
@@ -366,12 +398,22 @@ void main() {
     if (sharedEnergy <= 0.000001)
         return;
 
+    int waterCascadeIndex = SelectWaterCascade(waterLinear);
     vec2 lightBend = normalize(L.xz + vec2(0.001)) * (0.006 + thickness * 0.00008);
-    vec2 baseReceiver = uv + N.xz * (0.022 + thickness * 0.00035) + lightBend;
+    vec2 screenBaseReceiver = uv + N.xz * (0.022 + thickness * 0.00035) + lightBend;
+    vec2 baseReceiver = screenBaseReceiver;
+    if (u_EnableAtlasReceiverOutput == 1) {
+        vec3 refracted = ComputeHPWaterRefractedLightDir(N, L, 0.0);
+        float receiverDistance = clamp(max(thickness, 1.0) * 0.65, 0.5, 40.0);
+        vec3 atlasCoord = ProjectWorldToWaterCascade(waterWorldPos + refracted * receiverDistance, waterCascadeIndex);
+        if (!any(lessThan(atlasCoord, vec3(0.0))) &&
+            !any(greaterThan(atlasCoord, vec3(1.0)))) {
+            baseReceiver = LocalToAtlasUV(atlasCoord.xy, waterCascadeIndex);
+        }
+    }
     vec2 shadowReceiver = baseReceiver;
     float shadowReceiverWeight = 0.0;
     float shadowReceiverDistance = 0.0;
-    int waterCascadeIndex = SelectWaterCascade(waterLinear);
     bool shadowReceiverHit = MarchRefractedLightToShadowReceiver(
         waterWorldPos,
         N,
@@ -403,14 +445,22 @@ void main() {
     vec2 receiverB = baseReceiver - dispersionAxis * dispersion;
     if (shadowReceiverHit && etaDispersion > 0.0) {
         vec2 channelReceiver = receiverR;
-        if (ProjectRefractedChannelToCameraReceiver(
-                waterWorldPos, N, L, etaDispersion, shadowReceiverDistance, channelReceiver)) {
+        bool projected = u_EnableAtlasReceiverOutput == 1
+            ? ProjectRefractedChannelToAtlasReceiver(
+                waterWorldPos, N, L, waterCascadeIndex, etaDispersion, shadowReceiverDistance, channelReceiver)
+            : ProjectRefractedChannelToCameraReceiver(
+                waterWorldPos, N, L, etaDispersion, shadowReceiverDistance, channelReceiver);
+        if (projected) {
             receiverR = mix(receiverR, channelReceiver, 0.9);
         }
 
         channelReceiver = receiverB;
-        if (ProjectRefractedChannelToCameraReceiver(
-                waterWorldPos, N, L, -etaDispersion, shadowReceiverDistance, channelReceiver)) {
+        projected = u_EnableAtlasReceiverOutput == 1
+            ? ProjectRefractedChannelToAtlasReceiver(
+                waterWorldPos, N, L, waterCascadeIndex, -etaDispersion, shadowReceiverDistance, channelReceiver)
+            : ProjectRefractedChannelToCameraReceiver(
+                waterWorldPos, N, L, -etaDispersion, shadowReceiverDistance, channelReceiver);
+        if (projected) {
             receiverB = mix(receiverB, channelReceiver, 0.9);
         }
     }
