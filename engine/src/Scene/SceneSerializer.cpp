@@ -626,6 +626,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "CausticDepthFade" << YAML::Value << w.CausticDepthFade;
         out << YAML::Key << "CausticTransmittanceStrength" << YAML::Value << w.CausticTransmittanceStrength;
         out << YAML::Key << "CausticLeakReduction" << YAML::Value << w.CausticLeakReduction;
+        out << YAML::Key << "CausticShadowAlphaClipThreshold" << YAML::Value << w.CausticShadowAlphaClipThreshold;
         out << YAML::Key << "CausticScatterBoost" << YAML::Value << w.CausticScatterBoost;
         out << YAML::Key << "CausticRGBDispersion" << YAML::Value << w.CausticRGBDispersion;
         out << YAML::Key << "CausticDispersionStrength" << YAML::Value << w.CausticDispersionStrength;
@@ -1641,6 +1642,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["CausticDepthFade"]) w.CausticDepthFade = wNode["CausticDepthFade"].as<float>();
                 if (wNode["CausticTransmittanceStrength"]) w.CausticTransmittanceStrength = wNode["CausticTransmittanceStrength"].as<float>();
                 if (wNode["CausticLeakReduction"]) w.CausticLeakReduction = wNode["CausticLeakReduction"].as<float>();
+                if (wNode["CausticShadowAlphaClipThreshold"]) w.CausticShadowAlphaClipThreshold = wNode["CausticShadowAlphaClipThreshold"].as<float>();
                 if (wNode["CausticScatterBoost"]) w.CausticScatterBoost = wNode["CausticScatterBoost"].as<float>();
                 if (wNode["CausticRGBDispersion"]) w.CausticRGBDispersion = wNode["CausticRGBDispersion"].as<bool>();
                 if (wNode["CausticDispersionStrength"]) w.CausticDispersionStrength = wNode["CausticDispersionStrength"].as<float>();
@@ -1691,6 +1693,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.CausticDepthFade = std::clamp(w.CausticDepthFade, 0.1f, 500.0f);
                 w.CausticTransmittanceStrength = std::clamp(w.CausticTransmittanceStrength, 0.0f, 8.0f);
                 w.CausticLeakReduction = std::clamp(w.CausticLeakReduction, 0.0f, 1.0f);
+                w.CausticShadowAlphaClipThreshold = std::clamp(w.CausticShadowAlphaClipThreshold, 0.0f, 1.0f);
                 w.CausticScatterBoost = std::clamp(w.CausticScatterBoost, 0.0f, 4.0f);
                 w.CausticDispersionStrength = std::clamp(w.CausticDispersionStrength, 0.0f, 2.0f);
                 w.CausticAtlasResolution = std::clamp(w.CausticAtlasResolution, 128, 2048);

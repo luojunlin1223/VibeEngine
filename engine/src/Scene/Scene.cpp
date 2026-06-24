@@ -1485,6 +1485,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterCausticDepthFade = 20.0f;
     float hpWaterCausticTransmittanceStrength = 1.0f;
     float hpWaterCausticLeakReduction = 0.65f;
+    float hpWaterCausticShadowAlphaClipThreshold = 0.0f;
     float hpWaterCausticScatterBoost = 0.35f;
     bool hpWaterCausticRGBDispersion = false;
     float hpWaterCausticDispersionStrength = 0.0f;
@@ -1723,6 +1724,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     hpWaterCausticTransmittanceStrength, water->CausticTransmittanceStrength);
                 hpWaterCausticLeakReduction = std::max(
                     hpWaterCausticLeakReduction, water->CausticLeakReduction);
+                hpWaterCausticShadowAlphaClipThreshold = std::max(
+                    hpWaterCausticShadowAlphaClipThreshold,
+                    std::clamp(water->CausticShadowAlphaClipThreshold, 0.0f, 1.0f));
                 hpWaterCausticScatterBoost = std::max(
                     hpWaterCausticScatterBoost, water->CausticScatterBoost);
                 hpWaterCausticRGBDispersion = hpWaterCausticRGBDispersion || water->CausticRGBDispersion;
@@ -2460,6 +2464,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterCausticTransmittanceStrength > 0.0001f || hpWaterCausticLeakReduction > 0.0001f;
         m_RenderDiagnostics.HPWaterCausticTransmittanceStrength = hpWaterCausticTransmittanceStrength;
         m_RenderDiagnostics.HPWaterCausticLeakReduction = hpWaterCausticLeakReduction;
+        m_RenderDiagnostics.HPWaterCausticShadowAlphaClipThreshold = hpWaterCausticShadowAlphaClipThreshold;
         m_RenderDiagnostics.HPWaterCausticScatterBoost = hpWaterCausticScatterBoost;
         m_RenderDiagnostics.HPWaterCausticRGBDispersion = hpWaterCausticRGBDispersion;
         m_RenderDiagnostics.HPWaterCausticDispersionStrength = hpWaterCausticDispersionStrength;
@@ -2553,6 +2558,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                          hpWaterCausticDepthFade,
                                                          hpWaterCausticTransmittanceStrength,
                                                          hpWaterCausticLeakReduction,
+                                                         hpWaterCausticShadowAlphaClipThreshold,
                                                          hpWaterCausticScatterBoost,
                                                          hpWaterCausticRGBDispersion,
                                                          hpWaterCausticDispersionStrength);

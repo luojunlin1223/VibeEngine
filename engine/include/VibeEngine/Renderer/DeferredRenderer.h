@@ -238,6 +238,7 @@ public:
                                    float depthFade,
                                    float transmittanceStrength,
                                    float leakReduction,
+                                   float shadowAlphaClipThreshold,
                                    float scatterBoost,
                                    bool rgbDispersion,
                                    float dispersionStrength);
@@ -559,6 +560,7 @@ private:
                                             float strength,
                                             float scale,
                                             float depthFade,
+                                            float shadowAlphaClipThreshold,
                                             bool rgbDispersion,
                                             float dispersionStrength);
     static uint32_t GetHalfResolution(uint32_t value);

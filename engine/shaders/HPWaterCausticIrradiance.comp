@@ -44,6 +44,7 @@ uniform float u_HPWaterCausticAtlasHeight;
 uniform float u_CausticStrength;
 uniform float u_CausticScale;
 uniform float u_CausticDepthFade;
+uniform float u_CausticShadowAlphaClipThreshold;
 uniform float u_CausticDispersionStrength;
 uniform float u_LightIntensity;
 uniform float u_NearClip;
@@ -457,6 +458,16 @@ void main() {
     if (shadowReceiverHit) {
         baseReceiver = mix(baseReceiver, shadowReceiver, clamp(0.55 + shadowReceiverWeight * 0.45, 0.0, 1.0));
         sharedEnergy *= mix(0.82, 1.42, shadowReceiverWeight);
+    }
+    if (u_ShadowDepthCascadeAtlasEnabled == 1) {
+        float shadowValue = shadowReceiverHit ? clamp(shadowReceiverWeight, 0.0, 1.0) : 0.0;
+        float shadowLeakMask = smoothstep(
+            clamp(u_CausticShadowAlphaClipThreshold, 0.0, 1.0),
+            1.0,
+            shadowValue);
+        sharedEnergy *= mix(shadowValue, 1.0, shadowLeakMask);
+        if (sharedEnergy <= 0.000001)
+            return;
     }
 
     vec2 dispersionAxis = normalize(N.xz * 0.7 + L.xz * 0.3 + vec2(0.001));

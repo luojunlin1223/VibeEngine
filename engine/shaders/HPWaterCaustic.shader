@@ -56,6 +56,7 @@ uniform float u_CausticScale;
 uniform float u_CausticDepthFade;
 uniform float u_CausticTransmittanceStrength;
 uniform float u_CausticLeakReduction;
+uniform float u_CausticShadowAlphaClipThreshold;
 uniform float u_CausticScatterBoost;
 uniform int u_CausticRGBDispersion;
 uniform float u_CausticDispersionStrength;

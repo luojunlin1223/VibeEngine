@@ -311,6 +311,7 @@ struct RenderDiagnostics {
     bool HPWaterCausticTransmittanceMaskEnabled = false;
     float HPWaterCausticTransmittanceStrength = 0.0f;
     float HPWaterCausticLeakReduction = 0.0f;
+    float HPWaterCausticShadowAlphaClipThreshold = 0.0f;
     float HPWaterCausticScatterBoost = 0.0f;
     bool HPWaterCausticRGBDispersion = false;
     float HPWaterCausticDispersionStrength = 0.0f;

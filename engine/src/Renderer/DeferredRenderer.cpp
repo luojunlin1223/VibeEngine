@@ -2248,6 +2248,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
                                                  float depthFade,
                                                  float transmittanceStrength,
                                                  float leakReduction,
+                                                 float shadowAlphaClipThreshold,
                                                  float scatterBoost,
                                                  bool rgbDispersion,
                                                  float dispersionStrength) {
@@ -2295,7 +2296,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
             nearClip, farClip, lightDir, lightIntensity, viewProjection,
             inverseViewProjection, waterCascadeVP, waterCascadeSplits,
             shadowDepthTextureArray, shadowDepthResolution, frameIndex, strength, scale, depthFade,
-            rgbDispersion, dispersionStrength);
+            shadowAlphaClipThreshold, rgbDispersion, dispersionStrength);
 
     m_HPWaterCausticFBO->Bind();
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -2358,6 +2359,8 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         std::clamp(transmittanceStrength, 0.0f, 8.0f));
     m_HPWaterCausticShader->SetFloat("u_CausticLeakReduction",
         std::clamp(leakReduction, 0.0f, 1.0f));
+    m_HPWaterCausticShader->SetFloat("u_CausticShadowAlphaClipThreshold",
+        std::clamp(shadowAlphaClipThreshold, 0.0f, 1.0f));
     m_HPWaterCausticShader->SetFloat("u_CausticScatterBoost",
         std::clamp(scatterBoost, 0.0f, 4.0f));
     m_HPWaterCausticShader->SetInt("u_CausticRGBDispersion", rgbDispersion ? 1 : 0);
@@ -2410,6 +2413,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
                                                           float strength,
                                                           float scale,
                                                           float depthFade,
+                                                          float shadowAlphaClipThreshold,
                                                           bool rgbDispersion,
                                                           float dispersionStrength) {
     m_HPWaterCausticComputeIrradianceRan = false;
@@ -2547,6 +2551,8 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeShader->SetFloat("u_CausticStrength", std::clamp(strength, 0.0f, 8.0f));
     m_HPWaterCausticComputeShader->SetFloat("u_CausticScale", std::clamp(scale, 0.1f, 128.0f));
     m_HPWaterCausticComputeShader->SetFloat("u_CausticDepthFade", std::clamp(depthFade, 0.1f, 500.0f));
+    m_HPWaterCausticComputeShader->SetFloat("u_CausticShadowAlphaClipThreshold",
+        std::clamp(shadowAlphaClipThreshold, 0.0f, 1.0f));
     m_HPWaterCausticComputeShader->SetInt("u_CausticRGBDispersion", rgbDispersion ? 1 : 0);
     m_HPWaterCausticComputeShader->SetFloat("u_CausticDispersionStrength",
         std::clamp(dispersionStrength, 0.0f, 2.0f));
