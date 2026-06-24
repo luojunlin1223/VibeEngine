@@ -363,6 +363,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+    m_HPWaterCausticCascadeBlendEnabled = false;
+    m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticSpectralWeightingEnabled = false;
     m_HPWaterFGDLUTValid = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
@@ -452,6 +455,9 @@ void DeferredRenderer::DestroyHPWaterCausticComputeTexture() {
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+    m_HPWaterCausticCascadeBlendEnabled = false;
+    m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticSpectralWeightingEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticComputeTexture(uint32_t width, uint32_t height) {
@@ -504,6 +510,9 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture(uint32_t width, uint32
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+    m_HPWaterCausticCascadeBlendEnabled = false;
+    m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticSpectralWeightingEnabled = false;
 }
 
 void DeferredRenderer::DestroyHPWaterFGDLUT() {
@@ -1067,6 +1076,9 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+    m_HPWaterCausticCascadeBlendEnabled = false;
+    m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticSpectralWeightingEnabled = false;
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
@@ -1088,6 +1100,9 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+    m_HPWaterCausticCascadeBlendEnabled = false;
+    m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticSpectralWeightingEnabled = false;
 }
 
 void DeferredRenderer::BeginGeometryPass() {
@@ -1971,6 +1986,9 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticExponentialLightStepsEnabled = false;
         m_HPWaterCausticFrameDitherEnabled = false;
         m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+        m_HPWaterCausticCascadeBlendEnabled = false;
+        m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+        m_HPWaterCausticSpectralWeightingEnabled = false;
         return false;
     }
 
@@ -1987,6 +2005,9 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticExponentialLightStepsEnabled = false;
         m_HPWaterCausticFrameDitherEnabled = false;
         m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+        m_HPWaterCausticCascadeBlendEnabled = false;
+        m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+        m_HPWaterCausticSpectralWeightingEnabled = false;
         return false;
     }
 
@@ -2086,6 +2107,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticFilterIterations = 0;
     m_HPWaterCausticAtlasConsumed = atlasValid;
+    m_HPWaterCausticCascadeBlendEnabled = computeIrradianceValid && atlasValid;
     return true;
 }
 
@@ -2113,6 +2135,9 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
+    m_HPWaterCausticCascadeBlendEnabled = false;
+    m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticSpectralWeightingEnabled = false;
 
     if (!m_HPWaterCausticComputeShader || !m_HPWaterCausticResolveShader ||
         m_HPWaterCausticComputeIrradianceTexture == 0 ||
@@ -2284,6 +2309,9 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticExponentialLightStepsEnabled = shadowDepthValid;
     m_HPWaterCausticFrameDitherEnabled = shadowDepthValid;
     m_HPWaterCausticAtlasReceiverOutputEnabled = atlasValid && shadowDepthValid;
+    m_HPWaterCausticAtlasEdgeFilterEnabled = atlasValid && shadowDepthValid;
+    m_HPWaterCausticSpectralWeightingEnabled =
+        rgbDispersion && dispersionStrength > 0.0001f;
     return true;
 }
 

@@ -1199,6 +1199,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticFrameDitherEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasReceiverOutputEnabled =
         m_DeferredRenderer.IsHPWaterCausticAtlasReceiverOutputEnabled();
+    m_RenderDiagnostics.HPWaterCausticCascadeBlendEnabled =
+        m_DeferredRenderer.IsHPWaterCausticCascadeBlendEnabled();
+    m_RenderDiagnostics.HPWaterCausticAtlasEdgeFilterEnabled =
+        m_DeferredRenderer.IsHPWaterCausticAtlasEdgeFilterEnabled();
+    m_RenderDiagnostics.HPWaterCausticSpectralWeightingEnabled =
+        m_DeferredRenderer.IsHPWaterCausticSpectralWeightingEnabled();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();
@@ -2477,6 +2483,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticFrameDitherEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasReceiverOutputEnabled =
         m_DeferredRenderer.IsHPWaterCausticAtlasReceiverOutputEnabled();
+    m_RenderDiagnostics.HPWaterCausticCascadeBlendEnabled =
+        m_DeferredRenderer.IsHPWaterCausticCascadeBlendEnabled();
+    m_RenderDiagnostics.HPWaterCausticAtlasEdgeFilterEnabled =
+        m_DeferredRenderer.IsHPWaterCausticAtlasEdgeFilterEnabled();
+    m_RenderDiagnostics.HPWaterCausticSpectralWeightingEnabled =
+        m_DeferredRenderer.IsHPWaterCausticSpectralWeightingEnabled();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
     m_RenderDiagnostics.HPWaterCausticFilterIterations = m_DeferredRenderer.GetHPWaterCausticFilterIterations();

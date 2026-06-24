@@ -108,11 +108,55 @@ vec2 LocalToAtlasUV(vec2 localUV, int cascadeIndex) {
     return (tile + localUV) * 0.5;
 }
 
+vec2 AtlasTileHalfTexel() {
+    vec2 tileSize = max(vec2(u_HPWaterCausticAtlasWidth, u_HPWaterCausticAtlasHeight) * 0.5, vec2(1.0));
+    return 0.5 / tileSize;
+}
+
+float AtlasTileEdgeWeight(vec2 localUV) {
+    vec2 edge = min(localUV, 1.0 - localUV);
+    vec2 halfTexel = AtlasTileHalfTexel();
+    vec2 fade = smoothstep(halfTexel, halfTexel * 6.0, edge);
+    return fade.x * fade.y;
+}
+
+vec2 ClampAtlasLocalUV(vec2 localUV) {
+    vec2 halfTexel = AtlasTileHalfTexel();
+    return clamp(localUV, halfTexel, 1.0 - halfTexel);
+}
+
 vec3 ProjectWorldToWaterCascade(vec3 worldPos, int cascadeIndex) {
     vec4 clip = u_WaterCascadeVP[cascadeIndex] * vec4(worldPos, 1.0);
     if (abs(clip.w) <= 0.00001)
         return vec3(-1.0);
     return clip.xyz / clip.w * 0.5 + 0.5;
+}
+
+float CascadeBlendAlpha(float receiverLinear, int cascadeIndex) {
+    if (cascadeIndex >= 3)
+        return 0.0;
+
+    float cascadeStart = cascadeIndex == 0 ? u_NearClip : u_WaterCascadeSplits[cascadeIndex - 1];
+    float cascadeEnd = u_WaterCascadeSplits[cascadeIndex];
+    float cascadeWidth = max(cascadeEnd - cascadeStart, 0.001);
+    return smoothstep(cascadeEnd - cascadeWidth * 0.12, cascadeEnd, receiverLinear);
+}
+
+vec4 SampleComputeIrradianceCascade(vec3 receiverWorldPos,
+                                    int cascadeIndex,
+                                    out bool valid) {
+    valid = false;
+    vec3 cascadeCoord = ProjectWorldToWaterCascade(receiverWorldPos, cascadeIndex);
+    if (any(lessThan(cascadeCoord, vec3(0.0))) ||
+        any(greaterThan(cascadeCoord, vec3(1.0)))) {
+        return vec4(0.0);
+    }
+
+    vec2 localUV = cascadeCoord.xy;
+    float edgeWeight = AtlasTileEdgeWeight(localUV);
+    vec2 atlasUV = LocalToAtlasUV(ClampAtlasLocalUV(localUV), cascadeIndex);
+    valid = true;
+    return texture(u_HPWaterCausticComputeIrradiance, atlasUV) * edgeWeight;
 }
 
 vec4 SampleComputeIrradiance(vec2 screenUV, float waterDepth, float sceneDepth) {
@@ -129,13 +173,20 @@ vec4 SampleComputeIrradiance(vec2 screenUV, float waterDepth, float sceneDepth) 
     float receiverLinear = LinearizeDepth(receiverDepth);
     vec3 receiverWorldPos = ReconstructWorldPosition(screenUV, receiverDepth);
     int cascadeIndex = SelectWaterCascade(receiverLinear);
-    vec3 cascadeCoord = ProjectWorldToWaterCascade(receiverWorldPos, cascadeIndex);
-    if (any(lessThan(cascadeCoord, vec3(0.0))) ||
-        any(greaterThan(cascadeCoord, vec3(1.0)))) {
-        return vec4(0.0);
+
+    bool currentValid = false;
+    vec4 current = SampleComputeIrradianceCascade(receiverWorldPos, cascadeIndex, currentValid);
+    float alpha = CascadeBlendAlpha(receiverLinear, cascadeIndex);
+    if (cascadeIndex < 3 && alpha > 0.0001) {
+        bool nextValid = false;
+        vec4 next = SampleComputeIrradianceCascade(receiverWorldPos, cascadeIndex + 1, nextValid);
+        if (nextValid) {
+            current = currentValid ? mix(current, next, alpha) : next * alpha;
+            currentValid = true;
+        }
     }
 
-    return texture(u_HPWaterCausticComputeIrradiance, LocalToAtlasUV(cascadeCoord.xy, cascadeIndex));
+    return currentValid ? current : vec4(0.0);
 }
 
 float SampleAtlasFocus(vec2 screenUV, vec2 causticUV, vec3 waterNormal, vec3 lightDir, float thickness) {

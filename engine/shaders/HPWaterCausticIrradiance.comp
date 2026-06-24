@@ -103,6 +103,31 @@ vec2 LocalToAtlasUV(vec2 localUV, int cascadeIndex) {
     return (tile + localUV) * 0.5;
 }
 
+float AtlasReceiverEdgeWeight(vec2 receiverUV) {
+    if (u_EnableAtlasReceiverOutput != 1 ||
+        u_OutputWidth <= 1 ||
+        u_OutputHeight <= 1) {
+        return 1.0;
+    }
+
+    vec2 localUV = fract(receiverUV * 2.0);
+    vec2 tileSize = max(vec2(float(u_OutputWidth), float(u_OutputHeight)) * 0.5, vec2(1.0));
+    vec2 halfTexel = 0.5 / tileSize;
+    vec2 edge = min(localUV, 1.0 - localUV);
+    vec2 fade = smoothstep(halfTexel, halfTexel * 6.0, edge);
+    return fade.x * fade.y;
+}
+
+vec3 CausticSpectralWeights(float thickness) {
+    if (u_CausticRGBDispersion != 1)
+        return vec3(1.0);
+
+    float dispersion = clamp(u_CausticDispersionStrength, 0.0, 2.0);
+    float depthTint = clamp(thickness / 80.0, 0.0, 1.0);
+    float spread = dispersion * mix(0.055, 0.095, depthTint);
+    return vec3(1.0 + spread, 1.0, max(0.0, 1.0 - spread * 0.72));
+}
+
 vec3 ProjectWorldToWaterCascade(vec3 worldPos, int cascadeIndex) {
     vec4 clip = u_WaterCascadeVP[cascadeIndex] * vec4(worldPos, 1.0);
     if (abs(clip.w) <= 0.00001)
@@ -467,8 +492,14 @@ void main() {
         }
     }
 
-    ScatterChannel(receiverR, 0, sharedEnergy);
-    ScatterChannel(receiverG, 1, sharedEnergy);
-    ScatterChannel(receiverB, 2, sharedEnergy);
-    ScatterChannel(baseReceiver, 3, max(max(sharedEnergy, 0.0), 0.0));
+    vec3 spectralWeights = CausticSpectralWeights(thickness);
+    float edgeR = AtlasReceiverEdgeWeight(receiverR);
+    float edgeG = AtlasReceiverEdgeWeight(receiverG);
+    float edgeB = AtlasReceiverEdgeWeight(receiverB);
+    float alphaEdge = AtlasReceiverEdgeWeight(baseReceiver);
+
+    ScatterChannel(receiverR, 0, sharedEnergy * spectralWeights.r * edgeR);
+    ScatterChannel(receiverG, 1, sharedEnergy * spectralWeights.g * edgeG);
+    ScatterChannel(receiverB, 2, sharedEnergy * spectralWeights.b * edgeB);
+    ScatterChannel(baseReceiver, 3, max(sharedEnergy, 0.0) * alphaEdge);
 }
