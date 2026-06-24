@@ -391,6 +391,8 @@ public:
     uint32_t GetHPWaterFluidResolution() const { return m_HPWaterFluidResolution; }
     bool IsHPWaterFluidDynamicsValid() const { return m_HPWaterFluidValid; }
     bool DidHPWaterFluidComputeRun() const { return m_HPWaterFluidComputeRan; }
+    bool IsHPWaterFluidEdgeAbsorptionParityEnabled() const { return m_HPWaterFluidEdgeAbsorptionParityEnabled; }
+    bool IsHPWaterFluidSourceClampEnabled() const { return m_HPWaterFluidSourceClampEnabled; }
     bool IsHPWaterFluidObstacleValid() const { return m_HPWaterFluidObstacleValid; }
     bool IsHPWaterFluidHeightFieldValid() const { return m_HPWaterFluidHeightFieldValid; }
     bool DidHPWaterFluidHeightCaptureRun() const { return m_HPWaterFluidHeightCaptureRan; }
@@ -570,6 +572,8 @@ private:
     bool m_HPWaterFluidValid = false;
     bool m_HPWaterFluidInitialized = false;
     bool m_HPWaterFluidComputeRan = false;
+    bool m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
+    bool m_HPWaterFluidSourceClampEnabled = false;
     bool m_HPWaterFluidObstacleValid = false;
     bool m_HPWaterFluidHeightFieldValid = false;
     bool m_HPWaterFluidHeightCaptureRan = false;

@@ -377,6 +377,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidValid = false;
     m_HPWaterFluidInitialized = false;
     m_HPWaterFluidComputeRan = false;
+    m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
+    m_HPWaterFluidSourceClampEnabled = false;
     m_HPWaterFluidObstacleValid = false;
     m_HPWaterFluidHeightFieldValid = false;
     m_HPWaterFluidHeightCaptureRan = false;
@@ -983,6 +985,8 @@ void DeferredRenderer::ClearHPWaterFluidFBOs() {
 
     m_HPWaterFluidValid = false;
     m_HPWaterFluidComputeRan = false;
+    m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
+    m_HPWaterFluidSourceClampEnabled = false;
     m_HPWaterFluidInitialized = true;
 }
 
@@ -2457,6 +2461,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     if (!m_HPWaterFluidComputeShader && (!m_HPWaterFluidShader || m_QuadVAO == 0)) {
         m_HPWaterFluidValid = false;
         m_HPWaterFluidComputeRan = false;
+        m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
+        m_HPWaterFluidSourceClampEnabled = false;
         return false;
     }
 
@@ -2465,6 +2471,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     if (!m_HPWaterFluidCurrentFBO || !m_HPWaterFluidPreviousFBO || !m_HPWaterFluidNextFBO) {
         m_HPWaterFluidValid = false;
         m_HPWaterFluidComputeRan = false;
+        m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
+        m_HPWaterFluidSourceClampEnabled = false;
         return false;
     }
 
@@ -2523,6 +2531,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidBoxSize = glm::max(boxSize, glm::vec3(0.001f));
         m_HPWaterFluidValid = true;
         m_HPWaterFluidComputeRan = true;
+        m_HPWaterFluidEdgeAbsorptionParityEnabled = true;
+        m_HPWaterFluidSourceClampEnabled = true;
         return true;
     }
 
@@ -2593,6 +2603,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     m_HPWaterFluidBoxSize = glm::max(boxSize, glm::vec3(0.001f));
     m_HPWaterFluidValid = true;
     m_HPWaterFluidComputeRan = false;
+    m_HPWaterFluidEdgeAbsorptionParityEnabled = true;
+    m_HPWaterFluidSourceClampEnabled = true;
     return true;
 }
 

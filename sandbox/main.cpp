@@ -7165,6 +7165,8 @@ private:
         out << "HPWaterFluidDynamicsRan: " << d.HPWaterFluidDynamicsRan << "\n";
         out << "HPWaterFluidDynamicsValid: " << d.HPWaterFluidDynamicsValid << "\n";
         out << "HPWaterFluidComputeRan: " << d.HPWaterFluidComputeRan << "\n";
+        out << "HPWaterFluidEdgeAbsorptionParityEnabled: " << d.HPWaterFluidEdgeAbsorptionParityEnabled << "\n";
+        out << "HPWaterFluidSourceClampEnabled: " << d.HPWaterFluidSourceClampEnabled << "\n";
         out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
         out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
         out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";

@@ -328,10 +328,13 @@ static void StepHPWaterSimulation(HPWaterComponent& water, float dt) {
                 (left + right - 2.0f * current) / std::max(dx * dx, 0.0001f) +
                 (down + up - 2.0f * current) / std::max(dz * dz, 0.0001f);
 
-            const float edgeDist = static_cast<float>(std::min({ x, z, n - 1 - x, n - 1 - z }));
-            float edgeRetention = glm::smoothstep(0.0f, edgeWidth, edgeDist);
-            edgeRetention *= edgeRetention;
-            const float inertia = (current - water._Previous[i]) * (1.0f - damping) * edgeRetention;
+            const float distToEdgeX = static_cast<float>(std::min(x, n - 1 - x));
+            const float distToEdgeZ = static_cast<float>(std::min(z, n - 1 - z));
+            const float edgeX = 1.0f - glm::smoothstep(0.0f, edgeWidth, distToEdgeX);
+            const float edgeZ = 1.0f - glm::smoothstep(0.0f, edgeWidth, distToEdgeZ);
+            float edgeAbsorption = 1.0f - (1.0f - edgeX) * (1.0f - edgeZ);
+            edgeAbsorption = glm::clamp(1.0f - edgeAbsorption * edgeAbsorption, 0.0f, 1.0f);
+            const float inertia = (current - water._Previous[i]) * (1.0f - damping) * edgeAbsorption;
             water._Next[i] = current + inertia + c2dt2 * laplacian;
         }
     }
@@ -2528,6 +2531,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCausticAtlasConsumed = m_DeferredRenderer.IsHPWaterCausticAtlasConsumed();
     m_RenderDiagnostics.HPWaterFluidDynamicsValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
     m_RenderDiagnostics.HPWaterFluidComputeRan = m_DeferredRenderer.DidHPWaterFluidComputeRun();
+    m_RenderDiagnostics.HPWaterFluidEdgeAbsorptionParityEnabled =
+        m_DeferredRenderer.IsHPWaterFluidEdgeAbsorptionParityEnabled();
+    m_RenderDiagnostics.HPWaterFluidSourceClampEnabled = m_DeferredRenderer.IsHPWaterFluidSourceClampEnabled();
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
     m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;

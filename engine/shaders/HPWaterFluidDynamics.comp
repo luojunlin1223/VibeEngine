@@ -71,25 +71,29 @@ void main() {
 
     float distToEdgeX = min(float(coord.x), float(size.x - 1 - coord.x));
     float distToEdgeY = min(float(coord.y), float(size.y - 1 - coord.y));
-    float edgeWidth = max(float(max(size.x, size.y)) * 0.10, 1.0);
-    float edgeRetention = smoothstep(0.0, edgeWidth, min(distToEdgeX, distToEdgeY));
-    edgeRetention *= edgeRetention;
+    float width = float(size.x);
+    float edgeWidth = max(width * 0.10, 1.0);
+    float edgeX = 1.0 - smoothstep(0.0, edgeWidth, distToEdgeX);
+    float edgeY = 1.0 - smoothstep(0.0, edgeWidth, distToEdgeY);
+    float edgeAbsorption = 1.0 - (1.0 - edgeX) * (1.0 - edgeY);
+    edgeAbsorption = clamp(1.0 - edgeAbsorption * edgeAbsorption, 0.0, 1.0);
 
     float obstacleContact = max(max(leftObstacle, rightObstacle), max(downObstacle, upObstacle));
     float obstacleRetention = mix(1.0, 0.55, smoothstep(0.01, 1.0, obstacleContact));
 
-    float inertia = (current - previous) * (1.0 - damping) * edgeRetention * obstacleRetention;
+    float inertia = (current - previous) * (1.0 - damping) * edgeAbsorption * obstacleRetention;
     float next = current + inertia + c2 * (1.0 / 3600.0) * laplacian * obstacleRetention;
 
-    if (u_WaveSourceIntensity != 0.0 && u_WaveSourceUV.x >= 0.0 && u_WaveSourceUV.y >= 0.0) {
-        vec2 pixelUV = (vec2(coord) + vec2(0.5)) / vec2(size);
-        vec2 distPixels = (pixelUV - u_WaveSourceUV.xy) * vec2(size);
+    if (u_WaveSourceIntensity > 0.001 && u_WaveSourceUV.x >= 0.0 && u_WaveSourceUV.y >= 0.0) {
+        vec2 pixelUV = (vec2(coord) + vec2(0.5)) / width;
+        vec2 distPixels = (pixelUV - u_WaveSourceUV.xy) * width;
         float radius = max(u_WaveSourceRadius, 1.0);
         float r = length(distPixels);
         if (r < radius) {
             float sigma = radius * 0.4;
             float gaussian = exp(-(r * r) / max(2.0 * sigma * sigma, 0.0001));
-            next += clamp(gaussian * u_WaveSourceIntensity, -0.08, 0.08) * edgeRetention;
+            float ripple = min(gaussian * u_WaveSourceIntensity, 0.05);
+            next += ripple * edgeAbsorption;
         }
     }
 
