@@ -381,6 +381,8 @@ public:
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
     uint32_t GetHPWaterCausticFilterIterations() const { return m_HPWaterCausticFilterIterations; }
+    bool IsHPWaterCausticFilterComputeParityEnabled() const { return m_HPWaterCausticFilterComputeParityEnabled; }
+    bool IsHPWaterCausticFilterLDSHaloEnabled() const { return m_HPWaterCausticFilterLDSHaloEnabled; }
     bool BeginHPWaterCausticAtlas(uint32_t tileResolution);
     void BeginHPWaterCausticAtlasCascade(uint32_t cascadeIndex);
     void EndHPWaterCausticAtlas(bool valid);
@@ -473,6 +475,12 @@ private:
                                      float radius,
                                      float depthSigma,
                                      float luminanceWeight);
+    bool RunHPWaterCausticFilterComputePass(const std::shared_ptr<Framebuffer>& inputFBO,
+                                            const std::shared_ptr<Framebuffer>& outputFBO,
+                                            float stride,
+                                            float radius,
+                                            float depthSigma,
+                                            float luminanceWeight);
     bool RunHPWaterCausticComputeIrradiance(float nearClip,
                                             float farClip,
                                             const glm::vec3& lightDir,
@@ -553,6 +561,8 @@ private:
     bool m_HPWaterCausticValid = false;
     bool m_HPWaterCausticFilteredValid = false;
     uint32_t m_HPWaterCausticFilterIterations = 0;
+    bool m_HPWaterCausticFilterComputeParityEnabled = false;
+    bool m_HPWaterCausticFilterLDSHaloEnabled = false;
     uint32_t m_HPWaterCausticComputeIrradianceTexture = 0;
     uint32_t m_HPWaterCausticComputeAtomicTextures[4] = {};
     uint32_t m_HPWaterCausticComputeWidth = 0;
@@ -619,6 +629,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterCausticAtlasShader;
     std::shared_ptr<ComputeShader> m_HPWaterCausticComputeShader;
     std::shared_ptr<ComputeShader> m_HPWaterCausticResolveShader;
+    std::shared_ptr<ComputeShader> m_HPWaterCausticFilterComputeShader;
     std::shared_ptr<ComputeShader> m_HPWaterFluidComputeShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterFluidShader;
