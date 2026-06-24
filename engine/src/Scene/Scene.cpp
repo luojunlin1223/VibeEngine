@@ -1177,6 +1177,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
+    m_RenderDiagnostics.HPWaterSurfaceShadowSamplingEnabled =
+        m_DeferredRenderer.IsHPWaterSurfaceShadowSamplingEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
@@ -2599,6 +2601,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             spotRanges,
                                             spotInnerCos,
                                             spotOuterCos,
+                                            cameraView,
+                                            hpWaterCascadeVP,
+                                            hpWaterCascadeSplits,
+                                            hpWaterShadowDepthTextureArray,
+                                            hpWaterShadowDepthResolution,
+                                            ps.ShadowsEnabled && m_ShadowMap.IsInitialized(),
+                                            shadowSettings.DepthBias,
+                                            shadowSettings.NormalBias,
+                                            shadowSettings.PCFQuality,
+                                            shadowSettings.CascadeBlendWidth,
                                             indirectSkyColor,
                                             indirectGroundColor,
                                             indirectTint,
@@ -2688,6 +2700,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
             m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
+        m_RenderDiagnostics.HPWaterSurfaceShadowSamplingEnabled =
+            m_DeferredRenderer.IsHPWaterSurfaceShadowSamplingEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
             m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
@@ -2779,6 +2793,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 spotRanges,
                                                 spotInnerCos,
                                                 spotOuterCos,
+                                                cameraView,
+                                                hpWaterCascadeVP,
+                                                hpWaterCascadeSplits,
+                                                hpWaterShadowDepthTextureArray,
+                                                hpWaterShadowDepthResolution,
+                                                ps.ShadowsEnabled && m_ShadowMap.IsInitialized(),
+                                                shadowSettings.DepthBias,
+                                                shadowSettings.NormalBias,
+                                                shadowSettings.PCFQuality,
+                                                shadowSettings.CascadeBlendWidth,
                                                 indirectSkyColor,
                                                 indirectGroundColor,
                                                 indirectTint,
@@ -2848,6 +2872,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
+    m_RenderDiagnostics.HPWaterSurfaceShadowSamplingEnabled =
+        m_DeferredRenderer.IsHPWaterSurfaceShadowSamplingEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSoftness =

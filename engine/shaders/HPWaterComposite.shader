@@ -125,6 +125,8 @@ uniform int u_FrameIndex;
 uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
 
+#include "shadows.glslinc"
+
 const float PI = 3.14159265358979323846;
 const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 10.0;
 const float HPWATER_FORWARD_SCALING_FACTOR = 1.0;
@@ -802,8 +804,10 @@ void main() {
     float energyCompensation = GGXEnergyCompensation(F0, roughness);
     float D = DistributionGGX(N, H, roughness);
     float G = GeometrySmith(N, V, L, roughness);
+    float directionalShadow = ComputeShadow(waterWorldPos, N, 0.0);
     vec3 directSpecular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
-    directSpecular *= u_LightColor * max(u_LightIntensity, 0.0) * NdotL * energyCompensation;
+    directSpecular *= u_LightColor * max(u_LightIntensity, 0.0) *
+        NdotL * directionalShadow * energyCompensation;
     vec3 punctualWaterLight = vec3(0.0);
 
     int pointCount = clamp(u_NumPointLights, 0, 8);
@@ -909,7 +913,8 @@ void main() {
             scatterDensity,
             6.0));
     vec3 forwardBlur = SampleHPWaterDispersedSceneColor(v_UV, refractUV, forwardBlurLOD);
-    vec3 directWaterLight = u_LightColor * max(u_LightIntensity, 0.0) + punctualWaterLight;
+    vec3 directWaterLight =
+        u_LightColor * max(u_LightIntensity, 0.0) * directionalShadow + punctualWaterLight;
 
     // HPWaterBSDFLibary component split:
     // diffR = T_entry * G_entry * S_volume

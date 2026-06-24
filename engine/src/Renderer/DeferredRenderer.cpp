@@ -443,6 +443,7 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
     };
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
+    m_HPWaterSurfaceShadowSamplingEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticFBO() {
@@ -1511,6 +1512,16 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         const std::array<float, 4>& spotLightRanges,
                                         const std::array<float, 4>& spotLightInnerCos,
                                         const std::array<float, 4>& spotLightOuterCos,
+                                        const glm::mat4& shadowCameraView,
+                                        const std::array<glm::mat4, 4>& shadowLightVP,
+                                        const std::array<float, 4>& shadowCascadeSplits,
+                                        uint32_t shadowDepthTextureArray,
+                                        uint32_t shadowDepthResolution,
+                                        bool shadowsEnabled,
+                                        float shadowDepthBias,
+                                        float shadowNormalBias,
+                                        int shadowPCFQuality,
+                                        float shadowCascadeBlendWidth,
                                         const glm::vec3& indirectSkyColor,
                                         const glm::vec3& indirectGroundColor,
                                         const glm::vec3& indirectTint,
@@ -1539,6 +1550,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterCompositeValid = false;
         m_HPWaterRefractionNDCMarchEnabled = false;
+        m_HPWaterSurfaceShadowSamplingEnabled = false;
         return false;
     }
 
@@ -1643,6 +1655,14 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         : (reflectionProbeValid ? static_cast<GLuint>(reflectionProbeTexture) : 0));
     m_HPWaterCompositeShader->SetInt("u_ReflectionProbeSecondary", 15);
 
+    const bool surfaceShadowSamplingValid = shadowsEnabled && shadowDepthTextureArray != 0 &&
+        shadowDepthResolution > 0;
+    glActiveTexture(GL_TEXTURE16);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, surfaceShadowSamplingValid
+        ? static_cast<GLuint>(shadowDepthTextureArray)
+        : 0);
+    m_HPWaterCompositeShader->SetInt("u_ShadowMap", 16);
+
     m_HPWaterCompositeShader->SetInt("u_HasReflectionProbe", reflectionProbeValid ? 1 : 0);
     m_HPWaterCompositeShader->SetFloat("u_ReflectionProbeIntensity",
         reflectionProbeValid ? std::clamp(reflectionProbeIntensity, 0.0f, 4.0f) : 0.0f);
@@ -1734,6 +1754,20 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterCompositeShader->SetFloat("u_SpotLightInnerCos[" + index + "]", spotLightInnerCos[i]);
         m_HPWaterCompositeShader->SetFloat("u_SpotLightOuterCos[" + index + "]", spotLightOuterCos[i]);
     }
+    m_HPWaterCompositeShader->SetInt("u_ShadowsEnabled", surfaceShadowSamplingValid ? 1 : 0);
+    m_HPWaterCompositeShader->SetMat4("u_ShadowCameraView", shadowCameraView);
+    m_HPWaterCompositeShader->SetFloat("u_ShadowDepthBias", shadowDepthBias);
+    m_HPWaterCompositeShader->SetFloat("u_ShadowNormalBias", shadowNormalBias);
+    m_HPWaterCompositeShader->SetInt("u_ShadowPCFQuality", std::clamp(shadowPCFQuality, 0, 2));
+    m_HPWaterCompositeShader->SetFloat("u_ShadowCascadeBlendWidth",
+        std::clamp(shadowCascadeBlendWidth, 0.0f, 1.0f));
+    for (int i = 0; i < 4; ++i) {
+        const std::string index = std::to_string(i);
+        m_HPWaterCompositeShader->SetMat4("u_ShadowLightVP[" + index + "]",
+            shadowLightVP[static_cast<size_t>(i)]);
+        m_HPWaterCompositeShader->SetFloat("u_ShadowCascadeSplits[" + index + "]",
+            shadowCascadeSplits[static_cast<size_t>(i)]);
+    }
     m_HPWaterCompositeShader->SetVec3("u_IndirectSkyColor", indirectSkyColor);
     m_HPWaterCompositeShader->SetVec3("u_IndirectGroundColor", indirectGroundColor);
     m_HPWaterCompositeShader->SetVec3("u_IndirectTint", indirectTint);
@@ -1774,6 +1808,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
 
     m_HPWaterCompositeFBO->Unbind();
     m_HPWaterCompositeValid = true;
+    m_HPWaterSurfaceShadowSamplingEnabled = surfaceShadowSamplingValid;
     m_HPWaterRefractionNDCMarchEnabled =
         m_HPWaterDepthPyramidValid &&
         refractionSampleCount > 0 &&

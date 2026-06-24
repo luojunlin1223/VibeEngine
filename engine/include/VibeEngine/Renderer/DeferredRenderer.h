@@ -165,6 +165,16 @@ public:
                           const std::array<float, 4>& spotLightRanges,
                           const std::array<float, 4>& spotLightInnerCos,
                           const std::array<float, 4>& spotLightOuterCos,
+                          const glm::mat4& shadowCameraView,
+                          const std::array<glm::mat4, 4>& shadowLightVP,
+                          const std::array<float, 4>& shadowCascadeSplits,
+                          uint32_t shadowDepthTextureArray,
+                          uint32_t shadowDepthResolution,
+                          bool shadowsEnabled,
+                          float shadowDepthBias,
+                          float shadowNormalBias,
+                          int shadowPCFQuality,
+                          float shadowCascadeBlendWidth,
                           const glm::vec3& indirectSkyColor,
                           const glm::vec3& indirectGroundColor,
                           const glm::vec3& indirectTint,
@@ -362,6 +372,9 @@ public:
     }
     bool IsHPWaterVolumeExponentialIntegrationEnabled() const {
         return m_HPWaterVolumeExponentialIntegrationEnabled;
+    }
+    bool IsHPWaterSurfaceShadowSamplingEnabled() const {
+        return m_HPWaterSurfaceShadowSamplingEnabled;
     }
     bool IsHPWaterVolumeShadowSamplingEnabled() const {
         return m_HPWaterVolumeShadowSamplingEnabled;
@@ -606,6 +619,7 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     bool m_HPWaterCompositeValid = false;
     bool m_HPWaterRefractionNDCMarchEnabled = false;
+    bool m_HPWaterSurfaceShadowSamplingEnabled = false;
     uint32_t m_HPWaterSceneColorMipCount = 1;
     bool m_HPWaterSceneColorMipValid = false;
     uint32_t m_HPWaterFGDLUTTexture = 0;
