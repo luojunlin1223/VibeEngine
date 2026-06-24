@@ -1443,7 +1443,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         entt::entity ID;
         std::shared_ptr<VertexArray> Mesh;
         glm::mat4 Model;
-        float MaxY;
     };
     std::vector<HPWaterFluidObstacleCandidate> hpWaterFluidObstacleCandidates;
     std::vector<HPWaterFluidCaptureDraw> hpWaterFluidSceneCaptureDraws;
@@ -1500,7 +1499,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             const bool isTransparentForFluid = !isHPWater && (mr.Mat->IsTransparent() || mr.Color[3] < 0.999f);
             if (!isHPWater && !isTransparentForFluid) {
                 hpWaterFluidObstacleCandidates.push_back({ worldMin, worldMax });
-                hpWaterFluidSceneCaptureDraws.push_back({ entityID, mr.Mesh, model, worldMax.y });
+                hpWaterFluidSceneCaptureDraws.push_back({ entityID, mr.Mesh, model });
             }
 
             if (!frustum.TestAABB(worldMin, worldMax)) {
@@ -1758,6 +1757,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         bool gpuHeightCaptureValid = false;
         bool gpuWaterHeightCaptured = false;
         bool displacedWaterHeightCaptured = false;
+        bool sceneGeometryHeightCaptured = false;
         uint32_t gpuWaterCaptureDraws = 0;
         uint32_t gpuSceneCaptureDraws = 0;
         auto heightCaptureShader = m_DeferredRenderer.GetHPWaterFluidHeightCaptureShader();
@@ -1791,14 +1791,15 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 heightCaptureShader->Bind();
                 heightCaptureShader->SetVec3("u_BoxCenter", hpWaterFluidBoxCenter);
                 heightCaptureShader->SetVec3("u_BoxSize", glm::max(hpWaterFluidBoxSize, glm::vec3(0.001f)));
+                heightCaptureShader->SetFloat("u_ForceHeight", -1.0f);
                 if (hpWaterFluidObstaclesEnabled) {
                     for (const auto& draw : hpWaterFluidSceneCaptureDraws) {
                         if (!draw.Mesh)
                             continue;
-                        heightCaptureShader->SetFloat("u_ForceHeight", normalizeHeight(draw.MaxY));
                         heightCaptureShader->SetMat4("u_Model", draw.Model);
                         heightCaptureShader->SetMat4("u_TopDownMVP", topDownVP * draw.Model);
                         RenderCommand::DrawIndexed(draw.Mesh);
+                        sceneGeometryHeightCaptured = true;
                         ++gpuSceneCaptureDraws;
                     }
                 }
@@ -1935,6 +1936,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.DidHPWaterFluidHeightCaptureRun();
         m_RenderDiagnostics.HPWaterFluidHeightCaptureValid = gpuHeightCaptureValid;
         m_RenderDiagnostics.HPWaterFluidDisplacedWaterHeightCapture = displacedWaterHeightCaptured;
+        m_RenderDiagnostics.HPWaterFluidSceneGeometryHeightCapture = sceneGeometryHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidWaterCaptureDraws = gpuWaterCaptureDraws;
         m_RenderDiagnostics.HPWaterFluidSceneCaptureDraws = gpuSceneCaptureDraws;
         if (!gpuHeightCaptureValid) {

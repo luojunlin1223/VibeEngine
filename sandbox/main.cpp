@@ -7162,6 +7162,7 @@ private:
         out << "HPWaterFluidHeightCaptureRan: " << d.HPWaterFluidHeightCaptureRan << "\n";
         out << "HPWaterFluidHeightCaptureValid: " << d.HPWaterFluidHeightCaptureValid << "\n";
         out << "HPWaterFluidDisplacedWaterHeightCapture: " << d.HPWaterFluidDisplacedWaterHeightCapture << "\n";
+        out << "HPWaterFluidSceneGeometryHeightCapture: " << d.HPWaterFluidSceneGeometryHeightCapture << "\n";
         out << "HPWaterFluidWaterHeightTexture: " << d.HPWaterFluidWaterHeightTexture << "\n";
         out << "HPWaterFluidSceneHeightTexture: " << d.HPWaterFluidSceneHeightTexture << "\n";
         out << "HPWaterFluidWaterCaptureDraws: " << d.HPWaterFluidWaterCaptureDraws << "\n";
@@ -7512,11 +7513,12 @@ private:
             d.HPWaterFluidObstacleTexture,
             d.HPWaterFluidObstacleCount,
             d.HPWaterFluidObstaclePixels);
-        ImGui::Text("HPWater fluid height fields: valid=%d capture=%d/%d displaced=%d water=%u scene=%u draws=%u/%u",
+        ImGui::Text("HPWater fluid height fields: valid=%d capture=%d/%d displaced=%d sceneGeo=%d water=%u scene=%u draws=%u/%u",
             d.HPWaterFluidHeightFieldValid ? 1 : 0,
             d.HPWaterFluidHeightCaptureRan ? 1 : 0,
             d.HPWaterFluidHeightCaptureValid ? 1 : 0,
             d.HPWaterFluidDisplacedWaterHeightCapture ? 1 : 0,
+            d.HPWaterFluidSceneGeometryHeightCapture ? 1 : 0,
             d.HPWaterFluidWaterHeightTexture,
             d.HPWaterFluidSceneHeightTexture,
             d.HPWaterFluidWaterCaptureDraws,
