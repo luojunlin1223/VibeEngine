@@ -236,6 +236,12 @@ struct RenderDiagnostics {
     float HPWaterReflectionProbeHierarchyWeight = 0.0f;
     bool HPWaterReflectionProbeInfluenceBlendEnabled = false;
     bool HPWaterReflectionProbeBoxProjectionEnabled = false;
+    bool HPWaterSSRReflectionEnabled = false;
+    bool HPWaterSSRHierarchyBlendEnabled = false;
+    uint32_t HPWaterSSRMaxSteps = 0;
+    float HPWaterSSRStepSize = 0.0f;
+    float HPWaterSSRThickness = 0.0f;
+    float HPWaterSSRMaxDistance = 0.0f;
     glm::vec3 HPWaterReflectionProbeCenter = glm::vec3(0.0f);
     glm::vec3 HPWaterReflectionProbeBoxSize = glm::vec3(0.0f);
     glm::vec3 HPWaterReflectionProbeSecondaryCenter = glm::vec3(0.0f);

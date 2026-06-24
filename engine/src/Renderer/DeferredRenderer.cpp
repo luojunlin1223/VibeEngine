@@ -1504,6 +1504,11 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         bool indirectLightingEnabled,
                                         float indirectDiffuseIntensity,
                                         float skyReflectionIntensity,
+                                        bool hpWaterSSREnabled,
+                                        int hpWaterSSRMaxSteps,
+                                        float hpWaterSSRStepSize,
+                                        float hpWaterSSRThickness,
+                                        float hpWaterSSRMaxDistance,
                                         uint32_t skyTexture,
                                         uint32_t reflectionProbeTexture,
                                         uint32_t reflectionProbeSecondaryTexture,
@@ -1699,6 +1704,16 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         std::clamp(indirectDiffuseIntensity, 0.0f, 4.0f));
     m_HPWaterCompositeShader->SetFloat("u_SkyReflectionIntensity",
         std::clamp(skyReflectionIntensity, 0.0f, 4.0f));
+    const bool hpWaterSSRActive = hpWaterSSREnabled && hpWaterSSRMaxSteps > 0 && hpWaterSSRMaxDistance > 0.0001f;
+    m_HPWaterCompositeShader->SetInt("u_HPWaterSSREnabled", hpWaterSSRActive ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_HPWaterSSRMaxSteps", std::clamp(hpWaterSSRMaxSteps, 1, 128));
+    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRStepSize",
+        std::clamp(hpWaterSSRStepSize, 0.005f, 5.0f));
+    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRThickness",
+        std::clamp(hpWaterSSRThickness, 0.005f, 5.0f));
+    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRMaxDistance",
+        std::clamp(hpWaterSSRMaxDistance, 0.1f, 500.0f));
+    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRStrength", hpWaterSSRActive ? 1.0f : 0.0f);
     m_HPWaterCompositeShader->SetMat4("u_ViewProjection", viewProjection);
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",

@@ -2510,6 +2510,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterReflectionProbeInfluenceBlendEnabled =
             hpWaterReflectionProbeBound && hpWaterReflectionProbeHierarchyWeight > 0.0f;
         m_RenderDiagnostics.HPWaterReflectionProbeBoxProjectionEnabled = hpWaterReflectionProbeBound;
+        m_RenderDiagnostics.HPWaterSSRReflectionEnabled = ps.SSREnabled;
+        m_RenderDiagnostics.HPWaterSSRHierarchyBlendEnabled = ps.SSREnabled;
+        m_RenderDiagnostics.HPWaterSSRMaxSteps = static_cast<uint32_t>(std::max(ps.SSRMaxSteps, 0));
+        m_RenderDiagnostics.HPWaterSSRStepSize = ps.SSRStepSize;
+        m_RenderDiagnostics.HPWaterSSRThickness = ps.SSRThickness;
+        m_RenderDiagnostics.HPWaterSSRMaxDistance = ps.SSRMaxDistance;
         m_RenderDiagnostics.HPWaterReflectionProbeCenter = hpWaterReflectionProbeCenter;
         m_RenderDiagnostics.HPWaterReflectionProbeBoxSize = hpWaterReflectionProbeBoxSize;
         m_RenderDiagnostics.HPWaterReflectionProbeSecondaryCenter =
@@ -2583,6 +2589,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             ps.IndirectLightingEnabled,
                                             ps.IndirectDiffuseIntensity,
                                             ps.SkyReflectionIntensity,
+                                            ps.SSREnabled,
+                                            ps.SSRMaxSteps,
+                                            ps.SSRStepSize,
+                                            ps.SSRThickness,
+                                            ps.SSRMaxDistance,
                                             hpWaterSkyTexture,
                                             hpWaterReflectionProbeTexture,
                                             hpWaterReflectionProbeSecondaryTexture,
@@ -2745,6 +2756,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 ps.IndirectLightingEnabled,
                                                 ps.IndirectDiffuseIntensity,
                                                 ps.SkyReflectionIntensity,
+                                                ps.SSREnabled,
+                                                ps.SSRMaxSteps,
+                                                ps.SSRStepSize,
+                                                ps.SSRThickness,
+                                                ps.SSRMaxDistance,
                                                 hpWaterSkyTexture,
                                                 hpWaterReflectionProbeTexture,
                                                 hpWaterReflectionProbeSecondaryTexture,

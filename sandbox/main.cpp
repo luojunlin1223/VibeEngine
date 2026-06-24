@@ -7140,6 +7140,12 @@ private:
             << d.HPWaterReflectionProbeInfluenceBlendEnabled << "\n";
         out << "HPWaterReflectionProbeBoxProjectionEnabled: "
             << d.HPWaterReflectionProbeBoxProjectionEnabled << "\n";
+        out << "HPWaterSSRReflectionEnabled: " << d.HPWaterSSRReflectionEnabled << "\n";
+        out << "HPWaterSSRHierarchyBlendEnabled: " << d.HPWaterSSRHierarchyBlendEnabled << "\n";
+        out << "HPWaterSSRMaxSteps: " << d.HPWaterSSRMaxSteps << "\n";
+        out << "HPWaterSSRStepSize: " << d.HPWaterSSRStepSize << "\n";
+        out << "HPWaterSSRThickness: " << d.HPWaterSSRThickness << "\n";
+        out << "HPWaterSSRMaxDistance: " << d.HPWaterSSRMaxDistance << "\n";
         out << "HPWaterReflectionProbeCenter: "
             << d.HPWaterReflectionProbeCenter.x << ","
             << d.HPWaterReflectionProbeCenter.y << ","
@@ -7617,6 +7623,13 @@ private:
             d.HPWaterReflectionProbeBlend,
             d.HPWaterReflectionProbeInfluenceWeight,
             d.HPWaterReflectionProbeHierarchyWeight);
+        ImGui::Text("HPWater SSR hierarchy: enabled=%d blend=%d steps=%u step=%.3f thickness=%.3f maxDist=%.1f",
+            d.HPWaterSSRReflectionEnabled ? 1 : 0,
+            d.HPWaterSSRHierarchyBlendEnabled ? 1 : 0,
+            d.HPWaterSSRMaxSteps,
+            d.HPWaterSSRStepSize,
+            d.HPWaterSSRThickness,
+            d.HPWaterSSRMaxDistance);
         ImGui::Text("HPWater forward scatter mips: enabled=%d count=%u",
             d.HPWaterForwardScatterMipEnabled ? 1 : 0,
             d.HPWaterForwardScatterMipCount);

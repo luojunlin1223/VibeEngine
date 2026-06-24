@@ -72,7 +72,7 @@ PipelineSettings:
   SSAOBias: 0.0250000004
   SSAOIntensity: 1
   SSAOKernelSize: 32
-  SSREnabled: false
+  SSREnabled: true
   SSRMaxSteps: 64
   SSRStepSize: 0.0500000007
   SSRThickness: 0.100000001
