@@ -61,6 +61,7 @@ uniform float u_WaterDispersionStrength;
 uniform float u_MaxRefractionCrossDistance;
 uniform float u_RefractionThicknessOffset;
 uniform float u_EnvironmentReflectionIntensity;
+uniform float u_IndirectLightStrength;
 uniform float u_ThinSSSStrength;
 uniform float u_BacklitTransmissionStrength;
 uniform float u_ForwardScatterStrength;
@@ -638,6 +639,7 @@ void main() {
             energyCompensation;
         indirectBody = scatterColor * environmentDiffuse *
             clamp(u_IndirectDiffuseIntensity, 0.0, 4.0) *
+            clamp(u_IndirectLightStrength, 0.0, 4.0) *
             (0.08 + 0.18 * normalizedThickness);
     }
     vec3 reflected = skyReflection + directSpecular * clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0);

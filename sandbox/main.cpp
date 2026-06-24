@@ -1293,6 +1293,7 @@ private:
             water.ScatterColor = { 0.035f, 0.28f, 0.36f };
             water.AbsorptionColor = { 0.020f, 0.060f, 0.090f };
             water.FoamIntensity = 0.18f;
+            water.IndirectLightStrength = 1.0f;
             water.SpecularFGDStrength = 1.0f;
             water.GGXEnergyCompensation = 1.0f;
 
@@ -1304,6 +1305,7 @@ private:
             if (!waterEntity.HasComponent<VE::HPWaterComponent>())
                 waterEntity.AddComponent<VE::HPWaterComponent>();
             auto& water = waterEntity.GetComponent<VE::HPWaterComponent>();
+            water.IndirectLightStrength = std::clamp(water.IndirectLightStrength, 0.0f, 4.0f);
             water.SpecularFGDStrength = std::clamp(water.SpecularFGDStrength, 0.0f, 1.0f);
             water.GGXEnergyCompensation = std::clamp(water.GGXEnergyCompensation, 0.0f, 2.0f);
             water.SpectrumNormalStrength = std::clamp(water.SpectrumNormalStrength, 0.0f, 4.0f);
@@ -6298,6 +6300,7 @@ private:
                 ImGui::Checkbox("Refraction Jitter", &w.RefractionJitter);
                 ImGui::SeparatorText("BSDF");
                 ImGui::SliderFloat("Environment Reflection", &w.EnvironmentReflectionIntensity, 0.0f, 3.0f, "%.3f");
+                ImGui::SliderFloat("Indirect Light Strength", &w.IndirectLightStrength, 0.0f, 4.0f, "%.3f");
                 ImGui::SliderFloat("Macro Scatter", &w.MacroScatterStrength, 0.0f, 4.0f, "%.3f");
                 ImGui::SliderFloat("Thin SSS", &w.ThinSSSStrength, 0.0f, 3.0f, "%.3f");
                 ImGui::SliderFloat("Backlit Transmission", &w.BacklitTransmissionStrength, 0.0f, 3.0f, "%.3f");
@@ -7101,6 +7104,7 @@ private:
         out << "HPWaterRefractionJitterEnabled: " << d.HPWaterRefractionJitterEnabled << "\n";
         out << "HPWaterRefractionNDCMarchEnabled: " << d.HPWaterRefractionNDCMarchEnabled << "\n";
         out << "HPWaterEnvironmentReflectionIntensity: " << d.HPWaterEnvironmentReflectionIntensity << "\n";
+        out << "HPWaterIndirectLightStrength: " << d.HPWaterIndirectLightStrength << "\n";
         out << "HPWaterMacroScatterStrength: " << d.HPWaterMacroScatterStrength << "\n";
         out << "HPWaterThinSSSStrength: " << d.HPWaterThinSSSStrength << "\n";
         out << "HPWaterBacklitTransmissionStrength: " << d.HPWaterBacklitTransmissionStrength << "\n";
@@ -7570,8 +7574,9 @@ private:
             d.HPWaterRefractionThicknessOffset,
             d.HPWaterRefractionSampleCount,
             d.HPWaterRefractionJitterEnabled ? 1 : 0);
-        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f blur=%.3f multi=%.2f phaseG=%.2f fgd=%.3f energy=%.3f lut=%d/%u",
+        ImGui::Text("HPWater BSDF: env=%.3f indirect=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f blur=%.3f multi=%.2f phaseG=%.2f fgd=%.3f energy=%.3f lut=%d/%u",
             d.HPWaterEnvironmentReflectionIntensity,
+            d.HPWaterIndirectLightStrength,
             d.HPWaterMacroScatterStrength,
             d.HPWaterThinSSSStrength,
             d.HPWaterBacklitTransmissionStrength,

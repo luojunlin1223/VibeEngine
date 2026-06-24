@@ -139,6 +139,7 @@ public:
                           bool refractionJitter,
                           uint32_t frameIndex,
                           float environmentReflectionIntensity,
+                          float indirectLightStrength,
                           float thinSSSStrength,
                           float backlitTransmissionStrength,
                           float forwardScatterStrength,

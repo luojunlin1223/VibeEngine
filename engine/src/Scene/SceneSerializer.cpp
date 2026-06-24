@@ -598,6 +598,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "RefractionThicknessOffset" << YAML::Value << w.RefractionThicknessOffset;
         out << YAML::Key << "RefractionJitter" << YAML::Value << w.RefractionJitter;
         out << YAML::Key << "EnvironmentReflectionIntensity" << YAML::Value << w.EnvironmentReflectionIntensity;
+        out << YAML::Key << "IndirectLightStrength" << YAML::Value << w.IndirectLightStrength;
         out << YAML::Key << "MacroScatterStrength" << YAML::Value << w.MacroScatterStrength;
         out << YAML::Key << "ThinSSSStrength" << YAML::Value << w.ThinSSSStrength;
         out << YAML::Key << "BacklitTransmissionStrength" << YAML::Value << w.BacklitTransmissionStrength;
@@ -1614,6 +1615,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["RefractionThicknessOffset"]) w.RefractionThicknessOffset = wNode["RefractionThicknessOffset"].as<float>();
                 if (wNode["RefractionJitter"]) w.RefractionJitter = wNode["RefractionJitter"].as<bool>();
                 if (wNode["EnvironmentReflectionIntensity"]) w.EnvironmentReflectionIntensity = wNode["EnvironmentReflectionIntensity"].as<float>();
+                if (wNode["IndirectLightStrength"]) w.IndirectLightStrength = wNode["IndirectLightStrength"].as<float>();
                 if (wNode["MacroScatterStrength"]) w.MacroScatterStrength = wNode["MacroScatterStrength"].as<float>();
                 if (wNode["ThinSSSStrength"]) w.ThinSSSStrength = wNode["ThinSSSStrength"].as<float>();
                 if (wNode["BacklitTransmissionStrength"]) w.BacklitTransmissionStrength = wNode["BacklitTransmissionStrength"].as<float>();
@@ -1671,6 +1673,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 w.MaxRefractionCrossDistance = std::clamp(w.MaxRefractionCrossDistance, 0.1f, 200.0f);
                 w.RefractionThicknessOffset = std::clamp(w.RefractionThicknessOffset, 0.01f, 8.0f);
                 w.EnvironmentReflectionIntensity = std::clamp(w.EnvironmentReflectionIntensity, 0.0f, 3.0f);
+                w.IndirectLightStrength = std::clamp(w.IndirectLightStrength, 0.0f, 4.0f);
                 w.MacroScatterStrength = std::clamp(w.MacroScatterStrength, 0.0f, 4.0f);
                 w.ThinSSSStrength = std::clamp(w.ThinSSSStrength, 0.0f, 3.0f);
                 w.BacklitTransmissionStrength = std::clamp(w.BacklitTransmissionStrength, 0.0f, 3.0f);

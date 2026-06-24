@@ -1457,6 +1457,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     uint32_t hpWaterRefractionSampleCount = 4;
     bool hpWaterRefractionJitter = false;
     float hpWaterEnvironmentReflectionIntensity = 0.0f;
+    float hpWaterIndirectLightStrength = 0.0f;
     float hpWaterMacroScatterStrength = 0.0f;
     float hpWaterVolumeShadowSoftness = 2.0f;
     float hpWaterVolumeShadowMinFilterSize = 1.0f;
@@ -1654,6 +1655,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterEnvironmentReflectionIntensity = std::max(
                     hpWaterEnvironmentReflectionIntensity,
                     water->EnvironmentReflectionIntensity);
+                hpWaterIndirectLightStrength = std::max(
+                    hpWaterIndirectLightStrength,
+                    std::clamp(water->IndirectLightStrength, 0.0f, 4.0f));
                 hpWaterMacroScatterStrength = std::max(
                     hpWaterMacroScatterStrength,
                     water->MacroScatterStrength);
@@ -2375,6 +2379,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterRefractionSampleCount = hpWaterRefractionSampleCount;
         m_RenderDiagnostics.HPWaterRefractionJitterEnabled = hpWaterRefractionJitter;
         m_RenderDiagnostics.HPWaterEnvironmentReflectionIntensity = hpWaterEnvironmentReflectionIntensity;
+        m_RenderDiagnostics.HPWaterIndirectLightStrength = hpWaterIndirectLightStrength;
         m_RenderDiagnostics.HPWaterMacroScatterStrength = hpWaterMacroScatterStrength;
         m_RenderDiagnostics.HPWaterThinSSSStrength = hpWaterThinSSSStrength;
         m_RenderDiagnostics.HPWaterBacklitTransmissionStrength = hpWaterBacklitTransmissionStrength;
@@ -2386,7 +2391,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterLightLoopInputsValid = true;
         m_RenderDiagnostics.HPWaterSkyReflectionIntensity = ps.SkyReflectionIntensity;
         m_RenderDiagnostics.HPWaterIndirectDiffuseIntensity =
-            ps.IndirectLightingEnabled ? ps.IndirectDiffuseIntensity : 0.0f;
+            ps.IndirectLightingEnabled ? ps.IndirectDiffuseIntensity * hpWaterIndirectLightStrength : 0.0f;
         m_RenderDiagnostics.HPWaterDirectionalLightIntensity = lightIntensity;
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
@@ -2505,6 +2510,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterRefractionJitter,
                                             hpWaterFrameIndex,
                                             hpWaterEnvironmentReflectionIntensity,
+                                            hpWaterIndirectLightStrength,
                                             hpWaterThinSSSStrength,
                                             hpWaterBacklitTransmissionStrength,
                                             hpWaterForwardScatterStrength,
@@ -2665,6 +2671,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterRefractionJitter,
                                                 hpWaterFrameIndex,
                                                 hpWaterEnvironmentReflectionIntensity,
+                                                hpWaterIndirectLightStrength,
                                                 hpWaterThinSSSStrength,
                                                 hpWaterBacklitTransmissionStrength,
                                                 hpWaterForwardScatterStrength,
