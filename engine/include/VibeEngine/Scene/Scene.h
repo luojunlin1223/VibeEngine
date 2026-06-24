@@ -232,6 +232,9 @@ struct RenderDiagnostics {
     uint32_t HPWaterReflectionProbeSecondaryTexture = 0;
     float HPWaterReflectionProbeIntensity = 0.0f;
     float HPWaterReflectionProbeBlend = 0.0f;
+    float HPWaterReflectionProbeInfluenceWeight = 0.0f;
+    float HPWaterReflectionProbeHierarchyWeight = 0.0f;
+    bool HPWaterReflectionProbeInfluenceBlendEnabled = false;
     bool HPWaterReflectionProbeBoxProjectionEnabled = false;
     glm::vec3 HPWaterReflectionProbeCenter = glm::vec3(0.0f);
     glm::vec3 HPWaterReflectionProbeBoxSize = glm::vec3(0.0f);

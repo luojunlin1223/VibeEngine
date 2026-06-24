@@ -2409,9 +2409,34 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         glm::vec3 hpWaterReflectionProbeSecondaryBoxSize(1.0f);
         float hpWaterReflectionProbeIntensity = 0.0f;
         float hpWaterReflectionProbeBlend = 0.0f;
+        float hpWaterReflectionProbeInfluenceWeight = 0.0f;
+        float hpWaterReflectionProbeHierarchyWeight = 0.0f;
         {
-            float bestDistanceSq = 3.402823466e+38F;
-            float secondDistanceSq = 3.402823466e+38F;
+            struct ProbeCandidate {
+                uint32_t Texture = 0;
+                glm::vec3 Center = glm::vec3(0.0f);
+                glm::vec3 BoxSize = glm::vec3(1.0f);
+                float Influence = 0.0f;
+                float SelectionWeight = 0.0f;
+            };
+
+            auto computeBoxInfluence = [](const glm::vec3& position,
+                                          const glm::vec3& center,
+                                          const glm::vec3& boxSize) -> float {
+                constexpr float fadeStart = 0.75f;
+                const glm::vec3 halfSize = glm::max(boxSize * 0.5f, glm::vec3(0.001f));
+                const glm::vec3 normalizedDistance = glm::abs(position - center) / halfSize;
+                const float edgeFactor = glm::max(glm::max(normalizedDistance.x, normalizedDistance.y),
+                                                  normalizedDistance.z);
+                if (edgeFactor >= 1.0f)
+                    return 0.0f;
+                if (edgeFactor <= fadeStart)
+                    return 1.0f;
+                return glm::clamp((1.0f - edgeFactor) / (1.0f - fadeStart), 0.0f, 1.0f);
+            };
+
+            ProbeCandidate primaryProbe;
+            ProbeCandidate secondaryProbe;
             auto probeView = m_Registry.view<TransformComponent, ReflectionProbeComponent>();
             for (auto probeEntity : probeView) {
                 if (!IsEntityActiveInHierarchy(probeEntity))
@@ -2425,32 +2450,51 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 glm::vec3 probeBoxSize = glm::max(
                     glm::vec3(probe.BoxSize[0], probe.BoxSize[1], probe.BoxSize[2]),
                     glm::vec3(0.001f));
-                glm::vec3 toCamera = probePos - cameraPos;
-                float distanceSq = glm::dot(toCamera, toCamera);
-                if (distanceSq < bestDistanceSq) {
-                    secondDistanceSq = bestDistanceSq;
-                    hpWaterReflectionProbeSecondaryTexture = hpWaterReflectionProbeTexture;
-                    hpWaterReflectionProbeSecondaryCenter = hpWaterReflectionProbeCenter;
-                    hpWaterReflectionProbeSecondaryBoxSize = hpWaterReflectionProbeBoxSize;
-                    bestDistanceSq = distanceSq;
-                    hpWaterReflectionProbeTexture = probe._Probe->GetCubemapID();
-                    hpWaterReflectionProbeCenter = probePos;
-                    hpWaterReflectionProbeBoxSize = probeBoxSize;
-                    hpWaterReflectionProbeIntensity = 1.0f;
-                } else if (distanceSq < secondDistanceSq) {
-                    secondDistanceSq = distanceSq;
-                    hpWaterReflectionProbeSecondaryTexture = probe._Probe->GetCubemapID();
-                    hpWaterReflectionProbeSecondaryCenter = probePos;
-                    hpWaterReflectionProbeSecondaryBoxSize = probeBoxSize;
+                const float influence = computeBoxInfluence(cameraPos, probePos, probeBoxSize);
+                if (influence <= 0.0f)
+                    continue;
+
+                const glm::vec3 toCamera = probePos - cameraPos;
+                const float distance = std::sqrt(std::max(glm::dot(toCamera, toCamera), 0.0f));
+                const float selectionWeight = influence / std::max(distance, 0.25f);
+                ProbeCandidate candidate{
+                    probe._Probe->GetCubemapID(),
+                    probePos,
+                    probeBoxSize,
+                    influence,
+                    selectionWeight
+                };
+
+                if (candidate.SelectionWeight > primaryProbe.SelectionWeight) {
+                    secondaryProbe = primaryProbe;
+                    primaryProbe = candidate;
+                } else if (candidate.SelectionWeight > secondaryProbe.SelectionWeight) {
+                    secondaryProbe = candidate;
                 }
             }
 
-            if (hpWaterReflectionProbeTexture != 0 && hpWaterReflectionProbeSecondaryTexture != 0) {
-                const float bestDistance = std::sqrt(std::max(bestDistanceSq, 0.0f));
-                const float secondDistance = std::sqrt(std::max(secondDistanceSq, 0.0f));
-                const float primaryWeight = 1.0f / std::max(bestDistance, 0.25f);
-                const float secondaryWeight = 1.0f / std::max(secondDistance, 0.25f);
-                hpWaterReflectionProbeBlend = secondaryWeight / std::max(primaryWeight + secondaryWeight, 0.0001f);
+            if (primaryProbe.Texture != 0) {
+                hpWaterReflectionProbeTexture = primaryProbe.Texture;
+                hpWaterReflectionProbeCenter = primaryProbe.Center;
+                hpWaterReflectionProbeBoxSize = primaryProbe.BoxSize;
+                hpWaterReflectionProbeInfluenceWeight = primaryProbe.Influence;
+                hpWaterReflectionProbeHierarchyWeight = primaryProbe.Influence;
+                hpWaterReflectionProbeIntensity = primaryProbe.Influence;
+
+                if (secondaryProbe.Texture != 0) {
+                    hpWaterReflectionProbeSecondaryTexture = secondaryProbe.Texture;
+                    hpWaterReflectionProbeSecondaryCenter = secondaryProbe.Center;
+                    hpWaterReflectionProbeSecondaryBoxSize = secondaryProbe.BoxSize;
+                    const float totalSelectionWeight =
+                        std::max(primaryProbe.SelectionWeight + secondaryProbe.SelectionWeight, 0.0001f);
+                    hpWaterReflectionProbeBlend = secondaryProbe.SelectionWeight / totalSelectionWeight;
+                    hpWaterReflectionProbeHierarchyWeight =
+                        glm::clamp(primaryProbe.Influence +
+                                       secondaryProbe.Influence * (1.0f - primaryProbe.Influence),
+                                   0.0f,
+                                   1.0f);
+                    hpWaterReflectionProbeIntensity = hpWaterReflectionProbeHierarchyWeight;
+                }
             }
         }
         const bool hpWaterReflectionProbeBound = hpWaterReflectionProbeTexture != 0;
@@ -2461,6 +2505,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterReflectionProbeSecondaryTexture = hpWaterReflectionProbeSecondaryTexture;
         m_RenderDiagnostics.HPWaterReflectionProbeIntensity = hpWaterReflectionProbeIntensity;
         m_RenderDiagnostics.HPWaterReflectionProbeBlend = hpWaterReflectionProbeBlend;
+        m_RenderDiagnostics.HPWaterReflectionProbeInfluenceWeight = hpWaterReflectionProbeInfluenceWeight;
+        m_RenderDiagnostics.HPWaterReflectionProbeHierarchyWeight = hpWaterReflectionProbeHierarchyWeight;
+        m_RenderDiagnostics.HPWaterReflectionProbeInfluenceBlendEnabled =
+            hpWaterReflectionProbeBound && hpWaterReflectionProbeHierarchyWeight > 0.0f;
         m_RenderDiagnostics.HPWaterReflectionProbeBoxProjectionEnabled = hpWaterReflectionProbeBound;
         m_RenderDiagnostics.HPWaterReflectionProbeCenter = hpWaterReflectionProbeCenter;
         m_RenderDiagnostics.HPWaterReflectionProbeBoxSize = hpWaterReflectionProbeBoxSize;
@@ -2541,6 +2589,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterReflectionProbeBound,
                                             hpWaterReflectionProbeIntensity,
                                             hpWaterReflectionProbeBlend,
+                                            hpWaterReflectionProbeHierarchyWeight,
                                             hpWaterReflectionProbeCenter,
                                             hpWaterReflectionProbeBoxSize,
                                             hpWaterReflectionProbeSecondaryTexture != 0
@@ -2702,6 +2751,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterReflectionProbeBound,
                                                 hpWaterReflectionProbeIntensity,
                                                 hpWaterReflectionProbeBlend,
+                                                hpWaterReflectionProbeHierarchyWeight,
                                                 hpWaterReflectionProbeCenter,
                                                 hpWaterReflectionProbeBoxSize,
                                                 hpWaterReflectionProbeSecondaryTexture != 0

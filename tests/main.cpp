@@ -123,13 +123,11 @@ TEST_CASE("Add and get custom component") {
 
     CHECK_FALSE(entity.HasComponent<VE::DirectionalLightComponent>());
     auto& light = entity.AddComponent<VE::DirectionalLightComponent>();
-    light.Direction = { 0.0f, -1.0f, 0.0f };
     light.Intensity = 2.5f;
 
     CHECK(entity.HasComponent<VE::DirectionalLightComponent>());
     auto& retrieved = entity.GetComponent<VE::DirectionalLightComponent>();
     CHECK(retrieved.Intensity == doctest::Approx(2.5f));
-    CHECK(retrieved.Direction[1] == doctest::Approx(-1.0f));
 }
 
 TEST_CASE("Remove component") {
@@ -339,7 +337,7 @@ TEST_CASE("Serialize and deserialize preserves DirectionalLightComponent") {
     auto srcScene = std::make_shared<VE::Scene>();
     auto entity = srcScene->CreateEntity("Sun");
     auto& light = entity.AddComponent<VE::DirectionalLightComponent>();
-    light.Direction = { 0.0f, -1.0f, 0.0f };
+    entity.GetComponent<VE::TransformComponent>().Rotation = { 45.0f, 0.0f, 0.0f };
     light.Color = { 1.0f, 0.9f, 0.8f };
     light.Intensity = 1.5f;
 
@@ -358,6 +356,8 @@ TEST_CASE("Serialize and deserialize preserves DirectionalLightComponent") {
         CHECK(dl.Color[0] == doctest::Approx(1.0f));
         CHECK(dl.Color[1] == doctest::Approx(0.9f));
         CHECK(dl.Color[2] == doctest::Approx(0.8f));
+        auto& transform = dstScene->GetRegistry().get<VE::TransformComponent>(ent);
+        CHECK(transform.Rotation[0] == doctest::Approx(45.0f));
         count++;
     }
     CHECK(count == 1);

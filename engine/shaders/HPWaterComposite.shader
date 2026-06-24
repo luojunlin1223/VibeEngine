@@ -82,6 +82,7 @@ uniform float u_IndirectDiffuseIntensity;
 uniform float u_SkyReflectionIntensity;
 uniform float u_ReflectionProbeIntensity;
 uniform float u_ReflectionProbeBlend;
+uniform float u_ReflectionProbeHierarchyWeight;
 uniform vec3 u_ReflectionProbeCenter;
 uniform vec3 u_ReflectionProbeBoxMin;
 uniform vec3 u_ReflectionProbeBoxMax;
@@ -352,6 +353,14 @@ vec3 BoxProjectedReflectionDirection(vec3 worldPos, vec3 dir, vec3 probeCenter, 
 }
 
 vec3 SampleEnvironment(vec3 dir, vec3 fallbackDir, vec3 worldPos, float roughness, bool diffuseSample) {
+    vec3 fallback;
+    if (u_HasSkyTexture == 1) {
+        float skyRoughness = diffuseSample ? 1.0 : roughness;
+        fallback = SampleSkyTexture(dir, skyRoughness);
+    } else {
+        fallback = SampleIndirectSky(fallbackDir);
+    }
+
     if (u_HasReflectionProbe == 1) {
         int levels = textureQueryLevels(u_ReflectionProbe);
         float maxMip = float(max(levels - 1, 0));
@@ -367,15 +376,11 @@ vec3 SampleEnvironment(vec3 dir, vec3 fallbackDir, vec3 worldPos, float roughnes
         }
         vec3 primary = textureLod(u_ReflectionProbe, primaryDir, lod).rgb;
         vec3 secondary = textureLod(u_ReflectionProbeSecondary, secondaryDir, lod).rgb;
-        return mix(primary, secondary, clamp(u_ReflectionProbeBlend, 0.0, 1.0));
+        vec3 probe = mix(primary, secondary, clamp(u_ReflectionProbeBlend, 0.0, 1.0));
+        return mix(fallback, probe, clamp(u_ReflectionProbeHierarchyWeight, 0.0, 1.0));
     }
 
-    if (u_HasSkyTexture == 1) {
-        float skyRoughness = diffuseSample ? 1.0 : roughness;
-        return SampleSkyTexture(dir, skyRoughness);
-    }
-
-    return SampleIndirectSky(fallbackDir);
+    return fallback;
 }
 
 float SampleSceneDepth(vec2 uv, float lod) {
@@ -701,9 +706,13 @@ void main() {
         float roughnessFade = mix(1.0, 0.25, roughness);
         vec3 environmentSpecular = SampleEnvironment(R, R, waterWorldPos, roughness, false);
         vec3 environmentDiffuse = SampleEnvironment(N, N, waterWorldPos, 1.0, true);
-        float environmentIntensity = u_HasReflectionProbe == 1
-            ? clamp(u_ReflectionProbeIntensity, 0.0, 4.0)
-            : clamp(u_SkyReflectionIntensity, 0.0, 4.0);
+        float probeHierarchyWeight = u_HasReflectionProbe == 1
+            ? clamp(u_ReflectionProbeHierarchyWeight, 0.0, 1.0)
+            : 0.0;
+        float environmentIntensity = mix(
+            clamp(u_SkyReflectionIntensity, 0.0, 4.0),
+            clamp(u_ReflectionProbeIntensity, 0.0, 4.0),
+            probeHierarchyWeight);
         skyReflection = environmentSpecular * Fgd *
             (0.35 + environmentIntensity * 2.35) *
             clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0) *

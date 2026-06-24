@@ -1510,6 +1510,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         bool hasReflectionProbe,
                                         float reflectionProbeIntensity,
                                         float reflectionProbeBlend,
+                                        float reflectionProbeHierarchyWeight,
                                         const glm::vec3& reflectionProbeCenter,
                                         const glm::vec3& reflectionProbeBoxSize,
                                         const glm::vec3& reflectionProbeSecondaryCenter,
@@ -1629,6 +1630,8 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         reflectionProbeValid ? std::clamp(reflectionProbeIntensity, 0.0f, 4.0f) : 0.0f);
     m_HPWaterCompositeShader->SetFloat("u_ReflectionProbeBlend",
         reflectionProbeSecondaryValid ? std::clamp(reflectionProbeBlend, 0.0f, 1.0f) : 0.0f);
+    m_HPWaterCompositeShader->SetFloat("u_ReflectionProbeHierarchyWeight",
+        reflectionProbeValid ? std::clamp(reflectionProbeHierarchyWeight, 0.0f, 1.0f) : 0.0f);
     const glm::vec3 primaryBoxSize = glm::max(reflectionProbeBoxSize, glm::vec3(0.001f));
     const glm::vec3 secondaryBoxSize = glm::max(reflectionProbeSecondaryBoxSize, glm::vec3(0.001f));
     m_HPWaterCompositeShader->SetInt("u_ReflectionProbeBoxProjectionEnabled", reflectionProbeValid ? 1 : 0);

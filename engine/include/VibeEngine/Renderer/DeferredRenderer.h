@@ -164,6 +164,7 @@ public:
                           bool hasReflectionProbe,
                           float reflectionProbeIntensity,
                           float reflectionProbeBlend,
+                          float reflectionProbeHierarchyWeight,
                           const glm::vec3& reflectionProbeCenter,
                           const glm::vec3& reflectionProbeBoxSize,
                           const glm::vec3& reflectionProbeSecondaryCenter,
