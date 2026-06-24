@@ -145,6 +145,13 @@ vec3 ScatterPhase(float cosTheta) {
     return betaRayleigh * rayleighPhase * 0.05 + vec3(miePhase) * 0.95;
 }
 
+vec3 HPWaterEffectiveScatterPhase(float cosTheta, vec3 scatteringAlbedo) {
+    vec3 phase = ScatterPhase(cosTheta);
+    float albedoScalar = clamp(Luminance(scatteringAlbedo), 0.0, 1.0);
+    float isotropicWeight = smoothstep(0.0, 0.5, albedoScalar);
+    return mix(phase, vec3(1.0), isotropicWeight);
+}
+
 float InterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
     const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
     vec2 scrolled = pixelPos + vec2(float(frameIndex & 63)) * vec2(5.588238, 5.588238);
@@ -236,6 +243,7 @@ vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
                                           vec3 sampleToCamera,
                                           vec3 N,
                                           float roughness,
+                                          vec3 scatteringAlbedo,
                                           float normalizedThickness) {
     vec3 punctual = vec3(0.0);
     int pointCount = clamp(u_NumPointLights, 0, 8);
@@ -252,7 +260,7 @@ vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
         vec3 Lp = lightVector / lightDistance;
         float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange);
         float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
-        vec3 phase = ScatterPhase(cosTheta);
+        vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
         vec3 radiance = u_PointLightColors[i] *
             max(u_PointLightIntensities[i], 0.0) * attenuation;
         punctual += radiance * phase * 2.2;
@@ -280,7 +288,7 @@ vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
 
         float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange) * spotFactor;
         float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
-        vec3 phase = ScatterPhase(cosTheta);
+        vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
         vec3 radiance = u_SpotLightColors[i] *
             max(u_SpotLightIntensities[i], 0.0) * attenuation;
         punctual += radiance * phase * 2.2;
@@ -302,7 +310,7 @@ vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
             continue;
 
         float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
-        punctual += radiance * ScatterPhase(cosTheta) * 2.2;
+        punctual += radiance * HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo) * 2.2;
     }
 
     return punctual * (0.55 + 0.45 * normalizedThickness);
@@ -497,7 +505,7 @@ void main() {
         vec2 sampleUV = mix(v_UV, clamp(refractMeta.xy, vec2(0.001), vec2(0.999)), midD);
         vec3 sampleToCamera = SafeNormalize(u_CameraPosition - samplePos, V);
         float cosTheta = clamp(dot(sampleToCamera, L), -1.0, 1.0);
-        vec3 phase = ScatterPhase(cosTheta);
+        vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
         float shadowVisibility = ComputeHPWaterVolumeShadow(samplePos, N);
         float volumeShadow = mix(0.35, 1.0, shadowVisibility);
         vec3 stepTransmittance = exp(-extinction * segment);
@@ -509,6 +517,7 @@ void main() {
                                                                     sampleToCamera,
                                                                     N,
                                                                     clamp(normalRoughness.w, 0.02, 1.0),
+                                                                    scatteringAlbedo,
                                                                     normalizedThickness);
         directScatter += accumTransmittance * (directionalScatter + punctualScatter) *
             extinguished * scatteringAlbedo * macroScatter * depthWeight;
