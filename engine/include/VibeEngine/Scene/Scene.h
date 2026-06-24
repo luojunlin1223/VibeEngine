@@ -231,6 +231,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterSpotLightCount = 0;
     bool HPWaterPunctualLightLoopEnabled = false;
     bool HPWaterPunctualLightLayerFilteringEnabled = false;
+    bool HPWaterPunctualLightInfluenceSortingEnabled = false;
     uint32_t HPWaterPunctualPointLightCandidates = 0;
     uint32_t HPWaterPunctualSpotLightCandidates = 0;
     uint32_t HPWaterPunctualPointLightCapacity = 0;
