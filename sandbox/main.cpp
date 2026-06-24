@@ -7172,6 +7172,7 @@ private:
         out << "HPWaterFluidSampleClampParityEnabled: " << d.HPWaterFluidSampleClampParityEnabled << "\n";
         out << "HPWaterFluidStartFrameBakeEnabled: " << d.HPWaterFluidStartFrameBakeEnabled << "\n";
         out << "HPWaterFluidHeightCaptureCacheReused: " << d.HPWaterFluidHeightCaptureCacheReused << "\n";
+        out << "HPWaterFluidLayerFilteringParityEnabled: " << d.HPWaterFluidLayerFilteringParityEnabled << "\n";
         out << "HPWaterFluidHeightTexture: " << d.HPWaterFluidHeightTexture << "\n";
         out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
         out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";

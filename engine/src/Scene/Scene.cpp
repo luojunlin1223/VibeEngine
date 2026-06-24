@@ -1460,6 +1460,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     glm::vec3 hpWaterFluidBoxSize(1.0f);
     bool hpWaterFluidObstaclesEnabled = false;
     bool hpWaterFluidStartFrameBake = false;
+    uint32_t hpWaterFluidWaterLayerMask = (1u << 4u);
     float hpWaterFluidObstaclePadding = 1.0f;
     float hpWaterFluidObstacleHeightRange = 4.0f;
     float hpWaterFluidSurfaceY = 0.0f;
@@ -1480,6 +1481,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     hpWaterEntities.reserve(4);
     hpWaterFluidObstacleCandidates.reserve(view.size_hint());
     hpWaterFluidSceneCaptureDraws.reserve(view.size_hint());
+
+    auto hpWaterLayerView = m_Registry.view<HPWaterComponent, TagComponent>();
+    for (auto entityID : hpWaterLayerView) {
+        if (!IsEntityActiveInHierarchy(entityID))
+            continue;
+        const auto& water = hpWaterLayerView.get<HPWaterComponent>(entityID);
+        const auto& tag = hpWaterLayerView.get<TagComponent>(entityID);
+        if (!water.Enabled || !water.FluidDynamicsEnabled)
+            continue;
+        if (tag.Layer >= 0 && tag.Layer < 32)
+            hpWaterFluidWaterLayerMask = (1u << static_cast<uint32_t>(tag.Layer));
+        break;
+    }
 
     for (auto entityID : view) {
         if (!IsEntityActiveInHierarchy(entityID)) continue;
@@ -1524,8 +1538,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 worldMax = glm::max(worldMax, worldCorner);
             }
 
+            const auto* tag = m_Registry.try_get<TagComponent>(entityID);
+            const uint32_t entityLayerMask = (tag && tag->Layer >= 0 && tag->Layer < 32)
+                ? (1u << static_cast<uint32_t>(tag->Layer))
+                : 0u;
+            const bool isWaterLayerForFluid = (entityLayerMask & hpWaterFluidWaterLayerMask) != 0u;
             const bool isTransparentForFluid = !isHPWater && (mr.Mat->IsTransparent() || mr.Color[3] < 0.999f);
-            if (!isHPWater && !isTransparentForFluid) {
+            if (!isHPWater && !isWaterLayerForFluid && !isTransparentForFluid) {
                 hpWaterFluidObstacleCandidates.push_back({ worldMin, worldMax });
                 hpWaterFluidSceneCaptureDraws.push_back({ entityID, mr.Mesh, model });
             }
@@ -1978,6 +1997,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterFluidStartFrameBakeEnabled = hpWaterFluidStartFrameBake;
         m_RenderDiagnostics.HPWaterFluidHeightCaptureCacheReused =
             m_DeferredRenderer.WasHPWaterFluidHeightCaptureCacheReused();
+        m_RenderDiagnostics.HPWaterFluidLayerFilteringParityEnabled = true;
         m_RenderDiagnostics.HPWaterFluidDisplacedWaterHeightCapture = displacedWaterHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidSceneGeometryHeightCapture = sceneGeometryHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidWaterCaptureDraws = gpuWaterCaptureDraws;
@@ -2556,6 +2576,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
     m_RenderDiagnostics.HPWaterFluidHeightCaptureCacheReused =
         m_DeferredRenderer.WasHPWaterFluidHeightCaptureCacheReused();
+    m_RenderDiagnostics.HPWaterFluidLayerFilteringParityEnabled =
+        hpWaterFluidEnabled ? m_RenderDiagnostics.HPWaterFluidLayerFilteringParityEnabled : false;
     m_RenderDiagnostics.HPWaterFluidHeightTexture = m_DeferredRenderer.GetHPWaterFluidHeightTexture();
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
     m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;
