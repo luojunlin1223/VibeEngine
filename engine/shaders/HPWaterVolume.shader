@@ -47,6 +47,7 @@ uniform sampler2D u_HPWaterRefractionWorldData;
 uniform sampler2D u_HPWaterRefractionMeta;
 uniform sampler2D u_HPWaterMask;
 uniform sampler2D u_HPWaterCaustic;
+uniform sampler2D u_AreaLightLTCLUT;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
@@ -78,6 +79,7 @@ uniform float u_SpotLightRanges[4];
 uniform float u_SpotLightInnerCos[4];
 uniform float u_SpotLightOuterCos[4];
 uniform int u_NumAreaLights;
+uniform int u_AreaLightLTCLUTEnabled;
 uniform vec3 u_AreaLightPositions[4];
 uniform vec3 u_AreaLightRights[4];
 uniform vec3 u_AreaLightUps[4];
@@ -162,6 +164,15 @@ float HPWaterRangeAttenuation(float distanceToLight, float range) {
     return rangeWindow / (distanceToLight * distanceToLight + 1.0);
 }
 
+vec4 SampleHPWaterAreaLightLTC(float roughness, float nDotV) {
+    if (u_AreaLightLTCLUTEnabled != 1) {
+        return vec4(1.0, 0.5, 0.35, 1.0);
+    }
+
+    return texture(u_AreaLightLTCLUT,
+        vec2(clamp(nDotV, 0.0, 1.0), clamp(roughness, 0.0, 1.0)));
+}
+
 void AccumulateHPWaterAreaLightSample(vec3 samplePos,
                                       vec3 samplePoint,
                                       vec3 forward,
@@ -181,7 +192,12 @@ void AccumulateHPWaterAreaLightSample(vec3 samplePos,
     weightSum += sampleWeight;
 }
 
-vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos, int lightIndex, out vec3 Lp) {
+vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos,
+                                     vec3 N,
+                                     vec3 sampleToCamera,
+                                     float roughness,
+                                     int lightIndex,
+                                     out vec3 Lp) {
     vec3 center = u_AreaLightPositions[lightIndex];
     vec3 right = SafeNormalize(u_AreaLightRights[lightIndex], vec3(1.0, 0.0, 0.0));
     vec3 up = SafeNormalize(u_AreaLightUps[lightIndex], vec3(0.0, 1.0, 0.0));
@@ -190,17 +206,19 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos, int lightIndex, out vec3 Lp
     float height = max(u_AreaLightHeights[lightIndex], 0.001);
     float lightRange = max(u_AreaLightRanges[lightIndex], 0.001);
     vec2 halfSize = vec2(width, height) * 0.5;
+    vec4 ltc = SampleHPWaterAreaLightLTC(roughness, clamp(dot(N, sampleToCamera), 0.0, 1.0));
+    vec2 ltcHalfSize = halfSize * mix(0.45, 1.0, clamp(ltc.g, 0.0, 1.0));
 
     vec3 weightedDirection = vec3(0.0);
     float weightSum = 0.0;
     AccumulateHPWaterAreaLightSample(samplePos, center, forward, lightRange, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(samplePos, center + right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(samplePos, center + right * ltcHalfSize.x + up * ltcHalfSize.y,
         forward, lightRange, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(samplePos, center - right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(samplePos, center - right * ltcHalfSize.x + up * ltcHalfSize.y,
         forward, lightRange, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(samplePos, center + right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(samplePos, center + right * ltcHalfSize.x - up * ltcHalfSize.y,
         forward, lightRange, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(samplePos, center - right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(samplePos, center - right * ltcHalfSize.x - up * ltcHalfSize.y,
         forward, lightRange, weightedDirection, weightSum);
 
     Lp = SafeNormalize(weightedDirection, forward);
@@ -211,11 +229,13 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos, int lightIndex, out vec3 Lp
     float areaScale = clamp(width * height * 0.25, 0.1, 8.0);
     return u_AreaLightColors[lightIndex] *
         max(u_AreaLightIntensities[lightIndex], 0.0) *
-        (weightSum / 5.0) * areaScale;
+        (weightSum / 5.0) * areaScale * max(ltc.r * ltc.a, 0.0);
 }
 
 vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
                                           vec3 sampleToCamera,
+                                          vec3 N,
+                                          float roughness,
                                           float normalizedThickness) {
     vec3 punctual = vec3(0.0);
     int pointCount = clamp(u_NumPointLights, 0, 8);
@@ -272,7 +292,12 @@ vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
             break;
 
         vec3 Lp = vec3(0.0, 1.0, 0.0);
-        vec3 radiance = ComputeHPWaterAreaLightRadiance(samplePos, i, Lp);
+        vec3 radiance = ComputeHPWaterAreaLightRadiance(samplePos,
+                                                        N,
+                                                        sampleToCamera,
+                                                        roughness,
+                                                        i,
+                                                        Lp);
         if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001)
             continue;
 
@@ -482,6 +507,8 @@ void main() {
         vec3 directionalScatter = baseDirectLight * volumeShadow * (phase * 2.6);
         vec3 punctualScatter = ComputeHPWaterVolumePunctualLighting(samplePos,
                                                                     sampleToCamera,
+                                                                    N,
+                                                                    clamp(normalRoughness.w, 0.02, 1.0),
                                                                     normalizedThickness);
         directScatter += accumTransmittance * (directionalScatter + punctualScatter) *
             extinguished * scatteringAlbedo * macroScatter * depthWeight;

@@ -395,6 +395,9 @@ public:
     uint32_t GetHPWaterFGDLUTTexture() const { return m_HPWaterFGDLUTTexture; }
     uint32_t GetHPWaterFGDLUTResolution() const { return m_HPWaterFGDLUTResolution; }
     bool IsHPWaterFGDLUTValid() const { return m_HPWaterFGDLUTValid; }
+    uint32_t GetHPWaterAreaLightLTCLUTTexture() const { return m_HPWaterAreaLightLTCLUTTexture; }
+    uint32_t GetHPWaterAreaLightLTCLUTResolution() const { return m_HPWaterAreaLightLTCLUTResolution; }
+    bool IsHPWaterAreaLightLTCLUTValid() const { return m_HPWaterAreaLightLTCLUTValid; }
 
     /// Get HPWater explicit coverage mask texture.
     uint32_t GetHPWaterMaskTexture() const;
@@ -628,6 +631,7 @@ private:
     void CreateHPWaterCausticFBO();
     void CreateHPWaterCausticComputeTexture(uint32_t width = 0, uint32_t height = 0);
     void CreateHPWaterFGDLUT();
+    void CreateHPWaterAreaLightLTCLUT();
     void CreateHPWaterCausticAtlasFBO(uint32_t tileResolution);
     void CreateHPWaterGBuffer();
     void CreateHPWaterMaskFBO();
@@ -646,6 +650,7 @@ private:
     void DestroyHPWaterDepthPyramid();
     void DestroyHPWaterCausticComputeTexture();
     void DestroyHPWaterFGDLUT();
+    void DestroyHPWaterAreaLightLTCLUT();
     void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
     bool BuildHPWaterVolumeMotionVectors(const glm::mat4& currentViewProjection,
@@ -730,6 +735,9 @@ private:
     uint32_t m_HPWaterFGDLUTTexture = 0;
     uint32_t m_HPWaterFGDLUTResolution = 128;
     bool m_HPWaterFGDLUTValid = false;
+    uint32_t m_HPWaterAreaLightLTCLUTTexture = 0;
+    uint32_t m_HPWaterAreaLightLTCLUTResolution = 64;
+    bool m_HPWaterAreaLightLTCLUTValid = false;
 
     // HPWater opaque scene-depth pyramid for Hi-Z assisted refraction.
     uint32_t m_HPWaterDepthPyramidTexture = 0;

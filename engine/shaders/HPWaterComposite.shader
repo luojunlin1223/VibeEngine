@@ -53,6 +53,7 @@ uniform sampler2D u_HPWaterCaustic;
 uniform sampler2D u_HPWaterSSRLighting;
 uniform sampler2D u_SkyTexture;
 uniform sampler2D u_PreintegratedFGDLUT;
+uniform sampler2D u_AreaLightLTCLUT;
 uniform samplerCube u_ReflectionProbe;
 uniform samplerCube u_ReflectionProbeSecondary;
 
@@ -125,6 +126,7 @@ uniform int u_HasSkyTexture;
 uniform int u_HasReflectionProbe;
 uniform int u_ReflectionProbeBoxProjectionEnabled;
 uniform int u_PreintegratedFGDLUTEnabled;
+uniform int u_AreaLightLTCLUTEnabled;
 uniform int u_HPWaterDepthPyramidMipCount;
 uniform int u_SceneColorMipEnabled;
 uniform int u_SceneColorMipCount;
@@ -545,6 +547,15 @@ vec3 EvaluateHPWaterSpecularLight(vec3 N,
         radiance * NdotL * energyCompensation;
 }
 
+vec4 SampleHPWaterAreaLightLTC(float roughness, float nDotV) {
+    if (u_AreaLightLTCLUTEnabled != 1) {
+        return vec4(1.0, 0.5, 0.35, 1.0);
+    }
+
+    return texture(u_AreaLightLTCLUT,
+        vec2(clamp(nDotV, 0.0, 1.0), clamp(roughness, 0.0, 1.0)));
+}
+
 void AccumulateHPWaterAreaLightSample(vec3 positionWS,
                                       vec3 samplePoint,
                                       vec3 forward,
@@ -568,7 +579,13 @@ void AccumulateHPWaterAreaLightSample(vec3 positionWS,
     weightSum += sampleWeight;
 }
 
-vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS, int lightIndex, out vec3 L) {
+vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
+                                     vec3 N,
+                                     vec3 V,
+                                     float roughness,
+                                     int lightIndex,
+                                     out vec3 L,
+                                     out float diffuseScale) {
     vec3 center = u_AreaLightPositions[lightIndex];
     vec3 right = NormalizeOr(u_AreaLightRights[lightIndex], vec3(1.0, 0.0, 0.0));
     vec3 up = NormalizeOr(u_AreaLightUps[lightIndex], vec3(0.0, 1.0, 0.0));
@@ -577,26 +594,29 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS, int lightIndex, out vec3 L
     float height = max(u_AreaLightHeights[lightIndex], 0.001);
     float range = max(u_AreaLightRanges[lightIndex], 0.001);
     vec2 halfSize = vec2(width, height) * 0.5;
+    vec4 ltc = SampleHPWaterAreaLightLTC(roughness, clamp(dot(N, V), 0.0, 1.0));
+    vec2 ltcHalfSize = halfSize * mix(0.45, 1.0, clamp(ltc.g, 0.0, 1.0));
 
     vec3 weightedDirection = vec3(0.0);
     float weightSum = 0.0;
     AccumulateHPWaterAreaLightSample(positionWS, center, forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, center + right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(positionWS, center + right * ltcHalfSize.x + up * ltcHalfSize.y,
         forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, center - right * halfSize.x * 0.5 + up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(positionWS, center - right * ltcHalfSize.x + up * ltcHalfSize.y,
         forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, center + right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(positionWS, center + right * ltcHalfSize.x - up * ltcHalfSize.y,
         forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, center - right * halfSize.x * 0.5 - up * halfSize.y * 0.5,
+    AccumulateHPWaterAreaLightSample(positionWS, center - right * ltcHalfSize.x - up * ltcHalfSize.y,
         forward, range, weightedDirection, weightSum);
 
     L = NormalizeOr(weightedDirection, forward);
+    diffuseScale = max(ltc.a, 0.0);
     if (weightSum <= 0.0) {
         return vec3(0.0);
     }
 
     float areaScale = clamp(width * height * 0.25, 0.1, 8.0);
-    float attenuation = (weightSum / 5.0) * areaScale;
+    float attenuation = (weightSum / 5.0) * areaScale * max(ltc.r, 0.0);
     return u_AreaLightColors[lightIndex] *
         max(u_AreaLightIntensities[lightIndex], 0.0) * attenuation;
 }
@@ -1024,14 +1044,21 @@ void main() {
         }
 
         vec3 localL = vec3(0.0, 1.0, 0.0);
-        vec3 radiance = ComputeHPWaterAreaLightRadiance(waterWorldPos, i, localL);
+        float areaDiffuseScale = 1.0;
+        vec3 radiance = ComputeHPWaterAreaLightRadiance(waterWorldPos,
+                                                        N,
+                                                        V,
+                                                        roughness,
+                                                        i,
+                                                        localL,
+                                                        areaDiffuseScale);
         if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001) {
             continue;
         }
 
         directSpecular += EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
-        punctualWaterLight += radiance * clamp(dot(N, localL), 0.0, 1.0);
+        punctualWaterLight += radiance * areaDiffuseScale * clamp(dot(N, localL), 0.0, 1.0);
     }
 
     vec3 skyReflection = vec3(0.0);

@@ -219,6 +219,10 @@ struct RenderDiagnostics {
     bool HPWaterPreintegratedFGDLUTValid = false;
     uint32_t HPWaterPreintegratedFGDLUTTexture = 0;
     uint32_t HPWaterPreintegratedFGDLUTResolution = 0;
+    bool HPWaterAreaLightLTCLUTValid = false;
+    uint32_t HPWaterAreaLightLTCLUTTexture = 0;
+    uint32_t HPWaterAreaLightLTCLUTResolution = 0;
+    bool HPWaterAreaLightLTCSamplingEnabled = false;
     bool HPWaterLightLoopInputsValid = false;
     bool HPWaterSurfaceShadowSamplingEnabled = false;
     bool HPWaterShadowCascadeDitherEnabled = false;
