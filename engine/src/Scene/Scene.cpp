@@ -123,23 +123,37 @@ static HPWaterSpectrumSample SampleHPWaterSpectrum(const HPWaterComponent& water
     const glm::vec2 side(-wind.y, wind.x);
     const float domain = std::max(std::max(water.WorldSizeX, water.WorldSizeZ), 1.0f);
 
-    static const float wavelengthFactors[] = { 0.18f, 0.12f, 0.078f, 0.052f, 0.036f, 0.025f, 0.018f, 0.013f };
-    static const float directionOffsets[] = { 0.00f, 0.18f, -0.24f, 0.43f, -0.52f, 0.68f, -0.84f, 1.05f };
-    static const float phaseOffsets[] = { 0.0f, 1.7f, 3.1f, 4.6f, 2.4f, 5.2f, 0.9f, 3.9f };
+    static const float wavelengthFactors[] = {
+        0.46f, 0.32f, 0.22f, 0.155f, 0.108f, 0.076f, 0.054f, 0.038f,
+        0.027f, 0.019f, 0.0135f, 0.0095f, 0.0068f, 0.0048f, 0.0034f, 0.0024f
+    };
+    static const float directionOffsets[] = {
+        0.00f, 0.16f, -0.21f, 0.34f, -0.43f, 0.56f, -0.69f, 0.82f,
+        -0.96f, 1.10f, -1.26f, 1.42f, -1.58f, 1.74f, -1.92f, 2.10f
+    };
+    static const float phaseOffsets[] = {
+        0.0f, 1.7f, 3.1f, 4.6f, 2.4f, 5.2f, 0.9f, 3.9f,
+        5.8f, 2.8f, 4.2f, 1.2f, 3.6f, 5.0f, 0.45f, 2.15f
+    };
 
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 16; ++i) {
         glm::vec2 dir = glm::normalize(wind + side * directionOffsets[i]);
         const float wavelength = std::max(domain * wavelengthFactors[i], 0.25f);
         const float k = twoPi / wavelength;
         const float omega = std::sqrt(gravity * k);
-        const float amplitude = water.SpectrumAmplitude * std::pow(0.64f, static_cast<float>(i));
+        const float octave = static_cast<float>(i);
+        const float swell = std::exp(-octave * 0.34f);
+        const float capillaryFade = 1.0f / (1.0f + std::pow(std::max(0.0f, octave - 9.0f), 1.35f) * 0.36f);
+        const float directionalEnergy = std::pow(std::max(glm::dot(dir, wind), 0.0f), 2.0f) * 0.72f + 0.28f;
+        const float amplitude = water.SpectrumAmplitude * swell * capillaryFade * directionalEnergy;
         const float phase = k * (dir.x * localX + dir.y * localZ) + omega * water._OceanTime + phaseOffsets[i];
         const float s = std::sin(phase);
         const float c = std::cos(phase);
 
         sample.Height += s * amplitude;
-        sample.Dx += c * amplitude * k * dir.x * 1.8f;
-        sample.Dz += c * amplitude * k * dir.y * 1.8f;
+        const float slopeGain = water.SpectrumNormalStrength * (1.15f + octave * 0.045f);
+        sample.Dx += c * amplitude * k * dir.x * slopeGain;
+        sample.Dz += c * amplitude * k * dir.y * slopeGain;
         sample.ChopX += c * amplitude * water.Choppiness * dir.x;
         sample.ChopZ += c * amplitude * water.Choppiness * dir.y;
     }
@@ -242,7 +256,7 @@ static void RebuildHPWaterMesh(HPWaterComponent& water, MeshRendererComponent* m
         if (!meshRenderer->Mat || meshRenderer->Mat->GetName() != "Water")
             meshRenderer->Mat = MaterialLibrary::Get("Water");
         meshRenderer->CastShadows = false;
-        const float spectrumExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude, 0.0f) * 2.5f : 0.0f;
+        const float spectrumExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude, 0.0f) * 3.5f : 0.0f;
         const float chopExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude * water.Choppiness, 0.0f) * 3.0f : 0.0f;
         meshRenderer->LocalBounds = {
             glm::vec3(-water.WorldSizeX * 0.5f - chopExtent, water.BaseHeight - water.HeightScale * 2.0f - spectrumExtent, -water.WorldSizeZ * 0.5f - chopExtent),
@@ -375,7 +389,7 @@ static void UpdateHPWaterComponent(HPWaterComponent& water, MeshRendererComponen
     UploadHPWaterMesh(water);
     if (meshRenderer) {
         meshRenderer->Mesh = water._Mesh;
-        const float spectrumExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude, 0.0f) * 2.5f : 0.0f;
+        const float spectrumExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude, 0.0f) * 3.5f : 0.0f;
         const float chopExtent = water.SpectrumWaves ? std::max(water.SpectrumAmplitude * water.Choppiness, 0.0f) * 3.0f : 0.0f;
         meshRenderer->LocalBounds = {
             glm::vec3(-water.WorldSizeX * 0.5f - chopExtent, water.BaseHeight - water.HeightScale * 2.0f - spectrumExtent, -water.WorldSizeZ * 0.5f - chopExtent),
@@ -2066,6 +2080,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterShader->SetFloat("u_HPThickness", water->DepthTintDistance);
                 hpWaterShader->SetFloat("u_HPHeightScale", water->HeightScale);
                 hpWaterShader->SetFloat("u_HPBaseHeight", water->BaseHeight);
+                hpWaterShader->SetInt("u_HPSpectrumWaves", water->SpectrumWaves ? 1 : 0);
+                hpWaterShader->SetFloat("u_HPSpectrumAmplitude", water->SpectrumAmplitude);
+                hpWaterShader->SetFloat("u_HPSpectrumWindAngle", water->SpectrumWindAngle);
+                hpWaterShader->SetFloat("u_HPSpectrumTime", water->_OceanTime);
+                hpWaterShader->SetFloat("u_HPSpectrumNormalStrength", water->SpectrumNormalStrength);
+                hpWaterShader->SetFloat("u_HPChoppiness", water->Choppiness);
                 const bool fluidValid = m_DeferredRenderer.IsHPWaterFluidDynamicsValid() && water->FluidDynamicsEnabled;
                 glActiveTexture(GL_TEXTURE8);
                 glBindTexture(GL_TEXTURE_2D, fluidValid
@@ -2076,6 +2096,18 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterShader->SetVec3("u_HPFluidBoxCenter", m_DeferredRenderer.GetHPWaterFluidBoxCenter());
                 hpWaterShader->SetVec3("u_HPFluidBoxSize", m_DeferredRenderer.GetHPWaterFluidBoxSize());
                 hpWaterShader->SetFloat("u_HPFluidHeightScale", water->HeightScale);
+
+                m_RenderDiagnostics.HPWaterSpectralOceanEnabled =
+                    m_RenderDiagnostics.HPWaterSpectralOceanEnabled ||
+                    (water->SpectrumWaves && water->SpectrumAmplitude > 0.0f);
+                m_RenderDiagnostics.HPWaterSpectralNormalParityEnabled =
+                    m_RenderDiagnostics.HPWaterSpectralNormalParityEnabled ||
+                    (water->SpectrumWaves && water->SpectrumAmplitude > 0.0f &&
+                     water->SpectrumNormalStrength > 0.0f);
+                m_RenderDiagnostics.HPWaterSpectrumAmplitude =
+                    std::max(m_RenderDiagnostics.HPWaterSpectrumAmplitude, water->SpectrumAmplitude);
+                m_RenderDiagnostics.HPWaterSpectrumNormalStrength =
+                    std::max(m_RenderDiagnostics.HPWaterSpectrumNormalStrength, water->SpectrumNormalStrength);
 
                 RenderCommand::DrawIndexed(drawVAO);
                 m_RenderDiagnostics.HPWaterGBufferDrawn++;

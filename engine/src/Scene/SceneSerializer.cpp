@@ -576,6 +576,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "SpectrumAmplitude" << YAML::Value << w.SpectrumAmplitude;
         out << YAML::Key << "SpectrumWindAngle" << YAML::Value << w.SpectrumWindAngle;
         out << YAML::Key << "SpectrumTimeScale" << YAML::Value << w.SpectrumTimeScale;
+        out << YAML::Key << "SpectrumNormalStrength" << YAML::Value << w.SpectrumNormalStrength;
         out << YAML::Key << "Choppiness" << YAML::Value << w.Choppiness;
         out << YAML::Key << "AutoImpulse" << YAML::Value << w.AutoImpulse;
         out << YAML::Key << "AutoImpulseInterval" << YAML::Value << w.AutoImpulseInterval;
@@ -1568,6 +1569,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["SpectrumAmplitude"])   w.SpectrumAmplitude = wNode["SpectrumAmplitude"].as<float>();
                 if (wNode["SpectrumWindAngle"])   w.SpectrumWindAngle = wNode["SpectrumWindAngle"].as<float>();
                 if (wNode["SpectrumTimeScale"])   w.SpectrumTimeScale = wNode["SpectrumTimeScale"].as<float>();
+                if (wNode["SpectrumNormalStrength"]) w.SpectrumNormalStrength = wNode["SpectrumNormalStrength"].as<float>();
                 if (wNode["Choppiness"])          w.Choppiness = wNode["Choppiness"].as<float>();
                 if (wNode["AutoImpulse"])         w.AutoImpulse = wNode["AutoImpulse"].as<bool>();
                 if (wNode["AutoImpulseInterval"]) w.AutoImpulseInterval = wNode["AutoImpulseInterval"].as<float>();
@@ -1618,6 +1620,9 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["FluidObstaclePadding"]) w.FluidObstaclePadding = wNode["FluidObstaclePadding"].as<float>();
                 if (wNode["FluidObstacleHeightRange"]) w.FluidObstacleHeightRange = wNode["FluidObstacleHeightRange"].as<float>();
                 w.RefractionSampleCount = std::clamp(w.RefractionSampleCount, 4, 64);
+                w.SpectrumAmplitude = std::clamp(w.SpectrumAmplitude, 0.0f, 10.0f);
+                w.SpectrumNormalStrength = std::clamp(w.SpectrumNormalStrength, 0.0f, 4.0f);
+                w.Choppiness = std::clamp(w.Choppiness, 0.0f, 2.0f);
                 w.MaxRefractionCrossDistance = std::clamp(w.MaxRefractionCrossDistance, 0.1f, 200.0f);
                 w.RefractionThicknessOffset = std::clamp(w.RefractionThicknessOffset, 0.01f, 8.0f);
                 w.EnvironmentReflectionIntensity = std::clamp(w.EnvironmentReflectionIntensity, 0.0f, 3.0f);

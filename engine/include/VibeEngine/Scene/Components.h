@@ -385,6 +385,7 @@ struct HPWaterComponent {
     float SpectrumAmplitude = 0.75f;
     float SpectrumWindAngle = 35.0f;
     float SpectrumTimeScale = 1.35f;
+    float SpectrumNormalStrength = 1.15f;
     float Choppiness = 0.42f;
 
     bool  AutoImpulse = true;
