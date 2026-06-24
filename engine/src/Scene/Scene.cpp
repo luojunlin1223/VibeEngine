@@ -1328,7 +1328,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     std::array<float, MAX_POINT_LIGHTS> pointIntensities = {};
     std::array<float, MAX_POINT_LIGHTS> pointRanges = {};
     int hpWaterNumPointLights = 0;
+    uint32_t hpWaterPunctualPointLightCandidates = 0;
+    uint32_t hpWaterPunctualSpotLightCandidates = 0;
     uint32_t hpWaterPunctualLightsLayerSkipped = 0;
+    uint32_t hpWaterPunctualLightsCapacitySkipped = 0;
     std::array<glm::vec3, MAX_POINT_LIGHTS> hpWaterPointPositions = {};
     std::array<glm::vec3, MAX_POINT_LIGHTS> hpWaterPointColors = {};
     std::array<float, MAX_POINT_LIGHTS> hpWaterPointIntensities = {};
@@ -1349,12 +1352,15 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 numPointLights++;
             }
             if (lightMatchesHPWaterLayer(plEntity)) {
+                ++hpWaterPunctualPointLightCandidates;
                 if (hpWaterNumPointLights < MAX_POINT_LIGHTS) {
                     hpWaterPointPositions[hpWaterNumPointLights]   = lightPosition;
                     hpWaterPointColors[hpWaterNumPointLights]      = lightColorValue;
                     hpWaterPointIntensities[hpWaterNumPointLights] = pl.Intensity;
                     hpWaterPointRanges[hpWaterNumPointLights]      = pl.Range;
                     hpWaterNumPointLights++;
+                } else {
+                    ++hpWaterPunctualLightsCapacitySkipped;
                 }
             } else {
                 ++hpWaterPunctualLightsLayerSkipped;
@@ -1402,6 +1408,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 numSpotLights++;
             }
             if (lightMatchesHPWaterLayer(slEntity)) {
+                ++hpWaterPunctualSpotLightCandidates;
                 if (hpWaterNumSpotLights < MAX_SPOT_LIGHTS) {
                     hpWaterSpotPositions[hpWaterNumSpotLights]   = lightPosition;
                     hpWaterSpotDirections[hpWaterNumSpotLights]  = lightDirection;
@@ -1411,6 +1418,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     hpWaterSpotInnerCos[hpWaterNumSpotLights]    = innerCos;
                     hpWaterSpotOuterCos[hpWaterNumSpotLights]    = outerCos;
                     hpWaterNumSpotLights++;
+                } else {
+                    ++hpWaterPunctualLightsCapacitySkipped;
                 }
             } else {
                 ++hpWaterPunctualLightsLayerSkipped;
@@ -2558,8 +2567,18 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterPunctualLightLoopEnabled =
             (hpWaterNumPointLights + hpWaterNumSpotLights) > 0;
         m_RenderDiagnostics.HPWaterPunctualLightLayerFilteringEnabled = true;
+        m_RenderDiagnostics.HPWaterPunctualPointLightCandidates =
+            hpWaterPunctualPointLightCandidates;
+        m_RenderDiagnostics.HPWaterPunctualSpotLightCandidates =
+            hpWaterPunctualSpotLightCandidates;
+        m_RenderDiagnostics.HPWaterPunctualPointLightCapacity =
+            static_cast<uint32_t>(MAX_POINT_LIGHTS);
+        m_RenderDiagnostics.HPWaterPunctualSpotLightCapacity =
+            static_cast<uint32_t>(MAX_SPOT_LIGHTS);
         m_RenderDiagnostics.HPWaterPunctualLightsLayerSkipped =
             hpWaterPunctualLightsLayerSkipped;
+        m_RenderDiagnostics.HPWaterPunctualLightsCapacitySkipped =
+            hpWaterPunctualLightsCapacitySkipped;
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;
