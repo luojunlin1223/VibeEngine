@@ -242,6 +242,7 @@ struct RenderDiagnostics {
     bool HPWaterAreaLightApproximationEnabled = false;
     bool HPWaterAreaLightRectangleSamplingEnabled = false;
     bool HPWaterPunctualLightLayerFilteringEnabled = false;
+    bool HPWaterAreaLightLayerFilteringEnabled = false;
     bool HPWaterPunctualLightInfluenceSortingEnabled = false;
     uint32_t HPWaterPunctualPointLightCandidates = 0;
     uint32_t HPWaterPunctualSpotLightCandidates = 0;
@@ -251,6 +252,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterAreaLightCapacity = 0;
     uint32_t HPWaterPunctualLightsLayerSkipped = 0;
     uint32_t HPWaterPunctualLightsCapacitySkipped = 0;
+    uint32_t HPWaterAreaLightsLayerSkipped = 0;
     uint32_t HPWaterAreaLightsCapacitySkipped = 0;
     uint32_t HPWaterVolumePointLightCount = 0;
     uint32_t HPWaterVolumeSpotLightCount = 0;

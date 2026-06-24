@@ -1571,6 +1571,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     static constexpr int MAX_AREA_LIGHTS = 4;
     int hpWaterNumAreaLights = 0;
     uint32_t hpWaterAreaLightCandidates = 0;
+    uint32_t hpWaterAreaLightsLayerSkipped = 0;
     uint32_t hpWaterAreaLightsCapacitySkipped = 0;
     struct HPWaterAreaLightCandidate {
         glm::vec3 Position{0.0f};
@@ -1601,7 +1602,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 continue;
             auto [tc, area] = areaView.get<TransformComponent, AreaLightComponent>(areaEntity);
             if (!lightMatchesHPWaterLayer(areaEntity)) {
-                ++hpWaterPunctualLightsLayerSkipped;
+                ++hpWaterAreaLightsLayerSkipped;
                 continue;
             }
 
@@ -1655,7 +1656,6 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     if (hpWaterAreaCandidates.size() > static_cast<size_t>(MAX_AREA_LIGHTS)) {
         hpWaterAreaLightsCapacitySkipped =
             static_cast<uint32_t>(hpWaterAreaCandidates.size() - static_cast<size_t>(MAX_AREA_LIGHTS));
-        hpWaterPunctualLightsCapacitySkipped += hpWaterAreaLightsCapacitySkipped;
     }
 
     auto& ps = m_PipelineSettings;
@@ -2809,6 +2809,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterAreaLightLTCCosThetaParamEnabled =
             m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
         m_RenderDiagnostics.HPWaterPunctualLightLayerFilteringEnabled = true;
+        m_RenderDiagnostics.HPWaterAreaLightLayerFilteringEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualLightInfluenceSortingEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualPointLightCandidates =
             hpWaterPunctualPointLightCandidates;
@@ -2826,6 +2827,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterPunctualLightsLayerSkipped;
         m_RenderDiagnostics.HPWaterPunctualLightsCapacitySkipped =
             hpWaterPunctualLightsCapacitySkipped;
+        m_RenderDiagnostics.HPWaterAreaLightsLayerSkipped =
+            hpWaterAreaLightsLayerSkipped;
         m_RenderDiagnostics.HPWaterAreaLightsCapacitySkipped =
             hpWaterAreaLightsCapacitySkipped;
         const uint32_t hpWaterSkyTexture =
