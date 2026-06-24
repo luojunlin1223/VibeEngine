@@ -1318,24 +1318,31 @@ private:
     }
 
     void EnsureLauncherReflectionProbe() {
-        auto probeEntity = FindEntityByName("HPWater Reflection Probe");
-        if (!probeEntity) {
-            probeEntity = m_Scene->CreateEntity("HPWater Reflection Probe");
+        auto ensureProbe = [&](const std::string& name,
+                               const std::array<float, 3>& position,
+                               const std::array<float, 3>& boxSize) {
+            auto probeEntity = FindEntityByName(name);
+            if (!probeEntity)
+                probeEntity = m_Scene->CreateEntity(name);
+
             auto& tc = probeEntity.GetComponent<VE::TransformComponent>();
-            tc.Position = { 0.0f, 2.5f, 22.0f };
+            tc.Position = position;
             tc.Scale = { 1.0f, 1.0f, 1.0f };
-        }
 
-        auto& probe = probeEntity.HasComponent<VE::ReflectionProbeComponent>()
-            ? probeEntity.GetComponent<VE::ReflectionProbeComponent>()
-            : probeEntity.AddComponent<VE::ReflectionProbeComponent>();
+            auto& probe = probeEntity.HasComponent<VE::ReflectionProbeComponent>()
+                ? probeEntity.GetComponent<VE::ReflectionProbeComponent>()
+                : probeEntity.AddComponent<VE::ReflectionProbeComponent>();
 
-        probe.Resolution = 128;
-        probe.BoxSize = { 80.0f, 24.0f, 80.0f };
-        probe.BakeOnLoad = false;
+            probe.Resolution = 128;
+            probe.BoxSize = boxSize;
+            probe.BakeOnLoad = false;
 
-        if (!probe._Probe || !probe._Probe->IsBaked() || probe._Probe->GetCubemapID() == 0)
-            m_Scene->BakeReflectionProbe(probeEntity.GetHandle());
+            if (!probe._Probe || !probe._Probe->IsBaked() || probe._Probe->GetCubemapID() == 0)
+                m_Scene->BakeReflectionProbe(probeEntity.GetHandle());
+        };
+
+        ensureProbe("HPWater Reflection Probe", { 0.0f, 2.5f, 22.0f }, { 80.0f, 24.0f, 80.0f });
+        ensureProbe("HPWater Reflection Probe Secondary", { 32.0f, 2.5f, 22.0f }, { 80.0f, 24.0f, 80.0f });
     }
 
     VE::Entity CreateLauncherImportedMesh(const std::string& name,
