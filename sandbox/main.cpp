@@ -7177,6 +7177,7 @@ private:
         out << "HPWaterFluidHeightFieldValid: " << d.HPWaterFluidHeightFieldValid << "\n";
         out << "HPWaterFluidHeightCaptureRan: " << d.HPWaterFluidHeightCaptureRan << "\n";
         out << "HPWaterFluidHeightCaptureValid: " << d.HPWaterFluidHeightCaptureValid << "\n";
+        out << "HPWaterFluidCaptureSpaceParityEnabled: " << d.HPWaterFluidCaptureSpaceParityEnabled << "\n";
         out << "HPWaterFluidDisplacedWaterHeightCapture: " << d.HPWaterFluidDisplacedWaterHeightCapture << "\n";
         out << "HPWaterFluidSceneGeometryHeightCapture: " << d.HPWaterFluidSceneGeometryHeightCapture << "\n";
         out << "HPWaterFluidWaterHeightTexture: " << d.HPWaterFluidWaterHeightTexture << "\n";

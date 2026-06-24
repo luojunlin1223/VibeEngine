@@ -1771,7 +1771,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterFluidBoxCenter + glm::vec3(0.0f, hpWaterFluidBoxSize.y * 0.5f, 0.0f);
         const glm::vec3 captureTarget =
             hpWaterFluidBoxCenter - glm::vec3(0.0f, hpWaterFluidBoxSize.y * 0.5f, 0.0f);
-        const glm::mat4 topDownView = glm::lookAt(captureEye, captureTarget, glm::vec3(0.0f, 0.0f, -1.0f));
+        const glm::mat4 topDownView = glm::lookAt(captureEye, captureTarget, glm::vec3(0.0f, 0.0f, 1.0f));
         const glm::mat4 topDownProjection = glm::ortho(
             -hpWaterFluidBoxSize.x * 0.5f,
              hpWaterFluidBoxSize.x * 0.5f,
@@ -1962,6 +1962,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterFluidHeightCaptureRan =
             m_DeferredRenderer.DidHPWaterFluidHeightCaptureRun();
         m_RenderDiagnostics.HPWaterFluidHeightCaptureValid = gpuHeightCaptureValid;
+        m_RenderDiagnostics.HPWaterFluidCaptureSpaceParityEnabled = true;
         m_RenderDiagnostics.HPWaterFluidDisplacedWaterHeightCapture = displacedWaterHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidSceneGeometryHeightCapture = sceneGeometryHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidWaterCaptureDraws = gpuWaterCaptureDraws;

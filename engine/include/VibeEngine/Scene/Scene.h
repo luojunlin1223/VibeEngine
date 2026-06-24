@@ -308,6 +308,7 @@ struct RenderDiagnostics {
     bool HPWaterFluidHeightFieldValid = false;
     bool HPWaterFluidHeightCaptureRan = false;
     bool HPWaterFluidHeightCaptureValid = false;
+    bool HPWaterFluidCaptureSpaceParityEnabled = false;
     bool HPWaterFluidDisplacedWaterHeightCapture = false;
     bool HPWaterFluidSceneGeometryHeightCapture = false;
     uint32_t HPWaterFluidWaterHeightTexture = 0;
