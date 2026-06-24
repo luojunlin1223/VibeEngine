@@ -2463,6 +2463,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeRan = false;
         m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
         m_HPWaterFluidSourceClampEnabled = false;
+        m_HPWaterFluidWaveEquationParityEnabled = false;
         return false;
     }
 
@@ -2473,6 +2474,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeRan = false;
         m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
         m_HPWaterFluidSourceClampEnabled = false;
+        m_HPWaterFluidWaveEquationParityEnabled = false;
         return false;
     }
 
@@ -2499,14 +2501,14 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, heightFieldValid ? sceneHeightTexture : 0);
         m_HPWaterFluidComputeShader->SetInt("u_SceneHeightTexture", 2);
-        m_HPWaterFluidComputeShader->SetFloat("u_WaveSpeed", std::clamp(waveSpeed, 0.0f, 2.0f));
-        m_HPWaterFluidComputeShader->SetFloat("u_DampingFactor", std::clamp(damping, 0.0f, 0.98f));
-        m_HPWaterFluidComputeShader->SetFloat("u_WaveSourceIntensity", std::clamp(sourceIntensity, -1.0f, 1.0f));
-        m_HPWaterFluidComputeShader->SetFloat("u_WaveSourceRadius", std::max(sourceRadiusPixels, 1.0f));
+        m_HPWaterFluidComputeShader->SetFloat("u_WaveSpeed", waveSpeed);
+        m_HPWaterFluidComputeShader->SetFloat("u_DampingFactor", damping);
+        m_HPWaterFluidComputeShader->SetFloat("u_WaveSourceIntensity", sourceIntensity);
+        m_HPWaterFluidComputeShader->SetFloat("u_WaveSourceRadius", sourceRadiusPixels);
         m_HPWaterFluidComputeShader->SetVec3("u_WaveSourceUV", glm::vec3(sourceU, sourceV, 0.0f));
         m_HPWaterFluidComputeShader->SetInt("u_ObstacleMaskEnabled", m_HPWaterFluidObstacleValid ? 1 : 0);
         m_HPWaterFluidComputeShader->SetInt("u_HeightFieldEnabled", heightFieldValid ? 1 : 0);
-        m_HPWaterFluidComputeShader->SetFloat("u_HeightObstacleEpsilon", 0.0005f);
+        m_HPWaterFluidComputeShader->SetFloat("u_HeightObstacleEpsilon", 0.0f);
 
         const uint32_t groupCount = (resolution + 15u) / 16u;
         m_HPWaterFluidComputeShader->Dispatch(groupCount, groupCount, 1);
@@ -2533,6 +2535,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeRan = true;
         m_HPWaterFluidEdgeAbsorptionParityEnabled = true;
         m_HPWaterFluidSourceClampEnabled = true;
+        m_HPWaterFluidWaveEquationParityEnabled = true;
         return true;
     }
 
@@ -2572,14 +2575,14 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     glBindTexture(GL_TEXTURE_2D, heightFieldValid ? sceneHeightTexture : 0);
     m_HPWaterFluidShader->SetInt("u_SceneHeightTexture", 4);
 
-    m_HPWaterFluidShader->SetFloat("u_WaveSpeed", std::clamp(waveSpeed, 0.0f, 2.0f));
-    m_HPWaterFluidShader->SetFloat("u_DampingFactor", std::clamp(damping, 0.0f, 0.98f));
-    m_HPWaterFluidShader->SetFloat("u_WaveSourceIntensity", std::clamp(sourceIntensity, -1.0f, 1.0f));
-    m_HPWaterFluidShader->SetFloat("u_WaveSourceRadius", std::max(sourceRadiusPixels, 1.0f));
+    m_HPWaterFluidShader->SetFloat("u_WaveSpeed", waveSpeed);
+    m_HPWaterFluidShader->SetFloat("u_DampingFactor", damping);
+    m_HPWaterFluidShader->SetFloat("u_WaveSourceIntensity", sourceIntensity);
+    m_HPWaterFluidShader->SetFloat("u_WaveSourceRadius", sourceRadiusPixels);
     m_HPWaterFluidShader->SetVec3("u_WaveSourceUV", glm::vec3(sourceU, sourceV, 0.0f));
     m_HPWaterFluidShader->SetInt("u_ObstacleMaskEnabled", m_HPWaterFluidObstacleValid ? 1 : 0);
     m_HPWaterFluidShader->SetInt("u_HeightFieldEnabled", heightFieldValid ? 1 : 0);
-    m_HPWaterFluidShader->SetFloat("u_HeightObstacleEpsilon", 0.0005f);
+    m_HPWaterFluidShader->SetFloat("u_HeightObstacleEpsilon", 0.0f);
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -2605,6 +2608,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     m_HPWaterFluidComputeRan = false;
     m_HPWaterFluidEdgeAbsorptionParityEnabled = true;
     m_HPWaterFluidSourceClampEnabled = true;
+    m_HPWaterFluidWaveEquationParityEnabled = true;
     return true;
 }
 

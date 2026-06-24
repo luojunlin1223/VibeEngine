@@ -91,8 +91,8 @@ void main() {
     float up = mix(ReadHeight(coord + ivec2(0, 1), size), current, step(0.5, upObstacle));
 
     float laplacian = left + right + down + up - 4.0 * current;
-    float c2 = clamp(u_WaveSpeed * u_WaveSpeed, 0.0, 4.0);
-    float damping = clamp(u_DampingFactor, 0.0, 0.98);
+    float c2 = u_WaveSpeed * u_WaveSpeed;
+    float damping = u_DampingFactor;
 
     float distToEdgeX = min(float(coord.x), float(size.x - 1 - coord.x));
     float distToEdgeY = min(float(coord.y), float(size.y - 1 - coord.y));
@@ -103,26 +103,23 @@ void main() {
     float edgeAbsorption = 1.0 - (1.0 - edgeX) * (1.0 - edgeY);
     edgeAbsorption = clamp(1.0 - edgeAbsorption * edgeAbsorption, 0.0, 1.0);
 
-    float obstacleContact = max(max(leftObstacle, rightObstacle), max(downObstacle, upObstacle));
-    float obstacleRetention = mix(1.0, 0.55, smoothstep(0.01, 1.0, obstacleContact));
-
-    float inertia = (current - previous) * (1.0 - damping) * edgeAbsorption * obstacleRetention;
-    float next = current + inertia + c2 * (1.0 / 3600.0) * laplacian * obstacleRetention;
+    float inertia = (current - previous) * (1.0 - damping) * edgeAbsorption;
+    float next = current + inertia + c2 * (1.0 / 3600.0) * laplacian;
 
     if (u_WaveSourceIntensity > 0.001 && u_WaveSourceUV.x >= 0.0 && u_WaveSourceUV.y >= 0.0) {
         vec2 pixelUV = (vec2(coord) + vec2(0.5)) / width;
         vec2 distPixels = (pixelUV - u_WaveSourceUV.xy) * width;
-        float radius = max(u_WaveSourceRadius, 1.0);
+        float radius = u_WaveSourceRadius;
         float r = length(distPixels);
         if (r < radius) {
             float sigma = radius * 0.4;
-            float gaussian = exp(-(r * r) / max(2.0 * sigma * sigma, 0.0001));
+            float gaussian = exp(-(r * r) / (2.0 * sigma * sigma));
             float ripple = min(gaussian * u_WaveSourceIntensity, 0.05);
             next += ripple * edgeAbsorption;
         }
     }
 
-    FragHeight = clamp(next, -1.0, 1.0);
+    FragHeight = next;
 }
 #endif
 

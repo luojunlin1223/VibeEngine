@@ -393,6 +393,7 @@ public:
     bool DidHPWaterFluidComputeRun() const { return m_HPWaterFluidComputeRan; }
     bool IsHPWaterFluidEdgeAbsorptionParityEnabled() const { return m_HPWaterFluidEdgeAbsorptionParityEnabled; }
     bool IsHPWaterFluidSourceClampEnabled() const { return m_HPWaterFluidSourceClampEnabled; }
+    bool IsHPWaterFluidWaveEquationParityEnabled() const { return m_HPWaterFluidWaveEquationParityEnabled; }
     bool IsHPWaterFluidObstacleValid() const { return m_HPWaterFluidObstacleValid; }
     bool IsHPWaterFluidHeightFieldValid() const { return m_HPWaterFluidHeightFieldValid; }
     bool DidHPWaterFluidHeightCaptureRun() const { return m_HPWaterFluidHeightCaptureRan; }
@@ -574,6 +575,7 @@ private:
     bool m_HPWaterFluidComputeRan = false;
     bool m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
     bool m_HPWaterFluidSourceClampEnabled = false;
+    bool m_HPWaterFluidWaveEquationParityEnabled = false;
     bool m_HPWaterFluidObstacleValid = false;
     bool m_HPWaterFluidHeightFieldValid = false;
     bool m_HPWaterFluidHeightCaptureRan = false;
