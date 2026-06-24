@@ -1476,6 +1476,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterForwardScatterStrength = 0.0f;
     float hpWaterForwardScatterBlurDensity = 0.0f;
     float hpWaterMultiScatterScale = 0.0f;
+    float hpWaterPhaseG = -0.95f;
     float hpWaterSpecularFGDStrength = 0.0f;
     float hpWaterGGXEnergyCompensation = 0.0f;
     bool hpWaterCausticsEnabled = false;
@@ -1705,6 +1706,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterMultiScatterScale = std::max(
                     hpWaterMultiScatterScale,
                     water->MultiScatterScale);
+                hpWaterPhaseG = std::max(
+                    hpWaterPhaseG,
+                    std::clamp(water->PhaseG, -0.95f, 0.95f));
                 hpWaterSpecularFGDStrength = std::max(
                     hpWaterSpecularFGDStrength,
                     water->SpecularFGDStrength);
@@ -2460,6 +2464,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterCausticRGBDispersion = hpWaterCausticRGBDispersion;
         m_RenderDiagnostics.HPWaterCausticDispersionStrength = hpWaterCausticDispersionStrength;
         m_RenderDiagnostics.HPWaterWaterDispersionStrength = hpWaterWaterDispersionStrength;
+        m_RenderDiagnostics.HPWaterPhaseG = hpWaterPhaseG;
         m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = hpWaterCausticAtlasResolution;
         m_RenderDiagnostics.HPWaterCausticAtlasCascades = m_DeferredRenderer.GetHPWaterCausticAtlasCascadeCount();
         m_RenderDiagnostics.HPWaterCausticAtlasDrawn = hpWaterCausticAtlasDrawn;
@@ -2500,6 +2505,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterForwardScatterStrength,
                                             hpWaterForwardScatterBlurDensity,
                                             hpWaterMultiScatterScale,
+                                            hpWaterPhaseG,
                                             hpWaterSpecularFGDStrength,
                                             hpWaterGGXEnergyCompensation,
                                             cameraPos,
@@ -2658,6 +2664,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterForwardScatterStrength,
                                                 hpWaterForwardScatterBlurDensity,
                                                 hpWaterMultiScatterScale,
+                                                hpWaterPhaseG,
                                                 hpWaterSpecularFGDStrength,
                                                 hpWaterGGXEnergyCompensation,
                                                 cameraPos,

@@ -604,6 +604,7 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "ForwardScatterStrength" << YAML::Value << w.ForwardScatterStrength;
         out << YAML::Key << "ForwardScatterBlurDensity" << YAML::Value << w.ForwardScatterBlurDensity;
         out << YAML::Key << "MultiScatterScale" << YAML::Value << w.MultiScatterScale;
+        out << YAML::Key << "PhaseG" << YAML::Value << w.PhaseG;
         out << YAML::Key << "SpecularFGDStrength" << YAML::Value << w.SpecularFGDStrength;
         out << YAML::Key << "GGXEnergyCompensation" << YAML::Value << w.GGXEnergyCompensation;
         out << YAML::Key << "VolumeShadowSoftness" << YAML::Value << w.VolumeShadowSoftness;
@@ -1618,6 +1619,7 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["ForwardScatterStrength"]) w.ForwardScatterStrength = wNode["ForwardScatterStrength"].as<float>();
                 if (wNode["ForwardScatterBlurDensity"]) w.ForwardScatterBlurDensity = wNode["ForwardScatterBlurDensity"].as<float>();
                 if (wNode["MultiScatterScale"]) w.MultiScatterScale = wNode["MultiScatterScale"].as<float>();
+                if (wNode["PhaseG"]) w.PhaseG = std::clamp(wNode["PhaseG"].as<float>(), -0.95f, 0.95f);
                 if (wNode["SpecularFGDStrength"]) w.SpecularFGDStrength = wNode["SpecularFGDStrength"].as<float>();
                 if (wNode["GGXEnergyCompensation"]) w.GGXEnergyCompensation = wNode["GGXEnergyCompensation"].as<float>();
                 if (wNode["VolumeShadowSoftness"]) w.VolumeShadowSoftness = wNode["VolumeShadowSoftness"].as<float>();

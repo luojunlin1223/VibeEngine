@@ -412,6 +412,7 @@ struct HPWaterComponent {
     float ForwardScatterStrength = 0.65f;
     float ForwardScatterBlurDensity = 0.5f;
     float MultiScatterScale = 10.0f;
+    float PhaseG = 0.80f;
     float SpecularFGDStrength = 1.0f;
     float GGXEnergyCompensation = 1.0f;
     float VolumeShadowSoftness = 2.0f;

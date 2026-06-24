@@ -144,6 +144,7 @@ public:
                           float forwardScatterStrength,
                           float forwardScatterBlurDensity,
                           float multiScatterScale,
+                          float phaseG,
                           float specularFGDStrength,
                           float ggxEnergyCompensation,
                           const glm::vec3& cameraPosition,

@@ -6304,6 +6304,7 @@ private:
                 ImGui::SliderFloat("Forward Scatter", &w.ForwardScatterStrength, 0.0f, 3.0f, "%.3f");
                 ImGui::SliderFloat("Forward Scatter Blur Density", &w.ForwardScatterBlurDensity, 0.0f, 4.0f, "%.3f");
                 ImGui::SliderFloat("Multi Scatter Scale", &w.MultiScatterScale, 0.0f, 32.0f, "%.2f");
+                ImGui::SliderFloat("Phase G", &w.PhaseG, -0.95f, 0.95f, "%.3f");
                 ImGui::SliderFloat("Specular FGD", &w.SpecularFGDStrength, 0.0f, 1.0f, "%.3f");
                 ImGui::SliderFloat("GGX Energy Compensation", &w.GGXEnergyCompensation, 0.0f, 2.0f, "%.3f");
                 ImGui::SeparatorText("Volume Shadows");
@@ -7105,6 +7106,7 @@ private:
         out << "HPWaterForwardScatterStrength: " << d.HPWaterForwardScatterStrength << "\n";
         out << "HPWaterForwardScatterBlurDensity: " << d.HPWaterForwardScatterBlurDensity << "\n";
         out << "HPWaterMultiScatterScale: " << d.HPWaterMultiScatterScale << "\n";
+        out << "HPWaterPhaseG: " << d.HPWaterPhaseG << "\n";
         out << "HPWaterSpecularFGDStrength: " << d.HPWaterSpecularFGDStrength << "\n";
         out << "HPWaterGGXEnergyCompensation: " << d.HPWaterGGXEnergyCompensation << "\n";
         out << "HPWaterPreintegratedFGDLUTValid: " << d.HPWaterPreintegratedFGDLUTValid << "\n";
@@ -7566,7 +7568,7 @@ private:
             d.HPWaterRefractionThicknessOffset,
             d.HPWaterRefractionSampleCount,
             d.HPWaterRefractionJitterEnabled ? 1 : 0);
-        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f blur=%.3f multi=%.2f fgd=%.3f energy=%.3f lut=%d/%u",
+        ImGui::Text("HPWater BSDF: env=%.3f macro=%.3f thinSSS=%.3f backlit=%.3f forward=%.3f blur=%.3f multi=%.2f phaseG=%.2f fgd=%.3f energy=%.3f lut=%d/%u",
             d.HPWaterEnvironmentReflectionIntensity,
             d.HPWaterMacroScatterStrength,
             d.HPWaterThinSSSStrength,
@@ -7574,6 +7576,7 @@ private:
             d.HPWaterForwardScatterStrength,
             d.HPWaterForwardScatterBlurDensity,
             d.HPWaterMultiScatterScale,
+            d.HPWaterPhaseG,
             d.HPWaterSpecularFGDStrength,
             d.HPWaterGGXEnergyCompensation,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,

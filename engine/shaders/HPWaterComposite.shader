@@ -66,6 +66,7 @@ uniform float u_BacklitTransmissionStrength;
 uniform float u_ForwardScatterStrength;
 uniform float u_ForwardScatterBlurDensity;
 uniform float u_MultiScatterScale;
+uniform float u_PhaseG;
 uniform float u_SpecularFGDStrength;
 uniform float u_GGXEnergyCompensation;
 uniform vec3 u_ViewPos;
@@ -640,7 +641,7 @@ void main() {
             (0.08 + 0.18 * normalizedThickness);
     }
     vec3 reflected = skyReflection + directSpecular * clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0);
-    float forwardPhase = HenyeyGreenstein(lightViewAlignment, 0.72);
+    float forwardPhase = HenyeyGreenstein(lightViewAlignment, clamp(u_PhaseG, -0.95, 0.95));
     float forwardStrength = clamp(u_ForwardScatterStrength, 0.0, 3.0);
     float scatterDensity = clamp(dot(scatterColor, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
     float hpWaterRayLength = min(rayLength, clamp(u_MaxRefractionCrossDistance, 0.1, 200.0));

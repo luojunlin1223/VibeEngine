@@ -1490,6 +1490,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         float forwardScatterStrength,
                                         float forwardScatterBlurDensity,
                                         float multiScatterScale,
+                                        float phaseG,
                                         float specularFGDStrength,
                                         float ggxEnergyCompensation,
                                         const glm::vec3& cameraPosition,
@@ -1671,6 +1672,8 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         std::clamp(forwardScatterBlurDensity, 0.0f, 4.0f));
     m_HPWaterCompositeShader->SetFloat("u_MultiScatterScale",
         std::clamp(multiScatterScale, 0.0f, 32.0f));
+    m_HPWaterCompositeShader->SetFloat("u_PhaseG",
+        std::clamp(phaseG, -0.95f, 0.95f));
     m_HPWaterCompositeShader->SetFloat("u_SpecularFGDStrength",
         std::clamp(specularFGDStrength, 0.0f, 1.0f));
     m_HPWaterCompositeShader->SetFloat("u_GGXEnergyCompensation",
