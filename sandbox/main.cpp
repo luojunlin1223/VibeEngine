@@ -7291,10 +7291,34 @@ private:
             << d.HPWaterPunctualSpotLightCapacity << "\n";
         out << "HPWaterAreaLightCapacity: "
             << d.HPWaterAreaLightCapacity << "\n";
+        out << "HPWaterLightSelectionBoundsValid: "
+            << d.HPWaterLightSelectionBoundsValid << "\n";
+        out << "HPWaterLightSelectionCenter: "
+            << d.HPWaterLightSelectionCenter.x << ","
+            << d.HPWaterLightSelectionCenter.y << ","
+            << d.HPWaterLightSelectionCenter.z << "\n";
+        out << "HPWaterLightSelectionRadius: "
+            << d.HPWaterLightSelectionRadius << "\n";
+        out << "HPWaterPointLightTopInfluenceScore: "
+            << d.HPWaterPointLightTopInfluenceScore << "\n";
+        out << "HPWaterSpotLightTopInfluenceScore: "
+            << d.HPWaterSpotLightTopInfluenceScore << "\n";
+        out << "HPWaterAreaLightTopInfluenceScore: "
+            << d.HPWaterAreaLightTopInfluenceScore << "\n";
+        out << "HPWaterPointLightSelectedInfluenceSum: "
+            << d.HPWaterPointLightSelectedInfluenceSum << "\n";
+        out << "HPWaterSpotLightSelectedInfluenceSum: "
+            << d.HPWaterSpotLightSelectedInfluenceSum << "\n";
+        out << "HPWaterAreaLightSelectedInfluenceSum: "
+            << d.HPWaterAreaLightSelectedInfluenceSum << "\n";
         out << "HPWaterPunctualLightsLayerSkipped: "
             << d.HPWaterPunctualLightsLayerSkipped << "\n";
         out << "HPWaterPunctualLightsCapacitySkipped: "
             << d.HPWaterPunctualLightsCapacitySkipped << "\n";
+        out << "HPWaterPunctualPointLightsCapacitySkipped: "
+            << d.HPWaterPunctualPointLightsCapacitySkipped << "\n";
+        out << "HPWaterPunctualSpotLightsCapacitySkipped: "
+            << d.HPWaterPunctualSpotLightsCapacitySkipped << "\n";
         out << "HPWaterAreaLightsLayerSkipped: "
             << d.HPWaterAreaLightsLayerSkipped << "\n";
         out << "HPWaterAreaLightsCapacitySkipped: "
@@ -7958,6 +7982,20 @@ private:
             d.HPWaterSkyReflectionIntensity,
             d.HPWaterIndirectDiffuseIntensity,
             d.HPWaterDirectionalLightIntensity);
+        ImGui::Text("HPWater light selection: bounds=%d center=(%.2f, %.2f, %.2f) radius=%.2f topScore p/s/a=%.3f/%.3f/%.3f selectedScore p/s/a=%.3f/%.3f/%.3f capSkip p/s=%u/%u",
+            d.HPWaterLightSelectionBoundsValid ? 1 : 0,
+            d.HPWaterLightSelectionCenter.x,
+            d.HPWaterLightSelectionCenter.y,
+            d.HPWaterLightSelectionCenter.z,
+            d.HPWaterLightSelectionRadius,
+            d.HPWaterPointLightTopInfluenceScore,
+            d.HPWaterSpotLightTopInfluenceScore,
+            d.HPWaterAreaLightTopInfluenceScore,
+            d.HPWaterPointLightSelectedInfluenceSum,
+            d.HPWaterSpotLightSelectedInfluenceSum,
+            d.HPWaterAreaLightSelectedInfluenceSum,
+            d.HPWaterPunctualPointLightsCapacitySkipped,
+            d.HPWaterPunctualSpotLightsCapacitySkipped);
         ImGui::Text("HPWater spectrum: ocean=%d normal=%d compute=%d/%d consumed=%d tex=%u res=%u amp=%.3f normalStrength=%.3f",
             d.HPWaterSpectralOceanEnabled ? 1 : 0,
             d.HPWaterSpectralNormalParityEnabled ? 1 : 0,

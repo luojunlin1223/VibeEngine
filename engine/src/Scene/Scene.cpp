@@ -1343,6 +1343,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     };
     glm::vec3 hpWaterLightSelectionCenter = cameraPos;
     float hpWaterLightSelectionRadius = 0.0f;
+    bool hpWaterLightSelectionBoundsValid = false;
     {
         bool hasBounds = false;
         glm::vec3 boundsMin(0.0f);
@@ -1380,6 +1381,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         if (hasBounds) {
             hpWaterLightSelectionCenter = (boundsMin + boundsMax) * 0.5f;
             hpWaterLightSelectionRadius = glm::length(boundsMax - boundsMin) * 0.5f;
+            hpWaterLightSelectionBoundsValid = true;
         }
     }
     auto hpWaterColorLuminance = [](const glm::vec3& color) -> float {
@@ -1440,6 +1442,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     uint32_t hpWaterPunctualSpotLightCandidates = 0;
     uint32_t hpWaterPunctualLightsLayerSkipped = 0;
     uint32_t hpWaterPunctualLightsCapacitySkipped = 0;
+    uint32_t hpWaterPunctualPointLightsCapacitySkipped = 0;
+    uint32_t hpWaterPunctualSpotLightsCapacitySkipped = 0;
+    float hpWaterPointLightTopInfluenceScore = 0.0f;
+    float hpWaterSpotLightTopInfluenceScore = 0.0f;
+    float hpWaterPointLightSelectedInfluenceSum = 0.0f;
+    float hpWaterSpotLightSelectedInfluenceSum = 0.0f;
     struct HPWaterPointLightCandidate {
         glm::vec3 Position{0.0f};
         glm::vec3 Color{1.0f};
@@ -1496,6 +1504,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                   return a.Score > b.Score;
               });
     hpWaterPunctualPointLightCandidates = static_cast<uint32_t>(hpWaterPointCandidates.size());
+    hpWaterPointLightTopInfluenceScore = hpWaterPointCandidates.empty() ? 0.0f : hpWaterPointCandidates.front().Score;
     hpWaterNumPointLights = std::min(static_cast<int>(hpWaterPointCandidates.size()), MAX_POINT_LIGHTS);
     for (int i = 0; i < hpWaterNumPointLights; ++i) {
         const auto& candidate = hpWaterPointCandidates[static_cast<size_t>(i)];
@@ -1503,10 +1512,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         hpWaterPointColors[i]      = candidate.Color;
         hpWaterPointIntensities[i] = candidate.Intensity;
         hpWaterPointRanges[i]      = candidate.Range;
+        hpWaterPointLightSelectedInfluenceSum += candidate.Score;
     }
     if (hpWaterPointCandidates.size() > static_cast<size_t>(MAX_POINT_LIGHTS)) {
-        hpWaterPunctualLightsCapacitySkipped +=
+        hpWaterPunctualPointLightsCapacitySkipped =
             static_cast<uint32_t>(hpWaterPointCandidates.size() - static_cast<size_t>(MAX_POINT_LIGHTS));
+        hpWaterPunctualLightsCapacitySkipped += hpWaterPunctualPointLightsCapacitySkipped;
     }
 
     static constexpr int MAX_SPOT_LIGHTS = 4;
@@ -1575,6 +1586,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                   return a.Score > b.Score;
               });
     hpWaterPunctualSpotLightCandidates = static_cast<uint32_t>(hpWaterSpotCandidates.size());
+    hpWaterSpotLightTopInfluenceScore = hpWaterSpotCandidates.empty() ? 0.0f : hpWaterSpotCandidates.front().Score;
     hpWaterNumSpotLights = std::min(static_cast<int>(hpWaterSpotCandidates.size()), MAX_SPOT_LIGHTS);
     for (int i = 0; i < hpWaterNumSpotLights; ++i) {
         const auto& candidate = hpWaterSpotCandidates[static_cast<size_t>(i)];
@@ -1585,10 +1597,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         hpWaterSpotRanges[i]      = candidate.Range;
         hpWaterSpotInnerCos[i]    = candidate.InnerCos;
         hpWaterSpotOuterCos[i]    = candidate.OuterCos;
+        hpWaterSpotLightSelectedInfluenceSum += candidate.Score;
     }
     if (hpWaterSpotCandidates.size() > static_cast<size_t>(MAX_SPOT_LIGHTS)) {
-        hpWaterPunctualLightsCapacitySkipped +=
+        hpWaterPunctualSpotLightsCapacitySkipped =
             static_cast<uint32_t>(hpWaterSpotCandidates.size() - static_cast<size_t>(MAX_SPOT_LIGHTS));
+        hpWaterPunctualLightsCapacitySkipped += hpWaterPunctualSpotLightsCapacitySkipped;
     }
 
     static constexpr int MAX_AREA_LIGHTS = 4;
@@ -1596,6 +1610,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     uint32_t hpWaterAreaLightCandidates = 0;
     uint32_t hpWaterAreaLightsLayerSkipped = 0;
     uint32_t hpWaterAreaLightsCapacitySkipped = 0;
+    float hpWaterAreaLightTopInfluenceScore = 0.0f;
+    float hpWaterAreaLightSelectedInfluenceSum = 0.0f;
     struct HPWaterAreaLightCandidate {
         glm::vec3 Position{0.0f};
         glm::vec3 Right{1.0f, 0.0f, 0.0f};
@@ -1663,6 +1679,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                   return a.Score > b.Score;
               });
     hpWaterAreaLightCandidates = static_cast<uint32_t>(hpWaterAreaCandidates.size());
+    hpWaterAreaLightTopInfluenceScore = hpWaterAreaCandidates.empty() ? 0.0f : hpWaterAreaCandidates.front().Score;
     hpWaterNumAreaLights = std::min(static_cast<int>(hpWaterAreaCandidates.size()), MAX_AREA_LIGHTS);
     for (int i = 0; i < hpWaterNumAreaLights; ++i) {
         const auto& candidate = hpWaterAreaCandidates[static_cast<size_t>(i)];
@@ -1675,6 +1692,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         hpWaterAreaRanges[i] = candidate.Range;
         hpWaterAreaWidths[i] = candidate.Width;
         hpWaterAreaHeights[i] = candidate.Height;
+        hpWaterAreaLightSelectedInfluenceSum += candidate.Score;
     }
     if (hpWaterAreaCandidates.size() > static_cast<size_t>(MAX_AREA_LIGHTS)) {
         hpWaterAreaLightsCapacitySkipped =
@@ -2866,10 +2884,23 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             static_cast<uint32_t>(MAX_SPOT_LIGHTS);
         m_RenderDiagnostics.HPWaterAreaLightCapacity =
             static_cast<uint32_t>(MAX_AREA_LIGHTS);
+        m_RenderDiagnostics.HPWaterLightSelectionBoundsValid = hpWaterLightSelectionBoundsValid;
+        m_RenderDiagnostics.HPWaterLightSelectionCenter = hpWaterLightSelectionCenter;
+        m_RenderDiagnostics.HPWaterLightSelectionRadius = hpWaterLightSelectionRadius;
+        m_RenderDiagnostics.HPWaterPointLightTopInfluenceScore = hpWaterPointLightTopInfluenceScore;
+        m_RenderDiagnostics.HPWaterSpotLightTopInfluenceScore = hpWaterSpotLightTopInfluenceScore;
+        m_RenderDiagnostics.HPWaterAreaLightTopInfluenceScore = hpWaterAreaLightTopInfluenceScore;
+        m_RenderDiagnostics.HPWaterPointLightSelectedInfluenceSum = hpWaterPointLightSelectedInfluenceSum;
+        m_RenderDiagnostics.HPWaterSpotLightSelectedInfluenceSum = hpWaterSpotLightSelectedInfluenceSum;
+        m_RenderDiagnostics.HPWaterAreaLightSelectedInfluenceSum = hpWaterAreaLightSelectedInfluenceSum;
         m_RenderDiagnostics.HPWaterPunctualLightsLayerSkipped =
             hpWaterPunctualLightsLayerSkipped;
         m_RenderDiagnostics.HPWaterPunctualLightsCapacitySkipped =
             hpWaterPunctualLightsCapacitySkipped;
+        m_RenderDiagnostics.HPWaterPunctualPointLightsCapacitySkipped =
+            hpWaterPunctualPointLightsCapacitySkipped;
+        m_RenderDiagnostics.HPWaterPunctualSpotLightsCapacitySkipped =
+            hpWaterPunctualSpotLightsCapacitySkipped;
         m_RenderDiagnostics.HPWaterAreaLightsLayerSkipped =
             hpWaterAreaLightsLayerSkipped;
         m_RenderDiagnostics.HPWaterAreaLightsCapacitySkipped =
