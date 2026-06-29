@@ -527,6 +527,11 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
 }
 
+float HPWaterSpecularSelfOcclusion(float nDotL) {
+    // HPWaterBSDFLibary gates direct specular with saturate(clampedNdotL * 5).
+    return clamp(nDotL * 5.0, 0.0, 1.0);
+}
+
 vec3 EvaluateHPWaterSpecularLight(vec3 N,
                                   vec3 V,
                                   vec3 L,
@@ -543,8 +548,9 @@ vec3 EvaluateHPWaterSpecularLight(vec3 N,
     vec3 H = NormalizeOr(V + L, N);
     float D = DistributionGGX(N, H, roughness);
     float G = GeometrySmith(N, V, L, roughness);
+    float specularSelfOcclusion = HPWaterSpecularSelfOcclusion(NdotL);
     return (D * G * fresnel) / max(4.0 * NdotV * NdotL, 0.001) *
-        radiance * NdotL * energyCompensation;
+        radiance * NdotL * specularSelfOcclusion * energyCompensation;
 }
 
 vec4 SampleHPWaterAreaLightLTC(float roughness, float nDotV) {
@@ -1000,9 +1006,12 @@ void main() {
     float G = GeometrySmith(N, V, L, roughness);
     float directionalShadow = ComputeShadow(waterWorldPos, N, 0.0);
     vec3 directSpecular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
+    float directionalSpecularSelfOcclusion = HPWaterSpecularSelfOcclusion(NdotL);
     directSpecular *= u_LightColor * max(u_LightIntensity, 0.0) *
-        NdotL * directionalShadow * energyCompensation;
-    vec3 punctualWaterLight = vec3(0.0);
+        NdotL * directionalShadow * directionalSpecularSelfOcclusion * energyCompensation;
+    vec3 punctualMacroLight = vec3(0.0);
+    vec3 punctualThinSSSLight = vec3(0.0);
+    vec3 punctualBacklitLight = vec3(0.0);
 
     int pointCount = clamp(u_NumPointLights, 0, 8);
     for (int i = 0; i < 8; ++i) {
@@ -1025,7 +1034,12 @@ void main() {
         vec3 radiance = u_PointLightColors[i] * max(u_PointLightIntensities[i], 0.0) * attenuation;
         directSpecular += EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
-        punctualWaterLight += radiance * clamp(dot(N, localL), 0.0, 1.0);
+        float localNdotLRaw = dot(N, localL);
+        float localNdotL = clamp(localNdotLRaw, 0.0, 1.0);
+        float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
+        punctualMacroLight += radiance * localNdotL * localTEntry;
+        punctualThinSSSLight += radiance * (1.0 - localNdotL);
+        punctualBacklitLight += radiance * clamp(-localNdotLRaw, 0.0, 1.0);
     }
 
     int spotCount = clamp(u_NumSpotLights, 0, 4);
@@ -1057,7 +1071,12 @@ void main() {
         vec3 radiance = u_SpotLightColors[i] * max(u_SpotLightIntensities[i], 0.0) * attenuation;
         directSpecular += EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
-        punctualWaterLight += radiance * clamp(dot(N, localL), 0.0, 1.0);
+        float localNdotLRaw = dot(N, localL);
+        float localNdotL = clamp(localNdotLRaw, 0.0, 1.0);
+        float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
+        punctualMacroLight += radiance * localNdotL * localTEntry;
+        punctualThinSSSLight += radiance * (1.0 - localNdotL);
+        punctualBacklitLight += radiance * clamp(-localNdotLRaw, 0.0, 1.0);
     }
 
     int areaCount = clamp(u_NumAreaLights, 0, 4);
@@ -1081,7 +1100,13 @@ void main() {
 
         directSpecular += EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
-        punctualWaterLight += radiance * areaDiffuseScale * clamp(dot(N, localL), 0.0, 1.0);
+        float localNdotLRaw = dot(N, localL);
+        float localNdotL = clamp(localNdotLRaw, 0.0, 1.0);
+        float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
+        vec3 areaBodyRadiance = radiance * areaDiffuseScale;
+        punctualMacroLight += areaBodyRadiance * localNdotL * localTEntry;
+        punctualThinSSSLight += areaBodyRadiance * (1.0 - localNdotL);
+        punctualBacklitLight += areaBodyRadiance * clamp(-localNdotLRaw, 0.0, 1.0);
     }
 
     vec3 skyReflection = vec3(0.0);
@@ -1139,8 +1164,6 @@ void main() {
             scatterDensity,
             6.0));
     vec3 forwardBlur = SampleHPWaterDispersedSceneColor(v_UV, refractUV, forwardBlurLOD);
-    vec3 directWaterLight =
-        u_LightColor * max(u_LightIntensity, 0.0) * directionalShadow + punctualWaterLight;
 
     // HPWaterBSDFLibary component split:
     // diffR = T_entry * G_entry * S_volume
@@ -1150,14 +1173,16 @@ void main() {
     float G_entry = NdotL;
     vec3 forwardScatterColor = forwardBlur * clamp(u_MultiScatterScale, 0.0, 32.0);
     vec3 volumePhase = HPWaterScatterPhase(lightViewAlignment, clamp(u_PhaseG, -0.95, 0.95));
+    vec3 directionalWaterLight = u_LightColor * max(u_LightIntensity, 0.0) * directionalShadow;
+    vec3 macroLight = directionalWaterLight * T_entry * G_entry + punctualMacroLight;
     vec3 S_volume = HPWaterScatteredLight(
-        directWaterLight + forwardScatterColor * 0.22,
+        macroLight + forwardScatterColor * 0.22,
         absorptionColor,
         scatterColor,
         max(hpWaterRayLength, 0.01),
         mix(vec3(forwardPhase), volumePhase, 0.65));
     S_volume *= (0.15 + 0.85 * normalizedThickness) * forwardStrength;
-    vec3 macroScattering = S_volume * T_entry * G_entry;
+    vec3 macroScattering = S_volume;
 
     float sssThickness = max(normalizedThickness, 0.001);
     float scatterStrength = dot(scatterColor, vec3(0.2126, 0.7152, 0.0722));
@@ -1168,16 +1193,17 @@ void main() {
     float nonlinearWeight = clamp(opticalDepth * HPWATER_SSS_NONLINEAR_STRENGTH, 0.0, 1.0);
     float sssPathLength = mix(L_linear, L_nonlinear, nonlinearWeight);
     vec3 sssTransmittance;
+    float G_sss = 1.0 - G_entry;
+    vec3 thinSSSLight = directionalWaterLight * G_sss + punctualThinSSSLight;
     vec3 S_sss = HPWaterScatteredLightWithTransmittance(
-        directWaterLight,
+        thinSSSLight,
         absorptionColor,
         scatterColor,
         sssPathLength,
         HPWaterScatterPhase(dot(-V, L), clamp(u_PhaseG, -0.95, 0.95)),
         sssTransmittance);
-    float G_sss = 1.0 - G_entry;
     float sssWeight = clamp(1.0 - dot(sssTransmittance, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
-    vec3 thinLayerSSS = S_sss * G_sss * HPWATER_SSS_SCATTER_BOOST *
+    vec3 thinLayerSSS = S_sss * HPWATER_SSS_SCATTER_BOOST *
         clamp(u_ThinSSSStrength, 0.0, 3.0);
     thinLayerSSS = mix(S_volume * G_sss, thinLayerSSS, sssWeight);
 
@@ -1185,7 +1211,8 @@ void main() {
     float backlitPathLength = sssThickness * HPWATER_BACKLIT_PATH_SCALE;
     vec3 T_backlit = exp(-extinctionCoeff * backlitPathLength);
     float P_backlit = HPWaterHenyeyPhase(dot(V, -L), 0.9998);
-    vec3 backlitTransmission = directWaterLight * G_backlit * T_backlit * P_backlit *
+    vec3 backlitLight = directionalWaterLight * G_backlit + punctualBacklitLight;
+    vec3 backlitTransmission = backlitLight * T_backlit * P_backlit *
         clamp(u_BacklitTransmissionStrength, 0.0, 3.0);
 
     bodyColor += macroScattering + thinLayerSSS + backlitTransmission + indirectBody;

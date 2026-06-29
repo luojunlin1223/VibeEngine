@@ -2809,6 +2809,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterForwardScatterStrength > 0.0001f ||
             hpWaterThinSSSStrength > 0.0001f ||
             hpWaterBacklitTransmissionStrength > 0.0001f;
+        m_RenderDiagnostics.HPWaterPunctualBodyComponentWeightingEnabled =
+            m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled &&
+            (hpWaterNumPointLights + hpWaterNumSpotLights + hpWaterNumAreaLights) > 0;
+        m_RenderDiagnostics.HPWaterSpecularSelfOcclusionEnabled = true;
         m_RenderDiagnostics.HPWaterExitFresnelEnabled = true;
         m_RenderDiagnostics.HPWaterExitFresnelF0 = 0.02037f;
         m_RenderDiagnostics.HPWaterSkyReflectionIntensity = ps.SkyReflectionIntensity;
@@ -3402,6 +3406,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {
         m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled = false;
         m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled = false;
+        m_RenderDiagnostics.HPWaterPunctualBodyComponentWeightingEnabled = false;
+        m_RenderDiagnostics.HPWaterSpecularSelfOcclusionEnabled = false;
         m_RenderDiagnostics.HPWaterExitFresnelEnabled = false;
         m_RenderDiagnostics.HPWaterExitFresnelF0 = 0.0f;
     }
