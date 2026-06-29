@@ -389,6 +389,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeTemporalValid = false;
@@ -521,6 +522,7 @@ void DeferredRenderer::CreateHPWaterSSRFBO() {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterCompositeConsumesSSRLightingBuffer = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticFBO() {
@@ -1331,6 +1333,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeTemporalValid = false;
@@ -1535,6 +1538,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeFilteredValid = false;
@@ -2084,6 +2088,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterCompositeValid = false;
+        m_HPWaterCompositeConsumesSSRLightingBuffer = false;
         m_HPWaterVolumeCompositeFullResolutionEnabled = false;
         m_HPWaterRefractionNDCMarchEnabled = false;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
@@ -2357,15 +2362,6 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         std::clamp(indirectDiffuseIntensity, 0.0f, 4.0f));
     m_HPWaterCompositeShader->SetFloat("u_SkyReflectionIntensity",
         std::clamp(skyReflectionIntensity, 0.0f, 4.0f));
-    m_HPWaterCompositeShader->SetInt("u_HPWaterSSREnabled", hpWaterSSRActive ? 1 : 0);
-    m_HPWaterCompositeShader->SetInt("u_HPWaterSSRMaxSteps", std::clamp(hpWaterSSRMaxSteps, 1, 128));
-    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRStepSize",
-        std::clamp(hpWaterSSRStepSize, 0.005f, 5.0f));
-    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRThickness",
-        std::clamp(hpWaterSSRThickness, 0.005f, 5.0f));
-    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRMaxDistance",
-        std::clamp(hpWaterSSRMaxDistance, 0.1f, 500.0f));
-    m_HPWaterCompositeShader->SetFloat("u_HPWaterSSRStrength", hpWaterSSRActive ? 1.0f : 0.0f);
     m_HPWaterCompositeShader->SetMat4("u_ViewProjection", viewProjection);
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",
@@ -2397,6 +2393,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
 
     m_HPWaterCompositeFBO->Unbind();
     m_HPWaterCompositeValid = true;
+    m_HPWaterCompositeConsumesSSRLightingBuffer = m_HPWaterSSRLightingValid;
     m_HPWaterVolumeCompositeFullResolutionEnabled = volumeCompositeFullResolution;
     m_HPWaterSurfaceShadowSamplingEnabled = surfaceShadowSamplingValid;
     m_HPWaterShadowCascadeDitherEnabled = shadowCascadeDitherEnabled;

@@ -109,10 +109,6 @@ uniform float u_SkyReflectionIntensity;
 uniform float u_ReflectionProbeIntensity;
 uniform float u_ReflectionProbeBlend;
 uniform float u_ReflectionProbeHierarchyWeight;
-uniform float u_HPWaterSSRStepSize;
-uniform float u_HPWaterSSRThickness;
-uniform float u_HPWaterSSRMaxDistance;
-uniform float u_HPWaterSSRStrength;
 uniform vec3 u_ReflectionProbeCenter;
 uniform vec3 u_ReflectionProbeBoxMin;
 uniform vec3 u_ReflectionProbeBoxMax;
@@ -135,8 +131,6 @@ uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterSSRLightingEnabled;
 uniform int u_RefractionSampleCount;
 uniform int u_RefractionJitterEnabled;
-uniform int u_HPWaterSSREnabled;
-uniform int u_HPWaterSSRMaxSteps;
 uniform int u_FrameIndex;
 uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
@@ -793,73 +787,6 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
     float attenuation = rangeWindow * emissionFacing * specIrradiance;
     return u_AreaLightColors[lightIndex] *
         max(u_AreaLightIntensities[lightIndex], 0.0) * attenuation;
-}
-
-vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughness, float waterLinearDepth) {
-    if (u_HPWaterSSREnabled != 1 || u_HPWaterSSRMaxSteps <= 0) {
-        return vec4(0.0);
-    }
-
-    vec3 R = NormalizeOr(reflect(-viewDir, normal), vec3(0.0, 1.0, 0.0));
-    if (dot(R, normal) <= -0.15) {
-        return vec4(0.0);
-    }
-
-    int maxSteps = clamp(u_HPWaterSSRMaxSteps, 1, 128);
-    float stepSize = clamp(u_HPWaterSSRStepSize, 0.005, 5.0);
-    float thickness = clamp(u_HPWaterSSRThickness, 0.005, 5.0);
-    float maxDistance = clamp(u_HPWaterSSRMaxDistance, 0.1, 500.0);
-    vec3 start = waterWorldPos + normal * max(thickness * 0.25, 0.01);
-    float travelled = stepSize;
-
-    for (int i = 0; i < 128; ++i) {
-        if (i >= maxSteps || travelled > maxDistance) {
-            break;
-        }
-
-        float progress = float(i) / float(max(maxSteps - 1, 1));
-        vec3 rayPos = start + R * travelled;
-        vec4 clip = u_ViewProjection * vec4(rayPos, 1.0);
-        if (clip.w <= 0.00001) {
-            travelled += stepSize * mix(1.0, 2.25, progress);
-            continue;
-        }
-
-        vec3 ndc = clip.xyz / clip.w;
-        vec2 uv = ndc.xy * 0.5 + 0.5;
-        if (uv.x <= 0.001 || uv.y <= 0.001 || uv.x >= 0.999 || uv.y >= 0.999 ||
-            ndc.z <= -1.0 || ndc.z >= 1.0) {
-            break;
-        }
-
-        float rayDepth = ndc.z * 0.5 + 0.5;
-        float rayLinear = LinearizeDepth(clamp(rayDepth, 0.0, 1.0));
-        if (rayLinear <= waterLinearDepth + 0.01) {
-            travelled += stepSize * mix(1.0, 2.25, progress);
-            continue;
-        }
-
-        float sceneDepth = texture(u_SceneDepth, uv).r;
-        if (sceneDepth < 0.9999) {
-            float sceneLinear = LinearizeDepth(sceneDepth);
-            float delta = rayLinear - sceneLinear;
-            float adaptiveThickness = thickness + travelled * 0.015;
-            if (delta >= -adaptiveThickness * 0.25 && delta <= adaptiveThickness) {
-                float edgeFade = ScreenEdgeFade(uv);
-                float distanceFade = 1.0 - smoothstep(maxDistance * 0.35, maxDistance, travelled);
-                float roughnessFade = mix(1.0, 0.35, clamp(roughness, 0.0, 1.0));
-                float confidence = edgeFade * distanceFade * roughnessFade *
-                    clamp(u_HPWaterSSRStrength, 0.0, 1.0);
-                float lod = roughness * float(max(u_SceneColorMipCount - 1, 0));
-                vec3 color = SampleSceneColorBlurred(uv, lod);
-                return vec4(color, confidence);
-            }
-        }
-
-        travelled += stepSize * mix(1.0, 2.25, progress);
-    }
-
-    return vec4(0.0);
 }
 
 vec2 HPWaterDispersionJitter(vec2 uv) {
