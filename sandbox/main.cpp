@@ -7597,7 +7597,13 @@ private:
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_meta.bmp");
         }
         if (dr.IsInitialized() && dr.GetHPWaterSSRDiagnosticsTexture() != 0) {
-            writeProbe("HPWaterSSRDiagnostics", ProbeTexture(dr.GetHPWaterSSRDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight()));
+            TextureProbeSummary ssrDiagnosticsProbe = ProbeTexture(dr.GetHPWaterSSRDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterSSRDiagnostics", ssrDiagnosticsProbe);
+            out << "HPWaterSSRDiagnosticsHierarchyChannelReadbackEnabled: " << ssrDiagnosticsProbe.Valid << "\n";
+            out << "HPWaterSSRDiagnosticsAverageConfidence: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[0] << "\n";
+            out << "HPWaterSSRDiagnosticsAverageHitMask: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[1] << "\n";
+            out << "HPWaterSSRDiagnosticsAverageProbeHierarchyWeight: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[2] << "\n";
+            out << "HPWaterSSRDiagnosticsAverageSkyHierarchyWeight: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[3] << "\n";
             SaveTextureBMP(dr.GetHPWaterSSRDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_diagnostics.bmp");
         }
