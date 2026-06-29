@@ -2839,6 +2839,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
         m_RenderDiagnostics.HPWaterAreaLightLTCPolygonIntegrationEnabled =
             hpWaterNumAreaLights > 0 && m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
+        m_RenderDiagnostics.HPWaterAreaLightLTCHorizonClippingEnabled =
+            hpWaterNumAreaLights > 0 && m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
         m_RenderDiagnostics.HPWaterAreaLightLTCHDRPTableEnabled =
             m_DeferredRenderer.IsHPWaterAreaLightLTCHDRPTableEnabled();
         m_RenderDiagnostics.HPWaterPunctualLightLayerFilteringEnabled = true;
@@ -3233,6 +3235,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled =
             m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled() &&
             m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
+        m_RenderDiagnostics.HPWaterVolumeAreaLightLTCHorizonClippingEnabled =
+            m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled() &&
+            m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
         m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
             m_DeferredRenderer.GetHPWaterVolumeShadowSoftness();
         m_RenderDiagnostics.HPWaterVolumeShadowMinFilterSize =
@@ -3465,6 +3470,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeAreaLightRectangleSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled();
     m_RenderDiagnostics.HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled() &&
+        m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
+    m_RenderDiagnostics.HPWaterVolumeAreaLightLTCHorizonClippingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeAreaLightLoopEnabled() &&
         m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
     m_RenderDiagnostics.HPWaterVolumeShadowSoftness =

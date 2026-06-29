@@ -589,20 +589,130 @@ mat3 HPWaterLTCViewNormalBasis(vec3 N, vec3 V) {
     return mat3(tangent, bitangent, N);
 }
 
-float HPWaterLTCIntegrateEdge(vec3 v1, vec3 v2) {
+vec3 HPWaterLTCComputeEdgeFactor(vec3 v1, vec3 v2) {
     float cosTheta = clamp(dot(v1, v2), -0.9999, 0.9999);
     float theta = acos(cosTheta);
     float invSinTheta = inversesqrt(max(1.0 - cosTheta * cosTheta, 0.000001));
-    return cross(v1, v2).z * theta * invSinTheta;
+    return cross(v1, v2) * theta * invSinTheta;
+}
+
+vec3 HPWaterLTCPolygonFormFactor(vec3 l0, vec3 l1, vec3 l2, vec3 l3, vec3 l4, int vertexCount) {
+    l0 = NormalizeOr(l0, vec3(0.0, 0.0, 1.0));
+    l1 = NormalizeOr(l1, vec3(0.0, 0.0, 1.0));
+    l2 = NormalizeOr(l2, vec3(0.0, 0.0, 1.0));
+
+    if (vertexCount == 3) {
+        l3 = l0;
+    } else if (vertexCount == 4) {
+        l3 = NormalizeOr(l3, vec3(0.0, 0.0, 1.0));
+        l4 = l0;
+    } else {
+        l3 = NormalizeOr(l3, vec3(0.0, 0.0, 1.0));
+        l4 = NormalizeOr(l4, vec3(0.0, 0.0, 1.0));
+    }
+
+    vec3 formFactor =
+        HPWaterLTCComputeEdgeFactor(l0, l1) +
+        HPWaterLTCComputeEdgeFactor(l1, l2) +
+        HPWaterLTCComputeEdgeFactor(l2, l3);
+    if (vertexCount >= 4) {
+        formFactor += HPWaterLTCComputeEdgeFactor(l3, l4);
+    }
+    if (vertexCount == 5) {
+        formFactor += HPWaterLTCComputeEdgeFactor(l4, l0);
+    }
+    return formFactor * (0.5 / PI);
 }
 
 float HPWaterLTCPolygonIrradiance(vec3 p0, vec3 p1, vec3 p2, vec3 p3) {
-    float edgeSum =
-        HPWaterLTCIntegrateEdge(p0, p1) +
-        HPWaterLTCIntegrateEdge(p1, p2) +
-        HPWaterLTCIntegrateEdge(p2, p3) +
-        HPWaterLTCIntegrateEdge(p3, p0);
-    return clamp(abs(edgeSum) * (0.5 / PI), 0.0, 1.0);
+    int config = 0;
+    if (p0.z > 0.0) config += 1;
+    if (p1.z > 0.0) config += 2;
+    if (p2.z > 0.0) config += 4;
+    if (p3.z > 0.0) config += 8;
+
+    vec3 l4 = p3;
+    int vertexCount = 0;
+    switch (config) {
+    case 0:
+        break;
+    case 1:
+        vertexCount = 3;
+        p1 = -p1.z * p0 + p0.z * p1;
+        p2 = -p3.z * p0 + p0.z * p3;
+        break;
+    case 2:
+        vertexCount = 3;
+        p0 = -p0.z * p1 + p1.z * p0;
+        p2 = -p2.z * p1 + p1.z * p2;
+        break;
+    case 3:
+        vertexCount = 4;
+        p2 = -p2.z * p1 + p1.z * p2;
+        p3 = -p3.z * p0 + p0.z * p3;
+        break;
+    case 4:
+        vertexCount = 3;
+        p0 = -p3.z * p2 + p2.z * p3;
+        p1 = -p1.z * p2 + p2.z * p1;
+        break;
+    case 5:
+        break;
+    case 6:
+        vertexCount = 4;
+        p0 = -p0.z * p1 + p1.z * p0;
+        p3 = -p3.z * p2 + p2.z * p3;
+        break;
+    case 7:
+        vertexCount = 5;
+        l4 = -p3.z * p0 + p0.z * p3;
+        p3 = -p3.z * p2 + p2.z * p3;
+        break;
+    case 8:
+        vertexCount = 3;
+        p0 = -p0.z * p3 + p3.z * p0;
+        p1 = -p2.z * p3 + p3.z * p2;
+        p2 = p3;
+        break;
+    case 9:
+        vertexCount = 4;
+        p1 = -p1.z * p0 + p0.z * p1;
+        p2 = -p2.z * p3 + p3.z * p2;
+        break;
+    case 10:
+        break;
+    case 11:
+        vertexCount = 5;
+        p3 = -p2.z * p3 + p3.z * p2;
+        p2 = -p2.z * p1 + p1.z * p2;
+        break;
+    case 12:
+        vertexCount = 4;
+        p1 = -p1.z * p2 + p2.z * p1;
+        p0 = -p0.z * p3 + p3.z * p0;
+        break;
+    case 13:
+        vertexCount = 5;
+        p3 = p2;
+        p2 = -p1.z * p2 + p2.z * p1;
+        p1 = -p1.z * p0 + p0.z * p1;
+        break;
+    case 14:
+        vertexCount = 5;
+        l4 = -p0.z * p3 + p3.z * p0;
+        p0 = -p0.z * p1 + p1.z * p0;
+        break;
+    case 15:
+        vertexCount = 4;
+        break;
+    }
+
+    if (vertexCount == 0) {
+        return 0.0;
+    }
+
+    vec3 formFactor = HPWaterLTCPolygonFormFactor(p0, p1, p2, p3, l4, vertexCount);
+    return clamp(max(0.0, formFactor.z), 0.0, 1.0);
 }
 
 float HPWaterEvaluateAreaLightLTCPolygon(vec3 positionWS,
@@ -621,10 +731,10 @@ float HPWaterEvaluateAreaLightLTCPolygon(vec3 positionWS,
     vec3 l2 = vec3(dot(v2, basis[0]), dot(v2, basis[1]), dot(v2, basis[2]));
     vec3 l3 = vec3(dot(v3, basis[0]), dot(v3, basis[1]), dot(v3, basis[2]));
     return HPWaterLTCPolygonIrradiance(
-        NormalizeOr(inverseLTC * l0, vec3(0.0, 0.0, 1.0)),
-        NormalizeOr(inverseLTC * l1, vec3(0.0, 0.0, 1.0)),
-        NormalizeOr(inverseLTC * l2, vec3(0.0, 0.0, 1.0)),
-        NormalizeOr(inverseLTC * l3, vec3(0.0, 0.0, 1.0)));
+        inverseLTC * l0,
+        inverseLTC * l1,
+        inverseLTC * l2,
+        inverseLTC * l3);
 }
 
 vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
