@@ -688,30 +688,36 @@ void DeferredRenderer::CreateHPWaterAreaLightLTCLUT() {
         const float cosThetaParam = (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution);
         const float nDotV = std::clamp(1.0f - cosThetaParam * cosThetaParam, 0.0f, 1.0f);
         for (uint32_t x = 0; x < resolution; ++x) {
-            // Match HDRP _LtcData addressing: U = perceptual roughness,
-            // V = sqrt(1 - clamped NdotV).
+            // Match HDRP _LtcData addressing and payload shape:
+            // U = perceptual roughness, V = sqrt(1 - clamped NdotV),
+            // RGBA = inverse LTC matrix coefficients _m00_m02_m11_m20.
+            // The coefficients below are an analytic placeholder until the
+            // exact HDRP table is imported, but shaders now consume the same
+            // coefficient slots as HPWater/HDRP instead of ad hoc controls.
             const float perceptualRoughness = (static_cast<float>(x) + 0.5f) /
                                               static_cast<float>(resolution);
             const float roughness = perceptualRoughness * perceptualRoughness;
             const float grazing = 1.0f - std::clamp(nDotV, 0.0f, 1.0f);
-            const float horizonFade = std::clamp(0.35f + 0.65f * nDotV, 0.0f, 1.0f);
-            const float ltcEnergy = horizonFade * (1.0f + 0.85f * perceptualRoughness * grazing);
-            const float ltcSpread = std::clamp(0.08f + 0.52f * perceptualRoughness +
-                                                   0.25f * grazing * roughness,
-                                               0.0f,
-                                               1.0f);
-            const float edgeSoftness = std::clamp(0.15f + 0.70f * roughness + 0.15f * grazing,
-                                                  0.0f,
-                                                  1.0f);
-            const float diffuseScale = std::clamp(0.65f + 0.35f * nDotV + 0.20f * roughness,
-                                                  0.0f,
-                                                  1.25f);
+            const float m00 = std::clamp(1.0f + 0.65f * roughness +
+                                             0.20f * grazing * perceptualRoughness,
+                                         0.25f,
+                                         2.0f);
+            const float m02 = std::clamp(-0.28f * grazing * (0.25f + perceptualRoughness),
+                                         -0.75f,
+                                         0.75f);
+            const float m11 = std::clamp(1.0f + 0.45f * roughness +
+                                             0.35f * grazing * roughness,
+                                         0.25f,
+                                         2.0f);
+            const float m20 = std::clamp(0.18f * grazing * roughness,
+                                         -0.75f,
+                                         0.75f);
 
             const size_t index = (static_cast<size_t>(y) * resolution + x) * 4u;
-            pixels[index + 0u] = ltcEnergy;
-            pixels[index + 1u] = ltcSpread;
-            pixels[index + 2u] = edgeSoftness;
-            pixels[index + 3u] = diffuseScale;
+            pixels[index + 0u] = m00;
+            pixels[index + 1u] = m02;
+            pixels[index + 2u] = m11;
+            pixels[index + 3u] = m20;
         }
     }
 

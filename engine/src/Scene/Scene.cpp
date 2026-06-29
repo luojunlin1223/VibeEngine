@@ -2828,6 +2828,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
         m_RenderDiagnostics.HPWaterAreaLightLTCCosThetaParamEnabled =
             m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
+        m_RenderDiagnostics.HPWaterAreaLightLTCMatrixCoefficientsEnabled =
+            m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
         m_RenderDiagnostics.HPWaterPunctualLightLayerFilteringEnabled = true;
         m_RenderDiagnostics.HPWaterAreaLightLayerFilteringEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualLightInfluenceSortingEnabled = true;

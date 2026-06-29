@@ -7230,6 +7230,8 @@ private:
         out << "HPWaterAreaLightLTCHDRPUVEnabled: " << d.HPWaterAreaLightLTCHDRPUVEnabled << "\n";
         out << "HPWaterAreaLightLTCCosThetaParamEnabled: "
             << d.HPWaterAreaLightLTCCosThetaParamEnabled << "\n";
+        out << "HPWaterAreaLightLTCMatrixCoefficientsEnabled: "
+            << d.HPWaterAreaLightLTCMatrixCoefficientsEnabled << "\n";
         out << "HPWaterLightLoopInputsValid: " << d.HPWaterLightLoopInputsValid << "\n";
         out << "HPWaterSurfaceShadowSamplingEnabled: " << d.HPWaterSurfaceShadowSamplingEnabled << "\n";
         out << "HPWaterShadowCascadeDitherEnabled: " << d.HPWaterShadowCascadeDitherEnabled << "\n";
@@ -7861,7 +7863,7 @@ private:
             d.HPWaterExitFresnelF0,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d areaApprox=%d areaRect=%d areaLTC=%d/%u ltcSample=%d ltcHDRPUV=%d ltcCosTheta=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d areaLayerFilter=%d influenceSort=%d layerSkip=%u areaLayerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d volumeAreaRect=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d punctual=%d areaApprox=%d areaRect=%d areaLTC=%d/%u ltcSample=%d ltcHDRPUV=%d ltcCosTheta=%d ltcMatrix=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d areaLayerFilter=%d influenceSort=%d layerSkip=%u areaLayerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d volumeAreaRect=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSurfaceShadowSamplingEnabled ? 1 : 0,
             d.HPWaterShadowCascadeDitherEnabled ? 1 : 0,
@@ -7873,6 +7875,7 @@ private:
             d.HPWaterAreaLightLTCSamplingEnabled ? 1 : 0,
             d.HPWaterAreaLightLTCHDRPUVEnabled ? 1 : 0,
             d.HPWaterAreaLightLTCCosThetaParamEnabled ? 1 : 0,
+            d.HPWaterAreaLightLTCMatrixCoefficientsEnabled ? 1 : 0,
             d.HPWaterPointLightCount,
             d.HPWaterPunctualPointLightCandidates,
             d.HPWaterSpotLightCount,
