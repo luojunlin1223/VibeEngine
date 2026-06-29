@@ -1160,6 +1160,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionSourceCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionTrackedCount =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionTrackedCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionMatchedCount =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionMatchedCount();
     m_RenderDiagnostics.HPWaterSSRLightingBufferRan = m_DeferredRenderer.DidHPWaterSSRLightingRun();
     m_RenderDiagnostics.HPWaterSSRLightingBufferValid = m_DeferredRenderer.IsHPWaterSSRLightingValid();
     m_RenderDiagnostics.HPWaterSSRLightingRGBPreweighted =
@@ -1210,6 +1214,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionSourceCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionTrackedCount =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionTrackedCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionMatchedCount =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionMatchedCount();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorHistoryEnabled =
         m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeExponentialIntegrationEnabled =
@@ -3344,6 +3352,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
         auto hpWaterCurrentObjectPositions = collectHPWaterObjectPositions();
         glm::vec3 hpWaterObjectMotionWorldOffset(0.0f);
+        const uint32_t hpWaterObjectMotionTrackedCount =
+            static_cast<uint32_t>(hpWaterCurrentObjectPositions.size());
+        uint32_t hpWaterObjectMotionMatchedCount = 0;
         uint32_t hpWaterObjectMotionSourceCount = 0;
         if (m_HasPreviousHPWaterObjectPositions) {
             glm::vec3 accumulatedOffset(0.0f);
@@ -3352,6 +3363,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 if (previousIt == m_PreviousHPWaterObjectPositions.end())
                     continue;
 
+                ++hpWaterObjectMotionMatchedCount;
                 const glm::vec3 offset = currentPosition - previousIt->second;
                 if (glm::dot(offset, offset) <= 0.00000001f)
                     continue;
@@ -3380,7 +3392,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                            hpWaterVolumeTemporalDepthThreshold,
                                                            hpWaterObjectMotionEnabled,
                                                            hpWaterObjectMotionWorldOffset,
-                                                           hpWaterObjectMotionSourceCount);
+                                                           hpWaterObjectMotionSourceCount,
+                                                           hpWaterObjectMotionTrackedCount,
+                                                           hpWaterObjectMotionMatchedCount);
         m_RenderDiagnostics.HPWaterVolumeFilterRan =
             m_RenderDiagnostics.HPWaterVolumeRan &&
             m_DeferredRenderer.FilterHPWaterVolume(hpWaterVolumeSpatialFilterEnabled,
@@ -3548,6 +3562,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeExplicitMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeSceneMotionVectorEnabled =
         m_DeferredRenderer.IsHPWaterVolumeSceneMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionVectorEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeObjectMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionWorldOffset =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionSourceCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionTrackedCount =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionTrackedCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionMatchedCount =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionMatchedCount();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorHistoryEnabled =
         m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =

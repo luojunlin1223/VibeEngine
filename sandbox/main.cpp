@@ -7508,6 +7508,10 @@ private:
             << d.HPWaterVolumeObjectMotionWorldOffset.z << "\n";
         out << "HPWaterVolumeObjectMotionSourceCount: "
             << d.HPWaterVolumeObjectMotionSourceCount << "\n";
+        out << "HPWaterVolumeObjectMotionTrackedCount: "
+            << d.HPWaterVolumeObjectMotionTrackedCount << "\n";
+        out << "HPWaterVolumeObjectMotionMatchedCount: "
+            << d.HPWaterVolumeObjectMotionMatchedCount << "\n";
         out << "HPWaterVolumeMotionVectorHistoryEnabled: "
             << d.HPWaterVolumeMotionVectorHistoryEnabled << "\n";
         out << "HPWaterVolumeExponentialIntegrationEnabled: "
@@ -8025,12 +8029,14 @@ private:
             d.HPWaterDepthPyramidWidth,
             d.HPWaterDepthPyramidHeight,
             d.HPWaterDepthPyramidTexture);
-        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d objMV=%d src=%u mvHistory=%d strength=%.2f",
+        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d objMV=%d tracked=%u matched=%u moving=%u mvHistory=%d strength=%.2f",
             d.HPWaterVolumeTemporalNeighborhoodClampEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalMotionReprojectionEnabled ? 1 : 0,
             d.HPWaterVolumeExplicitMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeSceneMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeObjectMotionVectorEnabled ? 1 : 0,
+            d.HPWaterVolumeObjectMotionTrackedCount,
+            d.HPWaterVolumeObjectMotionMatchedCount,
             d.HPWaterVolumeObjectMotionSourceCount,
             d.HPWaterVolumeMotionVectorHistoryEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalNeighborhoodClampStrength);

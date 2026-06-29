@@ -283,7 +283,9 @@ public:
                                      float temporalDepthThreshold,
                                      bool objectMotionVectorEnabled,
                                      const glm::vec3& objectMotionWorldOffset,
-                                     uint32_t objectMotionSourceCount);
+                                     uint32_t objectMotionSourceCount,
+                                     uint32_t objectMotionTrackedCount,
+                                     uint32_t objectMotionMatchedCount);
 
     /// Run multi-iteration depth-aware a-trous filtering over low-resolution HPWater volume buffers.
     bool FilterHPWaterVolume(bool spatialFilterEnabled,
@@ -445,6 +447,12 @@ public:
     }
     uint32_t GetHPWaterVolumeObjectMotionSourceCount() const {
         return m_HPWaterVolumeObjectMotionSourceCount;
+    }
+    uint32_t GetHPWaterVolumeObjectMotionTrackedCount() const {
+        return m_HPWaterVolumeObjectMotionTrackedCount;
+    }
+    uint32_t GetHPWaterVolumeObjectMotionMatchedCount() const {
+        return m_HPWaterVolumeObjectMotionMatchedCount;
     }
     bool IsHPWaterVolumeMotionVectorHistoryEnabled() const {
         return m_HPWaterVolumeMotionVectorHistoryEnabled;
@@ -699,7 +707,9 @@ private:
                                          const glm::mat4& previousViewProjection,
                                          bool objectMotionVectorEnabled,
                                          const glm::vec3& objectMotionWorldOffset,
-                                         uint32_t objectMotionSourceCount);
+                                         uint32_t objectMotionSourceCount,
+                                         uint32_t objectMotionTrackedCount,
+                                         uint32_t objectMotionMatchedCount);
     void CommitHPWaterVolumeHistory();
     bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
                                     const std::shared_ptr<Framebuffer>& outputFBO,
@@ -822,6 +832,8 @@ private:
     bool m_HPWaterVolumeObjectMotionVectorEnabled = false;
     glm::vec3 m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
     uint32_t m_HPWaterVolumeObjectMotionSourceCount = 0;
+    uint32_t m_HPWaterVolumeObjectMotionTrackedCount = 0;
+    uint32_t m_HPWaterVolumeObjectMotionMatchedCount = 0;
     bool m_HPWaterVolumeMotionVectorHistoryEnabled = false;
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
     bool m_HPWaterVolumeShadowSamplingEnabled = false;
