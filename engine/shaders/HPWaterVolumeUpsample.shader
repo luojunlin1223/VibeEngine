@@ -1,7 +1,7 @@
 // VibeEngine ShaderLab - HPWater full-resolution volume upsample
 // Resolves filtered low-resolution volume color/transmittance/depth into
-// full-resolution textures with a joint bilateral weight driven by the
-// full-resolution refracted scene depth.
+// full-resolution textures with HPWater-style 2x2 gather reconstruction:
+// bilinear weights multiplied by reciprocal low/full-depth difference.
 
 Shader "VibeEngine/HPWaterVolumeUpsample" {
     Properties {
@@ -55,13 +55,23 @@ float LinearizeDepth(float depth) {
         max(u_FarClip + u_NearClip - z * (u_FarClip - u_NearClip), 0.0001);
 }
 
-float SpatialKernel(ivec2 offset) {
-    int d2 = offset.x * offset.x + offset.y * offset.y;
-    if (d2 == 0) return 1.0;
-    if (d2 == 1) return 0.72;
-    if (d2 == 2) return 0.52;
-    if (d2 == 4) return 0.28;
-    return 0.20;
+struct VolumeTap {
+    vec3 color;
+    vec3 transmittance;
+    vec3 depth;
+    float valid;
+};
+
+VolumeTap LoadVolumeTap(ivec2 p) {
+    VolumeTap tap;
+    vec4 c = texelFetch(u_LowResVolumeColor, p, 0);
+    vec4 t = texelFetch(u_LowResVolumeTransmittance, p, 0);
+    vec4 d = texelFetch(u_LowResVolumeDepth, p, 0);
+    tap.color = c.rgb;
+    tap.transmittance = t.rgb;
+    tap.depth = d.rgb;
+    tap.valid = step(0.0001, d.a) * step(0.0001, c.a + t.a);
+    return tap;
 }
 
 void main() {
@@ -83,37 +93,35 @@ void main() {
         : LinearizeDepth(refractMeta.z);
 
     ivec2 lowSize = textureSize(u_LowResVolumeColor, 0);
-    vec2 lowTexel = 1.0 / vec2(max(lowSize, ivec2(1)));
-    ivec2 center = ivec2(clamp(floor(v_UV * vec2(lowSize)), vec2(0.0), vec2(lowSize - ivec2(1))));
+    vec2 lowResPixel = v_UV * vec2(lowSize);
+    vec2 lowResCoord = lowResPixel - vec2(0.5);
+    ivec2 p00 = ivec2(floor(lowResCoord));
+    vec2 f = fract(lowResCoord);
+    ivec2 p10 = p00 + ivec2(1, 0);
+    ivec2 p01 = p00 + ivec2(0, 1);
+    ivec2 p11 = p00 + ivec2(1, 1);
+    ivec2 lowMax = lowSize - ivec2(1);
+    p00 = clamp(p00, ivec2(0), lowMax);
+    p10 = clamp(p10, ivec2(0), lowMax);
+    p01 = clamp(p01, ivec2(0), lowMax);
+    p11 = clamp(p11, ivec2(0), lowMax);
 
-    vec3 colorAccum = vec3(0.0);
-    vec3 transAccum = vec3(0.0);
-    vec3 depthAccum = vec3(0.0);
-    float totalWeight = 0.0;
+    VolumeTap tap00 = LoadVolumeTap(p00);
+    VolumeTap tap10 = LoadVolumeTap(p10);
+    VolumeTap tap01 = LoadVolumeTap(p01);
+    VolumeTap tap11 = LoadVolumeTap(p11);
 
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            ivec2 offset = ivec2(x, y);
-            ivec2 p = clamp(center + offset, ivec2(0), lowSize - ivec2(1));
-            vec2 sampleUV = (vec2(p) + vec2(0.5)) * lowTexel;
+    float wb00 = (1.0 - f.x) * (1.0 - f.y);
+    float wb10 = f.x * (1.0 - f.y);
+    float wb01 = (1.0 - f.x) * f.y;
+    float wb11 = f.x * f.y;
 
-            vec4 volumeColor = texture(u_LowResVolumeColor, sampleUV);
-            vec4 volumeTrans = texture(u_LowResVolumeTransmittance, sampleUV);
-            vec4 volumeDepth = texture(u_LowResVolumeDepth, sampleUV);
-
-            float valid = step(0.0001, volumeDepth.a) * step(0.0001, volumeColor.a + volumeTrans.a);
-            float depthDelta = abs(volumeDepth.r - targetDepth);
-            float depthScale = max(0.35, targetDepth * 0.018);
-            float depthWeight = exp(-depthDelta / depthScale);
-            float rayWeight = exp(-abs(volumeDepth.b - refractMeta.w) * 3.0);
-            float w = SpatialKernel(offset) * depthWeight * rayWeight * valid;
-
-            colorAccum += volumeColor.rgb * w;
-            transAccum += volumeTrans.rgb * w;
-            depthAccum += volumeDepth.rgb * w;
-            totalWeight += w;
-        }
-    }
+    float epsilon = 0.000001;
+    float w00 = wb00 * tap00.valid / (abs(tap00.depth.r - targetDepth) + epsilon);
+    float w10 = wb10 * tap10.valid / (abs(tap10.depth.r - targetDepth) + epsilon);
+    float w01 = wb01 * tap01.valid / (abs(tap01.depth.r - targetDepth) + epsilon);
+    float w11 = wb11 * tap11.valid / (abs(tap11.depth.r - targetDepth) + epsilon);
+    float totalWeight = w00 + w10 + w01 + w11;
 
     if (totalWeight <= 0.00001) {
         vec4 nearestColor = texture(u_LowResVolumeColor, v_UV);
@@ -125,9 +133,13 @@ void main() {
         return;
     }
 
-    vec3 color = colorAccum / totalWeight;
-    vec3 trans = clamp(transAccum / totalWeight, vec3(0.0), vec3(1.0));
-    vec3 depth = depthAccum / totalWeight;
+    vec3 color = (tap00.color * w00 + tap10.color * w10 +
+        tap01.color * w01 + tap11.color * w11) / totalWeight;
+    vec3 trans = clamp((tap00.transmittance * w00 + tap10.transmittance * w10 +
+        tap01.transmittance * w01 + tap11.transmittance * w11) / totalWeight,
+        vec3(0.0), vec3(1.0));
+    vec3 depth = (tap00.depth * w00 + tap10.depth * w10 +
+        tap01.depth * w01 + tap11.depth * w11) / totalWeight;
 
     UpsampledColor = vec4(max(color, vec3(0.0)), 1.0);
     UpsampledTransmittance = vec4(trans, 1.0);

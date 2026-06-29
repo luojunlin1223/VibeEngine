@@ -517,6 +517,12 @@ public:
     }
     uint32_t GetHPWaterVolumeMotionVectorTexture() const;
     bool IsHPWaterVolumeUpsampledValid() const { return m_HPWaterVolumeUpsampledValid; }
+    bool IsHPWaterVolumeUpsampleGatherParityEnabled() const {
+        return m_HPWaterVolumeUpsampleGatherParityEnabled;
+    }
+    bool IsHPWaterVolumeUpsampleDepthAwareEnabled() const {
+        return m_HPWaterVolumeUpsampleDepthAwareEnabled;
+    }
     void InvalidateHPWaterVolumeHistory();
 
     /// Whether the current output texture is the HPWater composite.
@@ -773,6 +779,8 @@ private:
     bool m_HPWaterVolumeHistoryValid = false;
     bool m_HPWaterVolumeFilteredValid = false;
     bool m_HPWaterVolumeUpsampledValid = false;
+    bool m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    bool m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     uint32_t m_HPWaterVolumeFilterIterations = 0;
     bool m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;

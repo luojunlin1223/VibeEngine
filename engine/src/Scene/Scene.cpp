@@ -1234,6 +1234,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledDepthTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(2);
     m_RenderDiagnostics.HPWaterVolumeUpsampledWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterVolumeUpsampleGatherParityEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeUpsampleGatherParityEnabled();
+    m_RenderDiagnostics.HPWaterVolumeUpsampleDepthAwareEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeUpsampleDepthAwareEnabled();
     m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
     m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
     m_RenderDiagnostics.HPWaterCausticComputeTexture =
@@ -3471,6 +3475,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterVolumeUpsampledDepthTexture = m_DeferredRenderer.GetHPWaterVolumeUpsampledTexture(2);
     m_RenderDiagnostics.HPWaterVolumeUpsampledWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterVolumeUpsampledHeight = m_DeferredRenderer.GetHeight();
+    m_RenderDiagnostics.HPWaterVolumeUpsampleGatherParityEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeUpsampleGatherParityEnabled();
+    m_RenderDiagnostics.HPWaterVolumeUpsampleDepthAwareEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeUpsampleDepthAwareEnabled();
     m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
     m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
     m_RenderDiagnostics.HPWaterCausticComputeTexture =

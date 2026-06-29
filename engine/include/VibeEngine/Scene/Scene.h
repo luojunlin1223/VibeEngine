@@ -352,6 +352,8 @@ struct RenderDiagnostics {
     uint32_t HPWaterVolumeUpsampledDepthTexture = 0;
     uint32_t HPWaterVolumeUpsampledWidth = 0;
     uint32_t HPWaterVolumeUpsampledHeight = 0;
+    bool HPWaterVolumeUpsampleGatherParityEnabled = false;
+    bool HPWaterVolumeUpsampleDepthAwareEnabled = false;
     bool HPWaterCausticRan = false;
     bool HPWaterCausticValid = false;
     uint32_t HPWaterCausticTexture = 0;

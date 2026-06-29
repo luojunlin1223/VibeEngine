@@ -391,6 +391,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
@@ -834,6 +836,8 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
@@ -1329,6 +1333,8 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
@@ -1518,6 +1524,8 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
@@ -2630,6 +2638,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeTemporalValid = false;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterVolumeExponentialIntegrationEnabled = true;
     m_HPWaterVolumeShadowSamplingEnabled = shadowSamplingValid;
@@ -2810,6 +2820,8 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
     m_HPWaterVolumeTemporalDepthThreshold = clampedDepthThreshold;
     m_HPWaterVolumeFilteredValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     m_HPWaterVolumeFilterIterations = 0;
     return true;
 }
@@ -2827,6 +2839,8 @@ void DeferredRenderer::InvalidateHPWaterVolumeHistory() {
     m_HPWaterVolumeTemporalValid = false;
     m_HPWaterVolumeHistoryValid = false;
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
@@ -2943,6 +2957,8 @@ bool DeferredRenderer::FilterHPWaterVolume(bool spatialFilterEnabled,
     if (m_HPWaterVolumeFilteredValid)
         CommitHPWaterVolumeHistory();
     m_HPWaterVolumeUpsampledValid = false;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
     return m_HPWaterVolumeFilteredValid;
 }
 
@@ -2950,6 +2966,8 @@ bool DeferredRenderer::UpsampleHPWaterVolume(float nearClip, float farClip) {
     if (!m_HPWaterVolumeUpsampleShader || !m_HPWaterVolumeUpsampledFBO ||
         !m_HPWaterVolumeFBO || !m_HPWaterCompositeFBO || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterVolumeUpsampledValid = false;
+        m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+        m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
         return false;
     }
 
@@ -2961,6 +2979,8 @@ bool DeferredRenderer::UpsampleHPWaterVolume(float nearClip, float farClip) {
 
     if (!inputFBO || !m_HPWaterVolumeValid) {
         m_HPWaterVolumeUpsampledValid = false;
+        m_HPWaterVolumeUpsampleGatherParityEnabled = false;
+        m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
         return false;
     }
 
@@ -3012,6 +3032,8 @@ bool DeferredRenderer::UpsampleHPWaterVolume(float nearClip, float farClip) {
 
     m_HPWaterVolumeUpsampledFBO->Unbind();
     m_HPWaterVolumeUpsampledValid = true;
+    m_HPWaterVolumeUpsampleGatherParityEnabled = true;
+    m_HPWaterVolumeUpsampleDepthAwareEnabled = true;
     return true;
 }
 

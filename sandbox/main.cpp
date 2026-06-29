@@ -7419,6 +7419,10 @@ private:
         out << "HPWaterVolumeUpsampledTransmittanceTexture: " << d.HPWaterVolumeUpsampledTransmittanceTexture << "\n";
         out << "HPWaterVolumeUpsampledDepthTexture: " << d.HPWaterVolumeUpsampledDepthTexture << "\n";
         out << "HPWaterVolumeUpsampledSize: " << d.HPWaterVolumeUpsampledWidth << "x" << d.HPWaterVolumeUpsampledHeight << "\n";
+        out << "HPWaterVolumeUpsampleGatherParityEnabled: "
+            << d.HPWaterVolumeUpsampleGatherParityEnabled << "\n";
+        out << "HPWaterVolumeUpsampleDepthAwareEnabled: "
+            << d.HPWaterVolumeUpsampleDepthAwareEnabled << "\n";
         out << "HPWaterCausticRan: " << d.HPWaterCausticRan << "\n";
         out << "HPWaterCausticValid: " << d.HPWaterCausticValid << "\n";
         out << "HPWaterCausticTexture: " << d.HPWaterCausticTexture << "\n";
