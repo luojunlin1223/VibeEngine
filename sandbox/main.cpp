@@ -7377,6 +7377,8 @@ private:
             << d.HPWaterVolumeMotionVectorHistoryEnabled << "\n";
         out << "HPWaterVolumeExponentialIntegrationEnabled: "
             << d.HPWaterVolumeExponentialIntegrationEnabled << "\n";
+        out << "HPWaterVolumeSceneInScatteringEnabled: "
+            << d.HPWaterVolumeSceneInScatteringEnabled << "\n";
         out << "HPWaterVolumeAlbedoPhaseBlendEnabled: "
             << d.HPWaterVolumeAlbedoPhaseBlendEnabled << "\n";
         out << "HPWaterVolumePhaseGEnabled: "
@@ -7839,7 +7841,8 @@ private:
             d.HPWaterVolumeTemporalDepthThreshold,
             d.HPWaterVolumeSpatialDepthAwareEnabled ? 1 : 0,
             d.HPWaterVolumeSpatialDepthSensitivity);
-        ImGui::Text("HPWater volume phase/shadows: albedoPhase=%d phaseG=%d sampling=%d params=%d maxCross=%d dynamicShadow=%d maxCrossDist=%.2f softness=%.2f minFilter=%.2f blockers=%u filters=%u",
+        ImGui::Text("HPWater volume phase/shadows: sceneScatter=%d albedoPhase=%d phaseG=%d sampling=%d params=%d maxCross=%d dynamicShadow=%d maxCrossDist=%.2f softness=%.2f minFilter=%.2f blockers=%u filters=%u",
+            d.HPWaterVolumeSceneInScatteringEnabled ? 1 : 0,
             d.HPWaterVolumeAlbedoPhaseBlendEnabled ? 1 : 0,
             d.HPWaterVolumePhaseGEnabled ? 1 : 0,
             d.HPWaterVolumeShadowSamplingEnabled ? 1 : 0,

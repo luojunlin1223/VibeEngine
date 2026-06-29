@@ -691,6 +691,7 @@ void main() {
     vec3 accumTransmittance = vec3(1.0);
     vec3 directScatter = vec3(0.0);
     vec3 sceneInScatter = vec3(0.0);
+    float lastShadowVisibility = 1.0;
     float accumulatedDistance = 0.0;
 
     for (int i = 0; i < 32; ++i) {
@@ -707,11 +708,11 @@ void main() {
         float midD = clamp((previousD + d) * 0.5, 0.0, 1.0);
         vec3 samplePos = mix(waterWorldPos, noLinearEndPos, midD);
         vec3 shadowSamplePos = mix(waterWorldPos, dynamicShadowEndPos, midD);
-        vec2 sampleUV = mix(sourceUV, clamp(refractMeta.xy, vec2(0.001), vec2(0.999)), midD);
         vec3 sampleToCamera = SafeNormalize(u_CameraPosition - samplePos, V);
         float cosTheta = clamp(dot(sampleToCamera, L), -1.0, 1.0);
         vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
         float shadowVisibility = ComputeHPWaterVolumeShadow(shadowSamplePos, N);
+        lastShadowVisibility = shadowVisibility;
         float volumeShadow = mix(0.35, 1.0, shadowVisibility);
         float directSegment = segment + max((d - previousD) * sunDepth, 0.0);
         vec3 stepTransmittance = exp(-extinction * segment);
@@ -731,10 +732,6 @@ void main() {
             (directionalScatter * directExtinguished + punctualScatter * extinguished) *
             scatteringAlbedo * macroScatter * depthWeight;
 
-        vec3 refractedSceneColor = texture(u_SceneColor, sampleUV).rgb;
-        sceneInScatter += accumTransmittance * refractedSceneColor * scatterCoeff *
-            segment * (0.08 + 0.22 * normalizedThickness) * macroScatter;
-
         accumTransmittance *= stepTransmittance;
         accumulatedDistance += segment;
         previousD = d;
@@ -744,6 +741,13 @@ void main() {
     if (accumulatedDistance <= 0.0001) {
         transmittance = exp(-extinction * rayLength);
     }
+
+    vec2 finalSceneUV = clamp(refractMeta.xy, vec2(0.001), vec2(0.999));
+    vec3 finalSceneColor = texture(u_SceneColor, finalSceneUV).rgb;
+    float lightLuminance = Luminance(u_LightColor * max(u_LightIntensity, 0.0));
+    float sceneShadowMix = mix(lastShadowVisibility, 1.0, 0.3);
+    sceneInScatter = finalSceneColor * sceneShadowMix * accumTransmittance *
+        scatterCoeff * noLinearRayLength * lightLuminance * macroScatter;
 
     vec3 ambientScatter = scatterColor * (0.025 + 0.12 * normalizedThickness) * macroScatter;
     vec3 volumeColor = directScatter + sceneInScatter + ambientScatter;

@@ -1200,6 +1200,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeExponentialIntegrationEnabled =
         m_DeferredRenderer.IsHPWaterVolumeExponentialIntegrationEnabled();
+    m_RenderDiagnostics.HPWaterVolumeSceneInScatteringEnabled =
+        m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterMacroScatterStrength > 0.0001f;
     m_RenderDiagnostics.HPWaterVolumeAlbedoPhaseBlendEnabled =
         m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterMacroScatterStrength > 0.0001f;
     m_RenderDiagnostics.HPWaterVolumePhaseGEnabled =
@@ -3447,6 +3449,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowSamplingEnabled();
+    m_RenderDiagnostics.HPWaterVolumeSceneInScatteringEnabled =
+        m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterMacroScatterStrength > 0.0001f;
     m_RenderDiagnostics.HPWaterVolumeAlbedoPhaseBlendEnabled =
         m_RenderDiagnostics.HPWaterVolumeRan && m_RenderDiagnostics.HPWaterMacroScatterStrength > 0.0001f;
     m_RenderDiagnostics.HPWaterVolumePhaseGEnabled =
