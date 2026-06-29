@@ -7038,6 +7038,28 @@ private:
         std::array<unsigned char, 4> MaxRGBA = { 0, 0, 0, 0 };
     };
 
+    struct TextureFloatProbeSummary {
+        bool Valid = false;
+        uint32_t Width = 0;
+        uint32_t Height = 0;
+        std::array<float, 4> AverageRGBA = { 0.0f, 0.0f, 0.0f, 0.0f };
+        std::array<float, 4> MinRGBA = {
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max()
+        };
+        std::array<float, 4> MaxRGBA = {
+            std::numeric_limits<float>::lowest(),
+            std::numeric_limits<float>::lowest(),
+            std::numeric_limits<float>::lowest(),
+            std::numeric_limits<float>::lowest()
+        };
+        std::array<float, 4> Center = { 0.0f, 0.0f, 0.0f, 0.0f };
+        float NonZeroRGBRatio = 0.0f;
+        float NonZeroAlphaRatio = 0.0f;
+    };
+
     TextureProbeSummary ProbeTexture(uint32_t textureID, uint32_t width, uint32_t height) {
         TextureProbeSummary summary;
         summary.Width = width;
@@ -7103,6 +7125,73 @@ private:
                 static_cast<float>(channelSum[3] / (255.0 * sampled))
             };
             summary.NonBlackRatio = static_cast<float>(static_cast<double>(nonBlack) / sampled);
+        }
+        return summary;
+    }
+
+    TextureFloatProbeSummary ProbeTextureFloat(uint32_t textureID, uint32_t width, uint32_t height) {
+        TextureFloatProbeSummary summary;
+        summary.Width = width;
+        summary.Height = height;
+        if (textureID == 0 || width == 0 || height == 0)
+            return summary;
+
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+        std::vector<float> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+
+        const size_t centerIndex = ((static_cast<size_t>(height / 2) * width) + (width / 2)) * 4;
+        if (centerIndex + 3 < pixels.size()) {
+            summary.Center = {
+                pixels[centerIndex + 0],
+                pixels[centerIndex + 1],
+                pixels[centerIndex + 2],
+                pixels[centerIndex + 3]
+            };
+        }
+
+        std::array<double, 4> channelSum = { 0.0, 0.0, 0.0, 0.0 };
+        size_t nonZeroRGB = 0;
+        size_t nonZeroAlpha = 0;
+        const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+        const size_t step = std::max<size_t>(1, pixelCount / 65536);
+        size_t sampled = 0;
+        for (size_t pixel = 0; pixel < pixelCount; pixel += step) {
+            const size_t i = pixel * 4;
+            const std::array<float, 4> rgba = {
+                pixels[i + 0],
+                pixels[i + 1],
+                pixels[i + 2],
+                pixels[i + 3]
+            };
+            for (size_t c = 0; c < rgba.size(); ++c) {
+                const float value = std::isfinite(rgba[c]) ? rgba[c] : 0.0f;
+                summary.MinRGBA[c] = std::min(summary.MinRGBA[c], value);
+                summary.MaxRGBA[c] = std::max(summary.MaxRGBA[c], value);
+                channelSum[c] += value;
+            }
+            if (std::abs(rgba[0]) > 0.00001f || std::abs(rgba[1]) > 0.00001f || std::abs(rgba[2]) > 0.00001f)
+                nonZeroRGB++;
+            if (std::abs(rgba[3]) > 0.00001f)
+                nonZeroAlpha++;
+            sampled++;
+        }
+
+        summary.Valid = sampled > 0;
+        if (sampled > 0) {
+            summary.AverageRGBA = {
+                static_cast<float>(channelSum[0] / sampled),
+                static_cast<float>(channelSum[1] / sampled),
+                static_cast<float>(channelSum[2] / sampled),
+                static_cast<float>(channelSum[3] / sampled)
+            };
+            summary.NonZeroRGBRatio = static_cast<float>(static_cast<double>(nonZeroRGB) / sampled);
+            summary.NonZeroAlphaRatio = static_cast<float>(static_cast<double>(nonZeroAlpha) / sampled);
         }
         return summary;
     }
@@ -7611,12 +7700,49 @@ private:
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_composite.bmp");
         }
         if (dr.IsInitialized() && dr.GetHPWaterRefractionDataTexture() != 0) {
-            writeProbe("HPWaterRefractionWorldData", ProbeTexture(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight()));
+            TextureProbeSummary refractionWorldProbe =
+                ProbeTexture(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight());
+            TextureFloatProbeSummary refractionWorldFloatProbe =
+                ProbeTextureFloat(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterRefractionWorldData", refractionWorldProbe);
+            out << "HPWaterRefractionWorldDataAverageWorldPosition: " << std::fixed << std::setprecision(4)
+                << refractionWorldFloatProbe.AverageRGBA[0] << ","
+                << refractionWorldFloatProbe.AverageRGBA[1] << ","
+                << refractionWorldFloatProbe.AverageRGBA[2] << "\n";
+            out << "HPWaterRefractionWorldDataAverageRayLength: "
+                << refractionWorldFloatProbe.AverageRGBA[3] << "\n";
+            out << "HPWaterRefractionWorldDataMaxRayLength: "
+                << refractionWorldFloatProbe.MaxRGBA[3] << "\n";
+            out << "HPWaterRefractionWorldDataNonZeroWorldRatio: "
+                << refractionWorldFloatProbe.NonZeroRGBRatio << "\n";
+            out << "HPWaterRefractionWorldDataNonZeroRayRatio: "
+                << refractionWorldFloatProbe.NonZeroAlphaRatio << "\n";
+            out << "HPWaterRefractionWorldDataAnyRay: "
+                << (refractionWorldFloatProbe.MaxRGBA[3] > 0.00001f ? 1 : 0) << "\n";
             SaveTextureBMP(dr.GetHPWaterRefractionDataTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_world_data.bmp");
         }
         if (dr.IsInitialized() && dr.GetHPWaterRefractionMetaTexture() != 0) {
-            writeProbe("HPWaterRefractionMeta", ProbeTexture(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight()));
+            TextureProbeSummary refractionMetaProbe =
+                ProbeTexture(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight());
+            TextureFloatProbeSummary refractionMetaFloatProbe =
+                ProbeTextureFloat(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterRefractionMeta", refractionMetaProbe);
+            out << "HPWaterRefractionMetaAverageUV: " << std::fixed << std::setprecision(4)
+                << refractionMetaFloatProbe.AverageRGBA[0] << ","
+                << refractionMetaFloatProbe.AverageRGBA[1] << "\n";
+            out << "HPWaterRefractionMetaAverageSceneDepth: "
+                << refractionMetaFloatProbe.AverageRGBA[2] << "\n";
+            out << "HPWaterRefractionMetaAverageNormalizedThickness: "
+                << refractionMetaFloatProbe.AverageRGBA[3] << "\n";
+            out << "HPWaterRefractionMetaMaxNormalizedThickness: "
+                << refractionMetaFloatProbe.MaxRGBA[3] << "\n";
+            out << "HPWaterRefractionMetaNonBlackRatio: " << std::fixed << std::setprecision(4)
+                << refractionMetaProbe.NonBlackRatio << "\n";
+            out << "HPWaterRefractionMetaNonZeroThicknessRatio: "
+                << refractionMetaFloatProbe.NonZeroAlphaRatio << "\n";
+            out << "HPWaterRefractionMetaAnyThickness: "
+                << (refractionMetaFloatProbe.MaxRGBA[3] > 0.00001f ? 1 : 0) << "\n";
             SaveTextureBMP(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_meta.bmp");
         }

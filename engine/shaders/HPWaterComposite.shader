@@ -1013,13 +1013,14 @@ void main() {
         return;
     }
 
-    float sceneDepth = texture(u_SceneDepth, v_UV).r;
+    float mergedSceneDepth = texture(u_SceneDepth, v_UV).r;
+    float sceneDepth = SampleSceneDepth(v_UV, 0.0);
 
     // Preserve foreground opaque objects. GL depth is smaller when closer.
-    if (sceneDepth < waterDepth - 0.00005) {
+    if (mergedSceneDepth < waterDepth - 0.00005) {
         FragColor = sceneColor;
         RefractData = vec4(0.0);
-        RefractMeta = vec4(v_UV, sceneDepth, 0.0);
+        RefractMeta = vec4(v_UV, mergedSceneDepth, 0.0);
         SSRDiagnostics = vec4(0.0);
         return;
     }

@@ -58,7 +58,7 @@ HPWater generates a full-resolution refraction texture where:
 - It can use either a cheaper normal-offset path or ray marching.
 - The ray marching path uses the scene depth pyramid excluding water, exponential stepping, IGN jitter, and a max cross distance.
 
-VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid, computes a HPWater-style world-space refracted ray from the camera-to-water direction, water normal, flat-normal subtraction, and water-cross direction, projects the ray into NDC, then marches that 3D NDC line with exponential steps, depth-pyramid coarse sampling, and mip-0 binary refinement. The march has HPWater-style frame-indexed IGN step jitter plus serialized controls for sample count, max refraction cross distance, and thickness offset. Refraction, volume accumulation, and volume upsample now share the explicit HPWater mask. Remaining refraction parity work is closer validation against HPWater's exact Unity projection conventions and edge-case tuning.
+VibeEngine now writes a full-resolution refraction payload and metadata target during `HPWaterComposite.shader`. The current implementation builds a dedicated opaque scene-depth pyramid, computes a HPWater-style world-space refracted ray from the camera-to-water direction, water normal, flat-normal subtraction, and water-cross direction, projects the ray into NDC, then marches that 3D NDC line with exponential steps, depth-pyramid coarse sampling, and mip-0 binary refinement. The march has HPWater-style frame-indexed IGN step jitter plus serialized controls for sample count, max refraction cross distance, and thickness offset. Refraction, volume accumulation, and volume upsample now share the explicit HPWater mask. The opaque depth pyramid now remains valid across the deferred lighting pass until HPWater composite consumes it; HPWater composite uses merged scene depth only for foreground rejection and uses the opaque depth pyramid for water thickness, scene-world reconstruction, and refraction fallback. Hidden diagnostics export float-precision named refraction world/meta fields for world payload, ray length, UV, scene depth, normalized thickness, and thickness presence. Remaining refraction parity work is closer validation against HPWater's exact Unity projection conventions and edge-case tuning.
 
 ### Volumetric Water Lighting
 
@@ -132,6 +132,7 @@ VibeEngine now has a partial BSDF/light-loop bridge: Schlick Fresnel uses an air
    - Done: add HPWater-style IGN step jitter and max-cross-distance / thickness controls.
    - Done: route refraction through the explicit HPWater mask.
    - Done: replace the transitional 2D normal-offset march with HPWater-style world-space refracted rays projected into NDC, using exponential/dithered depth-pyramid marching and diagnostics.
+   - Done: preserve the opaque depth-pyramid valid state across deferred lighting so HPWater composite actually uses the Hi-Z/NDC refraction path, keep merged scene depth out of HPWater thickness/reconstruction, and export float-precision named refraction payload diagnostics for hidden validation.
    - Pending: closer validation against HPWater's exact Unity projection conventions and edge-case tuning.
 
 4. Volumetric pass

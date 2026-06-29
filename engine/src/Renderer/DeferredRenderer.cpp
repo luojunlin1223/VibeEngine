@@ -1575,7 +1575,6 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticFilterComputeParityEnabled = false;
     m_HPWaterCausticFilterLDSHaloEnabled = false;
-    m_HPWaterDepthPyramidValid = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
 
