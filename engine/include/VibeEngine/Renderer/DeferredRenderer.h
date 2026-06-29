@@ -280,7 +280,10 @@ public:
                                      bool motionVectorsEnabled,
                                      float motionVectorVelocityScale,
                                      bool temporalDepthRejectionEnabled,
-                                     float temporalDepthThreshold);
+                                     float temporalDepthThreshold,
+                                     bool objectMotionVectorEnabled,
+                                     const glm::vec3& objectMotionWorldOffset,
+                                     uint32_t objectMotionSourceCount);
 
     /// Run multi-iteration depth-aware a-trous filtering over low-resolution HPWater volume buffers.
     bool FilterHPWaterVolume(bool spatialFilterEnabled,
@@ -433,6 +436,15 @@ public:
     }
     bool IsHPWaterVolumeSceneMotionVectorEnabled() const {
         return m_HPWaterVolumeSceneMotionVectorEnabled;
+    }
+    bool IsHPWaterVolumeObjectMotionVectorEnabled() const {
+        return m_HPWaterVolumeObjectMotionVectorEnabled;
+    }
+    glm::vec3 GetHPWaterVolumeObjectMotionWorldOffset() const {
+        return m_HPWaterVolumeObjectMotionWorldOffset;
+    }
+    uint32_t GetHPWaterVolumeObjectMotionSourceCount() const {
+        return m_HPWaterVolumeObjectMotionSourceCount;
     }
     bool IsHPWaterVolumeMotionVectorHistoryEnabled() const {
         return m_HPWaterVolumeMotionVectorHistoryEnabled;
@@ -684,7 +696,10 @@ private:
     void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
     bool BuildHPWaterVolumeMotionVectors(const glm::mat4& currentViewProjection,
-                                         const glm::mat4& previousViewProjection);
+                                         const glm::mat4& previousViewProjection,
+                                         bool objectMotionVectorEnabled,
+                                         const glm::vec3& objectMotionWorldOffset,
+                                         uint32_t objectMotionSourceCount);
     void CommitHPWaterVolumeHistory();
     bool RunHPWaterVolumeFilterPass(const std::shared_ptr<Framebuffer>& inputFBO,
                                     const std::shared_ptr<Framebuffer>& outputFBO,
@@ -804,6 +819,9 @@ private:
     bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     bool m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool m_HPWaterVolumeSceneMotionVectorEnabled = false;
+    bool m_HPWaterVolumeObjectMotionVectorEnabled = false;
+    glm::vec3 m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+    uint32_t m_HPWaterVolumeObjectMotionSourceCount = 0;
     bool m_HPWaterVolumeMotionVectorHistoryEnabled = false;
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
     bool m_HPWaterVolumeShadowSamplingEnabled = false;

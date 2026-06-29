@@ -21,6 +21,7 @@
 #include <vector>
 #include <utility>
 #include <memory>
+#include <unordered_map>
 
 namespace VE {
 
@@ -334,6 +335,9 @@ struct RenderDiagnostics {
     bool HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     bool HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool HPWaterVolumeSceneMotionVectorEnabled = false;
+    bool HPWaterVolumeObjectMotionVectorEnabled = false;
+    glm::vec3 HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+    uint32_t HPWaterVolumeObjectMotionSourceCount = 0;
     bool HPWaterVolumeMotionVectorHistoryEnabled = false;
     bool HPWaterVolumeExponentialIntegrationEnabled = false;
     bool HPWaterVolumeSceneInScatteringEnabled = false;
@@ -600,6 +604,8 @@ private:
     ShadowMap m_ShadowMap;
     glm::mat4 m_PreviousHPWaterViewProjection = glm::mat4(1.0f);
     bool m_HasPreviousHPWaterViewProjection = false;
+    std::unordered_map<uint64_t, glm::vec3> m_PreviousHPWaterObjectPositions;
+    bool m_HasPreviousHPWaterObjectPositions = false;
 
     // Deferred entity deletion queue (flushed at end of OnUpdate)
     std::vector<entt::entity> m_PendingDestroy;

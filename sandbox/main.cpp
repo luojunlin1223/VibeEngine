@@ -7500,6 +7500,14 @@ private:
             << d.HPWaterVolumeExplicitMotionVectorEnabled << "\n";
         out << "HPWaterVolumeSceneMotionVectorEnabled: "
             << d.HPWaterVolumeSceneMotionVectorEnabled << "\n";
+        out << "HPWaterVolumeObjectMotionVectorEnabled: "
+            << d.HPWaterVolumeObjectMotionVectorEnabled << "\n";
+        out << "HPWaterVolumeObjectMotionWorldOffset: "
+            << d.HPWaterVolumeObjectMotionWorldOffset.x << " "
+            << d.HPWaterVolumeObjectMotionWorldOffset.y << " "
+            << d.HPWaterVolumeObjectMotionWorldOffset.z << "\n";
+        out << "HPWaterVolumeObjectMotionSourceCount: "
+            << d.HPWaterVolumeObjectMotionSourceCount << "\n";
         out << "HPWaterVolumeMotionVectorHistoryEnabled: "
             << d.HPWaterVolumeMotionVectorHistoryEnabled << "\n";
         out << "HPWaterVolumeExponentialIntegrationEnabled: "
@@ -8017,13 +8025,19 @@ private:
             d.HPWaterDepthPyramidWidth,
             d.HPWaterDepthPyramidHeight,
             d.HPWaterDepthPyramidTexture);
-        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d mvHistory=%d strength=%.2f",
+        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d objMV=%d src=%u mvHistory=%d strength=%.2f",
             d.HPWaterVolumeTemporalNeighborhoodClampEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalMotionReprojectionEnabled ? 1 : 0,
             d.HPWaterVolumeExplicitMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeSceneMotionVectorEnabled ? 1 : 0,
+            d.HPWaterVolumeObjectMotionVectorEnabled ? 1 : 0,
+            d.HPWaterVolumeObjectMotionSourceCount,
             d.HPWaterVolumeMotionVectorHistoryEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalNeighborhoodClampStrength);
+        ImGui::Text("HPWater volume object motion offset: %.4f %.4f %.4f",
+            d.HPWaterVolumeObjectMotionWorldOffset.x,
+            d.HPWaterVolumeObjectMotionWorldOffset.y,
+            d.HPWaterVolumeObjectMotionWorldOffset.z);
         ImGui::Text("HPWater volume filter params: blend=%.3f spatial=%d iter=%u mv=%d vel=%.3f depthReject=%d threshold=%.3f depthAware=%d sensitivity=%.1f",
             d.HPWaterVolumeTemporalBlendFactor,
             d.HPWaterVolumeSpatialFilterEnabled ? 1 : 0,

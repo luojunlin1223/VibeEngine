@@ -42,6 +42,8 @@ uniform sampler2D u_ScenePositionMetallic;
 uniform mat4 u_CurrentViewProjection;
 uniform mat4 u_PreviousViewProjection;
 uniform int u_SceneMotionVectorEnabled;
+uniform int u_ObjectMotionVectorEnabled;
+uniform vec3 u_ObjectMotionWorldOffset;
 
 vec2 ProjectUV(mat4 viewProjection, vec3 worldPos, out bool valid) {
     vec4 clip = viewProjection * vec4(worldPos, 1.0);
@@ -64,11 +66,11 @@ bool IsFinitePosition(vec3 value) {
         dot(value, value) > 0.000001;
 }
 
-bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
+bool BuildMotionVectorFromWorldPair(vec3 currentWorldPos, vec3 previousWorldPos, out vec2 motionVector) {
     bool currentValid = false;
     bool previousValid = false;
-    vec2 currentUV = ProjectUV(u_CurrentViewProjection, worldPos, currentValid);
-    vec2 previousUV = ProjectUV(u_PreviousViewProjection, worldPos, previousValid);
+    vec2 currentUV = ProjectUV(u_CurrentViewProjection, currentWorldPos, currentValid);
+    vec2 previousUV = ProjectUV(u_PreviousViewProjection, previousWorldPos, previousValid);
     if (!currentValid || !previousValid) {
         motionVector = vec2(0.0);
         return false;
@@ -76,6 +78,10 @@ bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
 
     motionVector = currentUV - previousUV;
     return true;
+}
+
+bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
+    return BuildMotionVectorFromWorldPair(worldPos, worldPos, motionVector);
 }
 
 void main() {
@@ -87,7 +93,12 @@ void main() {
 
     if (u_SceneMotionVectorEnabled == 1) {
         vec3 sceneWorld = texture(u_ScenePositionMetallic, v_UV).xyz;
-        if (IsFinitePosition(sceneWorld) && BuildMotionVector(sceneWorld, MotionVector)) {
+        vec3 previousSceneWorld = u_ObjectMotionVectorEnabled == 1
+            ? sceneWorld - u_ObjectMotionWorldOffset
+            : sceneWorld;
+        if (IsFinitePosition(sceneWorld) &&
+            IsFinitePosition(previousSceneWorld) &&
+            BuildMotionVectorFromWorldPair(sceneWorld, previousSceneWorld, MotionVector)) {
             return;
         }
     }

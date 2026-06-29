@@ -403,6 +403,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+    m_HPWaterVolumeObjectMotionSourceCount = 0;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
@@ -847,6 +850,9 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+    m_HPWaterVolumeObjectMotionSourceCount = 0;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
@@ -1345,6 +1351,9 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+    m_HPWaterVolumeObjectMotionSourceCount = 0;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
@@ -1548,6 +1557,9 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionVectorEnabled = false;
+    m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+    m_HPWaterVolumeObjectMotionSourceCount = 0;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
     m_HPWaterVolumeExponentialIntegrationEnabled = false;
     m_HPWaterVolumeShadowSamplingEnabled = false;
@@ -2693,17 +2705,26 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
 }
 
 bool DeferredRenderer::BuildHPWaterVolumeMotionVectors(const glm::mat4& currentViewProjection,
-                                                       const glm::mat4& previousViewProjection) {
+                                                       const glm::mat4& previousViewProjection,
+                                                       bool objectMotionVectorEnabled,
+                                                       const glm::vec3& objectMotionWorldOffset,
+                                                       uint32_t objectMotionSourceCount) {
     if (!m_HPWaterVolumeMotionVectorShader || !m_HPWaterVolumeMotionVectorFBO ||
         !m_HPWaterVolumeFBO || !m_HPWaterCompositeFBO || !m_HPWaterVolumeValid || m_QuadVAO == 0) {
         m_HPWaterVolumeExplicitMotionVectorEnabled = false;
         m_HPWaterVolumeSceneMotionVectorEnabled = false;
+        m_HPWaterVolumeObjectMotionVectorEnabled = false;
+        m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+        m_HPWaterVolumeObjectMotionSourceCount = 0;
         m_HPWaterVolumeMotionVectorHistoryEnabled = false;
         return false;
     }
 
     const uint32_t scenePositionTexture = m_GBuffer ? m_GBuffer->GetColorAttachmentID(0) : 0;
     const bool sceneMotionVectorInputValid = scenePositionTexture != 0;
+    const bool objectMotionInputValid =
+        objectMotionVectorEnabled && sceneMotionVectorInputValid && objectMotionSourceCount > 0 &&
+        glm::dot(objectMotionWorldOffset, objectMotionWorldOffset) > 0.00000001f;
 
     m_HPWaterVolumeMotionVectorFBO->Bind();
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -2730,6 +2751,10 @@ bool DeferredRenderer::BuildHPWaterVolumeMotionVectors(const glm::mat4& currentV
     m_HPWaterVolumeMotionVectorShader->SetMat4("u_PreviousViewProjection", previousViewProjection);
     m_HPWaterVolumeMotionVectorShader->SetInt("u_SceneMotionVectorEnabled",
         sceneMotionVectorInputValid ? 1 : 0);
+    m_HPWaterVolumeMotionVectorShader->SetInt("u_ObjectMotionVectorEnabled",
+        objectMotionInputValid ? 1 : 0);
+    m_HPWaterVolumeMotionVectorShader->SetVec3("u_ObjectMotionWorldOffset",
+        objectMotionInputValid ? objectMotionWorldOffset : glm::vec3(0.0f));
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -2741,6 +2766,10 @@ bool DeferredRenderer::BuildHPWaterVolumeMotionVectors(const glm::mat4& currentV
     m_HPWaterVolumeMotionVectorFBO->Unbind();
     m_HPWaterVolumeExplicitMotionVectorEnabled = true;
     m_HPWaterVolumeSceneMotionVectorEnabled = sceneMotionVectorInputValid;
+    m_HPWaterVolumeObjectMotionVectorEnabled = objectMotionInputValid;
+    m_HPWaterVolumeObjectMotionWorldOffset =
+        objectMotionInputValid ? objectMotionWorldOffset : glm::vec3(0.0f);
+    m_HPWaterVolumeObjectMotionSourceCount = objectMotionInputValid ? objectMotionSourceCount : 0;
     return true;
 }
 
@@ -2750,7 +2779,10 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
                                                    bool motionVectorsEnabled,
                                                    float motionVectorVelocityScale,
                                                    bool temporalDepthRejectionEnabled,
-                                                   float temporalDepthThreshold) {
+                                                   float temporalDepthThreshold,
+                                                   bool objectMotionVectorEnabled,
+                                                   const glm::vec3& objectMotionWorldOffset,
+                                                   uint32_t objectMotionSourceCount) {
     if (!m_HPWaterVolumeTemporalShader || !m_HPWaterVolumeFBO || !m_HPWaterVolumeTemporalFBO ||
         !m_HPWaterVolumeHistoryFBO || !m_HPWaterCompositeFBO || !m_HPWaterVolumeValid || m_QuadVAO == 0) {
         m_HPWaterVolumeTemporalValid = false;
@@ -2758,6 +2790,9 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
         m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
         m_HPWaterVolumeExplicitMotionVectorEnabled = false;
         m_HPWaterVolumeSceneMotionVectorEnabled = false;
+        m_HPWaterVolumeObjectMotionVectorEnabled = false;
+        m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
+        m_HPWaterVolumeObjectMotionSourceCount = 0;
         m_HPWaterVolumeMotionVectorHistoryEnabled = false;
         m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
         m_HPWaterVolumeTemporalBlendFactor = 0.0f;
@@ -2772,7 +2807,11 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
     const float clampedVelocityScale = std::clamp(motionVectorVelocityScale, 0.0f, 10.0f);
     const float clampedDepthThreshold = std::clamp(temporalDepthThreshold, 0.0001f, 10.0f);
     const bool motionVectorValid =
-        motionVectorsEnabled && BuildHPWaterVolumeMotionVectors(currentViewProjection, previousViewProjection);
+        motionVectorsEnabled && BuildHPWaterVolumeMotionVectors(currentViewProjection,
+                                                                previousViewProjection,
+                                                                objectMotionVectorEnabled,
+                                                                objectMotionWorldOffset,
+                                                                objectMotionSourceCount);
 
     m_HPWaterVolumeTemporalFBO->Bind();
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
