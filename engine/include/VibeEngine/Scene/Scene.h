@@ -464,10 +464,14 @@ struct RenderDiagnostics {
     bool HPWaterFluidSceneGeometryHeightCapture = false;
     uint32_t HPWaterFluidWaterHeightTexture = 0;
     uint32_t HPWaterFluidSceneHeightTexture = 0;
+    uint32_t HPWaterFluidCaptureMeshCandidates = 0;
+    uint32_t HPWaterFluidWaterLayerCandidates = 0;
+    uint32_t HPWaterFluidSceneOpaqueCandidates = 0;
     uint32_t HPWaterFluidWaterCaptureDraws = 0;
     uint32_t HPWaterFluidSceneCaptureDraws = 0;
     uint32_t HPWaterFluidWaterLayerMask = 0;
     uint32_t HPWaterFluidWaterLayerSkipped = 0;
+    uint32_t HPWaterFluidSceneWaterLayerSkipped = 0;
     uint32_t HPWaterFluidTransparentSkipped = 0;
     uint32_t HPWaterFluidObstacleCount = 0;
     uint32_t HPWaterFluidObstaclePixels = 0;

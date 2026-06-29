@@ -1921,7 +1921,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     std::vector<HPWaterFluidObstacleCandidate> hpWaterFluidObstacleCandidates;
     std::vector<HPWaterFluidCaptureDraw> hpWaterFluidWaterCaptureDraws;
     std::vector<HPWaterFluidCaptureDraw> hpWaterFluidSceneCaptureDraws;
+    uint32_t hpWaterFluidCaptureMeshCandidates = 0;
+    uint32_t hpWaterFluidWaterLayerCandidates = 0;
+    uint32_t hpWaterFluidSceneOpaqueCandidates = 0;
     uint32_t hpWaterFluidWaterLayerSkipped = 0;
+    uint32_t hpWaterFluidSceneWaterLayerSkipped = 0;
     uint32_t hpWaterFluidTransparentSkipped = 0;
 
     auto view = m_Registry.view<TransformComponent, MeshRendererComponent>();
@@ -1956,6 +1960,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         }
 
         if (!mr.Mesh || !mr.Mat) continue;
+        ++hpWaterFluidCaptureMeshCandidates;
 
         glm::mat4 model = GetWorldTransform(entityID);
         glm::vec3 worldMin( std::numeric_limits<float>::max());
@@ -1996,6 +2001,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             if (isHPWater) {
                 if (isWaterLayerForFluid) {
                     hpWaterFluidWaterCaptureDraws.push_back({ entityID, mr.Mesh, model });
+                    ++hpWaterFluidWaterLayerCandidates;
                 } else {
                     ++hpWaterFluidWaterLayerSkipped;
                 }
@@ -2003,6 +2009,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             if (!isHPWater && !isWaterLayerForFluid && !isTransparentForFluid) {
                 hpWaterFluidObstacleCandidates.push_back({ worldMin, worldMax });
                 hpWaterFluidSceneCaptureDraws.push_back({ entityID, mr.Mesh, model });
+                ++hpWaterFluidSceneOpaqueCandidates;
+            } else if (!isHPWater && isWaterLayerForFluid) {
+                ++hpWaterFluidSceneWaterLayerSkipped;
             } else if (!isHPWater && isTransparentForFluid) {
                 ++hpWaterFluidTransparentSkipped;
             }
@@ -2522,10 +2531,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterFluidWaterLayerOnlyCapture = true;
         m_RenderDiagnostics.HPWaterFluidDisplacedWaterHeightCapture = displacedWaterHeightCaptured;
         m_RenderDiagnostics.HPWaterFluidSceneGeometryHeightCapture = sceneGeometryHeightCaptured;
+        m_RenderDiagnostics.HPWaterFluidCaptureMeshCandidates = hpWaterFluidCaptureMeshCandidates;
+        m_RenderDiagnostics.HPWaterFluidWaterLayerCandidates = hpWaterFluidWaterLayerCandidates;
+        m_RenderDiagnostics.HPWaterFluidSceneOpaqueCandidates = hpWaterFluidSceneOpaqueCandidates;
         m_RenderDiagnostics.HPWaterFluidWaterCaptureDraws = gpuWaterCaptureDraws;
         m_RenderDiagnostics.HPWaterFluidSceneCaptureDraws = gpuSceneCaptureDraws;
         m_RenderDiagnostics.HPWaterFluidWaterLayerMask = hpWaterFluidWaterLayerMask;
         m_RenderDiagnostics.HPWaterFluidWaterLayerSkipped = hpWaterFluidWaterLayerSkipped;
+        m_RenderDiagnostics.HPWaterFluidSceneWaterLayerSkipped = hpWaterFluidSceneWaterLayerSkipped;
         m_RenderDiagnostics.HPWaterFluidTransparentSkipped = hpWaterFluidTransparentSkipped;
         if (!gpuHeightCaptureValid) {
             m_RenderDiagnostics.HPWaterFluidHeightFieldValid =
