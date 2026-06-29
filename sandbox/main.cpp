@@ -7623,16 +7623,31 @@ private:
         if (dr.IsInitialized() && dr.GetHPWaterSSRDiagnosticsTexture() != 0) {
             TextureProbeSummary ssrDiagnosticsProbe = ProbeTexture(dr.GetHPWaterSSRDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight());
             writeProbe("HPWaterSSRDiagnostics", ssrDiagnosticsProbe);
+            const float ssrWeight = ssrDiagnosticsProbe.AverageRGBA[0];
+            const float probeWeight = ssrDiagnosticsProbe.AverageRGBA[2];
+            const float skyWeight = ssrDiagnosticsProbe.AverageRGBA[3];
+            const float hierarchyWeightSum = ssrWeight + probeWeight + skyWeight;
             out << "HPWaterSSRDiagnosticsHierarchyChannelReadbackEnabled: " << ssrDiagnosticsProbe.Valid << "\n";
             out << "HPWaterSSRDiagnosticsAverageConfidence: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[0] << "\n";
             out << "HPWaterSSRDiagnosticsAverageHitMask: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[1] << "\n";
             out << "HPWaterSSRDiagnosticsAverageProbeHierarchyWeight: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[2] << "\n";
             out << "HPWaterSSRDiagnosticsAverageSkyHierarchyWeight: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[3] << "\n";
+            out << "HPWaterSSRDiagnosticsAverageEnvironmentFallbackWeight: " << std::fixed << std::setprecision(4) << (probeWeight + skyWeight) << "\n";
+            out << "HPWaterSSRDiagnosticsAverageHierarchyWeightSum: " << std::fixed << std::setprecision(4) << hierarchyWeightSum << "\n";
+            out << "HPWaterSSRDiagnosticsAverageUnallocatedHierarchyWeight: " << std::fixed << std::setprecision(4) << std::max(0.0f, 1.0f - hierarchyWeightSum) << "\n";
+            out << "HPWaterSSRDiagnosticsAnySSRHit: " << (ssrDiagnosticsProbe.MaxRGBA[1] > 0 ? 1 : 0) << "\n";
+            out << "HPWaterSSRDiagnosticsAnyProbeFallback: " << (ssrDiagnosticsProbe.MaxRGBA[2] > 0 ? 1 : 0) << "\n";
+            out << "HPWaterSSRDiagnosticsAnySkyFallback: " << (ssrDiagnosticsProbe.MaxRGBA[3] > 0 ? 1 : 0) << "\n";
             SaveTextureBMP(dr.GetHPWaterSSRDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_diagnostics.bmp");
         }
         if (dr.IsInitialized() && dr.GetHPWaterSSRLightingTexture() != 0) {
-            writeProbe("HPWaterSSRLighting", ProbeTexture(dr.GetHPWaterSSRLightingTexture(), dr.GetWidth(), dr.GetHeight()));
+            TextureProbeSummary ssrLightingProbe = ProbeTexture(dr.GetHPWaterSSRLightingTexture(), dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterSSRLighting", ssrLightingProbe);
+            out << "HPWaterSSRLightingAverageLuminance: " << std::fixed << std::setprecision(4) << ssrLightingProbe.AverageLuminance << "\n";
+            out << "HPWaterSSRLightingAverageHierarchyAlpha: " << std::fixed << std::setprecision(4) << ssrLightingProbe.AverageAlpha << "\n";
+            out << "HPWaterSSRLightingNonBlackRatio: " << std::fixed << std::setprecision(4) << ssrLightingProbe.NonBlackRatio << "\n";
+            out << "HPWaterSSRLightingAnyContribution: " << (ssrLightingProbe.NonBlackRatio > 0.0f ? 1 : 0) << "\n";
             SaveTextureBMP(dr.GetHPWaterSSRLightingTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_lighting.bmp");
         }
