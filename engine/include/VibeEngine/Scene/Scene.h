@@ -371,6 +371,9 @@ struct RenderDiagnostics {
     bool HPWaterCausticAtlasReceiverOutputEnabled = false;
     bool HPWaterCausticCascadeBlendEnabled = false;
     bool HPWaterCausticAtlasEdgeFilterEnabled = false;
+    bool HPWaterCausticGBufferAtlasConsumed = false;
+    bool HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    bool HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     bool HPWaterCausticSpectralWeightingEnabled = false;
     bool HPWaterCausticFilterRan = false;
     bool HPWaterCausticFilteredValid = false;
@@ -392,6 +395,7 @@ struct RenderDiagnostics {
     bool HPWaterCausticAtlasRan = false;
     bool HPWaterCausticAtlasValid = false;
     uint32_t HPWaterCausticAtlasTexture = 0;
+    uint32_t HPWaterCausticGBufferAtlasTexture = 0;
     uint32_t HPWaterCausticAtlasDepthTexture = 0;
     uint32_t HPWaterCausticAtlasTileResolution = 0;
     uint32_t HPWaterCausticAtlasWidth = 0;

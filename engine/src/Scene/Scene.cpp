@@ -1268,6 +1268,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticCascadeBlendEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasEdgeFilterEnabled =
         m_DeferredRenderer.IsHPWaterCausticAtlasEdgeFilterEnabled();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasConsumed =
+        m_DeferredRenderer.IsHPWaterCausticGBufferAtlasConsumed();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasDecodeEnabled =
+        m_DeferredRenderer.IsHPWaterCausticGBufferAtlasDecodeEnabled();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasDepthAwareEnabled =
+        m_DeferredRenderer.IsHPWaterCausticGBufferAtlasDepthAwareEnabled();
     m_RenderDiagnostics.HPWaterCausticSpectralWeightingEnabled =
         m_DeferredRenderer.IsHPWaterCausticSpectralWeightingEnabled();
     m_RenderDiagnostics.HPWaterCausticFilteredTexture = m_DeferredRenderer.GetHPWaterCausticFilteredTexture();
@@ -1278,6 +1284,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCausticFilterLDSHaloEnabled =
         m_DeferredRenderer.IsHPWaterCausticFilterLDSHaloEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasTexture = m_DeferredRenderer.GetHPWaterCausticAtlasTexture();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasTexture =
+        m_DeferredRenderer.GetHPWaterCausticGBufferAtlasTexture();
     m_RenderDiagnostics.HPWaterCausticAtlasDepthTexture = m_DeferredRenderer.GetHPWaterCausticAtlasDepthTexture();
     m_RenderDiagnostics.HPWaterCausticAtlasValid = m_DeferredRenderer.IsHPWaterCausticAtlasValid();
     m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = m_DeferredRenderer.GetHPWaterCausticAtlasTileResolution();
@@ -2635,6 +2643,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
                             atlasShader->SetMat4("u_LightMVP", lightVP * ve.Model);
                             atlasShader->SetMat4("u_Model", ve.Model);
+                            atlasShader->SetVec3("u_HPScatterColor", glm::vec3(
+                                water->ScatterColor[0],
+                                water->ScatterColor[1],
+                                water->ScatterColor[2]));
+                            atlasShader->SetVec3("u_HPAbsorptionColor", glm::vec3(
+                                water->AbsorptionColor[0],
+                                water->AbsorptionColor[1],
+                                water->AbsorptionColor[2]));
                             atlasShader->SetFloat("u_HPRoughness", water->Roughness);
                             atlasShader->SetFloat("u_HPThickness", water->DepthTintDistance);
                             RenderCommand::DrawIndexed(drawVAO);
@@ -3509,6 +3525,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticCascadeBlendEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasEdgeFilterEnabled =
         m_DeferredRenderer.IsHPWaterCausticAtlasEdgeFilterEnabled();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasConsumed =
+        m_DeferredRenderer.IsHPWaterCausticGBufferAtlasConsumed();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasDecodeEnabled =
+        m_DeferredRenderer.IsHPWaterCausticGBufferAtlasDecodeEnabled();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasDepthAwareEnabled =
+        m_DeferredRenderer.IsHPWaterCausticGBufferAtlasDepthAwareEnabled();
     m_RenderDiagnostics.HPWaterCausticSpectralWeightingEnabled =
         m_DeferredRenderer.IsHPWaterCausticSpectralWeightingEnabled();
     m_RenderDiagnostics.HPWaterCausticFilteredValid = m_DeferredRenderer.IsHPWaterCausticFilteredValid();
@@ -3520,6 +3542,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticFilterLDSHaloEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasValid = m_DeferredRenderer.IsHPWaterCausticAtlasValid();
     m_RenderDiagnostics.HPWaterCausticAtlasTexture = m_DeferredRenderer.GetHPWaterCausticAtlasTexture();
+    m_RenderDiagnostics.HPWaterCausticGBufferAtlasTexture =
+        m_DeferredRenderer.GetHPWaterCausticGBufferAtlasTexture();
     m_RenderDiagnostics.HPWaterCausticAtlasDepthTexture = m_DeferredRenderer.GetHPWaterCausticAtlasDepthTexture();
     m_RenderDiagnostics.HPWaterCausticAtlasTileResolution = m_DeferredRenderer.GetHPWaterCausticAtlasTileResolution();
     m_RenderDiagnostics.HPWaterCausticAtlasWidth = m_DeferredRenderer.GetHPWaterCausticAtlasWidth();

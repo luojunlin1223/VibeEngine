@@ -438,6 +438,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
     m_HPWaterFGDLUTValid = false;
     m_HPWaterCausticAtlasValid = false;
@@ -554,6 +557,9 @@ void DeferredRenderer::DestroyHPWaterCausticComputeTexture() {
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
 }
 
@@ -609,6 +615,9 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture(uint32_t width, uint32
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
 }
 
@@ -736,10 +745,14 @@ void DeferredRenderer::CreateHPWaterCausticAtlasFBO(uint32_t tileResolution) {
     atlasSpec.Height = tileResolution * 2u;
     atlasSpec.ColorFormats = {
         { GL_RGBA16F }, // RT0: encoded normal.xyz + normalized thickness/roughness
+        { GL_RGBA8 },   // RT1: HPWater caustic GBuffer absorption/scatter (sRGB encoded)
     };
     m_HPWaterCausticAtlasFBO = Framebuffer::Create(atlasSpec);
     m_HPWaterCausticAtlasTileResolution = tileResolution;
     m_HPWaterCausticAtlasValid = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
 }
 
 void DeferredRenderer::DestroyHPWaterDepthPyramid() {
@@ -1372,6 +1385,9 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
     m_HPWaterDepthPyramidValid = false;
     m_HPWaterDepthMergedToSceneDepth = false;
@@ -1402,6 +1418,9 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
 }
 
@@ -1475,6 +1494,9 @@ bool DeferredRenderer::BeginHPWaterCausticAtlas(uint32_t tileResolution) {
     glCullFace(GL_BACK);
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     return true;
 }
 
@@ -3074,6 +3096,9 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticAtlasReceiverOutputEnabled = false;
         m_HPWaterCausticCascadeBlendEnabled = false;
         m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+        m_HPWaterCausticGBufferAtlasConsumed = false;
+        m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+        m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
         m_HPWaterCausticSpectralWeightingEnabled = false;
         return false;
     }
@@ -3093,6 +3118,9 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticAtlasReceiverOutputEnabled = false;
         m_HPWaterCausticCascadeBlendEnabled = false;
         m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+        m_HPWaterCausticGBufferAtlasConsumed = false;
+        m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+        m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
         m_HPWaterCausticSpectralWeightingEnabled = false;
         return false;
     }
@@ -3135,6 +3163,9 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
     const bool atlasValid = m_HPWaterCausticAtlasValid && m_HPWaterCausticAtlasFBO &&
         m_HPWaterCausticAtlasFBO->GetColorAttachmentID() != 0 &&
         m_HPWaterCausticAtlasFBO->GetDepthAttachmentID() != 0;
+    const bool atlasGBufferValid = atlasValid &&
+        m_HPWaterCausticAtlasFBO->GetColorAttachmentCount() > 1 &&
+        m_HPWaterCausticAtlasFBO->GetColorAttachmentID(1) != 0;
     glActiveTexture(GL_TEXTURE6);
     glBindTexture(GL_TEXTURE_2D, atlasValid
         ? static_cast<GLuint>(m_HPWaterCausticAtlasFBO->GetColorAttachmentID())
@@ -3152,6 +3183,12 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         ? static_cast<GLuint>(m_HPWaterCausticComputeIrradianceTexture)
         : 0);
     m_HPWaterCausticShader->SetInt("u_HPWaterCausticComputeIrradiance", 8);
+
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D, atlasGBufferValid
+        ? static_cast<GLuint>(m_HPWaterCausticAtlasFBO->GetColorAttachmentID(1))
+        : 0);
+    m_HPWaterCausticShader->SetInt("u_HPWaterCausticGBufferAtlas", 9);
 
     m_HPWaterCausticShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterCausticShader->SetFloat("u_FarClip", farClip);
@@ -3174,6 +3211,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         std::clamp(dispersionStrength, 0.0f, 2.0f));
     m_HPWaterCausticShader->SetInt("u_HPWaterMaskEnabled", m_HPWaterMaskValid ? 1 : 0);
     m_HPWaterCausticShader->SetInt("u_HPWaterCausticAtlasEnabled", atlasValid ? 1 : 0);
+    m_HPWaterCausticShader->SetInt("u_HPWaterCausticGBufferAtlasEnabled", atlasGBufferValid ? 1 : 0);
     m_HPWaterCausticShader->SetInt("u_HPWaterCausticComputeEnabled", computeIrradianceValid ? 1 : 0);
     m_HPWaterCausticShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     for (int i = 0; i < 4; ++i) {
@@ -3201,6 +3239,9 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticFilterIterations = 0;
     m_HPWaterCausticAtlasConsumed = atlasValid;
+    m_HPWaterCausticGBufferAtlasConsumed = atlasGBufferValid;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = atlasGBufferValid;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = atlasGBufferValid;
     m_HPWaterCausticCascadeBlendEnabled = computeIrradianceValid && atlasValid;
     return true;
 }
@@ -3232,6 +3273,9 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    m_HPWaterCausticGBufferAtlasConsumed = false;
+    m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
 
     if (!m_HPWaterCausticComputeShader || !m_HPWaterCausticResolveShader ||
@@ -3810,6 +3854,12 @@ uint32_t DeferredRenderer::GetHPWaterCausticFilteredTexture() const {
 uint32_t DeferredRenderer::GetHPWaterCausticAtlasTexture() const {
     if (!m_HPWaterCausticAtlasFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterCausticAtlasFBO->GetColorAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterCausticGBufferAtlasTexture() const {
+    if (!m_HPWaterCausticAtlasFBO || m_HPWaterCausticAtlasFBO->GetColorAttachmentCount() <= 1)
+        return 0;
+    return static_cast<uint32_t>(m_HPWaterCausticAtlasFBO->GetColorAttachmentID(1));
 }
 
 uint32_t DeferredRenderer::GetHPWaterCausticAtlasDepthTexture() const {

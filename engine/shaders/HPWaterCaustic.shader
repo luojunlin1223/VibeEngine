@@ -47,6 +47,7 @@ uniform sampler2D u_SceneDepth;
 uniform sampler2D u_HPWaterCausticAtlas;
 uniform sampler2D u_HPWaterCausticAtlasDepth;
 uniform sampler2D u_HPWaterCausticComputeIrradiance;
+uniform sampler2D u_HPWaterCausticGBufferAtlas;
 
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
@@ -64,6 +65,7 @@ uniform float u_NearClip;
 uniform float u_FarClip;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterCausticAtlasEnabled;
+uniform int u_HPWaterCausticGBufferAtlasEnabled;
 uniform int u_HPWaterCausticComputeEnabled;
 uniform float u_HPWaterCausticAtlasWidth;
 uniform float u_HPWaterCausticAtlasHeight;
@@ -75,6 +77,17 @@ float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
     return (2.0 * u_NearClip * u_FarClip) /
         max(u_FarClip + u_NearClip - z * (u_FarClip - u_NearClip), 0.0001);
+}
+
+float SRGBToLinear(float value) {
+    value = clamp(value, 0.0, 1.0);
+    return value <= 0.04045
+        ? value / 12.92
+        : pow((value + 0.055) / 1.055, 2.4);
+}
+
+vec2 DecodeCausticGBuffer(vec4 encoded) {
+    return vec2(SRGBToLinear(encoded.r), SRGBToLinear(encoded.g) * 0.1);
 }
 
 float Hash21(vec2 p) {
@@ -148,8 +161,12 @@ float CascadeBlendAlpha(float receiverLinear, int cascadeIndex) {
 
 vec4 SampleComputeIrradianceCascade(vec3 receiverWorldPos,
                                     int cascadeIndex,
+                                    out float atlasExtinction,
+                                    out bool gbufferValid,
                                     out bool valid) {
     valid = false;
+    gbufferValid = false;
+    atlasExtinction = 0.0;
     vec3 cascadeCoord = ProjectWorldToWaterCascade(receiverWorldPos, cascadeIndex);
     if (any(lessThan(cascadeCoord, vec3(0.0))) ||
         any(greaterThan(cascadeCoord, vec3(1.0)))) {
@@ -159,11 +176,50 @@ vec4 SampleComputeIrradianceCascade(vec3 receiverWorldPos,
     vec2 localUV = cascadeCoord.xy;
     float edgeWeight = AtlasTileEdgeWeight(localUV);
     vec2 atlasUV = LocalToAtlasUV(ClampAtlasLocalUV(localUV), cascadeIndex);
+    if (u_HPWaterCausticGBufferAtlasEnabled == 1) {
+        vec2 atlasSize = max(vec2(textureSize(u_HPWaterCausticGBufferAtlas, 0)), vec2(1.0));
+        vec2 pixel = atlasUV * atlasSize - vec2(0.5);
+        ivec2 base = ivec2(floor(pixel));
+        vec2 fracPart = fract(pixel);
+        vec4 bilinearWeights = vec4(
+            (1.0 - fracPart.x) * (1.0 - fracPart.y),
+            fracPart.x * (1.0 - fracPart.y),
+            (1.0 - fracPart.x) * fracPart.y,
+            fracPart.x * fracPart.y);
+
+        ivec2 maxCoord = ivec2(atlasSize) - ivec2(1);
+        ivec2 p00 = clamp(base + ivec2(0, 0), ivec2(0), maxCoord);
+        ivec2 p10 = clamp(base + ivec2(1, 0), ivec2(0), maxCoord);
+        ivec2 p01 = clamp(base + ivec2(0, 1), ivec2(0), maxCoord);
+        ivec2 p11 = clamp(base + ivec2(1, 1), ivec2(0), maxCoord);
+        float targetDepth = texture(u_HPWaterCausticAtlasDepth, atlasUV).r;
+        vec4 depths = vec4(
+            texelFetch(u_HPWaterCausticAtlasDepth, p00, 0).r,
+            texelFetch(u_HPWaterCausticAtlasDepth, p10, 0).r,
+            texelFetch(u_HPWaterCausticAtlasDepth, p01, 0).r,
+            texelFetch(u_HPWaterCausticAtlasDepth, p11, 0).r);
+        vec4 weights = bilinearWeights / (abs(depths - vec4(targetDepth)) + vec4(1e-6));
+        float totalWeight = max(dot(weights, vec4(1.0)), 1e-6);
+        vec2 decoded =
+            DecodeCausticGBuffer(texelFetch(u_HPWaterCausticGBufferAtlas, p00, 0)) * weights.x +
+            DecodeCausticGBuffer(texelFetch(u_HPWaterCausticGBufferAtlas, p10, 0)) * weights.y +
+            DecodeCausticGBuffer(texelFetch(u_HPWaterCausticGBufferAtlas, p01, 0)) * weights.z +
+            DecodeCausticGBuffer(texelFetch(u_HPWaterCausticGBufferAtlas, p11, 0)) * weights.w;
+        decoded /= totalWeight;
+        atlasExtinction = max(decoded.x + decoded.y, 0.0);
+        gbufferValid = targetDepth < 0.99995;
+    }
     valid = true;
     return texture(u_HPWaterCausticComputeIrradiance, atlasUV) * edgeWeight;
 }
 
-vec4 SampleComputeIrradiance(vec2 screenUV, float waterDepth, float sceneDepth) {
+vec4 SampleComputeIrradiance(vec2 screenUV,
+                             float waterDepth,
+                             float sceneDepth,
+                             out float atlasExtinction,
+                             out bool atlasGBufferValid) {
+    atlasExtinction = 0.0;
+    atlasGBufferValid = false;
     if (u_HPWaterCausticComputeEnabled != 1)
         return vec4(0.0);
 
@@ -179,17 +235,37 @@ vec4 SampleComputeIrradiance(vec2 screenUV, float waterDepth, float sceneDepth) 
     int cascadeIndex = SelectWaterCascade(receiverLinear);
 
     bool currentValid = false;
-    vec4 current = SampleComputeIrradianceCascade(receiverWorldPos, cascadeIndex, currentValid);
+    bool currentGBufferValid = false;
+    float currentExtinction = 0.0;
+    vec4 current = SampleComputeIrradianceCascade(receiverWorldPos,
+                                                  cascadeIndex,
+                                                  currentExtinction,
+                                                  currentGBufferValid,
+                                                  currentValid);
     float alpha = CascadeBlendAlpha(receiverLinear, cascadeIndex);
     if (cascadeIndex < 3 && alpha > 0.0001) {
         bool nextValid = false;
-        vec4 next = SampleComputeIrradianceCascade(receiverWorldPos, cascadeIndex + 1, nextValid);
+        bool nextGBufferValid = false;
+        float nextExtinction = 0.0;
+        vec4 next = SampleComputeIrradianceCascade(receiverWorldPos,
+                                                   cascadeIndex + 1,
+                                                   nextExtinction,
+                                                   nextGBufferValid,
+                                                   nextValid);
         if (nextValid) {
             current = currentValid ? mix(current, next, alpha) : next * alpha;
+            if (currentGBufferValid && nextGBufferValid) {
+                currentExtinction = mix(currentExtinction, nextExtinction, alpha);
+            } else if (nextGBufferValid) {
+                currentExtinction = nextExtinction;
+                currentGBufferValid = true;
+            }
             currentValid = true;
         }
     }
 
+    atlasExtinction = currentExtinction;
+    atlasGBufferValid = currentGBufferValid;
     return currentValid ? current : vec4(0.0);
 }
 
@@ -280,7 +356,13 @@ void main() {
     sharedEnergy *= clamp(u_CausticStrength, 0.0, 8.0) * max(u_LightIntensity, 0.0);
     sharedEnergy *= SampleAtlasFocus(v_UV, causticUV, N, L, thickness);
 
-    vec4 computeIrradiance = SampleComputeIrradiance(v_UV, waterDepth, sceneDepth);
+    float atlasExtinction = 0.0;
+    bool atlasGBufferValid = false;
+    vec4 computeIrradiance = SampleComputeIrradiance(v_UV,
+                                                     waterDepth,
+                                                     sceneDepth,
+                                                     atlasExtinction,
+                                                     atlasGBufferValid);
     float centerStrands = CausticStrands(causticUV);
     vec3 energyRGB = vec3(centerStrands) * sharedEnergy;
     if (u_CausticRGBDispersion == 1) {
@@ -293,6 +375,11 @@ void main() {
     }
     float computeWeight = step(0.00001, computeIrradiance.a);
     energyRGB = mix(energyRGB, max(energyRGB * 0.25, computeIrradiance.rgb), 0.82 * computeWeight);
+    if (atlasGBufferValid) {
+        float atlasTransmittance = exp(-atlasExtinction * max(thickness, 0.0) *
+            clamp(u_CausticTransmittanceStrength, 0.0, 8.0));
+        energyRGB *= mix(1.0, atlasTransmittance, 0.85 * computeWeight);
+    }
 
     vec3 absorption = max(absorptionFoam.rgb, vec3(0.0001));
     vec3 waterTint = mix(vec3(1.0), scatterThickness.rgb, 0.24);

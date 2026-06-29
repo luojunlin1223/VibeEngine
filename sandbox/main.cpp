@@ -7439,6 +7439,9 @@ private:
         out << "HPWaterCausticAtlasReceiverOutputEnabled: " << d.HPWaterCausticAtlasReceiverOutputEnabled << "\n";
         out << "HPWaterCausticCascadeBlendEnabled: " << d.HPWaterCausticCascadeBlendEnabled << "\n";
         out << "HPWaterCausticAtlasEdgeFilterEnabled: " << d.HPWaterCausticAtlasEdgeFilterEnabled << "\n";
+        out << "HPWaterCausticGBufferAtlasConsumed: " << d.HPWaterCausticGBufferAtlasConsumed << "\n";
+        out << "HPWaterCausticGBufferAtlasDecodeEnabled: " << d.HPWaterCausticGBufferAtlasDecodeEnabled << "\n";
+        out << "HPWaterCausticGBufferAtlasDepthAwareEnabled: " << d.HPWaterCausticGBufferAtlasDepthAwareEnabled << "\n";
         out << "HPWaterCausticSpectralWeightingEnabled: " << d.HPWaterCausticSpectralWeightingEnabled << "\n";
         out << "HPWaterCausticFilterRan: " << d.HPWaterCausticFilterRan << "\n";
         out << "HPWaterCausticFilteredValid: " << d.HPWaterCausticFilteredValid << "\n";
@@ -7460,6 +7463,7 @@ private:
         out << "HPWaterCausticAtlasRan: " << d.HPWaterCausticAtlasRan << "\n";
         out << "HPWaterCausticAtlasValid: " << d.HPWaterCausticAtlasValid << "\n";
         out << "HPWaterCausticAtlasTexture: " << d.HPWaterCausticAtlasTexture << "\n";
+        out << "HPWaterCausticGBufferAtlasTexture: " << d.HPWaterCausticGBufferAtlasTexture << "\n";
         out << "HPWaterCausticAtlasDepthTexture: " << d.HPWaterCausticAtlasDepthTexture << "\n";
         out << "HPWaterCausticAtlasTileResolution: " << d.HPWaterCausticAtlasTileResolution << "\n";
         out << "HPWaterCausticAtlasSize: " << d.HPWaterCausticAtlasWidth << "x" << d.HPWaterCausticAtlasHeight << "\n";
@@ -7609,6 +7613,18 @@ private:
                 d.HPWaterCausticAtlasWidth,
                 d.HPWaterCausticAtlasHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_atlas.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterCausticGBufferAtlasTexture != 0 &&
+            d.HPWaterCausticAtlasValid &&
+            d.HPWaterCausticAtlasWidth > 0 && d.HPWaterCausticAtlasHeight > 0) {
+            writeProbe("HPWaterCausticGBufferAtlas",
+                ProbeTexture(d.HPWaterCausticGBufferAtlasTexture,
+                             d.HPWaterCausticAtlasWidth,
+                             d.HPWaterCausticAtlasHeight));
+            SaveTextureBMP(d.HPWaterCausticGBufferAtlasTexture,
+                d.HPWaterCausticAtlasWidth,
+                d.HPWaterCausticAtlasHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_gbuffer_atlas.bmp");
         }
         if (dr.IsInitialized() && d.HPWaterFluidHeightTexture != 0 && d.HPWaterFluidResolution > 0) {
             writeProbe("HPWaterFluidHeight",

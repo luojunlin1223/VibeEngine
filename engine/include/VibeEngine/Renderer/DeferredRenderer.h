@@ -567,6 +567,9 @@ public:
     bool IsHPWaterCausticAtlasReceiverOutputEnabled() const { return m_HPWaterCausticAtlasReceiverOutputEnabled; }
     bool IsHPWaterCausticCascadeBlendEnabled() const { return m_HPWaterCausticCascadeBlendEnabled; }
     bool IsHPWaterCausticAtlasEdgeFilterEnabled() const { return m_HPWaterCausticAtlasEdgeFilterEnabled; }
+    bool IsHPWaterCausticGBufferAtlasConsumed() const { return m_HPWaterCausticGBufferAtlasConsumed; }
+    bool IsHPWaterCausticGBufferAtlasDecodeEnabled() const { return m_HPWaterCausticGBufferAtlasDecodeEnabled; }
+    bool IsHPWaterCausticGBufferAtlasDepthAwareEnabled() const { return m_HPWaterCausticGBufferAtlasDepthAwareEnabled; }
     bool IsHPWaterCausticSpectralWeightingEnabled() const { return m_HPWaterCausticSpectralWeightingEnabled; }
     uint32_t GetHPWaterCausticFilteredTexture() const;
     bool IsHPWaterCausticFilteredValid() const { return m_HPWaterCausticFilteredValid; }
@@ -577,6 +580,7 @@ public:
     void BeginHPWaterCausticAtlasCascade(uint32_t cascadeIndex);
     void EndHPWaterCausticAtlas(bool valid);
     uint32_t GetHPWaterCausticAtlasTexture() const;
+    uint32_t GetHPWaterCausticGBufferAtlasTexture() const;
     uint32_t GetHPWaterCausticAtlasDepthTexture() const;
     bool IsHPWaterCausticAtlasValid() const { return m_HPWaterCausticAtlasValid; }
     bool IsHPWaterCausticAtlasConsumed() const { return m_HPWaterCausticAtlasConsumed; }
@@ -837,6 +841,9 @@ private:
     bool m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     bool m_HPWaterCausticCascadeBlendEnabled = false;
     bool m_HPWaterCausticAtlasEdgeFilterEnabled = false;
+    bool m_HPWaterCausticGBufferAtlasConsumed = false;
+    bool m_HPWaterCausticGBufferAtlasDecodeEnabled = false;
+    bool m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     bool m_HPWaterCausticSpectralWeightingEnabled = false;
 
     // Water-only light-space cascade atlas for HPWater-style caustic accumulation.
