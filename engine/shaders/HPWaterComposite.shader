@@ -120,6 +120,7 @@ uniform vec3 u_ReflectionProbeSecondaryCenter;
 uniform vec3 u_ReflectionProbeSecondaryBoxMin;
 uniform vec3 u_ReflectionProbeSecondaryBoxMax;
 uniform int u_HPWaterVolumeEnabled;
+uniform int u_HPWaterVolumeFullResolution;
 uniform int u_HPWaterCausticEnabled;
 uniform int u_HPWaterDepthPyramidEnabled;
 uniform int u_HasSkyTexture;
@@ -1011,6 +1012,22 @@ struct VolumeSample {
 };
 
 VolumeSample SampleHPWaterVolume(vec2 uv, float sceneLinearDepth) {
+    if (u_HPWaterVolumeFullResolution == 1) {
+        vec4 volumeColor = texture(u_HPWaterVolumeColor, uv);
+        vec4 transmittance = texture(u_HPWaterVolumeTransmittance, uv);
+        vec4 volumeDepth = texture(u_HPWaterVolumeDepth, uv);
+        float depthWeight = 1.0 / (abs(volumeDepth.r - sceneLinearDepth) + 0.18);
+        float validWeight = step(0.001, volumeColor.a + transmittance.a + volumeDepth.a);
+
+        VolumeSample result;
+        result.color = validWeight > 0.0 ? volumeColor.rgb : vec3(0.0);
+        result.transmittance = validWeight > 0.0
+            ? clamp(transmittance.rgb, vec3(0.0), vec3(1.0))
+            : vec3(1.0);
+        result.weight = validWeight > 0.0 ? clamp(depthWeight, 0.0, 1.0) : 0.0;
+        return result;
+    }
+
     ivec2 volumeSize = textureSize(u_HPWaterVolumeColor, 0);
     vec2 volumeTexel = 1.0 / vec2(max(volumeSize, ivec2(1)));
     vec2 volumePixel = uv * vec2(volumeSize) - vec2(0.5);

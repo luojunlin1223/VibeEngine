@@ -397,6 +397,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
@@ -839,6 +840,7 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
@@ -1337,6 +1339,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
@@ -1538,6 +1541,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     m_HPWaterVolumeSceneMotionVectorEnabled = false;
     m_HPWaterVolumeMotionVectorHistoryEnabled = false;
@@ -2080,6 +2084,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     if (!m_HPWaterCompositeShader || !m_HPWaterCompositeFBO || !m_LightingFBO ||
         !m_GBuffer || !m_HPWaterGBuffer || m_QuadVAO == 0) {
         m_HPWaterCompositeValid = false;
+        m_HPWaterVolumeCompositeFullResolutionEnabled = false;
         m_HPWaterRefractionNDCMarchEnabled = false;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
@@ -2145,6 +2150,8 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         : (m_HPWaterVolumeFilteredValid && m_HPWaterVolumeFilteredFBO
             ? m_HPWaterVolumeFilteredFBO
             : m_HPWaterVolumeFBO);
+    const bool volumeCompositeFullResolution =
+        m_HPWaterVolumeUpsampledValid && volumeForComposite == m_HPWaterVolumeUpsampledFBO;
 
     if (volumeForComposite) {
         glActiveTexture(GL_TEXTURE6);
@@ -2363,6 +2370,8 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
     m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeEnabled",
         (m_HPWaterVolumeValid || m_HPWaterVolumeFilteredValid || m_HPWaterVolumeUpsampledValid) ? 1 : 0);
+    m_HPWaterCompositeShader->SetInt("u_HPWaterVolumeFullResolution",
+        volumeCompositeFullResolution ? 1 : 0);
     m_HPWaterCompositeShader->SetInt("u_HPWaterDepthPyramidEnabled", m_HPWaterDepthPyramidValid ? 1 : 0);
     m_HPWaterCompositeShader->SetInt("u_HPWaterDepthPyramidMipCount",
         static_cast<int>(m_HPWaterDepthPyramidMipCount));
@@ -2388,6 +2397,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
 
     m_HPWaterCompositeFBO->Unbind();
     m_HPWaterCompositeValid = true;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = volumeCompositeFullResolution;
     m_HPWaterSurfaceShadowSamplingEnabled = surfaceShadowSamplingValid;
     m_HPWaterShadowCascadeDitherEnabled = shadowCascadeDitherEnabled;
     m_HPWaterRefractionNDCMarchEnabled =
@@ -2663,6 +2673,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterVolumeExponentialIntegrationEnabled = true;
     m_HPWaterVolumeShadowSamplingEnabled = shadowSamplingValid;
@@ -2845,6 +2856,7 @@ bool DeferredRenderer::TemporalFilterHPWaterVolume(const glm::mat4& currentViewP
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeFilterIterations = 0;
     return true;
 }
@@ -2864,6 +2876,7 @@ void DeferredRenderer::InvalidateHPWaterVolumeHistory() {
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;
     m_HPWaterVolumeExplicitMotionVectorEnabled = false;
@@ -2982,6 +2995,7 @@ bool DeferredRenderer::FilterHPWaterVolume(bool spatialFilterEnabled,
     m_HPWaterVolumeUpsampledValid = false;
     m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     return m_HPWaterVolumeFilteredValid;
 }
 
@@ -2991,6 +3005,7 @@ bool DeferredRenderer::UpsampleHPWaterVolume(float nearClip, float farClip) {
         m_HPWaterVolumeUpsampledValid = false;
         m_HPWaterVolumeUpsampleGatherParityEnabled = false;
         m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+        m_HPWaterVolumeCompositeFullResolutionEnabled = false;
         return false;
     }
 
@@ -3004,6 +3019,7 @@ bool DeferredRenderer::UpsampleHPWaterVolume(float nearClip, float farClip) {
         m_HPWaterVolumeUpsampledValid = false;
         m_HPWaterVolumeUpsampleGatherParityEnabled = false;
         m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+        m_HPWaterVolumeCompositeFullResolutionEnabled = false;
         return false;
     }
 

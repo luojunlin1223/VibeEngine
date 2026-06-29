@@ -526,6 +526,9 @@ public:
     bool IsHPWaterVolumeUpsampleDepthAwareEnabled() const {
         return m_HPWaterVolumeUpsampleDepthAwareEnabled;
     }
+    bool IsHPWaterVolumeCompositeFullResolutionEnabled() const {
+        return m_HPWaterVolumeCompositeFullResolutionEnabled;
+    }
     void InvalidateHPWaterVolumeHistory();
 
     /// Whether the current output texture is the HPWater composite.
@@ -791,6 +794,7 @@ private:
     bool m_HPWaterVolumeUpsampledValid = false;
     bool m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     bool m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    bool m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     uint32_t m_HPWaterVolumeFilterIterations = 0;
     bool m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;
     bool m_HPWaterVolumeTemporalMotionReprojectionEnabled = false;

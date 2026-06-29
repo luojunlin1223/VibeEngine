@@ -7443,6 +7443,8 @@ private:
             << d.HPWaterVolumeUpsampleGatherParityEnabled << "\n";
         out << "HPWaterVolumeUpsampleDepthAwareEnabled: "
             << d.HPWaterVolumeUpsampleDepthAwareEnabled << "\n";
+        out << "HPWaterVolumeCompositeFullResolutionEnabled: "
+            << d.HPWaterVolumeCompositeFullResolutionEnabled << "\n";
         out << "HPWaterCausticRan: " << d.HPWaterCausticRan << "\n";
         out << "HPWaterCausticValid: " << d.HPWaterCausticValid << "\n";
         out << "HPWaterCausticTexture: " << d.HPWaterCausticTexture << "\n";
