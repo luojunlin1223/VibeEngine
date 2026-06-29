@@ -110,6 +110,24 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
 }
 
+bool ProjectSSRRay(vec3 rayPos, out vec2 uv, out float rayLinearDepth) {
+    vec4 clip = u_ViewProjection * vec4(rayPos, 1.0);
+    if (clip.w <= 0.00001) {
+        return false;
+    }
+
+    vec3 ndc = clip.xyz / clip.w;
+    uv = ndc.xy * 0.5 + 0.5;
+    if (uv.x <= 0.001 || uv.y <= 0.001 || uv.x >= 0.999 || uv.y >= 0.999 ||
+        ndc.z <= -1.0 || ndc.z >= 1.0) {
+        return false;
+    }
+
+    float rayDepth = ndc.z * 0.5 + 0.5;
+    rayLinearDepth = LinearizeDepth(clamp(rayDepth, 0.0, 1.0));
+    return true;
+}
+
 vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughness, float waterLinearDepth) {
     if (u_HPWaterSSREnabled != 1 || u_HPWaterSSRMaxSteps <= 0) {
         return vec4(0.0);
@@ -126,6 +144,7 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
     float maxDistance = clamp(u_HPWaterSSRMaxDistance, 0.1, 500.0);
     vec3 start = waterWorldPos + normal * max(thickness * 0.25, 0.01);
     float travelled = stepSize;
+    float lastTravelled = 0.0;
 
     for (int i = 0; i < 128; ++i) {
         if (i >= maxSteps || travelled > maxDistance) {
@@ -134,22 +153,14 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
 
         float progress = float(i) / float(max(maxSteps - 1, 1));
         vec3 rayPos = start + R * travelled;
-        vec4 clip = u_ViewProjection * vec4(rayPos, 1.0);
-        if (clip.w <= 0.00001) {
-            travelled += stepSize * mix(1.0, 2.25, progress);
-            continue;
-        }
-
-        vec3 ndc = clip.xyz / clip.w;
-        vec2 uv = ndc.xy * 0.5 + 0.5;
-        if (uv.x <= 0.001 || uv.y <= 0.001 || uv.x >= 0.999 || uv.y >= 0.999 ||
-            ndc.z <= -1.0 || ndc.z >= 1.0) {
+        vec2 uv;
+        float rayLinear;
+        if (!ProjectSSRRay(rayPos, uv, rayLinear)) {
             break;
         }
 
-        float rayDepth = ndc.z * 0.5 + 0.5;
-        float rayLinear = LinearizeDepth(clamp(rayDepth, 0.0, 1.0));
         if (rayLinear <= waterLinearDepth + 0.01) {
+            lastTravelled = travelled;
             travelled += stepSize * mix(1.0, 2.25, progress);
             continue;
         }
@@ -160,17 +171,51 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
             float delta = rayLinear - sceneLinear;
             float adaptiveThickness = thickness + travelled * 0.015;
             if (delta >= -adaptiveThickness * 0.25 && delta <= adaptiveThickness) {
-                float edgeFade = ScreenEdgeFade(uv);
-                float distanceFade = 1.0 - smoothstep(maxDistance * 0.35, maxDistance, travelled);
+                vec2 hitUV = uv;
+                float hitTravelled = travelled;
+                float low = max(lastTravelled, 0.0);
+                float high = travelled;
+                for (int refine = 0; refine < 6; ++refine) {
+                    float mid = (low + high) * 0.5;
+                    vec2 refinedUV;
+                    float refinedRayLinear;
+                    if (!ProjectSSRRay(start + R * mid, refinedUV, refinedRayLinear)) {
+                        low = mid;
+                        continue;
+                    }
+
+                    float refinedSceneDepth = SampleSceneDepth(refinedUV, 0.0);
+                    if (refinedSceneDepth >= 0.9999 ||
+                        refinedRayLinear <= waterLinearDepth + 0.01) {
+                        low = mid;
+                        continue;
+                    }
+
+                    float refinedSceneLinear = LinearizeDepth(refinedSceneDepth);
+                    float refinedAdaptiveThickness = thickness + mid * 0.015;
+                    float refinedDelta = refinedRayLinear - refinedSceneLinear;
+                    if (refinedDelta >= -refinedAdaptiveThickness * 0.25 &&
+                        refinedDelta <= refinedAdaptiveThickness) {
+                        high = mid;
+                        hitTravelled = mid;
+                        hitUV = refinedUV;
+                    } else {
+                        low = mid;
+                    }
+                }
+
+                float edgeFade = ScreenEdgeFade(hitUV);
+                float distanceFade = 1.0 - smoothstep(maxDistance * 0.35, maxDistance, hitTravelled);
                 float roughnessFade = mix(1.0, 0.35, clamp(roughness, 0.0, 1.0));
                 float confidence = edgeFade * distanceFade * roughnessFade *
                     clamp(u_HPWaterSSRStrength, 0.0, 1.0);
                 float lod = roughness * float(max(u_SceneColorMipCount - 1, 0));
-                vec3 color = SampleSceneColorBlurred(uv, lod) * confidence;
+                vec3 color = SampleSceneColorBlurred(hitUV, lod) * confidence;
                 return vec4(color, confidence);
             }
         }
 
+        lastTravelled = travelled;
         travelled += stepSize * mix(1.0, 2.25, progress);
     }
 
