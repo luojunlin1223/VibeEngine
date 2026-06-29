@@ -570,41 +570,61 @@ vec4 SampleHPWaterAreaLightLTC(float roughness, float nDotV, int layer) {
     return texture(u_AreaLightLTCLUT, vec3(uv, clampedLayer));
 }
 
-vec2 HPWaterLTCHalfSizeScale(vec4 ltc) {
-    float m00 = max(abs(ltc.r), 0.001);
-    float m11 = max(abs(ltc.b), 0.001);
-    float determinant = max(abs(ltc.r * ltc.b - ltc.g * ltc.a), 0.001);
-    float areaScale = clamp(1.0 / sqrt(determinant), 0.35, 1.35);
-    return clamp(areaScale / sqrt(vec2(m00, m11)), vec2(0.35), vec2(1.5));
+mat3 HPWaterLTCInverseMatrix(vec4 ltc) {
+    return mat3(
+        vec3(ltc.r, 0.0, ltc.a),
+        vec3(0.0, ltc.b, 0.0),
+        vec3(ltc.g, 0.0, 1.0));
 }
 
-float HPWaterLTCEnergy(vec4 ltc, float nDotV) {
-    float determinant = max(abs(ltc.r * ltc.b - ltc.g * ltc.a), 0.001);
-    float horizon = clamp(0.35 + 0.65 * nDotV, 0.0, 1.0);
-    return clamp(horizon / sqrt(determinant), 0.0, 2.0);
-}
-
-void AccumulateHPWaterAreaLightSample(vec3 positionWS,
-                                      vec3 samplePoint,
-                                      vec3 forward,
-                                      float range,
-                                      inout vec3 weightedDirection,
-                                      inout float weightSum) {
-    vec3 lightVector = samplePoint - positionWS;
-    float distanceToLight = length(lightVector);
-    if (distanceToLight <= 0.0001 || distanceToLight >= range) {
-        return;
+mat3 HPWaterLTCViewNormalBasis(vec3 N, vec3 V) {
+    vec3 tangent = V - N * dot(V, N);
+    if (dot(tangent, tangent) < 0.0001) {
+        vec3 helper = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        tangent = cross(helper, N);
     }
 
-    vec3 sampleL = lightVector / distanceToLight;
-    float range01 = clamp(distanceToLight / range, 0.0, 1.0);
-    float rangeWindow = 1.0 - pow(range01, 4.0);
-    rangeWindow *= rangeWindow;
-    float emissionFacing = clamp(dot(forward, -sampleL), 0.0, 1.0);
-    float sampleWeight = rangeWindow * emissionFacing /
-        (distanceToLight * distanceToLight + 1.0);
-    weightedDirection += sampleL * sampleWeight;
-    weightSum += sampleWeight;
+    tangent = NormalizeOr(tangent, vec3(1.0, 0.0, 0.0));
+    vec3 bitangent = NormalizeOr(cross(N, tangent), vec3(0.0, 1.0, 0.0));
+    return mat3(tangent, bitangent, N);
+}
+
+float HPWaterLTCIntegrateEdge(vec3 v1, vec3 v2) {
+    float cosTheta = clamp(dot(v1, v2), -0.9999, 0.9999);
+    float theta = acos(cosTheta);
+    float invSinTheta = inversesqrt(max(1.0 - cosTheta * cosTheta, 0.000001));
+    return cross(v1, v2).z * theta * invSinTheta;
+}
+
+float HPWaterLTCPolygonIrradiance(vec3 p0, vec3 p1, vec3 p2, vec3 p3) {
+    float edgeSum =
+        HPWaterLTCIntegrateEdge(p0, p1) +
+        HPWaterLTCIntegrateEdge(p1, p2) +
+        HPWaterLTCIntegrateEdge(p2, p3) +
+        HPWaterLTCIntegrateEdge(p3, p0);
+    return clamp(abs(edgeSum) * (0.5 / PI), 0.0, 1.0);
+}
+
+float HPWaterEvaluateAreaLightLTCPolygon(vec3 positionWS,
+                                         mat3 basis,
+                                         mat3 inverseLTC,
+                                         vec3 p0,
+                                         vec3 p1,
+                                         vec3 p2,
+                                         vec3 p3) {
+    vec3 v0 = p0 - positionWS;
+    vec3 v1 = p1 - positionWS;
+    vec3 v2 = p2 - positionWS;
+    vec3 v3 = p3 - positionWS;
+    vec3 l0 = vec3(dot(v0, basis[0]), dot(v0, basis[1]), dot(v0, basis[2]));
+    vec3 l1 = vec3(dot(v1, basis[0]), dot(v1, basis[1]), dot(v1, basis[2]));
+    vec3 l2 = vec3(dot(v2, basis[0]), dot(v2, basis[1]), dot(v2, basis[2]));
+    vec3 l3 = vec3(dot(v3, basis[0]), dot(v3, basis[1]), dot(v3, basis[2]));
+    return HPWaterLTCPolygonIrradiance(
+        NormalizeOr(inverseLTC * l0, vec3(0.0, 0.0, 1.0)),
+        NormalizeOr(inverseLTC * l1, vec3(0.0, 0.0, 1.0)),
+        NormalizeOr(inverseLTC * l2, vec3(0.0, 0.0, 1.0)),
+        NormalizeOr(inverseLTC * l3, vec3(0.0, 0.0, 1.0)));
 }
 
 vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
@@ -622,35 +642,44 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
     float height = max(u_AreaLightHeights[lightIndex], 0.001);
     float range = max(u_AreaLightRanges[lightIndex], 0.001);
     vec2 halfSize = vec2(width, height) * 0.5;
-    float nDotV = clamp(dot(N, V), 0.0, 1.0);
-    vec4 ltc = SampleHPWaterAreaLightLTC(roughness, nDotV, 0);
-    vec4 disneyLtc = SampleHPWaterAreaLightLTC(roughness, nDotV, 1);
-    vec2 ltcHalfSize = halfSize * HPWaterLTCHalfSizeScale(ltc);
-    vec3 ltcCenter = center + right * (ltc.g * halfSize.x * 0.35) +
-        up * (ltc.a * halfSize.y * 0.35);
-
-    vec3 weightedDirection = vec3(0.0);
-    float weightSum = 0.0;
-    AccumulateHPWaterAreaLightSample(positionWS, ltcCenter, forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, ltcCenter + right * ltcHalfSize.x + up * ltcHalfSize.y,
-        forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, ltcCenter - right * ltcHalfSize.x + up * ltcHalfSize.y,
-        forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, ltcCenter + right * ltcHalfSize.x - up * ltcHalfSize.y,
-        forward, range, weightedDirection, weightSum);
-    AccumulateHPWaterAreaLightSample(positionWS, ltcCenter - right * ltcHalfSize.x - up * ltcHalfSize.y,
-        forward, range, weightedDirection, weightSum);
-
-    L = NormalizeOr(weightedDirection, forward);
-    float specEnergy = HPWaterLTCEnergy(ltc, nDotV);
-    float disneyEnergy = HPWaterLTCEnergy(disneyLtc, nDotV);
-    diffuseScale = clamp(disneyEnergy / max(specEnergy, 0.001), 0.0, 1.5);
-    if (weightSum <= 0.0) {
+    vec3 centerVector = center - positionWS;
+    float distanceToLight = length(centerVector);
+    if (distanceToLight <= 0.0001 || distanceToLight >= range) {
+        L = forward;
+        diffuseScale = 1.0;
         return vec3(0.0);
     }
 
-    float areaScale = clamp(width * height * 0.25, 0.1, 8.0);
-    float attenuation = (weightSum / 5.0) * areaScale * specEnergy;
+    L = centerVector / distanceToLight;
+    float range01 = clamp(distanceToLight / range, 0.0, 1.0);
+    float rangeWindow = 1.0 - pow(range01, 4.0);
+    rangeWindow *= rangeWindow;
+    float emissionFacing = clamp(dot(forward, -L), 0.0, 1.0);
+    if (emissionFacing <= 0.0001) {
+        diffuseScale = 1.0;
+        return vec3(0.0);
+    }
+
+    float nDotV = clamp(dot(N, V), 0.0, 1.0);
+    vec4 ltc = SampleHPWaterAreaLightLTC(roughness, nDotV, 0);
+    vec4 disneyLtc = SampleHPWaterAreaLightLTC(roughness, nDotV, 1);
+
+    vec3 p0 = center - right * halfSize.x - up * halfSize.y;
+    vec3 p1 = center + right * halfSize.x - up * halfSize.y;
+    vec3 p2 = center + right * halfSize.x + up * halfSize.y;
+    vec3 p3 = center - right * halfSize.x + up * halfSize.y;
+    mat3 basis = HPWaterLTCViewNormalBasis(N, V);
+    float specIrradiance = HPWaterEvaluateAreaLightLTCPolygon(
+        positionWS, basis, HPWaterLTCInverseMatrix(ltc), p0, p1, p2, p3);
+    float diffuseIrradiance = HPWaterEvaluateAreaLightLTCPolygon(
+        positionWS, basis, HPWaterLTCInverseMatrix(disneyLtc), p0, p1, p2, p3);
+    if (specIrradiance <= 0.0001) {
+        diffuseScale = 1.0;
+        return vec3(0.0);
+    }
+
+    diffuseScale = clamp(diffuseIrradiance / max(specIrradiance, 0.001), 0.0, 1.5);
+    float attenuation = rangeWindow * emissionFacing * specIrradiance;
     return u_AreaLightColors[lightIndex] *
         max(u_AreaLightIntensities[lightIndex], 0.0) * attenuation;
 }
