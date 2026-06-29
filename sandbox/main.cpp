@@ -7032,6 +7032,7 @@ private:
         uint32_t Height = 0;
         float AverageLuminance = 0.0f;
         float AverageAlpha = 0.0f;
+        std::array<float, 4> AverageRGBA = { 0.0f, 0.0f, 0.0f, 0.0f };
         float NonBlackRatio = 0.0f;
         std::array<unsigned char, 4> Center = { 0, 0, 0, 0 };
         std::array<unsigned char, 4> MaxRGBA = { 0, 0, 0, 0 };
@@ -7065,6 +7066,7 @@ private:
 
         double luminanceSum = 0.0;
         double alphaSum = 0.0;
+        std::array<double, 4> channelSum = { 0.0, 0.0, 0.0, 0.0 };
         size_t nonBlack = 0;
         const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
         const size_t step = std::max<size_t>(1, pixelCount / 65536);
@@ -7081,6 +7083,10 @@ private:
             summary.MaxRGBA[3] = std::max(summary.MaxRGBA[3], a);
             luminanceSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
             alphaSum += a;
+            channelSum[0] += r;
+            channelSum[1] += g;
+            channelSum[2] += b;
+            channelSum[3] += a;
             if (r > 2 || g > 2 || b > 2)
                 nonBlack++;
             sampled++;
@@ -7090,6 +7096,12 @@ private:
         if (sampled > 0) {
             summary.AverageLuminance = static_cast<float>(luminanceSum / (255.0 * sampled));
             summary.AverageAlpha = static_cast<float>(alphaSum / (255.0 * sampled));
+            summary.AverageRGBA = {
+                static_cast<float>(channelSum[0] / (255.0 * sampled)),
+                static_cast<float>(channelSum[1] / (255.0 * sampled)),
+                static_cast<float>(channelSum[2] / (255.0 * sampled)),
+                static_cast<float>(channelSum[3] / (255.0 * sampled))
+            };
             summary.NonBlackRatio = static_cast<float>(static_cast<double>(nonBlack) / sampled);
         }
         return summary;
@@ -7539,6 +7551,12 @@ private:
             out << "Size: " << p.Width << "x" << p.Height << "\n";
             out << "AverageLuminance: " << std::fixed << std::setprecision(4) << p.AverageLuminance << "\n";
             out << "AverageAlpha: " << std::fixed << std::setprecision(4) << p.AverageAlpha << "\n";
+            out << "AverageRGBA: "
+                << std::fixed << std::setprecision(4)
+                << p.AverageRGBA[0] << ","
+                << p.AverageRGBA[1] << ","
+                << p.AverageRGBA[2] << ","
+                << p.AverageRGBA[3] << "\n";
             out << "NonBlackRatio: " << std::fixed << std::setprecision(4) << p.NonBlackRatio << "\n";
             out << "CenterRGBA: "
                 << static_cast<int>(p.Center[0]) << ","
