@@ -80,7 +80,7 @@ void main() {
     float waterMask = u_HPWaterMaskEnabled == 1
         ? texture(u_HPWaterMask, v_UV).r
         : (waterDepth < 0.9999 ? 1.0 : 0.0);
-    if (waterMask < 0.5 || waterDepth >= 0.9999 || refractMeta.w <= 0.0001) {
+    if (waterMask < 0.5 || waterDepth >= 0.9999) {
         UpsampledColor = vec4(0.0);
         UpsampledTransmittance = vec4(1.0, 1.0, 1.0, 0.0);
         UpsampledDepth = vec4(0.0);

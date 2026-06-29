@@ -2607,6 +2607,13 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     }
     m_HPWaterVolumeShader->SetVec3("u_CameraPosition", cameraPosition);
     m_HPWaterVolumeShader->SetMat4("u_InverseViewProjection", inverseViewProjection);
+    const float hpWaterVolumeWidth = static_cast<float>(std::max(m_HPWaterVolumeFBO->GetWidth(), 1u));
+    const float hpWaterVolumeHeight = static_cast<float>(std::max(m_HPWaterVolumeFBO->GetHeight(), 1u));
+    m_HPWaterVolumeShader->SetVec4("u_HPWaterVolumeResolution",
+        glm::vec4(hpWaterVolumeWidth,
+                  hpWaterVolumeHeight,
+                  1.0f / hpWaterVolumeWidth,
+                  1.0f / hpWaterVolumeHeight));
     const float clampedMaxRefractionCrossDistance =
         std::clamp(maxRefractionCrossDistance, 0.1f, 200.0f);
     m_HPWaterVolumeShader->SetFloat("u_MaxRefractionCrossDistance",

@@ -93,6 +93,7 @@ uniform float u_AreaLightWidths[4];
 uniform float u_AreaLightHeights[4];
 uniform vec3 u_CameraPosition;
 uniform mat4 u_InverseViewProjection;
+uniform vec4 u_HPWaterVolumeResolution; // xy = low-res size, zw = 1 / low-res size
 
 #include "shadows.glslinc"
 
@@ -128,6 +129,14 @@ vec3 ReconstructWorldPosition(vec2 uv, float depth) {
     vec4 world = u_InverseViewProjection * vec4(ndcXY, ndcZ, 1.0);
     float invW = abs(world.w) > 0.00001 ? 1.0 / world.w : 0.0;
     return world.xyz * invW;
+}
+
+vec2 ResolveHPWaterFullResUV() {
+    vec2 fullSize = vec2(max(textureSize(u_HPWaterDepth, 0), ivec2(1)));
+    vec2 lowSize = max(u_HPWaterVolumeResolution.xy, vec2(1.0));
+    vec2 lowCoord = floor(gl_FragCoord.xy);
+    vec2 fullPixel = floor((lowCoord + vec2(0.5)) * (fullSize / lowSize));
+    return clamp((fullPixel + vec2(0.5)) / fullSize, vec2(0.0005), vec2(0.9995));
 }
 
 float Luminance(vec3 color) {
@@ -435,23 +444,24 @@ float ComputeHPWaterVolumeShadow(vec3 fragPosWorld, vec3 N) {
 }
 
 void main() {
-    float waterDepth = texture(u_HPWaterDepth, v_UV).r;
-    vec4 refractData = texture(u_HPWaterRefractionWorldData, v_UV);
-    vec4 refractMeta = texture(u_HPWaterRefractionMeta, v_UV);
+    vec2 sourceUV = ResolveHPWaterFullResUV();
+    float waterDepth = texture(u_HPWaterDepth, sourceUV).r;
+    vec4 refractData = texture(u_HPWaterRefractionWorldData, sourceUV);
+    vec4 refractMeta = texture(u_HPWaterRefractionMeta, sourceUV);
     float waterMask = u_HPWaterMaskEnabled == 1
-        ? texture(u_HPWaterMask, v_UV).r
+        ? texture(u_HPWaterMask, sourceUV).r
         : (waterDepth < 0.9999 ? 1.0 : 0.0);
 
-    if (waterMask < 0.5 || waterDepth >= 0.9999 || refractMeta.w <= 0.0001) {
+    if (waterMask < 0.5 || waterDepth >= 0.9999) {
         VolumeColor = vec4(0.0);
         VolumeTransmittance = vec4(1.0, 1.0, 1.0, 0.0);
         VolumeDepth = vec4(0.0);
         return;
     }
 
-    vec4 normalRoughness = texture(u_HPWaterNormalRoughness, v_UV);
-    vec4 scatterThickness = texture(u_HPWaterScatterThickness, v_UV);
-    vec4 absorptionFoam = texture(u_HPWaterAbsorptionFoam, v_UV);
+    vec4 normalRoughness = texture(u_HPWaterNormalRoughness, sourceUV);
+    vec4 scatterThickness = texture(u_HPWaterScatterThickness, sourceUV);
+    vec4 absorptionFoam = texture(u_HPWaterAbsorptionFoam, sourceUV);
 
     vec3 N = normalize(normalRoughness.xyz * 2.0 - 1.0);
     vec3 scatterColor = max(scatterThickness.rgb, vec3(0.0));
@@ -459,15 +469,22 @@ void main() {
     vec3 absorptionColor = max(absorptionFoam.rgb, vec3(0.0001));
     float foam = clamp(absorptionFoam.a, 0.0, 1.0);
 
-    vec3 waterWorldPos = ReconstructWorldPosition(v_UV, waterDepth);
+    vec3 waterWorldPos = ReconstructWorldPosition(sourceUV, waterDepth);
     vec3 refractedWorldPos = refractData.xyz;
     float rayLength = refractData.w;
     float normalizedThickness = clamp(refractMeta.w, 0.0, 1.0);
+    vec3 V = SafeNormalize(u_CameraPosition - waterWorldPos, vec3(0.0, 1.0, 0.0));
     if (rayLength <= 0.001) {
-        rayLength = max(normalizedThickness * depthTintDistance, 0.01);
+        float fallbackThickness = normalizedThickness > 0.0001
+            ? normalizedThickness
+            : 0.35;
+        rayLength = max(fallbackThickness * depthTintDistance, 0.05);
+        refractedWorldPos = waterWorldPos - V * rayLength;
+    }
+    if (normalizedThickness <= 0.0001) {
+        normalizedThickness = clamp(rayLength / max(depthTintDistance, 0.1), 0.05, 1.0);
     }
 
-    vec3 V = SafeNormalize(u_CameraPosition - waterWorldPos, vec3(0.0, 1.0, 0.0));
     vec3 L = normalize(u_LightDir);
     float NdotL = clamp(dot(N, L), 0.0, 1.0);
 
@@ -498,7 +515,7 @@ void main() {
     vec3 baseDirectLight = u_LightColor * max(u_LightIntensity, 0.0) *
         (0.18 + 0.82 * NdotL) * (0.75 + 0.25 * normalizedThickness);
     if (u_HPWaterCausticEnabled == 1) {
-        vec4 caustic = texture(u_HPWaterCaustic, v_UV);
+        vec4 caustic = texture(u_HPWaterCaustic, sourceUV);
         float causticWeight = clamp(caustic.a, 0.0, 1.0) *
             (0.25 + 0.75 * normalizedThickness);
         baseDirectLight += caustic.rgb * causticWeight * clamp(u_CausticVolumeStrength, 0.0, 4.0);
@@ -506,8 +523,8 @@ void main() {
 
     const float expFactor = 8.0;
     int sampleCount = clamp(u_VolumeSampleCount, 4, 32);
-    vec2 volumeSize = vec2(max(textureSize(u_HPWaterDepth, 0), ivec2(1)));
-    float dither = InterleavedGradientNoise(v_UV * volumeSize, u_FrameIndex);
+    vec2 volumeSize = max(u_HPWaterVolumeResolution.xy, vec2(1.0));
+    float dither = InterleavedGradientNoise(gl_FragCoord.xy, u_FrameIndex);
     float invSampleCount = 1.0 / float(sampleCount);
     float previousD = 0.0;
     vec3 accumTransmittance = vec3(1.0);
@@ -529,7 +546,7 @@ void main() {
         float midD = clamp((previousD + d) * 0.5, 0.0, 1.0);
         vec3 samplePos = mix(waterWorldPos, noLinearEndPos, midD);
         vec3 shadowSamplePos = mix(waterWorldPos, dynamicShadowEndPos, midD);
-        vec2 sampleUV = mix(v_UV, clamp(refractMeta.xy, vec2(0.001), vec2(0.999)), midD);
+        vec2 sampleUV = mix(sourceUV, clamp(refractMeta.xy, vec2(0.001), vec2(0.999)), midD);
         vec3 sampleToCamera = SafeNormalize(u_CameraPosition - samplePos, V);
         float cosTheta = clamp(dot(sampleToCamera, L), -1.0, 1.0);
         vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
