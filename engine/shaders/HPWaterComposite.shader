@@ -53,7 +53,7 @@ uniform sampler2D u_HPWaterCaustic;
 uniform sampler2D u_HPWaterSSRLighting;
 uniform sampler2D u_SkyTexture;
 uniform sampler2D u_PreintegratedFGDLUT;
-uniform sampler2D u_AreaLightLTCLUT;
+uniform sampler2DArray u_AreaLightLTCLUT;
 uniform samplerCube u_ReflectionProbe;
 uniform samplerCube u_ReflectionProbeSecondary;
 
@@ -553,19 +553,21 @@ vec3 EvaluateHPWaterSpecularLight(vec3 N,
         radiance * NdotL * specularSelfOcclusion * energyCompensation;
 }
 
-vec4 SampleHPWaterAreaLightLTC(float roughness, float nDotV) {
+vec4 SampleHPWaterAreaLightLTC(float roughness, float nDotV, int layer) {
     if (u_AreaLightLTCLUTEnabled != 1) {
         return vec4(1.0, 0.0, 1.0, 0.0);
     }
 
-    vec2 lutSize = vec2(max(textureSize(u_AreaLightLTCLUT, 0), ivec2(1)));
+    ivec3 lutDims = max(textureSize(u_AreaLightLTCLUT, 0), ivec3(1));
+    vec2 lutSize = vec2(lutDims.xy);
     float clampedNdotV = clamp(nDotV, 0.0, 1.0);
     float cosThetaParam = sqrt(max(1.0 - clampedNdotV, 0.0));
     vec2 uv = vec2(
         clamp(sqrt(max(roughness, 0.0)), 0.0, 1.0),
         cosThetaParam);
     uv = (uv * (lutSize - vec2(1.0)) + vec2(0.5)) / lutSize;
-    return texture(u_AreaLightLTCLUT, uv);
+    float clampedLayer = float(clamp(layer, 0, max(lutDims.z - 1, 0)));
+    return texture(u_AreaLightLTCLUT, vec3(uv, clampedLayer));
 }
 
 vec2 HPWaterLTCHalfSizeScale(vec4 ltc) {
@@ -621,7 +623,8 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
     float range = max(u_AreaLightRanges[lightIndex], 0.001);
     vec2 halfSize = vec2(width, height) * 0.5;
     float nDotV = clamp(dot(N, V), 0.0, 1.0);
-    vec4 ltc = SampleHPWaterAreaLightLTC(roughness, nDotV);
+    vec4 ltc = SampleHPWaterAreaLightLTC(roughness, nDotV, 0);
+    vec4 disneyLtc = SampleHPWaterAreaLightLTC(roughness, nDotV, 1);
     vec2 ltcHalfSize = halfSize * HPWaterLTCHalfSizeScale(ltc);
     vec3 ltcCenter = center + right * (ltc.g * halfSize.x * 0.35) +
         up * (ltc.a * halfSize.y * 0.35);
@@ -639,13 +642,15 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
         forward, range, weightedDirection, weightSum);
 
     L = NormalizeOr(weightedDirection, forward);
-    diffuseScale = clamp(0.65 + 0.35 * nDotV + 0.20 * roughness, 0.0, 1.25);
+    float specEnergy = HPWaterLTCEnergy(ltc, nDotV);
+    float disneyEnergy = HPWaterLTCEnergy(disneyLtc, nDotV);
+    diffuseScale = clamp(disneyEnergy / max(specEnergy, 0.001), 0.0, 1.5);
     if (weightSum <= 0.0) {
         return vec3(0.0);
     }
 
     float areaScale = clamp(width * height * 0.25, 0.1, 8.0);
-    float attenuation = (weightSum / 5.0) * areaScale * HPWaterLTCEnergy(ltc, nDotV);
+    float attenuation = (weightSum / 5.0) * areaScale * specEnergy;
     return u_AreaLightColors[lightIndex] *
         max(u_AreaLightIntensities[lightIndex], 0.0) * attenuation;
 }

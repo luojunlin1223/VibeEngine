@@ -222,6 +222,8 @@ struct RenderDiagnostics {
     bool HPWaterAreaLightLTCLUTValid = false;
     uint32_t HPWaterAreaLightLTCLUTTexture = 0;
     uint32_t HPWaterAreaLightLTCLUTResolution = 0;
+    uint32_t HPWaterAreaLightLTCLUTLayers = 0;
+    bool HPWaterAreaLightLTCHDRPTableEnabled = false;
     bool HPWaterAreaLightLTCSamplingEnabled = false;
     bool HPWaterAreaLightLTCHDRPUVEnabled = false;
     bool HPWaterAreaLightLTCCosThetaParamEnabled = false;

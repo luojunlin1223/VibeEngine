@@ -12,8 +12,11 @@
 #include <glad/gl.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
+
+#include "HPWaterLtcData.inc"
 
 namespace VE {
 
@@ -675,70 +678,47 @@ void DeferredRenderer::DestroyHPWaterAreaLightLTCLUT() {
         m_HPWaterAreaLightLTCLUTTexture = 0;
     }
     m_HPWaterAreaLightLTCLUTValid = false;
+    m_HPWaterAreaLightLTCHDRPTableEnabled = false;
+    m_HPWaterAreaLightLTCLUTLayers = 0;
 }
 
 void DeferredRenderer::CreateHPWaterAreaLightLTCLUT() {
     DestroyHPWaterAreaLightLTCLUT();
 
-    const uint32_t resolution = std::clamp(m_HPWaterAreaLightLTCLUTResolution, 32u, 256u);
+    const uint32_t resolution = VibeEngine::HPWaterLTC::kResolution;
     m_HPWaterAreaLightLTCLUTResolution = resolution;
+    m_HPWaterAreaLightLTCLUTLayers = VibeEngine::HPWaterLTC::kLayerCount;
 
-    std::vector<float> pixels(static_cast<size_t>(resolution) * static_cast<size_t>(resolution) * 4u);
-    for (uint32_t y = 0; y < resolution; ++y) {
-        const float cosThetaParam = (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution);
-        const float nDotV = std::clamp(1.0f - cosThetaParam * cosThetaParam, 0.0f, 1.0f);
-        for (uint32_t x = 0; x < resolution; ++x) {
-            // Match HDRP _LtcData addressing and payload shape:
-            // U = perceptual roughness, V = sqrt(1 - clamped NdotV),
-            // RGBA = inverse LTC matrix coefficients _m00_m02_m11_m20.
-            // The coefficients below are an analytic placeholder until the
-            // exact HDRP table is imported, but shaders now consume the same
-            // coefficient slots as HPWater/HDRP instead of ad hoc controls.
-            const float perceptualRoughness = (static_cast<float>(x) + 0.5f) /
-                                              static_cast<float>(resolution);
-            const float roughness = perceptualRoughness * perceptualRoughness;
-            const float grazing = 1.0f - std::clamp(nDotV, 0.0f, 1.0f);
-            const float m00 = std::clamp(1.0f + 0.65f * roughness +
-                                             0.20f * grazing * perceptualRoughness,
-                                         0.25f,
-                                         2.0f);
-            const float m02 = std::clamp(-0.28f * grazing * (0.25f + perceptualRoughness),
-                                         -0.75f,
-                                         0.75f);
-            const float m11 = std::clamp(1.0f + 0.45f * roughness +
-                                             0.35f * grazing * roughness,
-                                         0.25f,
-                                         2.0f);
-            const float m20 = std::clamp(0.18f * grazing * roughness,
-                                         -0.75f,
-                                         0.75f);
-
-            const size_t index = (static_cast<size_t>(y) * resolution + x) * 4u;
-            pixels[index + 0u] = m00;
-            pixels[index + 1u] = m02;
-            pixels[index + 2u] = m11;
-            pixels[index + 3u] = m20;
-        }
-    }
+    std::vector<uint16_t> pixels(static_cast<size_t>(VibeEngine::HPWaterLTC::kValuesPerLayer) *
+                                 VibeEngine::HPWaterLTC::kLayerCount);
+    std::copy_n(VibeEngine::HPWaterLTC::kGGX,
+                VibeEngine::HPWaterLTC::kValuesPerLayer,
+                pixels.begin());
+    std::copy_n(VibeEngine::HPWaterLTC::kDisney,
+                VibeEngine::HPWaterLTC::kValuesPerLayer,
+                pixels.begin() + VibeEngine::HPWaterLTC::kValuesPerLayer);
 
     glGenTextures(1, &m_HPWaterAreaLightLTCLUTTexture);
     VE_GPU_TRACK(GPUResourceType::Texture, m_HPWaterAreaLightLTCLUTTexture);
-    glBindTexture(GL_TEXTURE_2D, m_HPWaterAreaLightLTCLUTTexture);
-    glTexImage2D(GL_TEXTURE_2D,
+    glBindTexture(GL_TEXTURE_2D_ARRAY, m_HPWaterAreaLightLTCLUTTexture);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY,
                  0,
                  GL_RGBA16F,
                  static_cast<GLsizei>(resolution),
                  static_cast<GLsizei>(resolution),
+                 static_cast<GLsizei>(m_HPWaterAreaLightLTCLUTLayers),
                  0,
                  GL_RGBA,
-                 GL_FLOAT,
+                 GL_HALF_FLOAT,
                  pixels.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
     m_HPWaterAreaLightLTCLUTValid = true;
+    m_HPWaterAreaLightLTCHDRPTableEnabled = true;
 }
 
 void DeferredRenderer::CreateHPWaterCausticAtlasFBO(uint32_t tileResolution) {
@@ -2251,9 +2231,10 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetInt("u_PreintegratedFGDLUT", 14);
     m_HPWaterCompositeShader->SetInt("u_PreintegratedFGDLUTEnabled", m_HPWaterFGDLUTValid ? 1 : 0);
 
-    glActiveTexture(GL_TEXTURE17);
-    glBindTexture(GL_TEXTURE_2D, m_HPWaterAreaLightLTCLUTValid ? m_HPWaterAreaLightLTCLUTTexture : 0);
-    m_HPWaterCompositeShader->SetInt("u_AreaLightLTCLUT", 17);
+    glActiveTexture(GL_TEXTURE18);
+    glBindTexture(GL_TEXTURE_2D_ARRAY,
+        m_HPWaterAreaLightLTCLUTValid ? m_HPWaterAreaLightLTCLUTTexture : 0);
+    m_HPWaterCompositeShader->SetInt("u_AreaLightLTCLUT", 18);
     m_HPWaterCompositeShader->SetInt("u_AreaLightLTCLUTEnabled", m_HPWaterAreaLightLTCLUTValid ? 1 : 0);
 
     m_HPWaterCompositeShader->SetFloat("u_NearClip", nearClip);
@@ -2546,7 +2527,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShader->SetInt("u_ShadowMap", 9);
 
     glActiveTexture(GL_TEXTURE10);
-    glBindTexture(GL_TEXTURE_2D, m_HPWaterAreaLightLTCLUTValid ? m_HPWaterAreaLightLTCLUTTexture : 0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY,
+        m_HPWaterAreaLightLTCLUTValid ? m_HPWaterAreaLightLTCLUTTexture : 0);
     m_HPWaterVolumeShader->SetInt("u_AreaLightLTCLUT", 10);
     m_HPWaterVolumeShader->SetInt("u_AreaLightLTCLUTEnabled", m_HPWaterAreaLightLTCLUTValid ? 1 : 0);
 

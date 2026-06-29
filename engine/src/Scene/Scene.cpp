@@ -1176,6 +1176,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterAreaLightLTCLUTValid = m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
     m_RenderDiagnostics.HPWaterAreaLightLTCLUTTexture = m_DeferredRenderer.GetHPWaterAreaLightLTCLUTTexture();
     m_RenderDiagnostics.HPWaterAreaLightLTCLUTResolution = m_DeferredRenderer.GetHPWaterAreaLightLTCLUTResolution();
+    m_RenderDiagnostics.HPWaterAreaLightLTCLUTLayers = m_DeferredRenderer.GetHPWaterAreaLightLTCLUTLayers();
+    m_RenderDiagnostics.HPWaterAreaLightLTCHDRPTableEnabled =
+        m_DeferredRenderer.IsHPWaterAreaLightLTCHDRPTableEnabled();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
     m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
@@ -2834,6 +2837,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
         m_RenderDiagnostics.HPWaterAreaLightLTCMatrixCoefficientsEnabled =
             m_DeferredRenderer.IsHPWaterAreaLightLTCLUTValid();
+        m_RenderDiagnostics.HPWaterAreaLightLTCHDRPTableEnabled =
+            m_DeferredRenderer.IsHPWaterAreaLightLTCHDRPTableEnabled();
         m_RenderDiagnostics.HPWaterPunctualLightLayerFilteringEnabled = true;
         m_RenderDiagnostics.HPWaterAreaLightLayerFilteringEnabled = true;
         m_RenderDiagnostics.HPWaterPunctualLightInfluenceSortingEnabled = true;

@@ -399,7 +399,9 @@ public:
     bool IsHPWaterFGDLUTValid() const { return m_HPWaterFGDLUTValid; }
     uint32_t GetHPWaterAreaLightLTCLUTTexture() const { return m_HPWaterAreaLightLTCLUTTexture; }
     uint32_t GetHPWaterAreaLightLTCLUTResolution() const { return m_HPWaterAreaLightLTCLUTResolution; }
+    uint32_t GetHPWaterAreaLightLTCLUTLayers() const { return m_HPWaterAreaLightLTCLUTLayers; }
     bool IsHPWaterAreaLightLTCLUTValid() const { return m_HPWaterAreaLightLTCLUTValid; }
+    bool IsHPWaterAreaLightLTCHDRPTableEnabled() const { return m_HPWaterAreaLightLTCHDRPTableEnabled; }
 
     /// Get HPWater explicit coverage mask texture.
     uint32_t GetHPWaterMaskTexture() const;
@@ -758,7 +760,9 @@ private:
     bool m_HPWaterFGDLUTValid = false;
     uint32_t m_HPWaterAreaLightLTCLUTTexture = 0;
     uint32_t m_HPWaterAreaLightLTCLUTResolution = 64;
+    uint32_t m_HPWaterAreaLightLTCLUTLayers = 0;
     bool m_HPWaterAreaLightLTCLUTValid = false;
+    bool m_HPWaterAreaLightLTCHDRPTableEnabled = false;
 
     // HPWater opaque scene-depth pyramid for Hi-Z assisted refraction.
     uint32_t m_HPWaterDepthPyramidTexture = 0;
