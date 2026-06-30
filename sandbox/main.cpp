@@ -49,11 +49,13 @@ class Sandbox : public VE::Application {
 public:
     explicit Sandbox(bool renderDiagnosticsOnce = false,
                       bool hpwaterMotionDiagnostics = false,
-                      bool hpwaterFluidFilterDiagnostics = false)
+                      bool hpwaterFluidFilterDiagnostics = false,
+                      bool hpwaterSSRDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterSSRDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
+        , m_HPWaterSSRDiagnostics(hpwaterSSRDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -137,6 +139,21 @@ public:
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireFluidFiltering = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
+
+        if (m_HPWaterSSRDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireSSR = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            auto& ps = m_Scene->GetPipelineSettings();
+            ps.SSREnabled = true;
+            ps.SSRMaxSteps = std::max(ps.SSRMaxSteps, 96);
+            ps.SSRStepSize = std::clamp(ps.SSRStepSize, 0.01f, 0.08f);
+            ps.SSRThickness = std::clamp(ps.SSRThickness, 0.03f, 0.25f);
+            ps.SSRMaxDistance = std::max(ps.SSRMaxDistance, 80.0f);
             if (!m_PlayMode)
                 EnterPlayMode();
         }
@@ -1484,6 +1501,48 @@ private:
             0);
     }
 
+    void EnsureHPWaterSSRDiagnosticObjects() {
+        if (!m_HPWaterSSRDiagnostics || !m_PlayMode)
+            return;
+
+        glm::vec3 anchor{ 0.0f, 0.0f, 18.0f };
+        auto train = FindEntityByName("LauncherTrain");
+        if (train && train.HasComponent<VE::TransformComponent>()) {
+            const auto& trainTc = train.GetComponent<VE::TransformComponent>();
+            anchor.z = trainTc.Position[2] + 24.0f;
+        }
+
+        auto entity = FindEntityByName("HPWater SSR Diagnostic Reflector");
+        if (!entity) {
+            entity = CreateLauncherPrimitive("HPWater SSR Diagnostic Reflector",
+                VE::MeshLibrary::GetCube(),
+                { anchor.x, 2.2f, anchor.z },
+                { 10.0f, 3.6f, 0.35f },
+                { 0.05f, 0.95f, 1.0f, 1.0f },
+                false);
+        }
+
+        if (!entity || !entity.HasComponent<VE::TransformComponent>())
+            return;
+
+        auto& tag = entity.GetComponent<VE::TagComponent>();
+        tag.Layer = 0;
+        tag.GameObjectTag = "EditorOnly";
+        tag.Active = true;
+
+        auto& tc = entity.GetComponent<VE::TransformComponent>();
+        tc.Position = { anchor.x, 2.2f, anchor.z };
+        tc.Scale = { 10.0f, 3.6f, 0.35f };
+
+        auto& mr = entity.HasComponent<VE::MeshRendererComponent>()
+            ? entity.GetComponent<VE::MeshRendererComponent>()
+            : entity.AddComponent<VE::MeshRendererComponent>();
+        mr.Mesh = VE::MeshLibrary::GetCube();
+        mr.Mat = VE::MaterialLibrary::Get("Lit");
+        mr.Color = { 0.05f, 0.95f, 1.0f, 1.0f };
+        mr.CastShadows = false;
+    }
+
     VE::Entity CreateLauncherImportedMesh(const std::string& name,
                                           const std::string& meshPath,
                                           const glm::vec3& position,
@@ -1610,6 +1669,7 @@ private:
 
         UpdateHPWaterMotionDiagnosticObject(deltaTime);
         EnsureHPWaterFluidFilterDiagnosticObjects();
+        EnsureHPWaterSSRDiagnosticObjects();
 
         auto train = FindEntityByName("LauncherTrain");
         if (!train || !train.HasComponent<VE::TransformComponent>())
@@ -8121,7 +8181,20 @@ private:
                  d.HPWaterFluidTransparentSkipped > 0 &&
                  d.HPWaterFluidWaterCaptureDraws > 0 &&
                  d.HPWaterFluidSceneCaptureDraws > 0);
-            if ((baseReady && objectMotionReady && fluidFilteringReady) || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
+            const bool ssrReady =
+                !m_RenderDiagnosticsRequireSSR ||
+                (d.HPWaterSSRReflectionEnabled &&
+                 d.HPWaterSSRHierarchyBlendEnabled &&
+                 d.HPWaterSSRLightingBufferRan &&
+                 d.HPWaterSSRLightingBufferValid &&
+                 d.HPWaterSSRLightingRGBPreweighted &&
+                 d.HPWaterSSRHitRefinementEnabled &&
+                 d.HPWaterCompositeConsumesSSRLightingBuffer &&
+                 d.HPWaterSSRLightingBufferTexture != 0 &&
+                 d.HPWaterSSRDiagnosticsValid &&
+                 d.HPWaterSSRDiagnosticsTexture != 0 &&
+                 d.HPWaterSSRMaxSteps > 0);
+            if ((baseReady && objectMotionReady && fluidFilteringReady && ssrReady) || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
                 glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
@@ -9999,8 +10072,10 @@ private:
     bool m_RenderDiagnosticsOnce = false;
     bool m_HPWaterMotionDiagnostics = false;
     bool m_HPWaterFluidFilterDiagnostics = false;
+    bool m_HPWaterSSRDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
+    bool m_RenderDiagnosticsRequireSSR = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
@@ -10115,6 +10190,7 @@ int main(int argc, char** argv) {
     bool renderDiagnosticsOnce = false;
     bool hpwaterMotionDiagnostics = false;
     bool hpwaterFluidFilterDiagnostics = false;
+    bool hpwaterSSRDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--render-diagnostics-once") {
@@ -10125,10 +10201,13 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-fluid-filter-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterFluidFilterDiagnostics = true;
+        } else if (arg == "--hpwater-ssr-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterSSRDiagnostics = true;
         }
     }
 
-    Sandbox app(renderDiagnosticsOnce, hpwaterMotionDiagnostics, hpwaterFluidFilterDiagnostics);
+    Sandbox app(renderDiagnosticsOnce, hpwaterMotionDiagnostics, hpwaterFluidFilterDiagnostics, hpwaterSSRDiagnostics);
     app.Run();
     return 0;
 }
