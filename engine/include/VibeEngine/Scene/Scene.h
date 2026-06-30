@@ -596,6 +596,8 @@ public:
     void ClearPendingScene() { m_PendingScenePath.clear(); }
 
 private:
+    std::unordered_map<uint64_t, glm::vec3> CollectHPWaterObjectCenters();
+
     entt::registry m_Registry;
     uint32_t m_EntityCounter = 0;
     RenderPipelineSettings m_PipelineSettings;

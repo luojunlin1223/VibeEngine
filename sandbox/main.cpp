@@ -47,9 +47,10 @@ static std::array<float, 3> EulerFromForwardDirection(const glm::vec3& rawDirect
 
 class Sandbox : public VE::Application {
 public:
-    explicit Sandbox(bool renderDiagnosticsOnce = false)
+    explicit Sandbox(bool renderDiagnosticsOnce = false, bool hpwaterMotionDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics)
+        , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -118,6 +119,15 @@ public:
 
         // Restore last session (scene + camera)
         LoadEditorSettings();
+
+        if (m_HPWaterMotionDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireObjectMotion = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
     }
 
     ~Sandbox() override {
@@ -1369,6 +1379,34 @@ private:
         area.Height = 7.0f;
     }
 
+    void UpdateHPWaterMotionDiagnosticObject(float deltaTime) {
+        if (!m_HPWaterMotionDiagnostics || !m_PlayMode)
+            return;
+
+        auto entity = FindEntityByName("HPWater Motion Diagnostic Object");
+        if (!entity) {
+            entity = CreateLauncherPrimitive("HPWater Motion Diagnostic Object",
+                VE::MeshLibrary::GetCube(),
+                { -3.0f, 0.75f, 8.0f },
+                { 1.6f, 1.6f, 1.6f },
+                { 0.95f, 0.45f, 0.12f, 1.0f },
+                true);
+        }
+
+        if (!entity || !entity.HasComponent<VE::TransformComponent>())
+            return;
+
+        auto& tag = entity.GetComponent<VE::TagComponent>();
+        tag.Layer = 0;
+        tag.GameObjectTag = "EditorOnly";
+
+        auto& tc = entity.GetComponent<VE::TransformComponent>();
+        m_HPWaterMotionDiagnosticTime += std::max(deltaTime, 0.0f);
+        tc.Position[0] = -3.0f + std::sin(m_HPWaterMotionDiagnosticTime * 1.7f) * 2.0f;
+        tc.Position[1] = 0.75f;
+        tc.Position[2] = 8.0f + m_HPWaterMotionDiagnosticTime * 3.0f;
+    }
+
     VE::Entity CreateLauncherImportedMesh(const std::string& name,
                                           const std::string& meshPath,
                                           const glm::vec3& position,
@@ -1492,6 +1530,8 @@ private:
 
         if (!m_PlayMode)
             return;
+
+        UpdateHPWaterMotionDiagnosticObject(deltaTime);
 
         auto train = FindEntityByName("LauncherTrain");
         if (!train || !train.HasComponent<VE::TransformComponent>())
@@ -1935,30 +1975,37 @@ private:
         }
     }
 
+    bool LoadSceneFromPath(const std::string& path) {
+        if (path.empty())
+            return false;
+
+        auto nextScene = std::make_shared<VE::Scene>();
+        VE::SceneSerializer serializer(nextScene);
+        if (!serializer.Deserialize(path))
+            return false;
+
+        m_Scene = nextScene;
+        ClearSelection();
+        m_CurrentScenePath = path;
+
+        auto rpView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::ReflectionProbeComponent>();
+        for (auto e : rpView) {
+            auto& rp = rpView.get<VE::ReflectionProbeComponent>(e);
+            if (rp.BakeOnLoad)
+                m_Scene->BakeReflectionProbe(e);
+        }
+
+        m_CommandHistory.Clear();
+        m_SceneManager.UnloadAllScenes();
+        m_SceneManager.AddScene(m_Scene, std::filesystem::path(path).stem().string(), path);
+        ClearDirty();
+        return true;
+    }
+
     void LoadScene() {
         std::string path = VE::FileDialog::OpenFile(s_SceneFilter, GetWindow().GetNativeWindow());
-        if (!path.empty()) {
-            m_Scene = std::make_shared<VE::Scene>();
-            ClearSelection();
-            VE::SceneSerializer serializer(m_Scene);
-            if (serializer.Deserialize(path)) {
-                m_CurrentScenePath = path;
-                // Bake reflection probes marked BakeOnLoad
-                auto rpView = m_Scene->GetAllEntitiesWith<VE::TransformComponent, VE::ReflectionProbeComponent>();
-                for (auto e : rpView) {
-                    auto& rp = rpView.get<VE::ReflectionProbeComponent>(e);
-                    if (rp.BakeOnLoad) {
-                        m_Scene->BakeReflectionProbe(e);
-                    }
-                }
-            }
-            m_CommandHistory.Clear();
-
-            // Sync SceneManager: replace all with this single scene
-            m_SceneManager.UnloadAllScenes();
-            m_SceneManager.AddScene(m_Scene,
-                std::filesystem::path(path).stem().string(), path);
-        }
+        if (!path.empty())
+            LoadSceneFromPath(path);
     }
 
     void LoadSceneAdditive() {
@@ -7969,7 +8016,14 @@ private:
         const auto& d = m_Scene->GetRenderDiagnostics();
 
         if (m_RenderDiagnosticsOnce) {
-            if (d.FrameIndex > 24 && (d.HPWaterEntities > 0 || d.FrameIndex > 180)) {
+            const bool baseReady = d.FrameIndex > m_RenderDiagnosticsOnceMinFrame &&
+                (d.HPWaterEntities > 0 || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame);
+            const bool objectMotionReady =
+                !m_RenderDiagnosticsRequireObjectMotion ||
+                (d.HPWaterVolumeObjectMotionSourceCount > 0 &&
+                 d.HPWaterVolumeObjectMotionFieldEnabled &&
+                 d.HPWaterVolumeObjectMotionFieldSelected > 0);
+            if ((baseReady && objectMotionReady) || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
                 glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
@@ -9840,7 +9894,12 @@ private:
     bool m_ShowRenderDebugger = true;
     bool m_AutoExportRenderDiagnostics = true;
     bool m_RenderDiagnosticsOnce = false;
+    bool m_HPWaterMotionDiagnostics = false;
+    bool m_RenderDiagnosticsRequireObjectMotion = false;
+    uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
+    uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
+    float m_HPWaterMotionDiagnosticTime = 0.0f;
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;
@@ -9949,13 +10008,18 @@ private:
 
 int main(int argc, char** argv) {
     bool renderDiagnosticsOnce = false;
+    bool hpwaterMotionDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "--render-diagnostics-once") {
+        const std::string arg(argv[i]);
+        if (arg == "--render-diagnostics-once") {
             renderDiagnosticsOnce = true;
+        } else if (arg == "--hpwater-motion-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterMotionDiagnostics = true;
         }
     }
 
-    Sandbox app(renderDiagnosticsOnce);
+    Sandbox app(renderDiagnosticsOnce, hpwaterMotionDiagnostics);
     app.Run();
     return 0;
 }

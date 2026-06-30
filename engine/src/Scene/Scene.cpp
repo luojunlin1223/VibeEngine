@@ -598,9 +598,66 @@ bool Scene::IsEntityActiveInHierarchy(entt::entity entity) const {
     return true;
 }
 
+std::unordered_map<uint64_t, glm::vec3> Scene::CollectHPWaterObjectCenters() {
+    std::unordered_map<uint64_t, glm::vec3> positions;
+    auto renderableView = m_Registry.view<IDComponent, TransformComponent, MeshRendererComponent, TagComponent>();
+    positions.reserve(static_cast<size_t>(renderableView.size_hint()));
+
+    static const AABB unitAABB = { glm::vec3(-0.5f), glm::vec3(0.5f) };
+    for (auto entityID : renderableView) {
+        if (!IsEntityActiveInHierarchy(entityID) || m_Registry.all_of<HPWaterComponent>(entityID))
+            continue;
+
+        const auto& tag = renderableView.get<TagComponent>(entityID);
+        if (!tag.Active)
+            continue;
+
+        auto& meshRenderer = renderableView.get<MeshRendererComponent>(entityID);
+        if (!meshRenderer.Mesh && meshRenderer.MeshSourcePath.empty())
+            continue;
+
+        if (!meshRenderer.LocalBounds.Valid()) {
+            bool found = false;
+            for (int idx = 0; idx < MeshLibrary::GetMeshCount(); ++idx) {
+                if (meshRenderer.Mesh == MeshLibrary::GetMeshByIndex(idx)) {
+                    meshRenderer.LocalBounds = MeshLibrary::GetMeshAABB(idx);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                meshRenderer.LocalBounds = unitAABB;
+        }
+
+        const glm::mat4 worldMat = GetWorldTransform(entityID);
+        glm::vec3 worldMin(std::numeric_limits<float>::max());
+        glm::vec3 worldMax(-std::numeric_limits<float>::max());
+        const AABB& localAABB = meshRenderer.LocalBounds;
+        for (int i = 0; i < 8; ++i) {
+            glm::vec3 corner(
+                (i & 1) ? localAABB.Max.x : localAABB.Min.x,
+                (i & 2) ? localAABB.Max.y : localAABB.Min.y,
+                (i & 4) ? localAABB.Max.z : localAABB.Min.z
+            );
+            const glm::vec3 worldCorner = glm::vec3(worldMat * glm::vec4(corner, 1.0f));
+            worldMin = glm::min(worldMin, worldCorner);
+            worldMax = glm::max(worldMax, worldCorner);
+        }
+
+        const auto& id = renderableView.get<IDComponent>(entityID);
+        positions.emplace(static_cast<uint64_t>(id.ID), (worldMin + worldMax) * 0.5f);
+    }
+    return positions;
+}
+
 void Scene::OnUpdate(float deltaTime) {
     // Update entity count for profiler
     Profiler::SetEntityCount(static_cast<uint32_t>(m_Registry.storage<entt::entity>().size()));
+
+    // Snapshot previous object centers once per logical update. Scene View and Game View can
+    // render the same scene multiple times per frame, so this must not be refreshed per render pass.
+    m_PreviousHPWaterObjectPositions = CollectHPWaterObjectCenters();
+    m_HasPreviousHPWaterObjectPositions = !m_PreviousHPWaterObjectPositions.empty();
 
     if (m_PhysicsRunning && m_PhysicsWorld) {
         PROFILE_SCOPE("Physics");
@@ -3589,15 +3646,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
         m_PreviousHPWaterViewProjection = viewProjection;
         m_HasPreviousHPWaterViewProjection = true;
-        m_PreviousHPWaterObjectPositions.clear();
-        m_PreviousHPWaterObjectPositions.reserve(hpWaterCurrentObjectPositions.size());
-        for (const auto& [uuid, state] : hpWaterCurrentObjectPositions)
-            m_PreviousHPWaterObjectPositions.emplace(uuid, state.Position);
-        m_HasPreviousHPWaterObjectPositions = true;
     } else {
         m_HasPreviousHPWaterViewProjection = false;
-        m_PreviousHPWaterObjectPositions.clear();
-        m_HasPreviousHPWaterObjectPositions = false;
         m_DeferredRenderer.InvalidateHPWaterVolumeHistory();
     }
 
