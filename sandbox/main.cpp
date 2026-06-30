@@ -7396,17 +7396,22 @@ private:
 
         const uint32_t diagnosticsTexture = dr.GetHPWaterSSRDiagnosticsTexture();
         const uint32_t lightingTexture = dr.GetHPWaterSSRLightingTexture();
-        if (diagnosticsTexture == 0 || lightingTexture == 0)
+        const uint32_t motionVectorTexture = dr.GetHPWaterSSRMotionVectorTexture();
+        if (diagnosticsTexture == 0 || lightingTexture == 0 || motionVectorTexture == 0)
             return false;
 
         const TextureProbeSummary diagnosticsProbe =
             ProbeTexture(diagnosticsTexture, dr.GetWidth(), dr.GetHeight());
         const TextureProbeSummary lightingProbe =
             ProbeTexture(lightingTexture, dr.GetWidth(), dr.GetHeight());
+        const TextureProbeSummary motionVectorProbe =
+            ProbeTexture(motionVectorTexture, dr.GetWidth(), dr.GetHeight());
 
         const bool hasSSRHit = diagnosticsProbe.Valid && diagnosticsProbe.MaxRGBA[1] > 0;
         const bool hasLightingContribution = lightingProbe.Valid && lightingProbe.NonBlackRatio > 0.0f;
-        return hasSSRHit && hasLightingContribution;
+        const bool hasMotionVectorEvidence =
+            motionVectorProbe.Valid && motionVectorProbe.NonBlackRatio > 0.0f;
+        return hasSSRHit && hasLightingContribution && hasMotionVectorEvidence;
     }
 
     bool HasHPWaterCausticTextureEvidence() {
@@ -7857,6 +7862,7 @@ private:
         out << "HPWaterCompositeConsumesSSRLightingBuffer: "
             << d.HPWaterCompositeConsumesSSRLightingBuffer << "\n";
         out << "HPWaterSSRLightingBufferTexture: " << d.HPWaterSSRLightingBufferTexture << "\n";
+        out << "HPWaterSSRMotionVectorTexture: " << d.HPWaterSSRMotionVectorTexture << "\n";
         out << "HPWaterSSRDiagnosticsValid: " << d.HPWaterSSRDiagnosticsValid << "\n";
         out << "HPWaterSSRDiagnosticsTexture: " << d.HPWaterSSRDiagnosticsTexture << "\n";
         out << "HPWaterSSRMaxSteps: " << d.HPWaterSSRMaxSteps << "\n";
@@ -8202,6 +8208,18 @@ private:
             SaveTextureBMP(dr.GetHPWaterSSRLightingTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_lighting.bmp");
         }
+        if (dr.IsInitialized() && dr.GetHPWaterSSRMotionVectorTexture() != 0) {
+            TextureProbeSummary ssrMotionVectorProbe =
+                ProbeTexture(dr.GetHPWaterSSRMotionVectorTexture(), dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterSSRMotionVector", ssrMotionVectorProbe);
+            out << "HPWaterSSRMotionVectorReadbackEnabled: " << ssrMotionVectorProbe.Valid << "\n";
+            out << "HPWaterSSRMotionVectorAverageMagnitudeProxy: " << std::fixed << std::setprecision(4)
+                << (ssrMotionVectorProbe.AverageRGBA[0] + ssrMotionVectorProbe.AverageRGBA[1]) << "\n";
+            out << "HPWaterSSRMotionVectorNonBlackRatio: " << std::fixed << std::setprecision(4)
+                << ssrMotionVectorProbe.NonBlackRatio << "\n";
+            SaveTextureBMP(dr.GetHPWaterSSRMotionVectorTexture(), dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_motion_vector.bmp");
+        }
         if (dr.IsInitialized() && d.HPWaterDepthPyramidTexture != 0 &&
             d.HPWaterDepthPyramidWidth > 0 && d.HPWaterDepthPyramidHeight > 0) {
             writeProbe("HPWaterDepthPyramidMip0",
@@ -8422,6 +8440,7 @@ private:
                  d.HPWaterSSRDisocclusionRejectionEnabled &&
                  d.HPWaterCompositeConsumesSSRLightingBuffer &&
                  d.HPWaterSSRLightingBufferTexture != 0 &&
+                 d.HPWaterSSRMotionVectorTexture != 0 &&
                  d.HPWaterSSRDiagnosticsValid &&
                  d.HPWaterSSRDiagnosticsTexture != 0 &&
                  d.HPWaterSSRMaxSteps > 0 &&

@@ -393,6 +393,7 @@ public:
     /// Get the HPWater SSR hierarchy diagnostic texture.
     uint32_t GetHPWaterSSRDiagnosticsTexture() const;
     uint32_t GetHPWaterSSRLightingTexture() const;
+    uint32_t GetHPWaterSSRMotionVectorTexture() const;
     bool IsHPWaterSSRLightingValid() const { return m_HPWaterSSRLightingValid; }
     bool DidHPWaterSSRLightingRun() const { return m_HPWaterSSRLightingRan; }
     bool IsHPWaterSSRLightingRGBPreweighted() const { return m_HPWaterSSRLightingRGBPreweighted; }

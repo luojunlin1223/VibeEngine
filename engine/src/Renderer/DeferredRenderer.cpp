@@ -4188,6 +4188,11 @@ uint32_t DeferredRenderer::GetHPWaterSSRLightingTexture() const {
     return static_cast<uint32_t>(m_HPWaterSSRFBO->GetColorAttachmentID());
 }
 
+uint32_t DeferredRenderer::GetHPWaterSSRMotionVectorTexture() const {
+    if (!m_HPWaterSSRMotionVectorFBO) return 0;
+    return static_cast<uint32_t>(m_HPWaterSSRMotionVectorFBO->GetColorAttachmentID());
+}
+
 uint32_t DeferredRenderer::GetHPWaterMaskTexture() const {
     if (!m_HPWaterMaskFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterMaskFBO->GetColorAttachmentID());
