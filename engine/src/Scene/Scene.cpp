@@ -1284,6 +1284,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterAreaLightLTCLUTTexture = m_DeferredRenderer.GetHPWaterAreaLightLTCLUTTexture();
     m_RenderDiagnostics.HPWaterAreaLightLTCLUTResolution = m_DeferredRenderer.GetHPWaterAreaLightLTCLUTResolution();
     m_RenderDiagnostics.HPWaterAreaLightLTCLUTLayers = m_DeferredRenderer.GetHPWaterAreaLightLTCLUTLayers();
+    m_RenderDiagnostics.HPWaterAreaLightDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterAreaLightDiagnosticsTexture();
+    m_RenderDiagnostics.HPWaterVolumeAreaLightDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterVolumeAreaLightDiagnosticsTexture();
     m_RenderDiagnostics.HPWaterAreaLightLTCHDRPTableEnabled =
         m_DeferredRenderer.IsHPWaterAreaLightLTCHDRPTableEnabled();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();

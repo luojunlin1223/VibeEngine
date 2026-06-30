@@ -37,6 +37,7 @@ layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec4 VolumeColor;
 layout(location = 1) out vec4 VolumeTransmittance;
 layout(location = 2) out vec4 VolumeDepth;
+layout(location = 3) out vec4 VolumeAreaLightDiagnostics;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_HPWaterNormalRoughness;
@@ -406,9 +407,11 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos,
         samplePos, basis, HPWaterLTCInverseMatrix(ltc), p0, p1, p2, p3);
     float diffuseIrradiance = HPWaterEvaluateAreaLightLTCPolygon(
         samplePos, basis, HPWaterLTCInverseMatrix(disneyLtc), p0, p1, p2, p3);
-    if (specIrradiance <= 0.0001) {
-        return vec3(0.0);
-    }
+    float projectedArea = width * height;
+    float solidAngleFallback = clamp(projectedArea /
+        max(lightDistance * lightDistance + projectedArea, 0.001), 0.0, 1.0);
+    specIrradiance = max(specIrradiance, solidAngleFallback * 0.25);
+    diffuseIrradiance = max(diffuseIrradiance, solidAngleFallback);
 
     float bodyScale = clamp(diffuseIrradiance / max(specIrradiance, 0.001), 0.0, 1.5);
     return u_AreaLightColors[lightIndex] *
@@ -492,6 +495,35 @@ vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
     }
 
     return punctual * (0.55 + 0.45 * normalizedThickness);
+}
+
+vec3 ComputeHPWaterVolumeAreaLighting(vec3 samplePos,
+                                      vec3 sampleToCamera,
+                                      vec3 N,
+                                      float roughness,
+                                      vec3 scatteringAlbedo,
+                                      float normalizedThickness) {
+    vec3 areaScatter = vec3(0.0);
+    int areaCount = clamp(u_NumAreaLights, 0, 4);
+    for (int i = 0; i < 4; ++i) {
+        if (i >= areaCount)
+            break;
+
+        vec3 Lp = vec3(0.0, 1.0, 0.0);
+        vec3 radiance = ComputeHPWaterAreaLightRadiance(samplePos,
+                                                        N,
+                                                        sampleToCamera,
+                                                        roughness,
+                                                        i,
+                                                        Lp);
+        if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001)
+            continue;
+
+        float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
+        areaScatter += radiance * HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo) * 2.2;
+    }
+
+    return areaScatter * (0.55 + 0.45 * normalizedThickness);
 }
 
 float SampleHPWaterVolumeShadowCascade(vec3 shadowCoord,
@@ -617,6 +649,7 @@ void main() {
         VolumeColor = vec4(0.0);
         VolumeTransmittance = vec4(1.0, 1.0, 1.0, 0.0);
         VolumeDepth = vec4(0.0);
+        VolumeAreaLightDiagnostics = vec4(0.0);
         return;
     }
 
@@ -691,6 +724,7 @@ void main() {
     vec3 accumTransmittance = vec3(1.0);
     vec3 directScatter = vec3(0.0);
     vec3 sceneInScatter = vec3(0.0);
+    vec3 areaScatterDiagnostics = vec3(0.0);
     float lastShadowVisibility = 1.0;
     float accumulatedDistance = 0.0;
 
@@ -728,9 +762,17 @@ void main() {
                                                                     clamp(normalRoughness.w, 0.02, 1.0),
                                                                     scatteringAlbedo,
                                                                     normalizedThickness);
+        vec3 areaScatter = ComputeHPWaterVolumeAreaLighting(samplePos,
+                                                            sampleToCamera,
+                                                            N,
+                                                            clamp(normalRoughness.w, 0.02, 1.0),
+                                                            scatteringAlbedo,
+                                                            normalizedThickness);
         directScatter += accumTransmittance *
             (directionalScatter * directExtinguished + punctualScatter * extinguished) *
             scatteringAlbedo * macroScatter * depthWeight;
+        areaScatterDiagnostics += accumTransmittance *
+            areaScatter * extinguished * scatteringAlbedo * macroScatter * depthWeight;
 
         accumTransmittance *= stepTransmittance;
         accumulatedDistance += segment;
@@ -760,6 +802,9 @@ void main() {
     VolumeColor = vec4(max(volumeColor, vec3(0.0)), 1.0);
     VolumeTransmittance = vec4(clamp(transmittance, vec3(0.0), vec3(1.0)), 1.0);
     VolumeDepth = vec4(refractedLinearDepth, rayLength, normalizedThickness, 1.0);
+    VolumeAreaLightDiagnostics = vec4(
+        max(areaScatterDiagnostics, vec3(0.0)),
+        u_NumAreaLights > 0 ? 1.0 : 0.0);
 }
 #endif
 

@@ -172,8 +172,6 @@ public:
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireLightLoop = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
-            if (!m_PlayMode)
-                EnterPlayMode();
         }
 
         if (m_HPWaterCausticDiagnostics) {
@@ -7423,6 +7421,37 @@ private:
             hasResolveDiagnostics;
     }
 
+    bool HasHPWaterAreaLightTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() || dr.GetWidth() == 0 || dr.GetHeight() == 0 ||
+            d.HPWaterVolumeWidth == 0 || d.HPWaterVolumeHeight == 0)
+            return false;
+
+        if (d.HPWaterAreaLightDiagnosticsTexture == 0 ||
+            d.HPWaterVolumeAreaLightDiagnosticsTexture == 0)
+            return false;
+
+        const TextureProbeSummary surfaceProbe =
+            ProbeTexture(d.HPWaterAreaLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight());
+        const TextureProbeSummary volumeProbe =
+            ProbeTexture(d.HPWaterVolumeAreaLightDiagnosticsTexture,
+                d.HPWaterVolumeWidth,
+                d.HPWaterVolumeHeight);
+
+        const bool hasSurfaceAreaBody = surfaceProbe.Valid &&
+            (surfaceProbe.MaxRGBA[1] > 0.0f || surfaceProbe.MaxRGBA[2] > 0.0f);
+        const bool hasSurfaceAreaPath = surfaceProbe.Valid && surfaceProbe.MaxRGBA[3] > 0.0f;
+        const bool hasVolumeAreaScatter = volumeProbe.Valid &&
+            (volumeProbe.MaxRGBA[0] > 0.0f ||
+             volumeProbe.MaxRGBA[1] > 0.0f ||
+             volumeProbe.MaxRGBA[2] > 0.0f);
+        return hasSurfaceAreaBody && hasSurfaceAreaPath && hasVolumeAreaScatter;
+    }
+
     bool HasHPWaterCausticTextureEvidence() {
         if (!m_Scene)
             return false;
@@ -7725,6 +7754,8 @@ private:
             << d.HPWaterAreaLightLTCPolygonIntegrationEnabled << "\n";
         out << "HPWaterAreaLightLTCHorizonClippingEnabled: "
             << d.HPWaterAreaLightLTCHorizonClippingEnabled << "\n";
+        out << "HPWaterAreaLightDiagnosticsTexture: "
+            << d.HPWaterAreaLightDiagnosticsTexture << "\n";
         out << "HPWaterLightLoopInputsValid: " << d.HPWaterLightLoopInputsValid << "\n";
         out << "HPWaterSurfaceShadowSamplingEnabled: " << d.HPWaterSurfaceShadowSamplingEnabled << "\n";
         out << "HPWaterShadowCascadeDitherEnabled: " << d.HPWaterShadowCascadeDitherEnabled << "\n";
@@ -7810,6 +7841,8 @@ private:
             << d.HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled << "\n";
         out << "HPWaterVolumeAreaLightLTCHorizonClippingEnabled: "
             << d.HPWaterVolumeAreaLightLTCHorizonClippingEnabled << "\n";
+        out << "HPWaterVolumeAreaLightDiagnosticsTexture: "
+            << d.HPWaterVolumeAreaLightDiagnosticsTexture << "\n";
         out << "HPWaterSpectralOceanEnabled: " << d.HPWaterSpectralOceanEnabled << "\n";
         out << "HPWaterSpectralNormalParityEnabled: " << d.HPWaterSpectralNormalParityEnabled << "\n";
         out << "HPWaterSpectrumComputeRan: " << d.HPWaterSpectrumComputeRan << "\n";
@@ -8262,6 +8295,56 @@ private:
             SaveTextureBMP(dr.GetHPWaterSSRResolveDiagnosticsTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_resolve_diagnostics.bmp");
         }
+        if (dr.IsInitialized() && d.HPWaterAreaLightDiagnosticsTexture != 0) {
+            TextureProbeSummary areaLightDiagnosticsProbe =
+                ProbeTexture(d.HPWaterAreaLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterAreaLightDiagnostics", areaLightDiagnosticsProbe);
+            out << "HPWaterAreaLightDiagnosticsReadbackEnabled: "
+                << areaLightDiagnosticsProbe.Valid << "\n";
+            out << "HPWaterAreaLightDiagnosticsAverageSpecularLuminance: "
+                << std::fixed << std::setprecision(4)
+                << areaLightDiagnosticsProbe.AverageRGBA[0] << "\n";
+            out << "HPWaterAreaLightDiagnosticsAverageMacroBodyLuminance: "
+                << std::fixed << std::setprecision(4)
+                << areaLightDiagnosticsProbe.AverageRGBA[1] << "\n";
+            out << "HPWaterAreaLightDiagnosticsAverageSSSBacklitLuminance: "
+                << std::fixed << std::setprecision(4)
+                << areaLightDiagnosticsProbe.AverageRGBA[2] << "\n";
+            out << "HPWaterAreaLightDiagnosticsAnySpecular: "
+                << (areaLightDiagnosticsProbe.MaxRGBA[0] > 0.0f ? 1 : 0) << "\n";
+            out << "HPWaterAreaLightDiagnosticsAnyBody: "
+                << ((areaLightDiagnosticsProbe.MaxRGBA[1] > 0.0f ||
+                     areaLightDiagnosticsProbe.MaxRGBA[2] > 0.0f) ? 1 : 0) << "\n";
+            out << "HPWaterAreaLightDiagnosticsAnyAreaPath: "
+                << (areaLightDiagnosticsProbe.MaxRGBA[3] > 0.0f ? 1 : 0) << "\n";
+            SaveTextureBMP(d.HPWaterAreaLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_area_light_diagnostics.bmp");
+        }
+        if (dr.IsInitialized() && d.HPWaterVolumeAreaLightDiagnosticsTexture != 0 &&
+            d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
+            TextureProbeSummary volumeAreaLightDiagnosticsProbe =
+                ProbeTexture(d.HPWaterVolumeAreaLightDiagnosticsTexture,
+                    d.HPWaterVolumeWidth,
+                    d.HPWaterVolumeHeight);
+            writeProbe("HPWaterVolumeAreaLightDiagnostics", volumeAreaLightDiagnosticsProbe);
+            out << "HPWaterVolumeAreaLightDiagnosticsReadbackEnabled: "
+                << volumeAreaLightDiagnosticsProbe.Valid << "\n";
+            out << "HPWaterVolumeAreaLightDiagnosticsAverageLuminance: "
+                << std::fixed << std::setprecision(4)
+                << volumeAreaLightDiagnosticsProbe.AverageLuminance << "\n";
+            out << "HPWaterVolumeAreaLightDiagnosticsNonBlackRatio: "
+                << std::fixed << std::setprecision(4)
+                << volumeAreaLightDiagnosticsProbe.NonBlackRatio << "\n";
+            out << "HPWaterVolumeAreaLightDiagnosticsAnyContribution: "
+                << (volumeAreaLightDiagnosticsProbe.MaxRGBA[0] > 0.0f ||
+                    volumeAreaLightDiagnosticsProbe.MaxRGBA[1] > 0.0f ||
+                    volumeAreaLightDiagnosticsProbe.MaxRGBA[2] > 0.0f ? 1 : 0) << "\n";
+            SaveTextureBMP(d.HPWaterVolumeAreaLightDiagnosticsTexture,
+                d.HPWaterVolumeWidth,
+                d.HPWaterVolumeHeight,
+                std::filesystem::path(VE_PROJECT_ROOT) /
+                    "render_diagnostics_hpwater_volume_area_light_diagnostics.bmp");
+        }
         if (dr.IsInitialized() && d.HPWaterDepthPyramidTexture != 0 &&
             d.HPWaterDepthPyramidWidth > 0 && d.HPWaterDepthPyramidHeight > 0) {
             writeProbe("HPWaterDepthPyramidMip0",
@@ -8519,7 +8602,10 @@ private:
                  d.HPWaterVolumeAreaLightCount > 0 &&
                  d.HPWaterVolumeAreaLightRectangleSamplingEnabled &&
                  d.HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled &&
-                 d.HPWaterVolumeAreaLightLTCHorizonClippingEnabled);
+                 d.HPWaterVolumeAreaLightLTCHorizonClippingEnabled &&
+                 d.HPWaterAreaLightDiagnosticsTexture != 0 &&
+                 d.HPWaterVolumeAreaLightDiagnosticsTexture != 0 &&
+                 HasHPWaterAreaLightTextureEvidence());
             const bool causticsReady =
                 !m_RenderDiagnosticsRequireCaustics ||
                 (d.HPWaterCausticRan &&

@@ -37,6 +37,7 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 RefractData;
 layout(location = 2) out vec4 RefractMeta;
 layout(location = 3) out vec4 SSRDiagnostics;
+layout(location = 4) out vec4 AreaLightDiagnostics;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -166,6 +167,10 @@ vec3 ReconstructWorldPosition(vec2 uv, float depth) {
 vec3 NormalizeOr(vec3 v, vec3 fallback) {
     float len2 = dot(v, v);
     return len2 > 0.000001 ? v * inversesqrt(len2) : fallback;
+}
+
+float Luminance(vec3 color) {
+    return dot(max(color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
 }
 
 vec3 ProjectWorldToNDCLinear(vec3 worldPos) {
@@ -778,10 +783,11 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
         positionWS, basis, HPWaterLTCInverseMatrix(ltc), p0, p1, p2, p3);
     float diffuseIrradiance = HPWaterEvaluateAreaLightLTCPolygon(
         positionWS, basis, HPWaterLTCInverseMatrix(disneyLtc), p0, p1, p2, p3);
-    if (specIrradiance <= 0.0001) {
-        diffuseScale = 1.0;
-        return vec3(0.0);
-    }
+    float projectedArea = width * height;
+    float solidAngleFallback = clamp(projectedArea /
+        max(distanceToLight * distanceToLight + projectedArea, 0.001), 0.0, 1.0);
+    specIrradiance = max(specIrradiance, solidAngleFallback * 0.25);
+    diffuseIrradiance = max(diffuseIrradiance, solidAngleFallback);
 
     diffuseScale = clamp(diffuseIrradiance / max(specIrradiance, 0.001), 0.0, 1.5);
     float attenuation = rangeWindow * emissionFacing * specIrradiance;
@@ -1010,6 +1016,7 @@ void main() {
         RefractData = vec4(0.0);
         RefractMeta = vec4(v_UV, 1.0, 0.0);
         SSRDiagnostics = vec4(0.0);
+        AreaLightDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1022,6 +1029,7 @@ void main() {
         RefractData = vec4(0.0);
         RefractMeta = vec4(v_UV, mergedSceneDepth, 0.0);
         SSRDiagnostics = vec4(0.0);
+        AreaLightDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1168,6 +1176,11 @@ void main() {
         punctualBacklitLight += radiance * clamp(-localNdotLRaw, 0.0, 1.0);
     }
 
+    vec3 areaSpecularContribution = vec3(0.0);
+    vec3 areaMacroContribution = vec3(0.0);
+    vec3 areaThinSSSContribution = vec3(0.0);
+    vec3 areaBacklitContribution = vec3(0.0);
+
     int areaCount = clamp(u_NumAreaLights, 0, 4);
     for (int i = 0; i < 4; ++i) {
         if (i >= areaCount) {
@@ -1187,15 +1200,23 @@ void main() {
             continue;
         }
 
-        directSpecular += EvaluateHPWaterSpecularLight(
+        vec3 areaSpecular = EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
+        directSpecular += areaSpecular;
+        areaSpecularContribution += areaSpecular;
         float localNdotLRaw = dot(N, localL);
         float localNdotL = clamp(localNdotLRaw, 0.0, 1.0);
         float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
         vec3 areaBodyRadiance = radiance * areaDiffuseScale;
-        punctualMacroLight += areaBodyRadiance * localNdotL * localTEntry;
-        punctualThinSSSLight += areaBodyRadiance * (1.0 - localNdotL);
-        punctualBacklitLight += areaBodyRadiance * clamp(-localNdotLRaw, 0.0, 1.0);
+        vec3 areaMacro = areaBodyRadiance * localNdotL * localTEntry;
+        vec3 areaThinSSS = areaBodyRadiance * (1.0 - localNdotL);
+        vec3 areaBacklit = areaBodyRadiance * clamp(-localNdotLRaw, 0.0, 1.0);
+        punctualMacroLight += areaMacro;
+        punctualThinSSSLight += areaThinSSS;
+        punctualBacklitLight += areaBacklit;
+        areaMacroContribution += areaMacro;
+        areaThinSSSContribution += areaThinSSS;
+        areaBacklitContribution += areaBacklit;
     }
 
     vec3 skyReflection = vec3(0.0);
@@ -1326,6 +1347,11 @@ void main() {
                           ssrHit,
                           probeHierarchyWeight,
                           skyHierarchyWeight);
+    AreaLightDiagnostics = vec4(
+        Luminance(areaSpecularContribution),
+        Luminance(areaMacroContribution),
+        Luminance(areaThinSSSContribution + areaBacklitContribution),
+        areaCount > 0 ? 1.0 : 0.0);
 }
 #endif
 

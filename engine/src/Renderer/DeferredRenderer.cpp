@@ -564,6 +564,7 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
         { GL_RGBA16F }, // RT1: Refracted world position.xyz + ray length
         { GL_RGBA16F }, // RT2: Refract UV.xy + scene depth + normalized thickness
         { GL_RGBA16F }, // RT3: SSR confidence, hit mask, hierarchy weight, enabled strength
+        { GL_RGBA16F }, // RT4: area-light specular/body contribution diagnostics
     };
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
@@ -888,6 +889,7 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
         { GL_RGBA16F }, // RT0: low-res volumetric in-scattering color
         { GL_RGBA16F }, // RT1: low-res transmittance
         { GL_RGBA16F }, // RT2: refracted linear depth + thickness diagnostics
+        { GL_RGBA16F }, // RT3: area-light volume scattering diagnostics
     };
     m_HPWaterVolumeFBO = Framebuffer::Create(volumeSpec);
 
@@ -4189,6 +4191,11 @@ uint32_t DeferredRenderer::GetHPWaterSSRDiagnosticsTexture() const {
     return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(3));
 }
 
+uint32_t DeferredRenderer::GetHPWaterAreaLightDiagnosticsTexture() const {
+    if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 5) return 0;
+    return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(4));
+}
+
 uint32_t DeferredRenderer::GetHPWaterSSRLightingTexture() const {
     if (!m_HPWaterSSRFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterSSRFBO->GetColorAttachmentID());
@@ -4212,6 +4219,11 @@ uint32_t DeferredRenderer::GetHPWaterMaskTexture() const {
 uint32_t DeferredRenderer::GetHPWaterVolumeTexture(int index) const {
     if (!m_HPWaterVolumeFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterVolumeFBO->GetColorAttachmentID(index));
+}
+
+uint32_t DeferredRenderer::GetHPWaterVolumeAreaLightDiagnosticsTexture() const {
+    if (!m_HPWaterVolumeFBO || m_HPWaterVolumeFBO->GetColorAttachmentCount() < 4) return 0;
+    return static_cast<uint32_t>(m_HPWaterVolumeFBO->GetColorAttachmentID(3));
 }
 
 uint32_t DeferredRenderer::GetHPWaterVolumeMotionVectorTexture() const {

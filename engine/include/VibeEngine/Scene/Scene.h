@@ -231,6 +231,7 @@ struct RenderDiagnostics {
     bool HPWaterAreaLightLTCMatrixCoefficientsEnabled = false;
     bool HPWaterAreaLightLTCPolygonIntegrationEnabled = false;
     bool HPWaterAreaLightLTCHorizonClippingEnabled = false;
+    uint32_t HPWaterAreaLightDiagnosticsTexture = 0;
     bool HPWaterLightLoopInputsValid = false;
     bool HPWaterSurfaceShadowSamplingEnabled = false;
     bool HPWaterShadowCascadeDitherEnabled = false;
@@ -281,6 +282,7 @@ struct RenderDiagnostics {
     bool HPWaterVolumeAreaLightRectangleSamplingEnabled = false;
     bool HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled = false;
     bool HPWaterVolumeAreaLightLTCHorizonClippingEnabled = false;
+    uint32_t HPWaterVolumeAreaLightDiagnosticsTexture = 0;
     bool HPWaterSpectralOceanEnabled = false;
     bool HPWaterSpectralNormalParityEnabled = false;
     bool HPWaterSpectrumComputeRan = false;

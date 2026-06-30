@@ -392,6 +392,7 @@ public:
 
     /// Get the HPWater SSR hierarchy diagnostic texture.
     uint32_t GetHPWaterSSRDiagnosticsTexture() const;
+    uint32_t GetHPWaterAreaLightDiagnosticsTexture() const;
     uint32_t GetHPWaterSSRLightingTexture() const;
     uint32_t GetHPWaterSSRMotionVectorTexture() const;
     uint32_t GetHPWaterSSRResolveDiagnosticsTexture() const;
@@ -437,6 +438,7 @@ public:
 
     /// Get HPWater low-resolution volume texture ID by index.
     uint32_t GetHPWaterVolumeTexture(int index) const;
+    uint32_t GetHPWaterVolumeAreaLightDiagnosticsTexture() const;
 
     /// Whether the current HPWater volume accumulation is valid.
     bool IsHPWaterVolumeValid() const { return m_HPWaterVolumeValid; }
