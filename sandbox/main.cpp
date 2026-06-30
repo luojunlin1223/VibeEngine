@@ -7502,6 +7502,8 @@ private:
             << d.HPWaterVolumeSceneMotionVectorEnabled << "\n";
         out << "HPWaterVolumeObjectMotionVectorEnabled: "
             << d.HPWaterVolumeObjectMotionVectorEnabled << "\n";
+        out << "HPWaterVolumeObjectMotionFieldEnabled: "
+            << d.HPWaterVolumeObjectMotionFieldEnabled << "\n";
         out << "HPWaterVolumeObjectMotionWorldOffset: "
             << d.HPWaterVolumeObjectMotionWorldOffset.x << " "
             << d.HPWaterVolumeObjectMotionWorldOffset.y << " "
@@ -7512,6 +7514,10 @@ private:
             << d.HPWaterVolumeObjectMotionTrackedCount << "\n";
         out << "HPWaterVolumeObjectMotionMatchedCount: "
             << d.HPWaterVolumeObjectMotionMatchedCount << "\n";
+        out << "HPWaterVolumeObjectMotionFieldCapacity: "
+            << d.HPWaterVolumeObjectMotionFieldCapacity << "\n";
+        out << "HPWaterVolumeObjectMotionFieldSelected: "
+            << d.HPWaterVolumeObjectMotionFieldSelected << "\n";
         out << "HPWaterVolumeMotionVectorHistoryEnabled: "
             << d.HPWaterVolumeMotionVectorHistoryEnabled << "\n";
         out << "HPWaterVolumeExponentialIntegrationEnabled: "
@@ -8033,12 +8039,15 @@ private:
             d.HPWaterDepthPyramidWidth,
             d.HPWaterDepthPyramidHeight,
             d.HPWaterDepthPyramidTexture);
-        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d objMV=%d tracked=%u matched=%u moving=%u mvHistory=%d strength=%.2f",
+        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d objMV=%d field=%d selected=%u/%u tracked=%u matched=%u moving=%u mvHistory=%d strength=%.2f",
             d.HPWaterVolumeTemporalNeighborhoodClampEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalMotionReprojectionEnabled ? 1 : 0,
             d.HPWaterVolumeExplicitMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeSceneMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeObjectMotionVectorEnabled ? 1 : 0,
+            d.HPWaterVolumeObjectMotionFieldEnabled ? 1 : 0,
+            d.HPWaterVolumeObjectMotionFieldSelected,
+            d.HPWaterVolumeObjectMotionFieldCapacity,
             d.HPWaterVolumeObjectMotionTrackedCount,
             d.HPWaterVolumeObjectMotionMatchedCount,
             d.HPWaterVolumeObjectMotionSourceCount,

@@ -283,6 +283,9 @@ public:
                                      float temporalDepthThreshold,
                                      bool objectMotionVectorEnabled,
                                      const glm::vec3& objectMotionWorldOffset,
+                                     const std::array<glm::vec4, 8>& objectMotionSpheres,
+                                     const std::array<glm::vec4, 8>& objectMotionOffsets,
+                                     uint32_t objectMotionFieldCount,
                                      uint32_t objectMotionSourceCount,
                                      uint32_t objectMotionTrackedCount,
                                      uint32_t objectMotionMatchedCount);
@@ -442,6 +445,9 @@ public:
     bool IsHPWaterVolumeObjectMotionVectorEnabled() const {
         return m_HPWaterVolumeObjectMotionVectorEnabled;
     }
+    bool IsHPWaterVolumeObjectMotionFieldEnabled() const {
+        return m_HPWaterVolumeObjectMotionFieldEnabled;
+    }
     glm::vec3 GetHPWaterVolumeObjectMotionWorldOffset() const {
         return m_HPWaterVolumeObjectMotionWorldOffset;
     }
@@ -453,6 +459,12 @@ public:
     }
     uint32_t GetHPWaterVolumeObjectMotionMatchedCount() const {
         return m_HPWaterVolumeObjectMotionMatchedCount;
+    }
+    uint32_t GetHPWaterVolumeObjectMotionFieldCapacity() const {
+        return m_HPWaterVolumeObjectMotionFieldCapacity;
+    }
+    uint32_t GetHPWaterVolumeObjectMotionFieldSelected() const {
+        return m_HPWaterVolumeObjectMotionFieldSelected;
     }
     bool IsHPWaterVolumeMotionVectorHistoryEnabled() const {
         return m_HPWaterVolumeMotionVectorHistoryEnabled;
@@ -707,6 +719,9 @@ private:
                                          const glm::mat4& previousViewProjection,
                                          bool objectMotionVectorEnabled,
                                          const glm::vec3& objectMotionWorldOffset,
+                                         const std::array<glm::vec4, 8>& objectMotionSpheres,
+                                         const std::array<glm::vec4, 8>& objectMotionOffsets,
+                                         uint32_t objectMotionFieldCount,
                                          uint32_t objectMotionSourceCount,
                                          uint32_t objectMotionTrackedCount,
                                          uint32_t objectMotionMatchedCount);
@@ -830,10 +845,13 @@ private:
     bool m_HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool m_HPWaterVolumeSceneMotionVectorEnabled = false;
     bool m_HPWaterVolumeObjectMotionVectorEnabled = false;
+    bool m_HPWaterVolumeObjectMotionFieldEnabled = false;
     glm::vec3 m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
     uint32_t m_HPWaterVolumeObjectMotionSourceCount = 0;
     uint32_t m_HPWaterVolumeObjectMotionTrackedCount = 0;
     uint32_t m_HPWaterVolumeObjectMotionMatchedCount = 0;
+    uint32_t m_HPWaterVolumeObjectMotionFieldCapacity = 8;
+    uint32_t m_HPWaterVolumeObjectMotionFieldSelected = 0;
     bool m_HPWaterVolumeMotionVectorHistoryEnabled = false;
     bool m_HPWaterVolumeExponentialIntegrationEnabled = false;
     bool m_HPWaterVolumeShadowSamplingEnabled = false;

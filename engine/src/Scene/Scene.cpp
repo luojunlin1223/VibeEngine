@@ -1156,6 +1156,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterRefractionMetaTexture = m_DeferredRenderer.GetHPWaterRefractionMetaTexture();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionVectorEnabled =
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeObjectMotionFieldEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionWorldOffset =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
@@ -1164,6 +1166,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionTrackedCount();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionMatchedCount =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionMatchedCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldCapacity =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionFieldCapacity();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldSelected =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionFieldSelected();
     m_RenderDiagnostics.HPWaterSSRLightingBufferRan = m_DeferredRenderer.DidHPWaterSSRLightingRun();
     m_RenderDiagnostics.HPWaterSSRLightingBufferValid = m_DeferredRenderer.IsHPWaterSSRLightingValid();
     m_RenderDiagnostics.HPWaterSSRLightingRGBPreweighted =
@@ -1210,6 +1216,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeSceneMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionVectorEnabled =
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeObjectMotionFieldEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionWorldOffset =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
@@ -1218,6 +1226,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionTrackedCount();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionMatchedCount =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionMatchedCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldCapacity =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionFieldCapacity();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldSelected =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionFieldSelected();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorHistoryEnabled =
         m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeExponentialIntegrationEnabled =
@@ -3340,8 +3352,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterVolumeSpatialDepthAwareEnabled();
         m_RenderDiagnostics.HPWaterVolumeSpatialDepthSensitivity =
             m_DeferredRenderer.GetHPWaterVolumeSpatialDepthSensitivity();
+        struct HPWaterObjectMotionState {
+            glm::vec3 Position = glm::vec3(0.0f);
+            float Radius = 0.0f;
+        };
+        struct HPWaterObjectMotionCandidate {
+            glm::vec3 Position = glm::vec3(0.0f);
+            glm::vec3 Offset = glm::vec3(0.0f);
+            float Radius = 0.0f;
+            float Score = 0.0f;
+        };
+
         auto collectHPWaterObjectPositions = [&]() {
-            std::unordered_map<uint64_t, glm::vec3> positions;
+            std::unordered_map<uint64_t, HPWaterObjectMotionState> positions;
             auto renderableView = m_Registry.view<IDComponent, TransformComponent, MeshRendererComponent, TagComponent>();
             positions.reserve(static_cast<size_t>(renderableView.size_hint()));
             for (auto entityID : renderableView) {
@@ -3352,42 +3375,95 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 if (!tag.Active)
                     continue;
 
-                const auto& meshRenderer = renderableView.get<MeshRendererComponent>(entityID);
+                auto& meshRenderer = renderableView.get<MeshRendererComponent>(entityID);
                 if (!meshRenderer.Mesh && meshRenderer.MeshSourcePath.empty())
                     continue;
 
+                if (!meshRenderer.LocalBounds.Valid()) {
+                    bool found = false;
+                    for (int idx = 0; idx < MeshLibrary::GetMeshCount(); ++idx) {
+                        if (meshRenderer.Mesh == MeshLibrary::GetMeshByIndex(idx)) {
+                            meshRenderer.LocalBounds = MeshLibrary::GetMeshAABB(idx);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                        meshRenderer.LocalBounds = s_UnitAABB;
+                }
+
                 const auto& id = renderableView.get<IDComponent>(entityID);
                 const glm::mat4 worldMat = GetWorldTransform(entityID);
-                positions.emplace(static_cast<uint64_t>(id.ID), glm::vec3(worldMat[3]));
+                glm::vec3 worldMin(std::numeric_limits<float>::max());
+                glm::vec3 worldMax(-std::numeric_limits<float>::max());
+                const AABB& localAABB = meshRenderer.LocalBounds;
+                for (int i = 0; i < 8; ++i) {
+                    glm::vec3 corner(
+                        (i & 1) ? localAABB.Max.x : localAABB.Min.x,
+                        (i & 2) ? localAABB.Max.y : localAABB.Min.y,
+                        (i & 4) ? localAABB.Max.z : localAABB.Min.z
+                    );
+                    const glm::vec3 worldCorner = glm::vec3(worldMat * glm::vec4(corner, 1.0f));
+                    worldMin = glm::min(worldMin, worldCorner);
+                    worldMax = glm::max(worldMax, worldCorner);
+                }
+
+                const glm::vec3 center = (worldMin + worldMax) * 0.5f;
+                const float radius = std::max(glm::length(worldMax - worldMin) * 0.5f, 0.25f);
+                positions.emplace(static_cast<uint64_t>(id.ID), HPWaterObjectMotionState{ center, radius });
             }
             return positions;
         };
 
         auto hpWaterCurrentObjectPositions = collectHPWaterObjectPositions();
         glm::vec3 hpWaterObjectMotionWorldOffset(0.0f);
+        std::array<glm::vec4, 8> hpWaterObjectMotionSpheres{};
+        std::array<glm::vec4, 8> hpWaterObjectMotionOffsets{};
+        uint32_t hpWaterObjectMotionFieldCount = 0;
         const uint32_t hpWaterObjectMotionTrackedCount =
             static_cast<uint32_t>(hpWaterCurrentObjectPositions.size());
         uint32_t hpWaterObjectMotionMatchedCount = 0;
         uint32_t hpWaterObjectMotionSourceCount = 0;
         if (m_HasPreviousHPWaterObjectPositions) {
             glm::vec3 accumulatedOffset(0.0f);
-            for (const auto& [uuid, currentPosition] : hpWaterCurrentObjectPositions) {
+            std::vector<HPWaterObjectMotionCandidate> motionCandidates;
+            motionCandidates.reserve(hpWaterCurrentObjectPositions.size());
+            for (const auto& [uuid, currentState] : hpWaterCurrentObjectPositions) {
                 const auto previousIt = m_PreviousHPWaterObjectPositions.find(uuid);
                 if (previousIt == m_PreviousHPWaterObjectPositions.end())
                     continue;
 
                 ++hpWaterObjectMotionMatchedCount;
-                const glm::vec3 offset = currentPosition - previousIt->second;
+                const glm::vec3 offset = currentState.Position - previousIt->second;
                 if (glm::dot(offset, offset) <= 0.00000001f)
                     continue;
 
                 accumulatedOffset += offset;
+                motionCandidates.push_back({
+                    currentState.Position,
+                    offset,
+                    currentState.Radius,
+                    glm::length(offset) * std::max(currentState.Radius, 0.25f)
+                });
                 ++hpWaterObjectMotionSourceCount;
             }
 
             if (hpWaterObjectMotionSourceCount > 0)
                 hpWaterObjectMotionWorldOffset =
                     accumulatedOffset / static_cast<float>(hpWaterObjectMotionSourceCount);
+
+            std::sort(motionCandidates.begin(), motionCandidates.end(),
+                [](const HPWaterObjectMotionCandidate& a, const HPWaterObjectMotionCandidate& b) {
+                    return a.Score > b.Score;
+                });
+            hpWaterObjectMotionFieldCount =
+                static_cast<uint32_t>(std::min<size_t>(motionCandidates.size(), hpWaterObjectMotionSpheres.size()));
+            for (uint32_t i = 0; i < hpWaterObjectMotionFieldCount; ++i) {
+                const auto& candidate = motionCandidates[i];
+                hpWaterObjectMotionSpheres[i] =
+                    glm::vec4(candidate.Position, std::max(candidate.Radius * 1.25f, 0.5f));
+                hpWaterObjectMotionOffsets[i] = glm::vec4(candidate.Offset, 1.0f);
+            }
         }
         const bool hpWaterObjectMotionEnabled = hpWaterObjectMotionSourceCount > 0;
 
@@ -3405,6 +3481,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                            hpWaterVolumeTemporalDepthThreshold,
                                                            hpWaterObjectMotionEnabled,
                                                            hpWaterObjectMotionWorldOffset,
+                                                           hpWaterObjectMotionSpheres,
+                                                           hpWaterObjectMotionOffsets,
+                                                           hpWaterObjectMotionFieldCount,
                                                            hpWaterObjectMotionSourceCount,
                                                            hpWaterObjectMotionTrackedCount,
                                                            hpWaterObjectMotionMatchedCount);
@@ -3510,7 +3589,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
         m_PreviousHPWaterViewProjection = viewProjection;
         m_HasPreviousHPWaterViewProjection = true;
-        m_PreviousHPWaterObjectPositions = std::move(hpWaterCurrentObjectPositions);
+        m_PreviousHPWaterObjectPositions.clear();
+        m_PreviousHPWaterObjectPositions.reserve(hpWaterCurrentObjectPositions.size());
+        for (const auto& [uuid, state] : hpWaterCurrentObjectPositions)
+            m_PreviousHPWaterObjectPositions.emplace(uuid, state.Position);
         m_HasPreviousHPWaterObjectPositions = true;
     } else {
         m_HasPreviousHPWaterViewProjection = false;
@@ -3577,6 +3659,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeSceneMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionVectorEnabled =
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeObjectMotionFieldEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionWorldOffset =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
@@ -3585,6 +3669,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionTrackedCount();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionMatchedCount =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionMatchedCount();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldCapacity =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionFieldCapacity();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldSelected =
+        m_DeferredRenderer.GetHPWaterVolumeObjectMotionFieldSelected();
     m_RenderDiagnostics.HPWaterVolumeMotionVectorHistoryEnabled =
         m_DeferredRenderer.IsHPWaterVolumeMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSamplingEnabled =

@@ -44,6 +44,9 @@ uniform mat4 u_PreviousViewProjection;
 uniform int u_SceneMotionVectorEnabled;
 uniform int u_ObjectMotionVectorEnabled;
 uniform vec3 u_ObjectMotionWorldOffset;
+uniform int u_ObjectMotionFieldCount;
+uniform vec4 u_ObjectMotionSpheres[8];
+uniform vec4 u_ObjectMotionOffsets[8];
 
 vec2 ProjectUV(mat4 viewProjection, vec3 worldPos, out bool valid) {
     vec4 clip = viewProjection * vec4(worldPos, 1.0);
@@ -84,6 +87,29 @@ bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
     return BuildMotionVectorFromWorldPair(worldPos, worldPos, motionVector);
 }
 
+vec3 SelectObjectMotionOffset(vec3 sceneWorld) {
+    vec3 selectedOffset = u_ObjectMotionWorldOffset;
+    float bestWeight = 0.0;
+
+    for (int i = 0; i < 8; ++i) {
+        if (i >= u_ObjectMotionFieldCount) {
+            break;
+        }
+
+        vec4 sphere = u_ObjectMotionSpheres[i];
+        vec3 offset = u_ObjectMotionOffsets[i].xyz;
+        float radius = max(sphere.w, 0.0001);
+        float dist = length(sceneWorld - sphere.xyz);
+        float weight = clamp(1.0 - dist / radius, 0.0, 1.0) * u_ObjectMotionOffsets[i].w;
+        if (weight > bestWeight) {
+            bestWeight = weight;
+            selectedOffset = offset;
+        }
+    }
+
+    return selectedOffset;
+}
+
 void main() {
     vec4 currentDepth = texture(u_CurrentDepth, v_UV);
     if (currentDepth.a <= 0.0001) {
@@ -93,8 +119,11 @@ void main() {
 
     if (u_SceneMotionVectorEnabled == 1) {
         vec3 sceneWorld = texture(u_ScenePositionMetallic, v_UV).xyz;
+        vec3 objectOffset = u_ObjectMotionVectorEnabled == 1
+            ? SelectObjectMotionOffset(sceneWorld)
+            : vec3(0.0);
         vec3 previousSceneWorld = u_ObjectMotionVectorEnabled == 1
-            ? sceneWorld - u_ObjectMotionWorldOffset
+            ? sceneWorld - objectOffset
             : sceneWorld;
         if (IsFinitePosition(sceneWorld) &&
             IsFinitePosition(previousSceneWorld) &&

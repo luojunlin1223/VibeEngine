@@ -336,10 +336,13 @@ struct RenderDiagnostics {
     bool HPWaterVolumeExplicitMotionVectorEnabled = false;
     bool HPWaterVolumeSceneMotionVectorEnabled = false;
     bool HPWaterVolumeObjectMotionVectorEnabled = false;
+    bool HPWaterVolumeObjectMotionFieldEnabled = false;
     glm::vec3 HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
     uint32_t HPWaterVolumeObjectMotionSourceCount = 0;
     uint32_t HPWaterVolumeObjectMotionTrackedCount = 0;
     uint32_t HPWaterVolumeObjectMotionMatchedCount = 0;
+    uint32_t HPWaterVolumeObjectMotionFieldCapacity = 0;
+    uint32_t HPWaterVolumeObjectMotionFieldSelected = 0;
     bool HPWaterVolumeMotionVectorHistoryEnabled = false;
     bool HPWaterVolumeExponentialIntegrationEnabled = false;
     bool HPWaterVolumeSceneInScatteringEnabled = false;
