@@ -52,14 +52,16 @@ public:
                       bool hpwaterFluidFilterDiagnostics = false,
                       bool hpwaterFluidBakeDiagnostics = false,
                       bool hpwaterSSRDiagnostics = false,
-                      bool hpwaterLightDiagnostics = false)
+                      bool hpwaterLightDiagnostics = false,
+                      bool hpwaterCausticDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
         , m_HPWaterFluidBakeDiagnostics(hpwaterFluidBakeDiagnostics)
         , m_HPWaterSSRDiagnostics(hpwaterSSRDiagnostics)
         , m_HPWaterLightDiagnostics(hpwaterLightDiagnostics)
+        , m_HPWaterCausticDiagnostics(hpwaterCausticDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -167,6 +169,15 @@ public:
             m_RenderDiagnosticsOnceMinFrame = 60;
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireLightLoop = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
+
+        if (m_HPWaterCausticDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireCaustics = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
                 EnterPlayMode();
@@ -7387,6 +7398,51 @@ private:
         return hasSSRHit && hasLightingContribution;
     }
 
+    bool HasHPWaterCausticTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized())
+            return false;
+
+        if (d.ViewportWidth == 0 || d.ViewportHeight == 0 ||
+            d.HPWaterCausticAtlasWidth == 0 || d.HPWaterCausticAtlasHeight == 0 ||
+            d.HPWaterCausticComputeWidth == 0 || d.HPWaterCausticComputeHeight == 0)
+            return false;
+
+        if (d.HPWaterCausticTexture == 0 ||
+            d.HPWaterCausticComputeTexture == 0 ||
+            d.HPWaterCausticFilteredTexture == 0 ||
+            d.HPWaterCausticAtlasTexture == 0 ||
+            d.HPWaterCausticGBufferAtlasTexture == 0)
+            return false;
+
+        const TextureProbeSummary causticProbe =
+            ProbeTexture(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight);
+        const TextureProbeSummary computeProbe =
+            ProbeTexture(d.HPWaterCausticComputeTexture,
+                d.HPWaterCausticComputeWidth,
+                d.HPWaterCausticComputeHeight);
+        const TextureProbeSummary filteredProbe =
+            ProbeTexture(d.HPWaterCausticFilteredTexture, d.ViewportWidth, d.ViewportHeight);
+        const TextureProbeSummary atlasProbe =
+            ProbeTexture(d.HPWaterCausticAtlasTexture,
+                d.HPWaterCausticAtlasWidth,
+                d.HPWaterCausticAtlasHeight);
+        const TextureProbeSummary gbufferAtlasProbe =
+            ProbeTexture(d.HPWaterCausticGBufferAtlasTexture,
+                d.HPWaterCausticAtlasWidth,
+                d.HPWaterCausticAtlasHeight);
+
+        return causticProbe.Valid && causticProbe.NonBlackRatio > 0.0f &&
+            computeProbe.Valid && computeProbe.NonBlackRatio > 0.0f &&
+            filteredProbe.Valid && filteredProbe.NonBlackRatio > 0.0f &&
+            atlasProbe.Valid && atlasProbe.NonBlackRatio > 0.0f &&
+            gbufferAtlasProbe.Valid && gbufferAtlasProbe.NonBlackRatio > 0.0f;
+    }
+
     TextureFloatProbeSummary ProbeTextureFloat(uint32_t textureID, uint32_t width, uint32_t height) {
         TextureFloatProbeSummary summary;
         summary.Width = width;
@@ -8344,13 +8400,64 @@ private:
                  d.HPWaterVolumeAreaLightRectangleSamplingEnabled &&
                  d.HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled &&
                  d.HPWaterVolumeAreaLightLTCHorizonClippingEnabled);
+            const bool causticsReady =
+                !m_RenderDiagnosticsRequireCaustics ||
+                (d.HPWaterCausticRan &&
+                 d.HPWaterCausticValid &&
+                 d.HPWaterCausticTexture != 0 &&
+                 d.HPWaterCausticComputeRan &&
+                 d.HPWaterCausticComputeValid &&
+                 d.HPWaterCausticComputeTexture != 0 &&
+                 d.HPWaterCausticComputeWidth > 0 &&
+                 d.HPWaterCausticComputeHeight > 0 &&
+                 d.HPWaterCausticComputeAtomicEnabled &&
+                 d.HPWaterCausticComputeAtomicTexture != 0 &&
+                 d.HPWaterCausticShadowDepthConsumed &&
+                 d.HPWaterCausticExponentialLightStepsEnabled &&
+                 d.HPWaterCausticFrameDitherEnabled &&
+                 d.HPWaterCausticAtlasReceiverOutputEnabled &&
+                 d.HPWaterCausticCascadeBlendEnabled &&
+                 d.HPWaterCausticAtlasEdgeFilterEnabled &&
+                 d.HPWaterCausticGBufferAtlasConsumed &&
+                 d.HPWaterCausticGBufferAtlasDecodeEnabled &&
+                 d.HPWaterCausticGBufferAtlasDepthAwareEnabled &&
+                 d.HPWaterCausticSpectralWeightingEnabled &&
+                 d.HPWaterCausticFilterRan &&
+                 d.HPWaterCausticFilteredValid &&
+                 d.HPWaterCausticFilteredTexture != 0 &&
+                 d.HPWaterCausticFilterIterations > 0 &&
+                 d.HPWaterCausticFilterKernelParityEnabled &&
+                 d.HPWaterCausticFilterComputeParityEnabled &&
+                 d.HPWaterCausticFilterLDSHaloEnabled &&
+                 d.HPWaterCausticStrength > 0.0f &&
+                 d.HPWaterCausticTransmittanceMaskEnabled &&
+                 d.HPWaterCausticTransmittanceStrength > 0.0f &&
+                 d.HPWaterCausticShadowAlphaClipThreshold > 0.0f &&
+                 (!d.HPWaterCausticRGBDispersion || d.HPWaterCausticRGBReceiverProjectionEnabled) &&
+                 d.HPWaterCausticAtlasRan &&
+                 d.HPWaterCausticAtlasValid &&
+                 d.HPWaterCausticAtlasTexture != 0 &&
+                 d.HPWaterCausticGBufferAtlasTexture != 0 &&
+                 d.HPWaterCausticAtlasDepthTexture != 0 &&
+                 d.HPWaterCausticAtlasTileResolution > 0 &&
+                 d.HPWaterCausticAtlasWidth > 0 &&
+                 d.HPWaterCausticAtlasHeight > 0 &&
+                 d.HPWaterCausticAtlasWidth == d.HPWaterCausticAtlasHeight &&
+                 d.HPWaterCausticComputeWidth == d.HPWaterCausticAtlasWidth &&
+                 d.HPWaterCausticComputeHeight == d.HPWaterCausticAtlasHeight &&
+                 d.HPWaterCausticAtlasCascades >= 4 &&
+                 d.HPWaterCausticAtlasDrawn >= 4 &&
+                 d.HPWaterCausticAtlasConsumed &&
+                 d.HPWaterCausticVolumeStrength > 0.0f &&
+                 HasHPWaterCausticTextureEvidence());
             const bool strictReadinessRequired =
                 m_RenderDiagnosticsRequireObjectMotion ||
                 m_RenderDiagnosticsRequireFluidFiltering ||
                 m_RenderDiagnosticsRequireFluidBake ||
                 m_RenderDiagnosticsRequireSSR ||
-                m_RenderDiagnosticsRequireLightLoop;
-            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady && lightLoopReady;
+                m_RenderDiagnosticsRequireLightLoop ||
+                m_RenderDiagnosticsRequireCaustics;
+            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady && lightLoopReady && causticsReady;
             if (ready || (!strictReadinessRequired && d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame)) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
@@ -10249,11 +10356,13 @@ private:
     bool m_HPWaterFluidBakeDiagnostics = false;
     bool m_HPWaterSSRDiagnostics = false;
     bool m_HPWaterLightDiagnostics = false;
+    bool m_HPWaterCausticDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
     bool m_RenderDiagnosticsRequireFluidBake = false;
     bool m_RenderDiagnosticsRequireSSR = false;
     bool m_RenderDiagnosticsRequireLightLoop = false;
+    bool m_RenderDiagnosticsRequireCaustics = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
@@ -10372,6 +10481,7 @@ int main(int argc, char** argv) {
     bool hpwaterFluidBakeDiagnostics = false;
     bool hpwaterSSRDiagnostics = false;
     bool hpwaterLightDiagnostics = false;
+    bool hpwaterCausticDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--render-diagnostics-once") {
@@ -10391,6 +10501,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-light-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterLightDiagnostics = true;
+        } else if (arg == "--hpwater-caustic-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterCausticDiagnostics = true;
         }
     }
 
@@ -10399,7 +10512,8 @@ int main(int argc, char** argv) {
         hpwaterFluidFilterDiagnostics,
         hpwaterFluidBakeDiagnostics,
         hpwaterSSRDiagnostics,
-        hpwaterLightDiagnostics);
+        hpwaterLightDiagnostics,
+        hpwaterCausticDiagnostics);
     app.Run();
     return 0;
 }
