@@ -626,6 +626,7 @@ public:
     bool IsHPWaterCausticRGBReceiverProjectionEnabled() const { return m_HPWaterCausticRGBReceiverProjectionEnabled; }
     bool IsHPWaterCausticExponentialLightStepsEnabled() const { return m_HPWaterCausticExponentialLightStepsEnabled; }
     bool IsHPWaterCausticFrameDitherEnabled() const { return m_HPWaterCausticFrameDitherEnabled; }
+    bool IsHPWaterCausticNDCProjectionEnabled() const { return m_HPWaterCausticNDCProjectionEnabled; }
     bool IsHPWaterCausticAtlasReceiverOutputEnabled() const { return m_HPWaterCausticAtlasReceiverOutputEnabled; }
     bool IsHPWaterCausticCascadeBlendEnabled() const { return m_HPWaterCausticCascadeBlendEnabled; }
     bool IsHPWaterCausticAtlasEdgeFilterEnabled() const { return m_HPWaterCausticAtlasEdgeFilterEnabled; }
@@ -947,6 +948,7 @@ private:
     bool m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     bool m_HPWaterCausticExponentialLightStepsEnabled = false;
     bool m_HPWaterCausticFrameDitherEnabled = false;
+    bool m_HPWaterCausticNDCProjectionEnabled = false;
     bool m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     bool m_HPWaterCausticCascadeBlendEnabled = false;
     bool m_HPWaterCausticAtlasEdgeFilterEnabled = false;

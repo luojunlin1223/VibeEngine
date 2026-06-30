@@ -1398,6 +1398,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticExponentialLightStepsEnabled();
     m_RenderDiagnostics.HPWaterCausticFrameDitherEnabled =
         m_DeferredRenderer.IsHPWaterCausticFrameDitherEnabled();
+    m_RenderDiagnostics.HPWaterCausticNDCProjectionEnabled =
+        m_DeferredRenderer.IsHPWaterCausticNDCProjectionEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasReceiverOutputEnabled =
         m_DeferredRenderer.IsHPWaterCausticAtlasReceiverOutputEnabled();
     m_RenderDiagnostics.HPWaterCausticCascadeBlendEnabled =
@@ -4029,6 +4031,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticExponentialLightStepsEnabled();
     m_RenderDiagnostics.HPWaterCausticFrameDitherEnabled =
         m_DeferredRenderer.IsHPWaterCausticFrameDitherEnabled();
+    m_RenderDiagnostics.HPWaterCausticNDCProjectionEnabled =
+        m_DeferredRenderer.IsHPWaterCausticNDCProjectionEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasReceiverOutputEnabled =
         m_DeferredRenderer.IsHPWaterCausticAtlasReceiverOutputEnabled();
     m_RenderDiagnostics.HPWaterCausticCascadeBlendEnabled =

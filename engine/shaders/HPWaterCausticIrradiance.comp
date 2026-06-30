@@ -39,6 +39,7 @@ uniform int u_FrameIndex;
 uniform int u_EnableFrameDither;
 uniform int u_EnableExponentialLightSteps;
 uniform int u_EnableAtlasReceiverOutput;
+uniform int u_EnableNDCProjection;
 uniform float u_HPWaterCausticAtlasWidth;
 uniform float u_HPWaterCausticAtlasHeight;
 uniform float u_CausticStrength;
@@ -202,6 +203,67 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
         return false;
 
     float maxDistance = clamp(max(thickness, 1.0) * 1.9, 2.0, 90.0);
+    vec3 startTC = ProjectWorldToWaterCascade(waterWorldPos, cascadeIndex);
+    vec3 endTC = ProjectWorldToWaterCascade(waterWorldPos + refracted * maxDistance, cascadeIndex);
+    if (u_EnableNDCProjection == 1 &&
+        !any(lessThan(startTC, vec3(0.0))) &&
+        !any(greaterThan(startTC, vec3(1.0))) &&
+        !any(lessThan(endTC, vec3(0.0))) &&
+        !any(greaterThan(endTC, vec3(1.0)))) {
+        const int coarseSteps = 16;
+        const float expFactor = 16.0;
+        const float invExpDenom = 1.0 / (expFactor - 1.0);
+        const float invCoarseSteps = 1.0 / float(coarseSteps);
+        const float expStep = pow(expFactor, invCoarseSteps);
+        float currentExp = pow(expFactor, clamp(jitter, 0.0, 1.0) * invCoarseSteps);
+        vec3 ndcDir = endTC - startTC;
+
+        for (int i = 0; i <= coarseSteps; ++i) {
+            float tNDC = (float(i) + 0.5) * invCoarseSteps;
+            if (u_EnableExponentialLightSteps == 1) {
+                tNDC = (currentExp - 1.0) * invExpDenom;
+                currentExp *= expStep;
+            }
+            vec3 sampleTC = startTC + ndcDir * clamp(tNDC, 0.0, 1.0);
+            if (any(lessThan(sampleTC.xy, vec2(0.0))) ||
+                any(greaterThan(sampleTC.xy, vec2(1.0)))) {
+                break;
+            }
+
+            float receiverDepth = SampleShadowReceiverDepth(sampleTC.xy, cascadeIndex);
+            if (receiverDepth >= 0.99995)
+                continue;
+
+            float depthBias = 0.0015 + 0.00035 * float(i);
+            if (sampleTC.z <= receiverDepth + depthBias && tNDC < 1.0) {
+                hitDistance = maxDistance * clamp(tNDC, 0.0, 1.0);
+                vec3 hitWorld = waterWorldPos + refracted * hitDistance;
+                if (u_EnableAtlasReceiverOutput == 1) {
+                    vec3 hitCascadeCoord = ProjectWorldToWaterCascade(hitWorld, cascadeIndex);
+                    if (any(lessThan(hitCascadeCoord, vec3(0.0))) ||
+                        any(greaterThan(hitCascadeCoord, vec3(1.0)))) {
+                        return false;
+                    }
+                    receiverUV = LocalToAtlasUV(hitCascadeCoord.xy, cascadeIndex);
+                } else {
+                    vec3 cameraCoord = ProjectWorldToCamera(hitWorld);
+                    if (cameraCoord.x < 0.0 || cameraCoord.x > 1.0 ||
+                        cameraCoord.y < 0.0 || cameraCoord.y > 1.0 ||
+                        cameraCoord.z < 0.0 || cameraCoord.z > 1.0) {
+                        return false;
+                    }
+                    receiverUV = cameraCoord.xy;
+                }
+                float depthDelta = max(receiverDepth - sampleTC.z, 0.0);
+                hitWeight = 1.0 - smoothstep(0.0, 0.08, depthDelta);
+                hitWeight *= 1.0 - smoothstep(maxDistance * 0.15, maxDistance, hitDistance);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     const int coarseSteps = 16;
     const float expFactor = 16.0;
     const float invExpDenom = 1.0 / (expFactor - 1.0);

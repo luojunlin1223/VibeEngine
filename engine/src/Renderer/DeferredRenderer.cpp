@@ -500,6 +500,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
+    m_HPWaterCausticNDCProjectionEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
@@ -642,6 +643,7 @@ void DeferredRenderer::DestroyHPWaterCausticComputeTexture() {
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
+    m_HPWaterCausticNDCProjectionEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
@@ -700,6 +702,7 @@ void DeferredRenderer::CreateHPWaterCausticComputeTexture(uint32_t width, uint32
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
+    m_HPWaterCausticNDCProjectionEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
@@ -1508,6 +1511,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
+    m_HPWaterCausticNDCProjectionEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
@@ -1541,6 +1545,7 @@ void DeferredRenderer::ClearHPWaterGBuffer() {
     m_HPWaterCausticRGBReceiverProjectionEnabled = false;
     m_HPWaterCausticExponentialLightStepsEnabled = false;
     m_HPWaterCausticFrameDitherEnabled = false;
+    m_HPWaterCausticNDCProjectionEnabled = false;
     m_HPWaterCausticAtlasReceiverOutputEnabled = false;
     m_HPWaterCausticCascadeBlendEnabled = false;
     m_HPWaterCausticAtlasEdgeFilterEnabled = false;
@@ -3440,6 +3445,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticRGBReceiverProjectionEnabled = false;
         m_HPWaterCausticExponentialLightStepsEnabled = false;
         m_HPWaterCausticFrameDitherEnabled = false;
+        m_HPWaterCausticNDCProjectionEnabled = false;
         m_HPWaterCausticAtlasReceiverOutputEnabled = false;
         m_HPWaterCausticCascadeBlendEnabled = false;
         m_HPWaterCausticAtlasEdgeFilterEnabled = false;
@@ -3462,6 +3468,7 @@ bool DeferredRenderer::AccumulateHPWaterCaustics(float nearClip,
         m_HPWaterCausticRGBReceiverProjectionEnabled = false;
         m_HPWaterCausticExponentialLightStepsEnabled = false;
         m_HPWaterCausticFrameDitherEnabled = false;
+        m_HPWaterCausticNDCProjectionEnabled = false;
         m_HPWaterCausticAtlasReceiverOutputEnabled = false;
         m_HPWaterCausticCascadeBlendEnabled = false;
         m_HPWaterCausticAtlasEdgeFilterEnabled = false;
@@ -3737,6 +3744,8 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticComputeShader->SetInt("u_FrameIndex", static_cast<int>(frameIndex & 0x7fffffffu));
     m_HPWaterCausticComputeShader->SetInt("u_EnableFrameDither", shadowDepthValid ? 1 : 0);
     m_HPWaterCausticComputeShader->SetInt("u_EnableExponentialLightSteps", shadowDepthValid ? 1 : 0);
+    m_HPWaterCausticComputeShader->SetInt("u_EnableNDCProjection",
+        (atlasValid && shadowDepthValid) ? 1 : 0);
     m_HPWaterCausticComputeShader->SetInt("u_EnableAtlasReceiverOutput",
         (atlasValid && shadowDepthValid) ? 1 : 0);
     for (int i = 0; i < 4; ++i) {
@@ -3796,6 +3805,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
         rgbDispersion && shadowDepthValid && dispersionStrength > 0.0001f;
     m_HPWaterCausticExponentialLightStepsEnabled = shadowDepthValid;
     m_HPWaterCausticFrameDitherEnabled = shadowDepthValid;
+    m_HPWaterCausticNDCProjectionEnabled = atlasValid && shadowDepthValid;
     m_HPWaterCausticAtlasReceiverOutputEnabled = atlasValid && shadowDepthValid;
     m_HPWaterCausticAtlasEdgeFilterEnabled = atlasValid && shadowDepthValid;
     m_HPWaterCausticSpectralWeightingEnabled =

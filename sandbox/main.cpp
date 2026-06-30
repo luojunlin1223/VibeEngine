@@ -8052,6 +8052,7 @@ private:
         out << "HPWaterCausticRGBReceiverProjectionEnabled: " << d.HPWaterCausticRGBReceiverProjectionEnabled << "\n";
         out << "HPWaterCausticExponentialLightStepsEnabled: " << d.HPWaterCausticExponentialLightStepsEnabled << "\n";
         out << "HPWaterCausticFrameDitherEnabled: " << d.HPWaterCausticFrameDitherEnabled << "\n";
+        out << "HPWaterCausticNDCProjectionEnabled: " << d.HPWaterCausticNDCProjectionEnabled << "\n";
         out << "HPWaterCausticAtlasReceiverOutputEnabled: " << d.HPWaterCausticAtlasReceiverOutputEnabled << "\n";
         out << "HPWaterCausticCascadeBlendEnabled: " << d.HPWaterCausticCascadeBlendEnabled << "\n";
         out << "HPWaterCausticAtlasEdgeFilterEnabled: " << d.HPWaterCausticAtlasEdgeFilterEnabled << "\n";
@@ -8621,6 +8622,7 @@ private:
                  d.HPWaterCausticShadowDepthConsumed &&
                  d.HPWaterCausticExponentialLightStepsEnabled &&
                  d.HPWaterCausticFrameDitherEnabled &&
+                 d.HPWaterCausticNDCProjectionEnabled &&
                  d.HPWaterCausticAtlasReceiverOutputEnabled &&
                  d.HPWaterCausticCascadeBlendEnabled &&
                  d.HPWaterCausticAtlasEdgeFilterEnabled &&
@@ -8998,7 +9000,7 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u kernel=%d computeFilter=%d lds=%d tex=%u strength=%.3f scale=%.2f depthFade=%.2f trans=%.2f leak=%.2f scatter=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f lum=%.2f volume=%.3f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d ndc=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u kernel=%d computeFilter=%d lds=%d tex=%u strength=%.3f scale=%.2f depthFade=%.2f trans=%.2f leak=%.2f scatter=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f lum=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
@@ -9010,6 +9012,7 @@ private:
             d.HPWaterCausticComputeHeight,
             d.HPWaterCausticExponentialLightStepsEnabled ? 1 : 0,
             d.HPWaterCausticFrameDitherEnabled ? 1 : 0,
+            d.HPWaterCausticNDCProjectionEnabled ? 1 : 0,
             d.HPWaterCausticAtlasReceiverOutputEnabled ? 1 : 0,
             d.HPWaterCausticCascadeBlendEnabled ? 1 : 0,
             d.HPWaterCausticAtlasEdgeFilterEnabled ? 1 : 0,
