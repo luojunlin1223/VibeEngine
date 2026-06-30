@@ -1993,10 +1993,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     uint32_t hpWaterFluidResolution = 128;
     float hpWaterFluidWaveSpeed = 1.0f;
     float hpWaterFluidDamping = 0.018f;
-    float hpWaterFluidSourceU = -1.0f;
-    float hpWaterFluidSourceV = -1.0f;
-    float hpWaterFluidSourceIntensity = 0.0f;
-    float hpWaterFluidSourceRadius = 5.0f;
+    std::vector<HPWaterFluidSource> hpWaterFluidSources;
     glm::vec3 hpWaterFluidBoxCenter(0.0f);
     glm::vec3 hpWaterFluidBoxSize(1.0f);
     bool hpWaterFluidObstaclesEnabled = false;
@@ -2030,6 +2027,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     hpWaterFluidObstacleCandidates.reserve(view.size_hint());
     hpWaterFluidWaterCaptureDraws.reserve(4);
     hpWaterFluidSceneCaptureDraws.reserve(view.size_hint());
+    hpWaterFluidSources.reserve(8);
 
     auto hpWaterLayerView = m_Registry.view<HPWaterComponent, TagComponent>();
     for (auto entityID : hpWaterLayerView) {
@@ -2270,16 +2268,37 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                         std::clamp(water->FluidResolution, 16, 1024));
                     hpWaterFluidWaveSpeed = water->FluidWaveSpeed;
                     hpWaterFluidDamping = water->FluidDamping;
-                    hpWaterFluidSourceRadius = water->FluidImpulseRadius;
-                    hpWaterFluidSourceIntensity = water->AutoImpulse ? water->FluidImpulseStrength : 0.0f;
                     hpWaterFluidObstaclesEnabled = water->FluidObstaclesEnabled;
                     hpWaterFluidStartFrameBake = water->FluidStartFrameBake;
                     hpWaterFluidObstaclePadding = std::max(water->FluidObstaclePadding, 0.0f);
                     hpWaterFluidObstacleHeightRange = std::max(water->FluidObstacleHeightRange, 0.0f);
                     if (water->AutoImpulse) {
                         const float t = water->_OceanTime + static_cast<float>(m_RenderDiagnostics.FrameIndex) * 0.017f;
-                        hpWaterFluidSourceU = 0.5f + 0.26f * std::sin(t * 1.91f);
-                        hpWaterFluidSourceV = 0.5f + 0.32f * std::cos(t * 1.37f);
+                        const float radius = std::max(water->FluidImpulseRadius, 0.001f);
+                        const float intensity = water->FluidImpulseStrength;
+                        auto addFluidSource = [&](float u, float v, float sourceIntensity, float sourceRadius) {
+                            if (hpWaterFluidSources.size() >= 8 || sourceIntensity <= 0.001f)
+                                return;
+                            hpWaterFluidSources.push_back({
+                                std::clamp(u, 0.0f, 1.0f),
+                                std::clamp(v, 0.0f, 1.0f),
+                                std::max(sourceRadius, 0.001f),
+                                sourceIntensity
+                            });
+                        };
+
+                        addFluidSource(0.5f + 0.26f * std::sin(t * 1.91f),
+                                       0.5f + 0.32f * std::cos(t * 1.37f),
+                                       intensity,
+                                       radius);
+                        addFluidSource(0.5f + 0.22f * std::sin(t * 1.27f + 2.1f),
+                                       0.5f + 0.18f * std::cos(t * 1.73f + 0.6f),
+                                       intensity * 0.72f,
+                                       radius * 0.85f);
+                        addFluidSource(0.5f + 0.17f * std::sin(t * 2.31f + 4.0f),
+                                       0.5f + 0.24f * std::cos(t * 1.11f + 1.3f),
+                                       intensity * 0.55f,
+                                       radius * 0.70f);
                     }
                     hpWaterFluidBoxCenter = glm::vec3(model[3]);
                     const float sx = glm::length(glm::vec3(model[0]));
@@ -2656,10 +2675,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.UpdateHPWaterFluidDynamics(hpWaterFluidResolution,
                                                           hpWaterFluidWaveSpeed,
                                                           hpWaterFluidDamping,
-                                                          hpWaterFluidSourceU,
-                                                          hpWaterFluidSourceV,
-                                                          hpWaterFluidSourceIntensity,
-                                                          hpWaterFluidSourceRadius,
+                                                          hpWaterFluidSources,
                                                           hpWaterFluidBoxCenter,
                                                           hpWaterFluidBoxSize);
     }
@@ -3954,6 +3970,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterFluidEdgeAbsorptionParityEnabled =
         m_DeferredRenderer.IsHPWaterFluidEdgeAbsorptionParityEnabled();
     m_RenderDiagnostics.HPWaterFluidSourceClampEnabled = m_DeferredRenderer.IsHPWaterFluidSourceClampEnabled();
+    m_RenderDiagnostics.HPWaterFluidMultiSourceEnabled = m_DeferredRenderer.IsHPWaterFluidMultiSourceEnabled();
+    m_RenderDiagnostics.HPWaterFluidSourceCount = m_DeferredRenderer.GetHPWaterFluidSourceCount();
     m_RenderDiagnostics.HPWaterFluidWaveEquationParityEnabled =
         m_DeferredRenderer.IsHPWaterFluidWaveEquationParityEnabled();
     m_RenderDiagnostics.HPWaterFluidSampleClampParityEnabled =

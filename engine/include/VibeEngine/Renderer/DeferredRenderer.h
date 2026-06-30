@@ -86,6 +86,13 @@ enum class GBufferDebugView {
     HPWaterAbsorptionFoam
 };
 
+struct HPWaterFluidSource {
+    float U = -1.0f;
+    float V = -1.0f;
+    float RadiusPixels = 0.0f;
+    float Intensity = 0.0f;
+};
+
 class DeferredRenderer {
 public:
     DeferredRenderer() = default;
@@ -335,10 +342,7 @@ public:
     bool UpdateHPWaterFluidDynamics(uint32_t resolution,
                                     float waveSpeed,
                                     float damping,
-                                    float sourceU,
-                                    float sourceV,
-                                    float sourceIntensity,
-                                    float sourceRadiusPixels,
+                                    const std::vector<HPWaterFluidSource>& sources,
                                     const glm::vec3& boxCenter,
                                     const glm::vec3& boxSize);
 
@@ -672,6 +676,8 @@ public:
     bool DidHPWaterFluidComputeRun() const { return m_HPWaterFluidComputeRan; }
     bool IsHPWaterFluidEdgeAbsorptionParityEnabled() const { return m_HPWaterFluidEdgeAbsorptionParityEnabled; }
     bool IsHPWaterFluidSourceClampEnabled() const { return m_HPWaterFluidSourceClampEnabled; }
+    bool IsHPWaterFluidMultiSourceEnabled() const { return m_HPWaterFluidMultiSourceEnabled; }
+    uint32_t GetHPWaterFluidSourceCount() const { return m_HPWaterFluidSourceCount; }
     bool IsHPWaterFluidWaveEquationParityEnabled() const { return m_HPWaterFluidWaveEquationParityEnabled; }
     bool IsHPWaterFluidObstacleValid() const { return m_HPWaterFluidObstacleValid; }
     bool IsHPWaterFluidHeightFieldValid() const { return m_HPWaterFluidHeightFieldValid; }
@@ -960,6 +966,7 @@ private:
     bool m_HPWaterFluidComputeRan = false;
     bool m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
     bool m_HPWaterFluidSourceClampEnabled = false;
+    bool m_HPWaterFluidMultiSourceEnabled = false;
     bool m_HPWaterFluidWaveEquationParityEnabled = false;
     bool m_HPWaterFluidObstacleValid = false;
     bool m_HPWaterFluidHeightFieldValid = false;
@@ -969,6 +976,7 @@ private:
     bool m_HPWaterFluidWaterHeightCaptured = false;
     bool m_HPWaterFluidSceneHeightCaptured = false;
     uint32_t m_HPWaterFluidObstacleTexture = 0;
+    uint32_t m_HPWaterFluidSourceCount = 0;
     uint32_t m_HPWaterFluidObstacleResolution = 0;
     uint32_t m_HPWaterFluidWaterHeightTexture = 0;
     uint32_t m_HPWaterFluidSceneHeightTexture = 0;

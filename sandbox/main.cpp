@@ -7879,6 +7879,8 @@ private:
         out << "HPWaterFluidComputeRan: " << d.HPWaterFluidComputeRan << "\n";
         out << "HPWaterFluidEdgeAbsorptionParityEnabled: " << d.HPWaterFluidEdgeAbsorptionParityEnabled << "\n";
         out << "HPWaterFluidSourceClampEnabled: " << d.HPWaterFluidSourceClampEnabled << "\n";
+        out << "HPWaterFluidMultiSourceEnabled: " << d.HPWaterFluidMultiSourceEnabled << "\n";
+        out << "HPWaterFluidSourceCount: " << d.HPWaterFluidSourceCount << "\n";
         out << "HPWaterFluidWaveEquationParityEnabled: " << d.HPWaterFluidWaveEquationParityEnabled << "\n";
         out << "HPWaterFluidSampleClampParityEnabled: " << d.HPWaterFluidSampleClampParityEnabled << "\n";
         out << "HPWaterFluidStartFrameBakeEnabled: " << d.HPWaterFluidStartFrameBakeEnabled << "\n";
@@ -8213,6 +8215,8 @@ private:
             const bool fluidFilteringReady =
                 !m_RenderDiagnosticsRequireFluidFiltering ||
                 (d.HPWaterFluidHeightCaptureValid &&
+                 d.HPWaterFluidMultiSourceEnabled &&
+                 d.HPWaterFluidSourceCount > 1 &&
                  d.HPWaterFluidLayerFilteringParityEnabled &&
                  d.HPWaterFluidRenderQueueParityEnabled &&
                  d.HPWaterFluidWaterLayerCandidates > 0 &&
@@ -8569,10 +8573,12 @@ private:
             d.HPWaterCausticAtlasCascades,
             d.HPWaterCausticAtlasTexture,
             d.HPWaterCausticAtlasDepthTexture);
-        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d res=%u height=%u speed=%.3f damping=%.3f",
+        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d multiSrc=%d sources=%u res=%u height=%u speed=%.3f damping=%.3f",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,
             d.HPWaterFluidComputeRan ? 1 : 0,
+            d.HPWaterFluidMultiSourceEnabled ? 1 : 0,
+            d.HPWaterFluidSourceCount,
             d.HPWaterFluidResolution,
             d.HPWaterFluidHeightTexture,
             d.HPWaterFluidWaveSpeed,

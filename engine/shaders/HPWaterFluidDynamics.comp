@@ -16,9 +16,9 @@ uniform sampler2D u_SceneHeightTexture;
 
 uniform float u_WaveSpeed;
 uniform float u_DampingFactor;
-uniform vec3  u_WaveSourceUV;
-uniform float u_WaveSourceIntensity;
-uniform float u_WaveSourceRadius;
+uniform int   u_WaveSourceCount;
+uniform vec3  u_WaveSourceUVRadius[8];
+uniform float u_WaveSourceIntensity[8];
 uniform int   u_ObstacleMaskEnabled;
 uniform int   u_HeightFieldEnabled;
 uniform float u_HeightObstacleEpsilon;
@@ -38,6 +38,29 @@ float ReadObstacle(ivec2 coord, ivec2 size) {
     if (u_ObstacleMaskEnabled == 0)
         return 0.0;
     return texelFetch(u_ObstacleMask, coord, 0).r;
+}
+
+float ReadSourceImpulse(ivec2 coord, float width) {
+    float impulse = 0.0;
+    vec2 pixelUV = (vec2(coord) + vec2(0.5)) / width;
+    int sourceCount = clamp(u_WaveSourceCount, 0, 8);
+    for (int i = 0; i < sourceCount; ++i) {
+        float intensity = u_WaveSourceIntensity[i];
+        vec3 source = u_WaveSourceUVRadius[i];
+        if (intensity <= 0.001 || source.x < 0.0 || source.y < 0.0)
+            continue;
+
+        float radius = max(source.z, 0.001);
+        vec2 distPixels = (pixelUV - source.xy) * width;
+        float r = length(distPixels);
+        if (r >= radius)
+            continue;
+
+        float sigma = radius * 0.4;
+        float gaussian = exp(-(r * r) / (2.0 * sigma * sigma));
+        impulse += min(gaussian * intensity, 0.05);
+    }
+    return impulse;
 }
 
 void main() {
@@ -81,18 +104,7 @@ void main() {
     float inertia = (current - previous) * (1.0 - damping) * edgeAbsorption;
     float next = current + inertia + c2 * (1.0 / 3600.0) * laplacian;
 
-    if (u_WaveSourceIntensity > 0.001 && u_WaveSourceUV.x >= 0.0 && u_WaveSourceUV.y >= 0.0) {
-        vec2 pixelUV = (vec2(coord) + vec2(0.5)) / width;
-        vec2 distPixels = (pixelUV - u_WaveSourceUV.xy) * width;
-        float radius = u_WaveSourceRadius;
-        float r = length(distPixels);
-        if (r < radius) {
-            float sigma = radius * 0.4;
-            float gaussian = exp(-(r * r) / (2.0 * sigma * sigma));
-            float ripple = min(gaussian * u_WaveSourceIntensity, 0.05);
-            next += ripple * edgeAbsorption;
-        }
-    }
+    next += ReadSourceImpulse(coord, width) * edgeAbsorption;
 
     imageStore(u_WaveHeightNextImage, coord, vec4(next));
 }

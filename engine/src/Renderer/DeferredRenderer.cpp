@@ -521,6 +521,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterFluidComputeRan = false;
     m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
     m_HPWaterFluidSourceClampEnabled = false;
+    m_HPWaterFluidMultiSourceEnabled = false;
+    m_HPWaterFluidSourceCount = 0;
     m_HPWaterFluidObstacleValid = false;
     m_HPWaterFluidHeightFieldValid = false;
     m_HPWaterFluidHeightCaptureRan = false;
@@ -1291,6 +1293,8 @@ void DeferredRenderer::ClearHPWaterFluidFBOs() {
     m_HPWaterFluidComputeRan = false;
     m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
     m_HPWaterFluidSourceClampEnabled = false;
+    m_HPWaterFluidMultiSourceEnabled = false;
+    m_HPWaterFluidSourceCount = 0;
     m_HPWaterFluidInitialized = true;
 }
 
@@ -3949,17 +3953,35 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
 bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
                                                   float waveSpeed,
                                                   float damping,
-                                                  float sourceU,
-                                                  float sourceV,
-                                                  float sourceIntensity,
-                                                  float sourceRadiusPixels,
+                                                  const std::vector<HPWaterFluidSource>& sources,
                                                   const glm::vec3& boxCenter,
                                                   const glm::vec3& boxSize) {
+    constexpr uint32_t kMaxFluidSources = 8;
+    std::array<HPWaterFluidSource, kMaxFluidSources> packedSources {};
+    uint32_t sourceCount = 0;
+    for (const auto& source : sources) {
+        if (sourceCount >= kMaxFluidSources)
+            break;
+        if (source.Intensity <= 0.001f || source.RadiusPixels <= 0.001f ||
+            source.U < 0.0f || source.V < 0.0f) {
+            continue;
+        }
+
+        packedSources[sourceCount++] = HPWaterFluidSource {
+            std::clamp(source.U, 0.0f, 1.0f),
+            std::clamp(source.V, 0.0f, 1.0f),
+            std::max(source.RadiusPixels, 0.001f),
+            source.Intensity
+        };
+    }
+
     if (!m_HPWaterFluidComputeShader && (!m_HPWaterFluidShader || m_QuadVAO == 0)) {
         m_HPWaterFluidValid = false;
         m_HPWaterFluidComputeRan = false;
         m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
         m_HPWaterFluidSourceClampEnabled = false;
+        m_HPWaterFluidMultiSourceEnabled = false;
+        m_HPWaterFluidSourceCount = 0;
         m_HPWaterFluidWaveEquationParityEnabled = false;
         return false;
     }
@@ -3971,6 +3993,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeRan = false;
         m_HPWaterFluidEdgeAbsorptionParityEnabled = false;
         m_HPWaterFluidSourceClampEnabled = false;
+        m_HPWaterFluidMultiSourceEnabled = false;
+        m_HPWaterFluidSourceCount = 0;
         m_HPWaterFluidWaveEquationParityEnabled = false;
         return false;
     }
@@ -4000,9 +4024,16 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeShader->SetInt("u_SceneHeightTexture", 2);
         m_HPWaterFluidComputeShader->SetFloat("u_WaveSpeed", waveSpeed);
         m_HPWaterFluidComputeShader->SetFloat("u_DampingFactor", damping);
-        m_HPWaterFluidComputeShader->SetFloat("u_WaveSourceIntensity", sourceIntensity);
-        m_HPWaterFluidComputeShader->SetFloat("u_WaveSourceRadius", sourceRadiusPixels);
-        m_HPWaterFluidComputeShader->SetVec3("u_WaveSourceUV", glm::vec3(sourceU, sourceV, 0.0f));
+        m_HPWaterFluidComputeShader->SetInt("u_WaveSourceCount", static_cast<int>(sourceCount));
+        for (uint32_t i = 0; i < kMaxFluidSources; ++i) {
+            const std::string index = std::to_string(i);
+            m_HPWaterFluidComputeShader->SetVec3(
+                "u_WaveSourceUVRadius[" + index + "]",
+                glm::vec3(packedSources[i].U, packedSources[i].V, packedSources[i].RadiusPixels));
+            m_HPWaterFluidComputeShader->SetFloat(
+                "u_WaveSourceIntensity[" + index + "]",
+                packedSources[i].Intensity);
+        }
         m_HPWaterFluidComputeShader->SetInt("u_ObstacleMaskEnabled", m_HPWaterFluidObstacleValid ? 1 : 0);
         m_HPWaterFluidComputeShader->SetInt("u_HeightFieldEnabled", heightFieldValid ? 1 : 0);
         m_HPWaterFluidComputeShader->SetFloat("u_HeightObstacleEpsilon", 0.0f);
@@ -4032,6 +4063,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeRan = true;
         m_HPWaterFluidEdgeAbsorptionParityEnabled = true;
         m_HPWaterFluidSourceClampEnabled = true;
+        m_HPWaterFluidMultiSourceEnabled = sourceCount > 1;
+        m_HPWaterFluidSourceCount = sourceCount;
         m_HPWaterFluidWaveEquationParityEnabled = true;
         return true;
     }
@@ -4074,9 +4107,16 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
 
     m_HPWaterFluidShader->SetFloat("u_WaveSpeed", waveSpeed);
     m_HPWaterFluidShader->SetFloat("u_DampingFactor", damping);
-    m_HPWaterFluidShader->SetFloat("u_WaveSourceIntensity", sourceIntensity);
-    m_HPWaterFluidShader->SetFloat("u_WaveSourceRadius", sourceRadiusPixels);
-    m_HPWaterFluidShader->SetVec3("u_WaveSourceUV", glm::vec3(sourceU, sourceV, 0.0f));
+    m_HPWaterFluidShader->SetInt("u_WaveSourceCount", static_cast<int>(sourceCount));
+    for (uint32_t i = 0; i < kMaxFluidSources; ++i) {
+        const std::string index = std::to_string(i);
+        m_HPWaterFluidShader->SetVec3(
+            "u_WaveSourceUVRadius[" + index + "]",
+            glm::vec3(packedSources[i].U, packedSources[i].V, packedSources[i].RadiusPixels));
+        m_HPWaterFluidShader->SetFloat(
+            "u_WaveSourceIntensity[" + index + "]",
+            packedSources[i].Intensity);
+    }
     m_HPWaterFluidShader->SetInt("u_ObstacleMaskEnabled", m_HPWaterFluidObstacleValid ? 1 : 0);
     m_HPWaterFluidShader->SetInt("u_HeightFieldEnabled", heightFieldValid ? 1 : 0);
     m_HPWaterFluidShader->SetFloat("u_HeightObstacleEpsilon", 0.0f);
@@ -4105,6 +4145,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     m_HPWaterFluidComputeRan = false;
     m_HPWaterFluidEdgeAbsorptionParityEnabled = true;
     m_HPWaterFluidSourceClampEnabled = true;
+    m_HPWaterFluidMultiSourceEnabled = sourceCount > 1;
+    m_HPWaterFluidSourceCount = sourceCount;
     m_HPWaterFluidWaveEquationParityEnabled = true;
     return true;
 }
