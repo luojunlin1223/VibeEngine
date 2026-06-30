@@ -1224,6 +1224,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldEnabled =
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionFieldEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionIDSelectionEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeObjectMotionIDSelectionEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionWorldOffset =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
@@ -1298,6 +1300,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldEnabled =
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionFieldEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionIDSelectionEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeObjectMotionIDSelectionEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionWorldOffset =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =
@@ -3786,6 +3790,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionVectorEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionFieldEnabled =
         m_DeferredRenderer.IsHPWaterVolumeObjectMotionFieldEnabled();
+    m_RenderDiagnostics.HPWaterVolumeObjectMotionIDSelectionEnabled =
+        m_DeferredRenderer.IsHPWaterVolumeObjectMotionIDSelectionEnabled();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionWorldOffset =
         m_DeferredRenderer.GetHPWaterVolumeObjectMotionWorldOffset();
     m_RenderDiagnostics.HPWaterVolumeObjectMotionSourceCount =

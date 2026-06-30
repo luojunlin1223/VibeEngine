@@ -89,7 +89,7 @@ bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
 
 vec3 SelectObjectMotionOffset(vec3 sceneWorld) {
     vec3 selectedOffset = u_ObjectMotionWorldOffset;
-    float bestWeight = 0.0;
+    float bestDistanceRatio = 1.0e20;
 
     for (int i = 0; i < 8; ++i) {
         if (i >= u_ObjectMotionFieldCount) {
@@ -100,9 +100,9 @@ vec3 SelectObjectMotionOffset(vec3 sceneWorld) {
         vec3 offset = u_ObjectMotionOffsets[i].xyz;
         float radius = max(sphere.w, 0.0001);
         float dist = length(sceneWorld - sphere.xyz);
-        float weight = clamp(1.0 - dist / radius, 0.0, 1.0) * u_ObjectMotionOffsets[i].w;
-        if (weight > bestWeight) {
-            bestWeight = weight;
+        float distanceRatio = dist / radius;
+        if (distanceRatio <= 1.0 && distanceRatio < bestDistanceRatio) {
+            bestDistanceRatio = distanceRatio;
             selectedOffset = offset;
         }
     }

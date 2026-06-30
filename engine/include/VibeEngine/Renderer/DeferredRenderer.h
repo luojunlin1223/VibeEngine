@@ -457,6 +457,9 @@ public:
     bool IsHPWaterVolumeObjectMotionFieldEnabled() const {
         return m_HPWaterVolumeObjectMotionFieldEnabled;
     }
+    bool IsHPWaterVolumeObjectMotionIDSelectionEnabled() const {
+        return m_HPWaterVolumeObjectMotionIDSelectionEnabled;
+    }
     glm::vec3 GetHPWaterVolumeObjectMotionWorldOffset() const {
         return m_HPWaterVolumeObjectMotionWorldOffset;
     }
@@ -877,6 +880,7 @@ private:
     bool m_HPWaterVolumeSceneMotionVectorEnabled = false;
     bool m_HPWaterVolumeObjectMotionVectorEnabled = false;
     bool m_HPWaterVolumeObjectMotionFieldEnabled = false;
+    bool m_HPWaterVolumeObjectMotionIDSelectionEnabled = false;
     glm::vec3 m_HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
     uint32_t m_HPWaterVolumeObjectMotionSourceCount = 0;
     uint32_t m_HPWaterVolumeObjectMotionTrackedCount = 0;

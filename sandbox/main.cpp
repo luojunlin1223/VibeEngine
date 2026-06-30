@@ -7735,6 +7735,8 @@ private:
             << d.HPWaterVolumeObjectMotionVectorEnabled << "\n";
         out << "HPWaterVolumeObjectMotionFieldEnabled: "
             << d.HPWaterVolumeObjectMotionFieldEnabled << "\n";
+        out << "HPWaterVolumeObjectMotionIDSelectionEnabled: "
+            << d.HPWaterVolumeObjectMotionIDSelectionEnabled << "\n";
         out << "HPWaterVolumeObjectMotionWorldOffset: "
             << d.HPWaterVolumeObjectMotionWorldOffset.x << " "
             << d.HPWaterVolumeObjectMotionWorldOffset.y << " "
@@ -8206,6 +8208,7 @@ private:
                 !m_RenderDiagnosticsRequireObjectMotion ||
                 (d.HPWaterVolumeObjectMotionSourceCount > 0 &&
                  d.HPWaterVolumeObjectMotionFieldEnabled &&
+                 d.HPWaterVolumeObjectMotionIDSelectionEnabled &&
                  d.HPWaterVolumeObjectMotionFieldSelected > 0);
             const bool fluidFilteringReady =
                 !m_RenderDiagnosticsRequireFluidFiltering ||
@@ -8308,13 +8311,14 @@ private:
             d.HPWaterDepthPyramidWidth,
             d.HPWaterDepthPyramidHeight,
             d.HPWaterDepthPyramidTexture);
-        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d objMV=%d field=%d selected=%u/%u tracked=%u matched=%u moving=%u mvHistory=%d strength=%.2f",
+        ImGui::Text("HPWater volume temporal: clamp=%d motion=%d explicitMV=%d sceneMV=%d objMV=%d field=%d idSelect=%d selected=%u/%u tracked=%u matched=%u moving=%u mvHistory=%d strength=%.2f",
             d.HPWaterVolumeTemporalNeighborhoodClampEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalMotionReprojectionEnabled ? 1 : 0,
             d.HPWaterVolumeExplicitMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeSceneMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeObjectMotionVectorEnabled ? 1 : 0,
             d.HPWaterVolumeObjectMotionFieldEnabled ? 1 : 0,
+            d.HPWaterVolumeObjectMotionIDSelectionEnabled ? 1 : 0,
             d.HPWaterVolumeObjectMotionFieldSelected,
             d.HPWaterVolumeObjectMotionFieldCapacity,
             d.HPWaterVolumeObjectMotionTrackedCount,
