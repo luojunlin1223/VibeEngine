@@ -7484,6 +7484,29 @@ private:
         return hasSurfaceAreaBody && hasSurfaceAreaPath && hasVolumeAreaScatter;
     }
 
+    bool HasHPWaterPunctualLightTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() || dr.GetWidth() == 0 || dr.GetHeight() == 0)
+            return false;
+
+        if (!d.HPWaterPunctualLightLoopEnabled ||
+            d.HPWaterPointLightCount == 0 ||
+            d.HPWaterPunctualLightDiagnosticsTexture == 0)
+            return false;
+
+        const TextureProbeSummary punctualProbe =
+            ProbeTexture(d.HPWaterPunctualLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight());
+
+        const bool hasPunctualBody = punctualProbe.Valid &&
+            (punctualProbe.MaxRGBA[1] > 0.0f || punctualProbe.MaxRGBA[2] > 0.0f);
+        const bool hasPunctualPath = punctualProbe.Valid && punctualProbe.MaxRGBA[3] > 0.0f;
+        return hasPunctualBody && hasPunctualPath;
+    }
+
     bool HasHPWaterForwardScatterMipTextureEvidence() {
         if (!m_Scene)
             return false;
@@ -8168,6 +8191,8 @@ private:
         out << "HPWaterForwardScatterMipCount: " << d.HPWaterForwardScatterMipCount << "\n";
         out << "HPWaterForwardScatterDiagnosticsTexture: "
             << d.HPWaterForwardScatterDiagnosticsTexture << "\n";
+        out << "HPWaterPunctualLightDiagnosticsTexture: "
+            << d.HPWaterPunctualLightDiagnosticsTexture << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
         out << "HPWaterVolumeColorTexture: " << d.HPWaterVolumeColorTexture << "\n";
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
@@ -8576,6 +8601,32 @@ private:
             SaveTextureBMP(d.HPWaterAreaLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_area_light_diagnostics.bmp");
         }
+        if (dr.IsInitialized() && d.HPWaterPunctualLightDiagnosticsTexture != 0) {
+            TextureProbeSummary punctualLightDiagnosticsProbe =
+                ProbeTexture(d.HPWaterPunctualLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterPunctualLightDiagnostics", punctualLightDiagnosticsProbe);
+            out << "HPWaterPunctualLightDiagnosticsReadbackEnabled: "
+                << punctualLightDiagnosticsProbe.Valid << "\n";
+            out << "HPWaterPunctualLightDiagnosticsAverageSpecularLuminance: "
+                << std::fixed << std::setprecision(4)
+                << punctualLightDiagnosticsProbe.AverageRGBA[0] << "\n";
+            out << "HPWaterPunctualLightDiagnosticsAverageMacroBodyLuminance: "
+                << std::fixed << std::setprecision(4)
+                << punctualLightDiagnosticsProbe.AverageRGBA[1] << "\n";
+            out << "HPWaterPunctualLightDiagnosticsAverageSSSBacklitLuminance: "
+                << std::fixed << std::setprecision(4)
+                << punctualLightDiagnosticsProbe.AverageRGBA[2] << "\n";
+            out << "HPWaterPunctualLightDiagnosticsAnySpecular: "
+                << (punctualLightDiagnosticsProbe.MaxRGBA[0] > 0.0f ? 1 : 0) << "\n";
+            out << "HPWaterPunctualLightDiagnosticsAnyBody: "
+                << ((punctualLightDiagnosticsProbe.MaxRGBA[1] > 0.0f ||
+                     punctualLightDiagnosticsProbe.MaxRGBA[2] > 0.0f) ? 1 : 0) << "\n";
+            out << "HPWaterPunctualLightDiagnosticsAnyPunctualPath: "
+                << (punctualLightDiagnosticsProbe.MaxRGBA[3] > 0.0f ? 1 : 0) << "\n";
+            SaveTextureBMP(d.HPWaterPunctualLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) /
+                    "render_diagnostics_hpwater_punctual_light_diagnostics.bmp");
+        }
         if (dr.IsInitialized() && d.HPWaterForwardScatterDiagnosticsTexture != 0) {
             TextureProbeSummary forwardScatterDiagnosticsProbe =
                 ProbeTexture(d.HPWaterForwardScatterDiagnosticsTexture, dr.GetWidth(), dr.GetHeight());
@@ -8905,11 +8956,13 @@ private:
                  d.HPWaterVolumeAreaLightRectangleSamplingEnabled &&
                  d.HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled &&
                  d.HPWaterVolumeAreaLightLTCHorizonClippingEnabled &&
+                 d.HPWaterPunctualLightDiagnosticsTexture != 0 &&
                  d.HPWaterAreaLightDiagnosticsTexture != 0 &&
                  d.HPWaterVolumeAreaLightDiagnosticsTexture != 0 &&
                  d.HPWaterForwardScatterMipEnabled &&
                  d.HPWaterForwardScatterMipCount > 1 &&
                  d.HPWaterForwardScatterDiagnosticsTexture != 0 &&
+                 HasHPWaterPunctualLightTextureEvidence() &&
                  HasHPWaterAreaLightTextureEvidence() &&
                  HasHPWaterForwardScatterMipTextureEvidence());
             const bool causticsReady =

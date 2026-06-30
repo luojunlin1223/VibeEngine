@@ -1294,6 +1294,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
     m_RenderDiagnostics.HPWaterForwardScatterDiagnosticsTexture =
         m_DeferredRenderer.GetHPWaterForwardScatterDiagnosticsTexture();
+    m_RenderDiagnostics.HPWaterPunctualLightDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterPunctualLightDiagnosticsTexture();
     m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
     m_RenderDiagnostics.HPWaterVolumeTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(1);
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
@@ -3125,6 +3127,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterPointLightCount = static_cast<uint32_t>(hpWaterNumPointLights);
         m_RenderDiagnostics.HPWaterSpotLightCount = static_cast<uint32_t>(hpWaterNumSpotLights);
         m_RenderDiagnostics.HPWaterAreaLightCount = static_cast<uint32_t>(hpWaterNumAreaLights);
+        m_RenderDiagnostics.HPWaterPunctualLightDiagnosticsTexture =
+            m_DeferredRenderer.GetHPWaterPunctualLightDiagnosticsTexture();
         m_RenderDiagnostics.HPWaterPunctualLightLoopEnabled =
             (hpWaterNumPointLights + hpWaterNumSpotLights) > 0;
         m_RenderDiagnostics.HPWaterAreaLightApproximationEnabled = hpWaterNumAreaLights > 0;
@@ -3883,6 +3887,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
     m_RenderDiagnostics.HPWaterForwardScatterDiagnosticsTexture =
         m_DeferredRenderer.GetHPWaterForwardScatterDiagnosticsTexture();
+    m_RenderDiagnostics.HPWaterPunctualLightDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterPunctualLightDiagnosticsTexture();
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {
         m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled = false;
         m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled = false;

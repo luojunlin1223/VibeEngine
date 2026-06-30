@@ -567,6 +567,7 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
         { GL_RGBA16F }, // RT3: SSR confidence, hit mask, hierarchy weight, enabled strength
         { GL_RGBA16F }, // RT4: area-light specular/body contribution diagnostics
         { GL_RGBA16F }, // RT5: forward-scatter scene-color mip sampling diagnostics
+        { GL_RGBA16F }, // RT6: punctual point/spot specular/body contribution diagnostics
     };
     m_HPWaterCompositeFBO = Framebuffer::Create(compositeSpec);
     m_HPWaterCompositeValid = false;
@@ -4210,6 +4211,11 @@ uint32_t DeferredRenderer::GetHPWaterAreaLightDiagnosticsTexture() const {
 uint32_t DeferredRenderer::GetHPWaterForwardScatterDiagnosticsTexture() const {
     if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 6) return 0;
     return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(5));
+}
+
+uint32_t DeferredRenderer::GetHPWaterPunctualLightDiagnosticsTexture() const {
+    if (!m_HPWaterCompositeFBO || m_HPWaterCompositeFBO->GetColorAttachmentCount() < 7) return 0;
+    return static_cast<uint32_t>(m_HPWaterCompositeFBO->GetColorAttachmentID(6));
 }
 
 uint32_t DeferredRenderer::GetHPWaterSSRLightingTexture() const {

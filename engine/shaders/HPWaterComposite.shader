@@ -39,6 +39,7 @@ layout(location = 2) out vec4 RefractMeta;
 layout(location = 3) out vec4 SSRDiagnostics;
 layout(location = 4) out vec4 AreaLightDiagnostics;
 layout(location = 5) out vec4 ForwardScatterDiagnostics;
+layout(location = 6) out vec4 PunctualLightDiagnostics;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -1019,6 +1020,7 @@ void main() {
         SSRDiagnostics = vec4(0.0);
         AreaLightDiagnostics = vec4(0.0);
         ForwardScatterDiagnostics = vec4(0.0);
+        PunctualLightDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1033,6 +1035,7 @@ void main() {
         SSRDiagnostics = vec4(0.0);
         AreaLightDiagnostics = vec4(0.0);
         ForwardScatterDiagnostics = vec4(0.0);
+        PunctualLightDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1109,6 +1112,10 @@ void main() {
     float directionalSpecularSelfOcclusion = HPWaterSpecularSelfOcclusion(NdotL);
     directSpecular *= u_LightColor * max(u_LightIntensity, 0.0) *
         NdotL * directionalShadow * directionalSpecularSelfOcclusion * energyCompensation;
+    vec3 punctualSpecularContribution = vec3(0.0);
+    vec3 punctualMacroContribution = vec3(0.0);
+    vec3 punctualThinSSSContribution = vec3(0.0);
+    vec3 punctualBacklitContribution = vec3(0.0);
     vec3 punctualMacroLight = vec3(0.0);
     vec3 punctualThinSSSLight = vec3(0.0);
     vec3 punctualBacklitLight = vec3(0.0);
@@ -1132,14 +1139,22 @@ void main() {
         rangeWindow *= rangeWindow;
         float attenuation = rangeWindow / (lightDistance * lightDistance + 1.0);
         vec3 radiance = u_PointLightColors[i] * max(u_PointLightIntensities[i], 0.0) * attenuation;
-        directSpecular += EvaluateHPWaterSpecularLight(
+        vec3 punctualSpecular = EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
+        directSpecular += punctualSpecular;
+        punctualSpecularContribution += punctualSpecular;
         float localNdotLRaw = dot(N, localL);
         float localNdotL = clamp(localNdotLRaw, 0.0, 1.0);
         float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
-        punctualMacroLight += radiance * localNdotL * localTEntry;
-        punctualThinSSSLight += radiance * (1.0 - localNdotL);
-        punctualBacklitLight += radiance * clamp(-localNdotLRaw, 0.0, 1.0);
+        vec3 punctualMacro = radiance * localNdotL * localTEntry;
+        vec3 punctualThinSSS = radiance * (1.0 - localNdotL);
+        vec3 punctualBacklit = radiance * clamp(-localNdotLRaw, 0.0, 1.0);
+        punctualMacroLight += punctualMacro;
+        punctualThinSSSLight += punctualThinSSS;
+        punctualBacklitLight += punctualBacklit;
+        punctualMacroContribution += punctualMacro;
+        punctualThinSSSContribution += punctualThinSSS;
+        punctualBacklitContribution += punctualBacklit;
     }
 
     int spotCount = clamp(u_NumSpotLights, 0, 4);
@@ -1169,14 +1184,22 @@ void main() {
         rangeWindow *= rangeWindow;
         float attenuation = rangeWindow * spotFactor / (lightDistance * lightDistance + 1.0);
         vec3 radiance = u_SpotLightColors[i] * max(u_SpotLightIntensities[i], 0.0) * attenuation;
-        directSpecular += EvaluateHPWaterSpecularLight(
+        vec3 punctualSpecular = EvaluateHPWaterSpecularLight(
             N, V, localL, radiance, roughness, F, energyCompensation);
+        directSpecular += punctualSpecular;
+        punctualSpecularContribution += punctualSpecular;
         float localNdotLRaw = dot(N, localL);
         float localNdotL = clamp(localNdotLRaw, 0.0, 1.0);
         float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
-        punctualMacroLight += radiance * localNdotL * localTEntry;
-        punctualThinSSSLight += radiance * (1.0 - localNdotL);
-        punctualBacklitLight += radiance * clamp(-localNdotLRaw, 0.0, 1.0);
+        vec3 punctualMacro = radiance * localNdotL * localTEntry;
+        vec3 punctualThinSSS = radiance * (1.0 - localNdotL);
+        vec3 punctualBacklit = radiance * clamp(-localNdotLRaw, 0.0, 1.0);
+        punctualMacroLight += punctualMacro;
+        punctualThinSSSLight += punctualThinSSS;
+        punctualBacklitLight += punctualBacklit;
+        punctualMacroContribution += punctualMacro;
+        punctualThinSSSContribution += punctualThinSSS;
+        punctualBacklitContribution += punctualBacklit;
     }
 
     vec3 areaSpecularContribution = vec3(0.0);
@@ -1369,6 +1392,11 @@ void main() {
         Luminance(forwardBlur) * forwardStrength,
         scatterDensity,
         forwardMipUsed);
+    PunctualLightDiagnostics = vec4(
+        Luminance(punctualSpecularContribution),
+        Luminance(punctualMacroContribution),
+        Luminance(punctualThinSSSContribution + punctualBacklitContribution),
+        (pointCount + spotCount) > 0 ? 1.0 : 0.0);
 }
 #endif
 
