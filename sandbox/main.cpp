@@ -7353,6 +7353,29 @@ private:
         return summary;
     }
 
+    bool HasHPWaterSSRTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() || dr.GetWidth() == 0 || dr.GetHeight() == 0)
+            return false;
+
+        const uint32_t diagnosticsTexture = dr.GetHPWaterSSRDiagnosticsTexture();
+        const uint32_t lightingTexture = dr.GetHPWaterSSRLightingTexture();
+        if (diagnosticsTexture == 0 || lightingTexture == 0)
+            return false;
+
+        const TextureProbeSummary diagnosticsProbe =
+            ProbeTexture(diagnosticsTexture, dr.GetWidth(), dr.GetHeight());
+        const TextureProbeSummary lightingProbe =
+            ProbeTexture(lightingTexture, dr.GetWidth(), dr.GetHeight());
+
+        const bool hasSSRHit = diagnosticsProbe.Valid && diagnosticsProbe.MaxRGBA[1] > 0;
+        const bool hasLightingContribution = lightingProbe.Valid && lightingProbe.NonBlackRatio > 0.0f;
+        return hasSSRHit && hasLightingContribution;
+    }
+
     TextureFloatProbeSummary ProbeTextureFloat(uint32_t textureID, uint32_t width, uint32_t height) {
         TextureFloatProbeSummary summary;
         summary.Width = width;
@@ -8277,7 +8300,8 @@ private:
                  d.HPWaterSSRLightingBufferTexture != 0 &&
                  d.HPWaterSSRDiagnosticsValid &&
                  d.HPWaterSSRDiagnosticsTexture != 0 &&
-                 d.HPWaterSSRMaxSteps > 0);
+                 d.HPWaterSSRMaxSteps > 0 &&
+                 HasHPWaterSSRTextureEvidence());
             const bool strictReadinessRequired =
                 m_RenderDiagnosticsRequireObjectMotion ||
                 m_RenderDiagnosticsRequireFluidFiltering ||
