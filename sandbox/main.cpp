@@ -47,10 +47,13 @@ static std::array<float, 3> EulerFromForwardDirection(const glm::vec3& rawDirect
 
 class Sandbox : public VE::Application {
 public:
-    explicit Sandbox(bool renderDiagnosticsOnce = false, bool hpwaterMotionDiagnostics = false)
+    explicit Sandbox(bool renderDiagnosticsOnce = false,
+                      bool hpwaterMotionDiagnostics = false,
+                      bool hpwaterFluidFilterDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
+        , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -124,6 +127,15 @@ public:
             m_RenderDiagnosticsOnceMinFrame = 60;
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireObjectMotion = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
+
+        if (m_HPWaterFluidFilterDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireFluidFiltering = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
                 EnterPlayMode();
@@ -1407,6 +1419,63 @@ private:
         tc.Position[2] = 8.0f + m_HPWaterMotionDiagnosticTime * 3.0f;
     }
 
+    void EnsureHPWaterFluidFilterDiagnosticObjects() {
+        if (!m_HPWaterFluidFilterDiagnostics || !m_PlayMode)
+            return;
+
+        auto ensureDiagnosticCube = [&](const std::string& name,
+                                        const glm::vec3& position,
+                                        const glm::vec3& scale,
+                                        const std::array<float, 4>& color,
+                                        int layer) {
+            auto entity = FindEntityByName(name);
+            if (!entity) {
+                entity = CreateLauncherPrimitive(name,
+                    VE::MeshLibrary::GetCube(),
+                    position,
+                    scale,
+                    color,
+                    true);
+            }
+
+            if (!entity || !entity.HasComponent<VE::TransformComponent>())
+                return VE::Entity();
+
+            auto& tag = entity.GetComponent<VE::TagComponent>();
+            tag.Layer = layer;
+            tag.GameObjectTag = "EditorOnly";
+            tag.Active = true;
+
+            auto& tc = entity.GetComponent<VE::TransformComponent>();
+            tc.Position = { position.x, position.y, position.z };
+            tc.Scale = { scale.x, scale.y, scale.z };
+
+            auto& mr = entity.HasComponent<VE::MeshRendererComponent>()
+                ? entity.GetComponent<VE::MeshRendererComponent>()
+                : entity.AddComponent<VE::MeshRendererComponent>();
+            mr.Mat = VE::MaterialLibrary::Get("Lit");
+            mr.Color = color;
+            mr.CastShadows = false;
+            return entity;
+        };
+
+        ensureDiagnosticCube("HPWater Fluid Water Layer Diagnostic",
+            { -4.0f, 0.35f, 12.0f },
+            { 1.0f, 0.25f, 1.0f },
+            { 0.0f, 0.55f, 1.0f, 1.0f },
+            4);
+        ensureDiagnosticCube("HPWater Fluid Opaque Diagnostic",
+            { 4.0f, 0.45f, 12.0f },
+            { 1.0f, 0.9f, 1.0f },
+            { 1.0f, 0.65f, 0.1f, 1.0f },
+            0);
+        ensureDiagnosticCube("HPWater Fluid Transparent Diagnostic",
+            { 0.0f, 0.7f, 16.0f },
+            { 1.2f, 1.2f, 1.2f },
+            { 1.0f, 0.2f, 0.9f, 0.35f },
+            0);
+    }
+
     VE::Entity CreateLauncherImportedMesh(const std::string& name,
                                           const std::string& meshPath,
                                           const glm::vec3& position,
@@ -1532,6 +1601,7 @@ private:
             return;
 
         UpdateHPWaterMotionDiagnosticObject(deltaTime);
+        EnsureHPWaterFluidFilterDiagnosticObjects();
 
         auto train = FindEntityByName("LauncherTrain");
         if (!train || !train.HasComponent<VE::TransformComponent>())
@@ -8023,7 +8093,18 @@ private:
                 (d.HPWaterVolumeObjectMotionSourceCount > 0 &&
                  d.HPWaterVolumeObjectMotionFieldEnabled &&
                  d.HPWaterVolumeObjectMotionFieldSelected > 0);
-            if ((baseReady && objectMotionReady) || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
+            const bool fluidFilteringReady =
+                !m_RenderDiagnosticsRequireFluidFiltering ||
+                (d.HPWaterFluidHeightCaptureValid &&
+                 d.HPWaterFluidLayerFilteringParityEnabled &&
+                 d.HPWaterFluidRenderQueueParityEnabled &&
+                 d.HPWaterFluidWaterLayerCandidates > 0 &&
+                 d.HPWaterFluidSceneOpaqueCandidates > 0 &&
+                 d.HPWaterFluidSceneWaterLayerSkipped > 0 &&
+                 d.HPWaterFluidTransparentSkipped > 0 &&
+                 d.HPWaterFluidWaterCaptureDraws > 0 &&
+                 d.HPWaterFluidSceneCaptureDraws > 0);
+            if ((baseReady && objectMotionReady && fluidFilteringReady) || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
                 glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
@@ -9895,7 +9976,9 @@ private:
     bool m_AutoExportRenderDiagnostics = true;
     bool m_RenderDiagnosticsOnce = false;
     bool m_HPWaterMotionDiagnostics = false;
+    bool m_HPWaterFluidFilterDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
+    bool m_RenderDiagnosticsRequireFluidFiltering = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
@@ -10009,6 +10092,7 @@ private:
 int main(int argc, char** argv) {
     bool renderDiagnosticsOnce = false;
     bool hpwaterMotionDiagnostics = false;
+    bool hpwaterFluidFilterDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--render-diagnostics-once") {
@@ -10016,10 +10100,13 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-motion-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterMotionDiagnostics = true;
+        } else if (arg == "--hpwater-fluid-filter-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterFluidFilterDiagnostics = true;
         }
     }
 
-    Sandbox app(renderDiagnosticsOnce, hpwaterMotionDiagnostics);
+    Sandbox app(renderDiagnosticsOnce, hpwaterMotionDiagnostics, hpwaterFluidFilterDiagnostics);
     app.Run();
     return 0;
 }
