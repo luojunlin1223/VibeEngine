@@ -2008,6 +2008,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     struct HPWaterFluidObstacleCandidate {
         glm::vec3 Min;
         glm::vec3 Max;
+        glm::vec3 Center;
+        uint64_t UUID = 0;
     };
     struct HPWaterFluidCaptureDraw {
         entt::entity ID;
@@ -2104,7 +2106,13 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 }
             }
             if (!isHPWater && !isWaterLayerForFluid && !isTransparentForFluid) {
-                hpWaterFluidObstacleCandidates.push_back({ worldMin, worldMax });
+                const auto* id = m_Registry.try_get<IDComponent>(entityID);
+                hpWaterFluidObstacleCandidates.push_back({
+                    worldMin,
+                    worldMax,
+                    (worldMin + worldMax) * 0.5f,
+                    id ? static_cast<uint64_t>(id->ID) : 0u
+                });
                 hpWaterFluidSceneCaptureDraws.push_back({ entityID, mr.Mesh, model });
                 ++hpWaterFluidSceneOpaqueCandidates;
             } else if (!isHPWater && isWaterLayerForFluid) {
@@ -2523,6 +2531,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         std::vector<float> sceneHeights(fluidTexelCount, 0.0f);
         uint32_t obstacleCount = 0;
         uint32_t obstaclePixels = 0;
+        uint32_t movingObjectSourceCount = 0;
 
         std::fill(waterHeights.begin(), waterHeights.end(), normalizedWaterHeight);
         if (!hpWaterFluidWaterCaptureDraws.empty()) {
@@ -2634,10 +2643,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 if (wroteAnyPixel)
                     ++obstacleCount;
                 if (wroteAnyPixel && hpWaterFluidSources.size() < 8 && hpWaterFluidImpulseStrength > 0.001f) {
-                    const float centerX = std::clamp((paddedMinX + paddedMaxX) * 0.5f, waterMinX, waterMaxX);
-                    const float centerZ = std::clamp((paddedMinZ + paddedMaxZ) * 0.5f, waterMinZ, waterMaxZ);
-                    const float u = (centerX - waterMinX) * invX;
-                    const float v = (centerZ - waterMinZ) * invZ;
+                    const float centerX = std::clamp(obstacle.Center.x, waterMinX, waterMaxX);
+                    const float centerZ = std::clamp(obstacle.Center.z, waterMinZ, waterMaxZ);
+                    const float u = std::clamp((centerX - waterMinX) * invX, 0.0f, 1.0f);
+                    const float v = std::clamp((centerZ - waterMinZ) * invZ, 0.0f, 1.0f);
                     const float footprintPixels = std::max(
                         (paddedMaxX - paddedMinX) * invX,
                         (paddedMaxZ - paddedMinZ) * invZ) * static_cast<float>(hpWaterFluidResolution);
@@ -2650,13 +2659,47 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                             std::max(hpWaterFluidObstacleHeightRange, 0.001f),
                         0.0f,
                         1.0f);
+                    const float baseIntensity =
+                        hpWaterFluidImpulseStrength * (0.45f + 0.55f * penetration01);
 
-                    hpWaterFluidSources.push_back({
-                        std::clamp(u, 0.0f, 1.0f),
-                        std::clamp(v, 0.0f, 1.0f),
-                        radiusPixels,
-                        hpWaterFluidImpulseStrength * (0.45f + 0.55f * penetration01)
-                    });
+                    bool emittedMovingWake = false;
+                    if (obstacle.UUID != 0u && m_HasPreviousHPWaterObjectPositions &&
+                        hpWaterFluidSources.size() < 8) {
+                        const auto previousIt = m_PreviousHPWaterObjectPositions.find(obstacle.UUID);
+                        if (previousIt != m_PreviousHPWaterObjectPositions.end()) {
+                            const glm::vec2 motionXZ(
+                                obstacle.Center.x - previousIt->second.x,
+                                obstacle.Center.z - previousIt->second.z);
+                            const glm::vec2 motionUV(
+                                motionXZ.x * invX,
+                                motionXZ.y * invZ);
+                            const float motionPixels =
+                                glm::length(motionUV) * static_cast<float>(hpWaterFluidResolution);
+                            if (motionPixels > 0.15f) {
+                                const glm::vec2 wakeUV =
+                                    glm::vec2(u, v) - glm::normalize(motionUV) *
+                                        std::min(motionPixels / static_cast<float>(hpWaterFluidResolution),
+                                                 radiusPixels / static_cast<float>(hpWaterFluidResolution));
+                                hpWaterFluidSources.push_back({
+                                    std::clamp(wakeUV.x, 0.0f, 1.0f),
+                                    std::clamp(wakeUV.y, 0.0f, 1.0f),
+                                    std::clamp(radiusPixels * 1.35f, 1.0f, 128.0f),
+                                    baseIntensity * std::clamp(0.55f + motionPixels * 0.08f, 0.55f, 1.2f)
+                                });
+                                emittedMovingWake = true;
+                                ++movingObjectSourceCount;
+                            }
+                        }
+                    }
+
+                    if (hpWaterFluidSources.size() < 8) {
+                        hpWaterFluidSources.push_back({
+                            u,
+                            v,
+                            radiusPixels,
+                            emittedMovingWake ? baseIntensity * 0.75f : baseIntensity
+                        });
+                    }
                     ++hpWaterFluidObjectSourceCount;
                 }
             }
@@ -2666,6 +2709,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterFluidObstaclePixels = obstaclePixels;
         m_RenderDiagnostics.HPWaterFluidObjectSourceEnabled = hpWaterFluidObjectSourceCount > 0;
         m_RenderDiagnostics.HPWaterFluidObjectSourceCount = hpWaterFluidObjectSourceCount;
+        m_RenderDiagnostics.HPWaterFluidMovingObjectSourceEnabled = movingObjectSourceCount > 0;
+        m_RenderDiagnostics.HPWaterFluidMovingObjectSourceCount = movingObjectSourceCount;
         m_RenderDiagnostics.HPWaterFluidHeightCaptureRan =
             m_DeferredRenderer.DidHPWaterFluidHeightCaptureRun();
         m_RenderDiagnostics.HPWaterFluidHeightCaptureValid = gpuHeightCaptureValid;

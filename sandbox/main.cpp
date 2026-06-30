@@ -7883,6 +7883,8 @@ private:
         out << "HPWaterFluidSourceCount: " << d.HPWaterFluidSourceCount << "\n";
         out << "HPWaterFluidObjectSourceEnabled: " << d.HPWaterFluidObjectSourceEnabled << "\n";
         out << "HPWaterFluidObjectSourceCount: " << d.HPWaterFluidObjectSourceCount << "\n";
+        out << "HPWaterFluidMovingObjectSourceEnabled: " << d.HPWaterFluidMovingObjectSourceEnabled << "\n";
+        out << "HPWaterFluidMovingObjectSourceCount: " << d.HPWaterFluidMovingObjectSourceCount << "\n";
         out << "HPWaterFluidWaveEquationParityEnabled: " << d.HPWaterFluidWaveEquationParityEnabled << "\n";
         out << "HPWaterFluidSampleClampParityEnabled: " << d.HPWaterFluidSampleClampParityEnabled << "\n";
         out << "HPWaterFluidStartFrameBakeEnabled: " << d.HPWaterFluidStartFrameBakeEnabled << "\n";
@@ -8577,13 +8579,14 @@ private:
             d.HPWaterCausticAtlasCascades,
             d.HPWaterCausticAtlasTexture,
             d.HPWaterCausticAtlasDepthTexture);
-        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d multiSrc=%d sources=%u objectSources=%u res=%u height=%u speed=%.3f damping=%.3f",
+        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d multiSrc=%d sources=%u objectSources=%u movingWake=%u res=%u height=%u speed=%.3f damping=%.3f",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,
             d.HPWaterFluidComputeRan ? 1 : 0,
             d.HPWaterFluidMultiSourceEnabled ? 1 : 0,
             d.HPWaterFluidSourceCount,
             d.HPWaterFluidObjectSourceCount,
+            d.HPWaterFluidMovingObjectSourceCount,
             d.HPWaterFluidResolution,
             d.HPWaterFluidHeightTexture,
             d.HPWaterFluidWaveSpeed,
