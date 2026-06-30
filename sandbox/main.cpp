@@ -51,13 +51,15 @@ public:
                       bool hpwaterMotionDiagnostics = false,
                       bool hpwaterFluidFilterDiagnostics = false,
                       bool hpwaterFluidBakeDiagnostics = false,
-                      bool hpwaterSSRDiagnostics = false)
+                      bool hpwaterSSRDiagnostics = false,
+                      bool hpwaterLightDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
         , m_HPWaterFluidBakeDiagnostics(hpwaterFluidBakeDiagnostics)
         , m_HPWaterSSRDiagnostics(hpwaterSSRDiagnostics)
+        , m_HPWaterLightDiagnostics(hpwaterLightDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -157,6 +159,15 @@ public:
             ps.SSRStepSize = std::clamp(ps.SSRStepSize, 0.01f, 0.05f);
             ps.SSRThickness = std::clamp(ps.SSRThickness, 0.25f, 0.75f);
             ps.SSRMaxDistance = std::max(ps.SSRMaxDistance, 80.0f);
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
+
+        if (m_HPWaterLightDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireLightLoop = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
                 EnterPlayMode();
         }
@@ -8302,12 +8313,44 @@ private:
                  d.HPWaterSSRDiagnosticsTexture != 0 &&
                  d.HPWaterSSRMaxSteps > 0 &&
                  HasHPWaterSSRTextureEvidence());
+            const bool lightLoopReady =
+                !m_RenderDiagnosticsRequireLightLoop ||
+                (d.HPWaterLightLoopInputsValid &&
+                 d.HPWaterPunctualLightLoopEnabled &&
+                 d.HPWaterPointLightCount > 0 &&
+                 d.HPWaterPunctualPointLightCandidates > 0 &&
+                 d.HPWaterPointLightTopInfluenceScore > 0.0f &&
+                 d.HPWaterPointLightSelectedInfluenceSum > 0.0f &&
+                 d.HPWaterAreaLightCount > 0 &&
+                 d.HPWaterAreaLightCandidates > 0 &&
+                 d.HPWaterAreaLightCapacity > 0 &&
+                 d.HPWaterAreaLightTopInfluenceScore > 0.0f &&
+                 d.HPWaterAreaLightSelectedInfluenceSum > 0.0f &&
+                 d.HPWaterAreaLightRectangleSamplingEnabled &&
+                 d.HPWaterAreaLightLTCSamplingEnabled &&
+                 d.HPWaterAreaLightLTCPolygonIntegrationEnabled &&
+                 d.HPWaterAreaLightLTCHorizonClippingEnabled &&
+                 d.HPWaterAreaLightLTCLUTValid &&
+                 d.HPWaterAreaLightLTCLUTResolution > 0 &&
+                 d.HPWaterAreaLightLTCLUTLayers >= 2 &&
+                 d.HPWaterPunctualBodyComponentWeightingEnabled &&
+                 d.HPWaterSpecularSelfOcclusionEnabled &&
+                 d.HPWaterLightSelectionBoundsValid &&
+                 d.HPWaterLightSelectionRadius > 0.0f &&
+                 d.HPWaterVolumePunctualLightLoopEnabled &&
+                 d.HPWaterVolumePointLightCount > 0 &&
+                 d.HPWaterVolumeAreaLightLoopEnabled &&
+                 d.HPWaterVolumeAreaLightCount > 0 &&
+                 d.HPWaterVolumeAreaLightRectangleSamplingEnabled &&
+                 d.HPWaterVolumeAreaLightLTCPolygonIntegrationEnabled &&
+                 d.HPWaterVolumeAreaLightLTCHorizonClippingEnabled);
             const bool strictReadinessRequired =
                 m_RenderDiagnosticsRequireObjectMotion ||
                 m_RenderDiagnosticsRequireFluidFiltering ||
                 m_RenderDiagnosticsRequireFluidBake ||
-                m_RenderDiagnosticsRequireSSR;
-            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady;
+                m_RenderDiagnosticsRequireSSR ||
+                m_RenderDiagnosticsRequireLightLoop;
+            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady && lightLoopReady;
             if (ready || (!strictReadinessRequired && d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame)) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
@@ -10205,10 +10248,12 @@ private:
     bool m_HPWaterFluidFilterDiagnostics = false;
     bool m_HPWaterFluidBakeDiagnostics = false;
     bool m_HPWaterSSRDiagnostics = false;
+    bool m_HPWaterLightDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
     bool m_RenderDiagnosticsRequireFluidBake = false;
     bool m_RenderDiagnosticsRequireSSR = false;
+    bool m_RenderDiagnosticsRequireLightLoop = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
@@ -10326,6 +10371,7 @@ int main(int argc, char** argv) {
     bool hpwaterFluidFilterDiagnostics = false;
     bool hpwaterFluidBakeDiagnostics = false;
     bool hpwaterSSRDiagnostics = false;
+    bool hpwaterLightDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--render-diagnostics-once") {
@@ -10342,6 +10388,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-ssr-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterSSRDiagnostics = true;
+        } else if (arg == "--hpwater-light-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterLightDiagnostics = true;
         }
     }
 
@@ -10349,7 +10398,8 @@ int main(int argc, char** argv) {
         hpwaterMotionDiagnostics,
         hpwaterFluidFilterDiagnostics,
         hpwaterFluidBakeDiagnostics,
-        hpwaterSSRDiagnostics);
+        hpwaterSSRDiagnostics,
+        hpwaterLightDiagnostics);
     app.Run();
     return 0;
 }
