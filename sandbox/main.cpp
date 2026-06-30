@@ -54,9 +54,10 @@ public:
                       bool hpwaterSSRDiagnostics = false,
                       bool hpwaterLightDiagnostics = false,
                       bool hpwaterCausticDiagnostics = false,
-                      bool hpwaterVolumeDiagnostics = false)
+                      bool hpwaterVolumeDiagnostics = false,
+                      bool hpwaterRefractionDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics || hpwaterVolumeDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics || hpwaterVolumeDiagnostics || hpwaterRefractionDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
         , m_HPWaterFluidBakeDiagnostics(hpwaterFluidBakeDiagnostics)
@@ -64,6 +65,7 @@ public:
         , m_HPWaterLightDiagnostics(hpwaterLightDiagnostics)
         , m_HPWaterCausticDiagnostics(hpwaterCausticDiagnostics)
         , m_HPWaterVolumeDiagnostics(hpwaterVolumeDiagnostics)
+        , m_HPWaterRefractionDiagnostics(hpwaterRefractionDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -187,6 +189,15 @@ public:
             m_RenderDiagnosticsOnceMinFrame = 60;
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireVolume = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
+
+        if (m_HPWaterRefractionDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireRefraction = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
                 EnterPlayMode();
@@ -7315,6 +7326,16 @@ private:
         float NonZeroAlphaRatio = 0.0f;
     };
 
+    struct RefractionMetaUVProbeSummary {
+        bool Valid = false;
+        uint32_t Width = 0;
+        uint32_t Height = 0;
+        float AverageUVOffset = 0.0f;
+        float MaxUVOffset = 0.0f;
+        float NonZeroUVOffsetRatio = 0.0f;
+        float ValidThicknessRatio = 0.0f;
+    };
+
     TextureProbeSummary ProbeTexture(uint32_t textureID, uint32_t width, uint32_t height) {
         TextureProbeSummary summary;
         summary.Width = width;
@@ -7474,6 +7495,40 @@ private:
             forwardScatterProbe.MaxRGBA[3] > 0.0f;
     }
 
+    bool HasHPWaterRefractionTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() || dr.GetWidth() == 0 || dr.GetHeight() == 0)
+            return false;
+
+        if (!d.HPWaterRefractionNDCMarchEnabled ||
+            d.HPWaterRefractionDataTexture == 0 ||
+            d.HPWaterRefractionMetaTexture == 0)
+            return false;
+
+        const TextureFloatProbeSummary worldProbe =
+            ProbeTextureFloat(d.HPWaterRefractionDataTexture, dr.GetWidth(), dr.GetHeight());
+        const TextureFloatProbeSummary metaProbe =
+            ProbeTextureFloat(d.HPWaterRefractionMetaTexture, dr.GetWidth(), dr.GetHeight());
+        const RefractionMetaUVProbeSummary uvProbe =
+            ProbeHPWaterRefractionMetaUVOffset(d.HPWaterRefractionMetaTexture,
+                dr.GetWidth(),
+                dr.GetHeight());
+
+        return worldProbe.Valid &&
+            metaProbe.Valid &&
+            uvProbe.Valid &&
+            worldProbe.MaxRGBA[3] > 0.00001f &&
+            worldProbe.NonZeroAlphaRatio > 0.0f &&
+            metaProbe.MaxRGBA[3] > 0.00001f &&
+            metaProbe.NonZeroAlphaRatio > 0.0f &&
+            uvProbe.MaxUVOffset > 0.0001f &&
+            uvProbe.NonZeroUVOffsetRatio > 0.0f;
+    }
+
     bool HasHPWaterCausticTextureEvidence() {
         if (!m_Scene)
             return false;
@@ -7630,6 +7685,65 @@ private:
             summary.NonZeroRGBRatio = static_cast<float>(static_cast<double>(nonZeroRGB) / sampled);
             summary.NonZeroAlphaRatio = static_cast<float>(static_cast<double>(nonZeroAlpha) / sampled);
         }
+        return summary;
+    }
+
+    RefractionMetaUVProbeSummary ProbeHPWaterRefractionMetaUVOffset(uint32_t textureID,
+                                                                    uint32_t width,
+                                                                    uint32_t height) {
+        RefractionMetaUVProbeSummary summary;
+        summary.Width = width;
+        summary.Height = height;
+        if (textureID == 0 || width == 0 || height == 0)
+            return summary;
+
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+        std::vector<float> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+
+        const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+        const size_t step = std::max<size_t>(1, pixelCount / 65536);
+        size_t sampled = 0;
+        size_t validThickness = 0;
+        size_t nonZeroOffset = 0;
+        double offsetSum = 0.0;
+
+        for (size_t pixel = 0; pixel < pixelCount; pixel += step) {
+            const size_t i = pixel * 4;
+            const float thickness = pixels[i + 3];
+            sampled++;
+            if (thickness <= 0.00001f)
+                continue;
+
+            const uint32_t x = static_cast<uint32_t>(pixel % width);
+            const uint32_t y = static_cast<uint32_t>(pixel / width);
+            const glm::vec2 screenUV(
+                (static_cast<float>(x) + 0.5f) / static_cast<float>(width),
+                (static_cast<float>(y) + 0.5f) / static_cast<float>(height));
+            const glm::vec2 refractUV(pixels[i + 0], pixels[i + 1]);
+            const float offset = glm::length(refractUV - screenUV);
+
+            validThickness++;
+            offsetSum += offset;
+            summary.MaxUVOffset = std::max(summary.MaxUVOffset, offset);
+            if (offset > 0.0001f)
+                nonZeroOffset++;
+        }
+
+        summary.Valid = sampled > 0;
+        if (sampled > 0)
+            summary.ValidThicknessRatio = static_cast<float>(validThickness) / static_cast<float>(sampled);
+        if (validThickness > 0) {
+            summary.AverageUVOffset = static_cast<float>(offsetSum / static_cast<double>(validThickness));
+            summary.NonZeroUVOffsetRatio =
+                static_cast<float>(nonZeroOffset) / static_cast<float>(validThickness);
+        }
+
         return summary;
     }
 
@@ -8230,6 +8344,10 @@ private:
                 ProbeTexture(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight());
             TextureFloatProbeSummary refractionMetaFloatProbe =
                 ProbeTextureFloat(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight());
+            RefractionMetaUVProbeSummary refractionMetaUVProbe =
+                ProbeHPWaterRefractionMetaUVOffset(dr.GetHPWaterRefractionMetaTexture(),
+                    dr.GetWidth(),
+                    dr.GetHeight());
             writeProbe("HPWaterRefractionMeta", refractionMetaProbe);
             out << "HPWaterRefractionMetaAverageUV: " << std::fixed << std::setprecision(4)
                 << refractionMetaFloatProbe.AverageRGBA[0] << ","
@@ -8246,6 +8364,22 @@ private:
                 << refractionMetaFloatProbe.NonZeroAlphaRatio << "\n";
             out << "HPWaterRefractionMetaAnyThickness: "
                 << (refractionMetaFloatProbe.MaxRGBA[3] > 0.00001f ? 1 : 0) << "\n";
+            out << "HPWaterRefractionMetaUVOffsetReadbackEnabled: "
+                << refractionMetaUVProbe.Valid << "\n";
+            out << "HPWaterRefractionMetaAverageUVOffset: "
+                << std::fixed << std::setprecision(6)
+                << refractionMetaUVProbe.AverageUVOffset << "\n";
+            out << "HPWaterRefractionMetaMaxUVOffset: "
+                << std::fixed << std::setprecision(6)
+                << refractionMetaUVProbe.MaxUVOffset << "\n";
+            out << "HPWaterRefractionMetaNonZeroUVOffsetRatio: "
+                << std::fixed << std::setprecision(4)
+                << refractionMetaUVProbe.NonZeroUVOffsetRatio << "\n";
+            out << "HPWaterRefractionMetaValidThicknessRatio: "
+                << std::fixed << std::setprecision(4)
+                << refractionMetaUVProbe.ValidThicknessRatio << "\n";
+            out << "HPWaterRefractionMetaAnyUVOffset: "
+                << (refractionMetaUVProbe.MaxUVOffset > 0.0001f ? 1 : 0) << "\n";
             SaveTextureBMP(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_meta.bmp");
         }
@@ -8610,6 +8744,13 @@ private:
                  d.HPWaterFluidHeightFieldValid &&
                  d.HPWaterFluidWaterHeightTexture != 0 &&
                  d.HPWaterFluidSceneHeightTexture != 0);
+            const bool refractionReady =
+                !m_RenderDiagnosticsRequireRefraction ||
+                (d.HPWaterCompositeRan &&
+                 d.HPWaterRefractionNDCMarchEnabled &&
+                 d.HPWaterRefractionDataTexture != 0 &&
+                 d.HPWaterRefractionMetaTexture != 0 &&
+                 HasHPWaterRefractionTextureEvidence());
             const bool ssrReady =
                 !m_RenderDiagnosticsRequireSSR ||
                 (d.HPWaterSSRReflectionEnabled &&
@@ -8784,8 +8925,9 @@ private:
                 m_RenderDiagnosticsRequireSSR ||
                 m_RenderDiagnosticsRequireLightLoop ||
                 m_RenderDiagnosticsRequireCaustics ||
-                m_RenderDiagnosticsRequireVolume;
-            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady && lightLoopReady && causticsReady && volumeReady;
+                m_RenderDiagnosticsRequireVolume ||
+                m_RenderDiagnosticsRequireRefraction;
+            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && refractionReady && ssrReady && lightLoopReady && causticsReady && volumeReady;
             if (ready || (!strictReadinessRequired && d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame)) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
@@ -10689,6 +10831,7 @@ private:
     bool m_HPWaterLightDiagnostics = false;
     bool m_HPWaterCausticDiagnostics = false;
     bool m_HPWaterVolumeDiagnostics = false;
+    bool m_HPWaterRefractionDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
     bool m_RenderDiagnosticsRequireFluidBake = false;
@@ -10696,6 +10839,7 @@ private:
     bool m_RenderDiagnosticsRequireLightLoop = false;
     bool m_RenderDiagnosticsRequireCaustics = false;
     bool m_RenderDiagnosticsRequireVolume = false;
+    bool m_RenderDiagnosticsRequireRefraction = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
@@ -10816,6 +10960,7 @@ int main(int argc, char** argv) {
     bool hpwaterLightDiagnostics = false;
     bool hpwaterCausticDiagnostics = false;
     bool hpwaterVolumeDiagnostics = false;
+    bool hpwaterRefractionDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--render-diagnostics-once") {
@@ -10841,6 +10986,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-volume-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterVolumeDiagnostics = true;
+        } else if (arg == "--hpwater-refraction-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterRefractionDiagnostics = true;
         }
     }
 
@@ -10851,7 +10999,8 @@ int main(int argc, char** argv) {
         hpwaterSSRDiagnostics,
         hpwaterLightDiagnostics,
         hpwaterCausticDiagnostics,
-        hpwaterVolumeDiagnostics);
+        hpwaterVolumeDiagnostics,
+        hpwaterRefractionDiagnostics);
     app.Run();
     return 0;
 }
