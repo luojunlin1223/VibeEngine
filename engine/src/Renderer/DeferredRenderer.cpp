@@ -35,6 +35,28 @@ static uint32_t CalculateMipCount(uint32_t width, uint32_t height) {
     return mipCount;
 }
 
+static bool IsPowerOfTwo(uint32_t value) {
+    return value != 0 && (value & (value - 1u)) == 0;
+}
+
+static uint32_t FloorPowerOfTwo(uint32_t value) {
+    if (value == 0)
+        return 0;
+    uint32_t result = 1;
+    while ((result << 1u) != 0 && (result << 1u) <= value)
+        result <<= 1u;
+    return result;
+}
+
+static int Log2PowerOfTwo(uint32_t value) {
+    int result = 0;
+    while (value > 1u) {
+        value >>= 1u;
+        ++result;
+    }
+    return result;
+}
+
 static float RadicalInverseVdC(uint32_t bits) {
     bits = (bits << 16u) | (bits >> 16u);
     bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
@@ -290,6 +312,18 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
     if (!m_HPWaterSpectrumComputeShader) {
         VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterSpectrum.comp");
     }
+    m_HPWaterSpectrumSeedShader = ComputeShader::CreateFromFile("shaders/HPWaterSpectrumSeed.comp");
+    if (!m_HPWaterSpectrumSeedShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterSpectrumSeed.comp");
+    }
+    m_HPWaterSpectrumButterflyShader = ComputeShader::CreateFromFile("shaders/HPWaterSpectrumButterfly.comp");
+    if (!m_HPWaterSpectrumButterflyShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterSpectrumButterfly.comp");
+    }
+    m_HPWaterSpectrumResolveShader = ComputeShader::CreateFromFile("shaders/HPWaterSpectrumResolve.comp");
+    if (!m_HPWaterSpectrumResolveShader) {
+        VE_ENGINE_ERROR("DeferredRenderer: Failed to load HPWaterSpectrumResolve.comp");
+    }
 
     m_HPWaterDepthPyramidShader = Shader::CreateFromFile("shaders/HPWaterDepthPyramid.shader");
     if (!m_HPWaterDepthPyramidShader) {
@@ -385,6 +419,9 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticFilterComputeShader.reset();
     m_HPWaterFluidComputeShader.reset();
     m_HPWaterSpectrumComputeShader.reset();
+    m_HPWaterSpectrumSeedShader.reset();
+    m_HPWaterSpectrumButterflyShader.reset();
+    m_HPWaterSpectrumResolveShader.reset();
     m_HPWaterDepthPyramidShader.reset();
     m_HPWaterDepthMergeShader.reset();
     m_HPWaterNormalMergeShader.reset();
@@ -1257,34 +1294,50 @@ void DeferredRenderer::ClearHPWaterFluidFBOs() {
 
 void DeferredRenderer::CreateHPWaterSpectrumTexture(uint32_t resolution) {
     resolution = std::clamp(resolution, 16u, 2048u);
+    if (!IsPowerOfTwo(resolution))
+        resolution = std::max(16u, FloorPowerOfTwo(resolution));
     if (m_HPWaterSpectrumTexture != 0 && m_HPWaterSpectrumResolution == resolution)
         return;
 
     DestroyHPWaterSpectrumTexture();
 
-    glGenTextures(1, &m_HPWaterSpectrumTexture);
-    VE_GPU_TRACK(GPUResourceType::Texture, m_HPWaterSpectrumTexture);
-    glBindTexture(GL_TEXTURE_2D, m_HPWaterSpectrumTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
-                 static_cast<GLsizei>(resolution),
-                 static_cast<GLsizei>(resolution),
-                 0, GL_RGBA, GL_HALF_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    auto createSpectrumTexture = [resolution](uint32_t& texture, bool linearFilter) {
+        glGenTextures(1, &texture);
+        VE_GPU_TRACK(GPUResourceType::Texture, texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
+                     static_cast<GLsizei>(resolution),
+                     static_cast<GLsizei>(resolution),
+                     0, GL_RGBA, GL_HALF_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearFilter ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearFilter ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    };
+
+    createSpectrumTexture(m_HPWaterSpectrumTexture, true);
+    createSpectrumTexture(m_HPWaterSpectrumFrequencyTexture, false);
+    createSpectrumTexture(m_HPWaterSpectrumPingTexture, false);
+    createSpectrumTexture(m_HPWaterSpectrumPongTexture, false);
 
     m_HPWaterSpectrumResolution = resolution;
     m_HPWaterSpectrumComputeValid = false;
 }
 
 void DeferredRenderer::DestroyHPWaterSpectrumTexture() {
-    if (m_HPWaterSpectrumTexture != 0) {
-        VE_GPU_UNTRACK(GPUResourceType::Texture, m_HPWaterSpectrumTexture);
-        GLuint texture = static_cast<GLuint>(m_HPWaterSpectrumTexture);
+    auto destroyTexture = [](uint32_t& textureId) {
+        if (textureId == 0)
+            return;
+        VE_GPU_UNTRACK(GPUResourceType::Texture, textureId);
+        GLuint texture = static_cast<GLuint>(textureId);
         glDeleteTextures(1, &texture);
-    }
+        textureId = 0;
+    };
+    destroyTexture(m_HPWaterSpectrumTexture);
+    destroyTexture(m_HPWaterSpectrumFrequencyTexture);
+    destroyTexture(m_HPWaterSpectrumPingTexture);
+    destroyTexture(m_HPWaterSpectrumPongTexture);
     m_HPWaterSpectrumTexture = 0;
     m_HPWaterSpectrumResolution = 0;
     m_HPWaterSpectrumComputeValid = false;
@@ -1292,6 +1345,8 @@ void DeferredRenderer::DestroyHPWaterSpectrumTexture() {
     m_HPWaterSpectrumFrequencyDomainEnabled = false;
     m_HPWaterSpectrumPhillipsEnabled = false;
     m_HPWaterSpectrumJonswapEnabled = false;
+    m_HPWaterSpectrumIFFTEnabled = false;
+    m_HPWaterSpectrumButterflyPasses = 0;
 }
 
 void DeferredRenderer::CreateHPWaterGBuffer() {
@@ -4170,41 +4225,119 @@ bool DeferredRenderer::UpdateHPWaterSpectrumTexture(uint32_t resolution,
     m_HPWaterSpectrumFrequencyDomainEnabled = false;
     m_HPWaterSpectrumPhillipsEnabled = false;
     m_HPWaterSpectrumJonswapEnabled = false;
+    m_HPWaterSpectrumIFFTEnabled = false;
+    m_HPWaterSpectrumButterflyPasses = 0;
 
     if (!m_HPWaterSpectrumComputeShader || !enabled || amplitude <= 0.0f)
         return false;
 
-    const uint32_t safeResolution = std::clamp(resolution, 16u, 2048u);
+    uint32_t safeResolution = std::clamp(resolution, 16u, 2048u);
+    if (!IsPowerOfTwo(safeResolution))
+        safeResolution = std::max(16u, FloorPowerOfTwo(safeResolution));
+    const int log2Size = Log2PowerOfTwo(safeResolution);
     CreateHPWaterSpectrumTexture(safeResolution);
     if (m_HPWaterSpectrumTexture == 0)
         return false;
 
-    m_HPWaterSpectrumComputeShader->Bind();
-    glBindImageTexture(0, static_cast<GLuint>(m_HPWaterSpectrumTexture), 0, GL_FALSE, 0,
-                       GL_WRITE_ONLY, GL_RGBA16F);
-    m_HPWaterSpectrumComputeShader->SetVec3("u_BoxSize", glm::max(boxSize, glm::vec3(0.001f)));
-    m_HPWaterSpectrumComputeShader->SetFloat("u_Amplitude", std::max(amplitude, 0.0f));
-    m_HPWaterSpectrumComputeShader->SetFloat("u_WindAngle", windAngle);
-    m_HPWaterSpectrumComputeShader->SetFloat("u_WindSpeed", std::clamp(windSpeed, 0.0f, 80.0f));
-    m_HPWaterSpectrumComputeShader->SetFloat("u_DirectionalSpread", std::clamp(directionalSpread, 0.0f, 1.0f));
-    m_HPWaterSpectrumComputeShader->SetFloat("u_Swell", std::clamp(swell, 0.0f, 1.0f));
-    m_HPWaterSpectrumComputeShader->SetFloat("u_ShortWaveFade", std::clamp(shortWaveFade, 0.0f, 2.0f));
-    m_HPWaterSpectrumComputeShader->SetFloat("u_Time", time);
-    m_HPWaterSpectrumComputeShader->SetFloat("u_NormalStrength", std::clamp(normalStrength, 0.0f, 4.0f));
-    m_HPWaterSpectrumComputeShader->SetFloat("u_Choppiness", std::clamp(choppiness, 0.0f, 4.0f));
-    m_HPWaterSpectrumComputeShader->SetInt("u_Enabled", 1);
-    m_HPWaterSpectrumComputeShader->Dispatch((safeResolution + 15u) / 16u,
-                                             (safeResolution + 15u) / 16u,
-                                             1u);
-    m_HPWaterSpectrumComputeShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-    glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-    m_HPWaterSpectrumComputeShader->Unbind();
+    const uint32_t groupCount = (safeResolution + 15u) / 16u;
+    bool usedIFFT = false;
+
+    if (m_HPWaterSpectrumSeedShader && m_HPWaterSpectrumButterflyShader && m_HPWaterSpectrumResolveShader &&
+        m_HPWaterSpectrumFrequencyTexture != 0 && m_HPWaterSpectrumPingTexture != 0 &&
+        m_HPWaterSpectrumPongTexture != 0) {
+        m_HPWaterSpectrumSeedShader->Bind();
+        glBindImageTexture(0, static_cast<GLuint>(m_HPWaterSpectrumFrequencyTexture), 0, GL_FALSE, 0,
+                           GL_WRITE_ONLY, GL_RGBA16F);
+        m_HPWaterSpectrumSeedShader->SetVec3("u_BoxSize", glm::max(boxSize, glm::vec3(0.001f)));
+        m_HPWaterSpectrumSeedShader->SetFloat("u_Amplitude", std::max(amplitude, 0.0f));
+        m_HPWaterSpectrumSeedShader->SetFloat("u_WindAngle", windAngle);
+        m_HPWaterSpectrumSeedShader->SetFloat("u_WindSpeed", std::clamp(windSpeed, 0.0f, 80.0f));
+        m_HPWaterSpectrumSeedShader->SetFloat("u_DirectionalSpread", std::clamp(directionalSpread, 0.0f, 1.0f));
+        m_HPWaterSpectrumSeedShader->SetFloat("u_Swell", std::clamp(swell, 0.0f, 1.0f));
+        m_HPWaterSpectrumSeedShader->SetFloat("u_ShortWaveFade", std::clamp(shortWaveFade, 0.0f, 2.0f));
+        m_HPWaterSpectrumSeedShader->SetFloat("u_Time", time);
+        m_HPWaterSpectrumSeedShader->SetInt("u_Size", static_cast<int>(safeResolution));
+        m_HPWaterSpectrumSeedShader->SetInt("u_Log2Size", log2Size);
+        m_HPWaterSpectrumSeedShader->SetInt("u_Enabled", 1);
+        m_HPWaterSpectrumSeedShader->Dispatch(groupCount, groupCount, 1u);
+        m_HPWaterSpectrumSeedShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        m_HPWaterSpectrumSeedShader->Unbind();
+
+        uint32_t inputTexture = m_HPWaterSpectrumFrequencyTexture;
+        uint32_t outputTexture = m_HPWaterSpectrumPingTexture;
+        int butterflyPasses = 0;
+        m_HPWaterSpectrumButterflyShader->Bind();
+        for (int axis = 0; axis < 2; ++axis) {
+            for (int stage = 0; stage < log2Size; ++stage) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(inputTexture));
+                glBindImageTexture(0, static_cast<GLuint>(outputTexture), 0, GL_FALSE, 0,
+                                   GL_WRITE_ONLY, GL_RGBA16F);
+                m_HPWaterSpectrumButterflyShader->SetInt("u_Input", 0);
+                m_HPWaterSpectrumButterflyShader->SetInt("u_Size", static_cast<int>(safeResolution));
+                m_HPWaterSpectrumButterflyShader->SetInt("u_Stage", stage);
+                m_HPWaterSpectrumButterflyShader->SetInt("u_Axis", axis);
+                m_HPWaterSpectrumButterflyShader->Dispatch(groupCount, groupCount, 1u);
+                m_HPWaterSpectrumButterflyShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT |
+                                                                GL_TEXTURE_FETCH_BARRIER_BIT);
+                glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+                glBindTexture(GL_TEXTURE_2D, 0);
+                inputTexture = outputTexture;
+                outputTexture = (outputTexture == m_HPWaterSpectrumPingTexture)
+                    ? m_HPWaterSpectrumPongTexture
+                    : m_HPWaterSpectrumPingTexture;
+                ++butterflyPasses;
+            }
+        }
+        m_HPWaterSpectrumButterflyShader->Unbind();
+
+        m_HPWaterSpectrumResolveShader->Bind();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(inputTexture));
+        glBindImageTexture(0, static_cast<GLuint>(m_HPWaterSpectrumTexture), 0, GL_FALSE, 0,
+                           GL_WRITE_ONLY, GL_RGBA16F);
+        m_HPWaterSpectrumResolveShader->SetInt("u_SpatialHeight", 0);
+        m_HPWaterSpectrumResolveShader->SetVec3("u_BoxSize", glm::max(boxSize, glm::vec3(0.001f)));
+        m_HPWaterSpectrumResolveShader->SetFloat("u_Amplitude", std::max(amplitude, 0.0f));
+        m_HPWaterSpectrumResolveShader->SetFloat("u_NormalStrength", std::clamp(normalStrength, 0.0f, 4.0f));
+        m_HPWaterSpectrumResolveShader->SetFloat("u_Choppiness", std::clamp(choppiness, 0.0f, 4.0f));
+        m_HPWaterSpectrumResolveShader->SetInt("u_Size", static_cast<int>(safeResolution));
+        m_HPWaterSpectrumResolveShader->Dispatch(groupCount, groupCount, 1u);
+        m_HPWaterSpectrumResolveShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        m_HPWaterSpectrumResolveShader->Unbind();
+
+        m_HPWaterSpectrumButterflyPasses = butterflyPasses;
+        usedIFFT = butterflyPasses == log2Size * 2;
+    } else {
+        m_HPWaterSpectrumComputeShader->Bind();
+        glBindImageTexture(0, static_cast<GLuint>(m_HPWaterSpectrumTexture), 0, GL_FALSE, 0,
+                           GL_WRITE_ONLY, GL_RGBA16F);
+        m_HPWaterSpectrumComputeShader->SetVec3("u_BoxSize", glm::max(boxSize, glm::vec3(0.001f)));
+        m_HPWaterSpectrumComputeShader->SetFloat("u_Amplitude", std::max(amplitude, 0.0f));
+        m_HPWaterSpectrumComputeShader->SetFloat("u_WindAngle", windAngle);
+        m_HPWaterSpectrumComputeShader->SetFloat("u_WindSpeed", std::clamp(windSpeed, 0.0f, 80.0f));
+        m_HPWaterSpectrumComputeShader->SetFloat("u_DirectionalSpread", std::clamp(directionalSpread, 0.0f, 1.0f));
+        m_HPWaterSpectrumComputeShader->SetFloat("u_Swell", std::clamp(swell, 0.0f, 1.0f));
+        m_HPWaterSpectrumComputeShader->SetFloat("u_ShortWaveFade", std::clamp(shortWaveFade, 0.0f, 2.0f));
+        m_HPWaterSpectrumComputeShader->SetFloat("u_Time", time);
+        m_HPWaterSpectrumComputeShader->SetFloat("u_NormalStrength", std::clamp(normalStrength, 0.0f, 4.0f));
+        m_HPWaterSpectrumComputeShader->SetFloat("u_Choppiness", std::clamp(choppiness, 0.0f, 4.0f));
+        m_HPWaterSpectrumComputeShader->SetInt("u_Enabled", 1);
+        m_HPWaterSpectrumComputeShader->Dispatch(groupCount, groupCount, 1u);
+        m_HPWaterSpectrumComputeShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        m_HPWaterSpectrumComputeShader->Unbind();
+    }
 
     m_HPWaterSpectrumComputeRan = true;
     m_HPWaterSpectrumComputeValid = true;
     m_HPWaterSpectrumFrequencyDomainEnabled = true;
     m_HPWaterSpectrumPhillipsEnabled = true;
     m_HPWaterSpectrumJonswapEnabled = true;
+    m_HPWaterSpectrumIFFTEnabled = usedIFFT;
     return true;
 }
 

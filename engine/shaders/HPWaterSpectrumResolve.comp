@@ -1,0 +1,48 @@
+#version 460 core
+
+// Converts the spatial inverse-FFT height field into the existing HPWater
+// RGBA16F spectrum payload consumed by HPWaterGBuffer.shader:
+// encoded normal.xyz + normalized absolute height signal.
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(binding = 0, rgba16f) writeonly uniform image2D u_SpectrumOutput;
+
+uniform sampler2D u_SpatialHeight;
+uniform vec3  u_BoxSize;
+uniform float u_Amplitude;
+uniform float u_NormalStrength;
+uniform float u_Choppiness;
+uniform int   u_Size;
+
+int WrapCoord(int v, int size) {
+    return (v % size + size) % size;
+}
+
+float HeightAt(ivec2 coord, int size, float invScale) {
+    ivec2 wrapped = ivec2(WrapCoord(coord.x, size), WrapCoord(coord.y, size));
+    return texelFetch(u_SpatialHeight, wrapped, 0).r * invScale;
+}
+
+void main() {
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    int size = max(u_Size, 1);
+    if (coord.x >= size || coord.y >= size)
+        return;
+
+    float invScale = 1.0 / max(float(size * size), 1.0);
+    float h = HeightAt(coord, size, invScale);
+    float hL = HeightAt(coord + ivec2(-1, 0), size, invScale);
+    float hR = HeightAt(coord + ivec2( 1, 0), size, invScale);
+    float hD = HeightAt(coord + ivec2(0, -1), size, invScale);
+    float hU = HeightAt(coord + ivec2(0,  1), size, invScale);
+
+    vec2 texelWorld = max(abs(u_BoxSize.xz), vec2(1.0)) / max(float(size), 1.0);
+    vec2 gradient = vec2((hR - hL) / max(2.0 * texelWorld.x, 0.0001),
+                         (hU - hD) / max(2.0 * texelWorld.y, 0.0001));
+    gradient *= clamp(u_NormalStrength, 0.0, 4.0) * (1.0 + clamp(u_Choppiness, 0.0, 4.0) * 0.12);
+
+    vec3 normal = normalize(vec3(-gradient.x, 1.0, -gradient.y));
+    float heightSignal = clamp(abs(h) / max(abs(u_Amplitude) * 2.5, 0.001), 0.0, 1.0);
+    imageStore(u_SpectrumOutput, coord, vec4(normal * 0.5 + 0.5, heightSignal));
+}

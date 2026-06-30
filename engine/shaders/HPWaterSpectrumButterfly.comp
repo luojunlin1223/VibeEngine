@@ -1,0 +1,56 @@
+#version 460 core
+
+// One radix-2 inverse FFT butterfly stage over one axis. Input is expected to
+// be bit-reversed along that axis before stage 0.
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(binding = 0, rgba16f) writeonly uniform image2D u_Output;
+
+uniform sampler2D u_Input;
+uniform int u_Size;
+uniform int u_Stage;
+uniform int u_Axis; // 0 = x, 1 = y
+
+const float PI = 3.14159265358979323846;
+
+vec2 ComplexMul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    int size = max(u_Size, 1);
+    if (coord.x >= size || coord.y >= size)
+        return;
+
+    int span = 1 << (u_Stage + 1);
+    int halfSpan = span >> 1;
+    int logical = (u_Axis == 0) ? coord.x : coord.y;
+    int pair = logical & (halfSpan - 1);
+    if ((logical & (span - 1)) >= halfSpan)
+        return;
+
+    int groupBase = logical - (logical & (span - 1));
+    int i0 = groupBase + pair;
+    int i1 = i0 + halfSpan;
+
+    ivec2 coord0 = coord;
+    ivec2 coord1 = coord;
+    if (u_Axis == 0) {
+        coord0.x = i0;
+        coord1.x = i1;
+    } else {
+        coord0.y = i0;
+        coord1.y = i1;
+    }
+
+    vec2 a = texelFetch(u_Input, coord0, 0).rg;
+    vec2 b = texelFetch(u_Input, coord1, 0).rg;
+    float angle = 2.0 * PI * float(pair) / float(span);
+    vec2 twiddle = vec2(cos(angle), sin(angle));
+    vec2 t = ComplexMul(twiddle, b);
+
+    imageStore(u_Output, coord0, vec4(a + t, 0.0, 0.0));
+    imageStore(u_Output, coord1, vec4(a - t, 0.0, 0.0));
+}

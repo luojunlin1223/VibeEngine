@@ -659,6 +659,8 @@ public:
     bool IsHPWaterSpectrumFrequencyDomainEnabled() const { return m_HPWaterSpectrumFrequencyDomainEnabled; }
     bool IsHPWaterSpectrumPhillipsEnabled() const { return m_HPWaterSpectrumPhillipsEnabled; }
     bool IsHPWaterSpectrumJonswapEnabled() const { return m_HPWaterSpectrumJonswapEnabled; }
+    bool IsHPWaterSpectrumIFFTEnabled() const { return m_HPWaterSpectrumIFFTEnabled; }
+    int GetHPWaterSpectrumButterflyPasses() const { return m_HPWaterSpectrumButterflyPasses; }
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
     uint32_t GetHPWaterFluidWaterHeightTexture() const;
     uint32_t GetHPWaterFluidSceneHeightTexture() const;
@@ -974,12 +976,17 @@ private:
 
     // GPU-generated ocean spectrum payload consumed by the HPWater G-buffer.
     uint32_t m_HPWaterSpectrumTexture = 0;
+    uint32_t m_HPWaterSpectrumFrequencyTexture = 0;
+    uint32_t m_HPWaterSpectrumPingTexture = 0;
+    uint32_t m_HPWaterSpectrumPongTexture = 0;
     uint32_t m_HPWaterSpectrumResolution = 0;
     bool m_HPWaterSpectrumComputeRan = false;
     bool m_HPWaterSpectrumComputeValid = false;
     bool m_HPWaterSpectrumFrequencyDomainEnabled = false;
     bool m_HPWaterSpectrumPhillipsEnabled = false;
     bool m_HPWaterSpectrumJonswapEnabled = false;
+    bool m_HPWaterSpectrumIFFTEnabled = false;
+    int m_HPWaterSpectrumButterflyPasses = 0;
 
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;
@@ -1001,6 +1008,9 @@ private:
     std::shared_ptr<ComputeShader> m_HPWaterCausticFilterComputeShader;
     std::shared_ptr<ComputeShader> m_HPWaterFluidComputeShader;
     std::shared_ptr<ComputeShader> m_HPWaterSpectrumComputeShader;
+    std::shared_ptr<ComputeShader> m_HPWaterSpectrumSeedShader;
+    std::shared_ptr<ComputeShader> m_HPWaterSpectrumButterflyShader;
+    std::shared_ptr<ComputeShader> m_HPWaterSpectrumResolveShader;
     std::shared_ptr<Shader> m_HPWaterDepthPyramidShader;
     std::shared_ptr<Shader> m_HPWaterDepthMergeShader;
     std::shared_ptr<Shader> m_HPWaterNormalMergeShader;

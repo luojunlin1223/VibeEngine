@@ -298,6 +298,8 @@ struct RenderDiagnostics {
     bool HPWaterSpectrumFrequencyDomainEnabled = false;
     bool HPWaterSpectrumPhillipsEnabled = false;
     bool HPWaterSpectrumJonswapEnabled = false;
+    bool HPWaterSpectrumIFFTEnabled = false;
+    int HPWaterSpectrumButterflyPasses = 0;
     bool HPWaterSkyTextureReflectionBound = false;
     uint32_t HPWaterSkyTexture = 0;
     bool HPWaterReflectionProbeBound = false;

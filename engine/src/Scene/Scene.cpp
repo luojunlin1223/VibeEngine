@@ -2783,6 +2783,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 m_RenderDiagnostics.HPWaterSpectrumJonswapEnabled =
                     m_RenderDiagnostics.HPWaterSpectrumJonswapEnabled ||
                     (spectrumComputeValid && m_DeferredRenderer.IsHPWaterSpectrumJonswapEnabled());
+                m_RenderDiagnostics.HPWaterSpectrumIFFTEnabled =
+                    m_RenderDiagnostics.HPWaterSpectrumIFFTEnabled ||
+                    (spectrumComputeValid && m_DeferredRenderer.IsHPWaterSpectrumIFFTEnabled());
+                m_RenderDiagnostics.HPWaterSpectrumButterflyPasses =
+                    std::max(m_RenderDiagnostics.HPWaterSpectrumButterflyPasses,
+                             m_DeferredRenderer.GetHPWaterSpectrumButterflyPasses());
 
                 RenderCommand::DrawIndexed(drawVAO);
                 m_RenderDiagnostics.HPWaterGBufferDrawn++;
