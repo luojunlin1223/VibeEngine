@@ -636,6 +636,10 @@ public:
                                       bool enabled,
                                       float amplitude,
                                       float windAngle,
+                                      float windSpeed,
+                                      float directionalSpread,
+                                      float swell,
+                                      float shortWaveFade,
                                       float time,
                                       float normalStrength,
                                       float choppiness);

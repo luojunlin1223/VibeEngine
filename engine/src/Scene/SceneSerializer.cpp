@@ -588,6 +588,10 @@ static void SerializeEntity(YAML::Emitter& out, Entity entity, entt::registry& r
         out << YAML::Key << "SpectrumWaves" << YAML::Value << w.SpectrumWaves;
         out << YAML::Key << "SpectrumAmplitude" << YAML::Value << w.SpectrumAmplitude;
         out << YAML::Key << "SpectrumWindAngle" << YAML::Value << w.SpectrumWindAngle;
+        out << YAML::Key << "SpectrumWindSpeed" << YAML::Value << w.SpectrumWindSpeed;
+        out << YAML::Key << "SpectrumDirectionalSpread" << YAML::Value << w.SpectrumDirectionalSpread;
+        out << YAML::Key << "SpectrumSwell" << YAML::Value << w.SpectrumSwell;
+        out << YAML::Key << "SpectrumShortWaveFade" << YAML::Value << w.SpectrumShortWaveFade;
         out << YAML::Key << "SpectrumTimeScale" << YAML::Value << w.SpectrumTimeScale;
         out << YAML::Key << "SpectrumNormalStrength" << YAML::Value << w.SpectrumNormalStrength;
         out << YAML::Key << "Choppiness" << YAML::Value << w.Choppiness;
@@ -1617,6 +1621,10 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["SpectrumWaves"])       w.SpectrumWaves = wNode["SpectrumWaves"].as<bool>();
                 if (wNode["SpectrumAmplitude"])   w.SpectrumAmplitude = wNode["SpectrumAmplitude"].as<float>();
                 if (wNode["SpectrumWindAngle"])   w.SpectrumWindAngle = wNode["SpectrumWindAngle"].as<float>();
+                if (wNode["SpectrumWindSpeed"])   w.SpectrumWindSpeed = wNode["SpectrumWindSpeed"].as<float>();
+                if (wNode["SpectrumDirectionalSpread"]) w.SpectrumDirectionalSpread = wNode["SpectrumDirectionalSpread"].as<float>();
+                if (wNode["SpectrumSwell"])       w.SpectrumSwell = wNode["SpectrumSwell"].as<float>();
+                if (wNode["SpectrumShortWaveFade"]) w.SpectrumShortWaveFade = wNode["SpectrumShortWaveFade"].as<float>();
                 if (wNode["SpectrumTimeScale"])   w.SpectrumTimeScale = wNode["SpectrumTimeScale"].as<float>();
                 if (wNode["SpectrumNormalStrength"]) w.SpectrumNormalStrength = wNode["SpectrumNormalStrength"].as<float>();
                 if (wNode["Choppiness"])          w.Choppiness = wNode["Choppiness"].as<float>();
@@ -1694,6 +1702,10 @@ static bool DeserializeSceneFromYAML(const YAML::Node& data, const std::shared_p
                 if (wNode["FluidObstacleHeightRange"]) w.FluidObstacleHeightRange = wNode["FluidObstacleHeightRange"].as<float>();
                 w.RefractionSampleCount = std::clamp(w.RefractionSampleCount, 4, 64);
                 w.SpectrumAmplitude = std::clamp(w.SpectrumAmplitude, 0.0f, 10.0f);
+                w.SpectrumWindSpeed = std::clamp(w.SpectrumWindSpeed, 0.0f, 80.0f);
+                w.SpectrumDirectionalSpread = std::clamp(w.SpectrumDirectionalSpread, 0.0f, 1.0f);
+                w.SpectrumSwell = std::clamp(w.SpectrumSwell, 0.0f, 1.0f);
+                w.SpectrumShortWaveFade = std::clamp(w.SpectrumShortWaveFade, 0.0f, 2.0f);
                 w.SpectrumNormalStrength = std::clamp(w.SpectrumNormalStrength, 0.0f, 4.0f);
                 w.Choppiness = std::clamp(w.Choppiness, 0.0f, 2.0f);
                 w.MaxRefractionCrossDistance = std::clamp(w.MaxRefractionCrossDistance, 0.1f, 200.0f);

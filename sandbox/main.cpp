@@ -1307,6 +1307,10 @@ private:
             water.SpectrumWaves = true;
             water.SpectrumAmplitude = 0.85f;
             water.SpectrumWindAngle = 28.0f;
+            water.SpectrumWindSpeed = 13.0f;
+            water.SpectrumDirectionalSpread = 0.76f;
+            water.SpectrumSwell = 0.62f;
+            water.SpectrumShortWaveFade = 0.34f;
             water.SpectrumTimeScale = 1.35f;
             water.SpectrumNormalStrength = 1.35f;
             water.Choppiness = 0.45f;
@@ -1331,6 +1335,10 @@ private:
             water.IndirectLightStrength = std::clamp(water.IndirectLightStrength, 0.0f, 4.0f);
             water.SpecularFGDStrength = std::clamp(water.SpecularFGDStrength, 0.0f, 1.0f);
             water.GGXEnergyCompensation = std::clamp(water.GGXEnergyCompensation, 0.0f, 2.0f);
+            water.SpectrumWindSpeed = std::clamp(water.SpectrumWindSpeed, 0.0f, 80.0f);
+            water.SpectrumDirectionalSpread = std::clamp(water.SpectrumDirectionalSpread, 0.0f, 1.0f);
+            water.SpectrumSwell = std::clamp(water.SpectrumSwell, 0.0f, 1.0f);
+            water.SpectrumShortWaveFade = std::clamp(water.SpectrumShortWaveFade, 0.0f, 2.0f);
             water.SpectrumNormalStrength = std::clamp(water.SpectrumNormalStrength, 0.0f, 4.0f);
             auto& mr = waterEntity.HasComponent<VE::MeshRendererComponent>()
                 ? waterEntity.GetComponent<VE::MeshRendererComponent>()
@@ -6483,6 +6491,10 @@ private:
                 ImGui::Checkbox("Spectrum Waves", &w.SpectrumWaves);
                 ImGui::DragFloat("Spectrum Amplitude", &w.SpectrumAmplitude, 0.01f, 0.0f, 10.0f, "%.3f");
                 ImGui::DragFloat("Spectrum Wind Angle", &w.SpectrumWindAngle, 1.0f, -360.0f, 360.0f, "%.1f");
+                ImGui::DragFloat("Spectrum Wind Speed", &w.SpectrumWindSpeed, 0.1f, 0.0f, 80.0f, "%.2f m/s");
+                ImGui::SliderFloat("Spectrum Directional Spread", &w.SpectrumDirectionalSpread, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Spectrum Swell", &w.SpectrumSwell, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Spectrum Short Wave Fade", &w.SpectrumShortWaveFade, 0.0f, 2.0f, "%.3f");
                 ImGui::DragFloat("Spectrum Time Scale", &w.SpectrumTimeScale, 0.01f, 0.0f, 10.0f, "%.3f");
                 ImGui::SliderFloat("Spectrum Normal Strength", &w.SpectrumNormalStrength, 0.0f, 4.0f, "%.3f");
                 ImGui::SliderFloat("Choppiness", &w.Choppiness, 0.0f, 2.0f, "%.3f");
@@ -7551,6 +7563,11 @@ private:
         out << "HPWaterSpectrumResolution: " << d.HPWaterSpectrumResolution << "\n";
         out << "HPWaterSpectrumAmplitude: " << d.HPWaterSpectrumAmplitude << "\n";
         out << "HPWaterSpectrumNormalStrength: " << d.HPWaterSpectrumNormalStrength << "\n";
+        out << "HPWaterSpectrumWindSpeed: " << d.HPWaterSpectrumWindSpeed << "\n";
+        out << "HPWaterSpectrumDirectionalSpread: " << d.HPWaterSpectrumDirectionalSpread << "\n";
+        out << "HPWaterSpectrumSwell: " << d.HPWaterSpectrumSwell << "\n";
+        out << "HPWaterSpectrumShortWaveFade: " << d.HPWaterSpectrumShortWaveFade << "\n";
+        out << "HPWaterSpectrumWindModelEnabled: " << d.HPWaterSpectrumWindModelEnabled << "\n";
         out << "HPWaterSkyTextureReflectionBound: " << d.HPWaterSkyTextureReflectionBound << "\n";
         out << "HPWaterSkyTexture: " << d.HPWaterSkyTexture << "\n";
         out << "HPWaterReflectionProbeBound: " << d.HPWaterReflectionProbeBound << "\n";
@@ -8305,7 +8322,7 @@ private:
             d.HPWaterAreaLightSelectedInfluenceSum,
             d.HPWaterPunctualPointLightsCapacitySkipped,
             d.HPWaterPunctualSpotLightsCapacitySkipped);
-        ImGui::Text("HPWater spectrum: ocean=%d normal=%d compute=%d/%d consumed=%d tex=%u res=%u amp=%.3f normalStrength=%.3f",
+        ImGui::Text("HPWater spectrum: ocean=%d normal=%d compute=%d/%d consumed=%d tex=%u res=%u amp=%.3f normalStrength=%.3f wind=%.2f spread=%.2f swell=%.2f shortFade=%.2f windModel=%d",
             d.HPWaterSpectralOceanEnabled ? 1 : 0,
             d.HPWaterSpectralNormalParityEnabled ? 1 : 0,
             d.HPWaterSpectrumComputeRan ? 1 : 0,
@@ -8314,7 +8331,12 @@ private:
             d.HPWaterSpectrumTexture,
             d.HPWaterSpectrumResolution,
             d.HPWaterSpectrumAmplitude,
-            d.HPWaterSpectrumNormalStrength);
+            d.HPWaterSpectrumNormalStrength,
+            d.HPWaterSpectrumWindSpeed,
+            d.HPWaterSpectrumDirectionalSpread,
+            d.HPWaterSpectrumSwell,
+            d.HPWaterSpectrumShortWaveFade,
+            d.HPWaterSpectrumWindModelEnabled ? 1 : 0);
         ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d box=%d dominant=%d exact=%d multiBounce=%d (%u/%u) intensity=%.3f blend=%.3f influence=%.3f hierarchy=%.3f",
             d.HPWaterSkyTextureReflectionBound ? 1 : 0,
             d.HPWaterSkyTexture,

@@ -394,6 +394,10 @@ struct HPWaterComponent {
     bool  SpectrumWaves = true;
     float SpectrumAmplitude = 0.75f;
     float SpectrumWindAngle = 35.0f;
+    float SpectrumWindSpeed = 12.0f;
+    float SpectrumDirectionalSpread = 0.72f;
+    float SpectrumSwell = 0.55f;
+    float SpectrumShortWaveFade = 0.36f;
     float SpectrumTimeScale = 1.35f;
     float SpectrumNormalStrength = 1.15f;
     float Choppiness = 0.42f;

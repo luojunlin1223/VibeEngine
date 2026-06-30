@@ -123,6 +123,13 @@ static HPWaterSpectrumSample SampleHPWaterSpectrum(const HPWaterComponent& water
     const glm::vec2 wind = glm::normalize(glm::vec2(std::cos(windRad), std::sin(windRad)));
     const glm::vec2 side(-wind.y, wind.x);
     const float domain = std::max(std::max(water.WorldSizeX, water.WorldSizeZ), 1.0f);
+    const float windSpeed = std::clamp(water.SpectrumWindSpeed, 0.1f, 80.0f);
+    const float windEnergy = std::clamp(std::pow(windSpeed / 12.0f, 0.65f), 0.35f, 3.0f);
+    const float directionalSpread = std::clamp(water.SpectrumDirectionalSpread, 0.0f, 1.0f);
+    const float spreadPower = glm::mix(0.75f, 6.0f, directionalSpread);
+    const float spreadFloor = glm::mix(0.42f, 0.08f, directionalSpread);
+    const float swellDecay = glm::mix(0.52f, 0.22f, std::clamp(water.SpectrumSwell, 0.0f, 1.0f));
+    const float shortWaveFade = std::clamp(water.SpectrumShortWaveFade, 0.0f, 2.0f);
 
     static const float wavelengthFactors[] = {
         0.46f, 0.32f, 0.22f, 0.155f, 0.108f, 0.076f, 0.054f, 0.038f,
@@ -143,10 +150,12 @@ static HPWaterSpectrumSample SampleHPWaterSpectrum(const HPWaterComponent& water
         const float k = twoPi / wavelength;
         const float omega = std::sqrt(gravity * k);
         const float octave = static_cast<float>(i);
-        const float swell = std::exp(-octave * 0.34f);
-        const float capillaryFade = 1.0f / (1.0f + std::pow(std::max(0.0f, octave - 9.0f), 1.35f) * 0.36f);
-        const float directionalEnergy = std::pow(std::max(glm::dot(dir, wind), 0.0f), 2.0f) * 0.72f + 0.28f;
-        const float amplitude = water.SpectrumAmplitude * swell * capillaryFade * directionalEnergy;
+        const float swell = std::exp(-octave * swellDecay);
+        const float capillaryFade =
+            1.0f / (1.0f + std::pow(std::max(0.0f, octave - 9.0f), 1.35f) * shortWaveFade);
+        const float directionalEnergy =
+            std::pow(std::max(glm::dot(dir, wind), 0.0f), spreadPower) * (1.0f - spreadFloor) + spreadFloor;
+        const float amplitude = water.SpectrumAmplitude * windEnergy * swell * capillaryFade * directionalEnergy;
         const float phase = k * (dir.x * localX + dir.y * localZ) + omega * water._OceanTime + phaseOffsets[i];
         const float s = std::sin(phase);
         const float c = std::cos(phase);
@@ -2676,6 +2685,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterShader->SetInt("u_HPSpectrumWaves", water->SpectrumWaves ? 1 : 0);
                 hpWaterShader->SetFloat("u_HPSpectrumAmplitude", water->SpectrumAmplitude);
                 hpWaterShader->SetFloat("u_HPSpectrumWindAngle", water->SpectrumWindAngle);
+                hpWaterShader->SetFloat("u_HPSpectrumWindSpeed", water->SpectrumWindSpeed);
+                hpWaterShader->SetFloat("u_HPSpectrumDirectionalSpread", water->SpectrumDirectionalSpread);
+                hpWaterShader->SetFloat("u_HPSpectrumSwell", water->SpectrumSwell);
+                hpWaterShader->SetFloat("u_HPSpectrumShortWaveFade", water->SpectrumShortWaveFade);
                 hpWaterShader->SetFloat("u_HPSpectrumTime", water->_OceanTime);
                 hpWaterShader->SetFloat("u_HPSpectrumNormalStrength", water->SpectrumNormalStrength);
                 hpWaterShader->SetFloat("u_HPChoppiness", water->Choppiness);
@@ -2687,6 +2700,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                                     water->SpectrumWaves,
                                                                     water->SpectrumAmplitude,
                                                                     water->SpectrumWindAngle,
+                                                                    water->SpectrumWindSpeed,
+                                                                    water->SpectrumDirectionalSpread,
+                                                                    water->SpectrumSwell,
+                                                                    water->SpectrumShortWaveFade,
                                                                     water->_OceanTime,
                                                                     water->SpectrumNormalStrength,
                                                                     water->Choppiness);
@@ -2732,6 +2749,17 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     std::max(m_RenderDiagnostics.HPWaterSpectrumAmplitude, water->SpectrumAmplitude);
                 m_RenderDiagnostics.HPWaterSpectrumNormalStrength =
                     std::max(m_RenderDiagnostics.HPWaterSpectrumNormalStrength, water->SpectrumNormalStrength);
+                m_RenderDiagnostics.HPWaterSpectrumWindSpeed =
+                    std::max(m_RenderDiagnostics.HPWaterSpectrumWindSpeed, water->SpectrumWindSpeed);
+                m_RenderDiagnostics.HPWaterSpectrumDirectionalSpread =
+                    std::max(m_RenderDiagnostics.HPWaterSpectrumDirectionalSpread, water->SpectrumDirectionalSpread);
+                m_RenderDiagnostics.HPWaterSpectrumSwell =
+                    std::max(m_RenderDiagnostics.HPWaterSpectrumSwell, water->SpectrumSwell);
+                m_RenderDiagnostics.HPWaterSpectrumShortWaveFade =
+                    std::max(m_RenderDiagnostics.HPWaterSpectrumShortWaveFade, water->SpectrumShortWaveFade);
+                m_RenderDiagnostics.HPWaterSpectrumWindModelEnabled =
+                    m_RenderDiagnostics.HPWaterSpectrumWindModelEnabled ||
+                    (water->SpectrumWaves && water->SpectrumAmplitude > 0.0f && water->SpectrumWindSpeed > 0.0f);
 
                 RenderCommand::DrawIndexed(drawVAO);
                 m_RenderDiagnostics.HPWaterGBufferDrawn++;

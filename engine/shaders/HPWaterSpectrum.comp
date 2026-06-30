@@ -10,6 +10,10 @@ layout(binding = 0, rgba16f) writeonly uniform image2D u_SpectrumOutput;
 uniform vec3  u_BoxSize;
 uniform float u_Amplitude;
 uniform float u_WindAngle;
+uniform float u_WindSpeed;
+uniform float u_DirectionalSpread;
+uniform float u_Swell;
+uniform float u_ShortWaveFade;
 uniform float u_Time;
 uniform float u_NormalStrength;
 uniform float u_Choppiness;
@@ -47,6 +51,13 @@ void main() {
     vec2 wind = normalize(vec2(cos(windRad), sin(windRad)));
     vec2 side = vec2(-wind.y, wind.x);
     float domain = max(max(abs(u_BoxSize.x), abs(u_BoxSize.z)), 1.0);
+    float windSpeed = clamp(u_WindSpeed, 0.1, 80.0);
+    float windEnergy = clamp(pow(windSpeed / 12.0, 0.65), 0.35, 3.0);
+    float directionalSpread = clamp(u_DirectionalSpread, 0.0, 1.0);
+    float spreadPower = mix(0.75, 6.0, directionalSpread);
+    float spreadFloor = mix(0.42, 0.08, directionalSpread);
+    float swellDecay = mix(0.52, 0.22, clamp(u_Swell, 0.0, 1.0));
+    float shortWaveFade = clamp(u_ShortWaveFade, 0.0, 2.0);
     vec2 totalGradient = vec2(0.0);
     float totalHeight = 0.0;
 
@@ -63,10 +74,10 @@ void main() {
     for (int i = 0; i < 16; ++i) {
         vec2 dir = normalize(wind + side * directionOffsets[i]);
         float octave = float(i);
-        float swell = exp(-octave * 0.34);
-        float capillaryFade = 1.0 / (1.0 + pow(max(octave - 9.0, 0.0), 1.35) * 0.36);
-        float directionalEnergy = pow(max(dot(dir, wind), 0.0), 2.0) * 0.72 + 0.28;
-        float amplitude = u_Amplitude * swell * capillaryFade * directionalEnergy;
+        float swell = exp(-octave * swellDecay);
+        float capillaryFade = 1.0 / (1.0 + pow(max(octave - 9.0, 0.0), 1.35) * shortWaveFade);
+        float directionalEnergy = pow(max(dot(dir, wind), 0.0), spreadPower) * (1.0 - spreadFloor) + spreadFloor;
+        float amplitude = u_Amplitude * windEnergy * swell * capillaryFade * directionalEnergy;
         float wavelength = max(domain * wavelengthFactors[i], 0.25);
         vec2 gradient;
         totalHeight += SpectrumWave(localXZ, dir, wavelength, amplitude, phaseOffsets[i], gradient);

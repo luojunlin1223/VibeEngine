@@ -59,6 +59,10 @@ uniform float u_HPBaseHeight;
 uniform int   u_HPSpectrumWaves;
 uniform float u_HPSpectrumAmplitude;
 uniform float u_HPSpectrumWindAngle;
+uniform float u_HPSpectrumWindSpeed;
+uniform float u_HPSpectrumDirectionalSpread;
+uniform float u_HPSpectrumSwell;
+uniform float u_HPSpectrumShortWaveFade;
 uniform float u_HPSpectrumTime;
 uniform float u_HPSpectrumNormalStrength;
 uniform float u_HPChoppiness;
@@ -109,6 +113,13 @@ vec3 SampleSpectrumNormal(vec3 worldPos, out float spectrumHeightSignal) {
     vec2 side = vec2(-wind.y, wind.x);
     vec2 localXZ = worldPos.xz - u_HPFluidBoxCenter.xz;
     float domain = max(max(abs(u_HPFluidBoxSize.x), abs(u_HPFluidBoxSize.z)), 1.0);
+    float windSpeed = clamp(u_HPSpectrumWindSpeed, 0.1, 80.0);
+    float windEnergy = clamp(pow(windSpeed / 12.0, 0.65), 0.35, 3.0);
+    float directionalSpread = clamp(u_HPSpectrumDirectionalSpread, 0.0, 1.0);
+    float spreadPower = mix(0.75, 6.0, directionalSpread);
+    float spreadFloor = mix(0.42, 0.08, directionalSpread);
+    float swellDecay = mix(0.52, 0.22, clamp(u_HPSpectrumSwell, 0.0, 1.0));
+    float shortWaveFade = clamp(u_HPSpectrumShortWaveFade, 0.0, 2.0);
     vec2 totalGradient = vec2(0.0);
     float totalHeight = 0.0;
 
@@ -125,10 +136,10 @@ vec3 SampleSpectrumNormal(vec3 worldPos, out float spectrumHeightSignal) {
     for (int i = 0; i < 16; ++i) {
         vec2 dir = normalize(wind + side * directionOffsets[i]);
         float octave = float(i);
-        float swell = exp(-octave * 0.34);
-        float capillaryFade = 1.0 / (1.0 + pow(max(octave - 9.0, 0.0), 1.35) * 0.36);
-        float directionalEnergy = pow(max(dot(dir, wind), 0.0), 2.0) * 0.72 + 0.28;
-        float amplitude = u_HPSpectrumAmplitude * swell * capillaryFade * directionalEnergy;
+        float swell = exp(-octave * swellDecay);
+        float capillaryFade = 1.0 / (1.0 + pow(max(octave - 9.0, 0.0), 1.35) * shortWaveFade);
+        float directionalEnergy = pow(max(dot(dir, wind), 0.0), spreadPower) * (1.0 - spreadFloor) + spreadFloor;
+        float amplitude = u_HPSpectrumAmplitude * windEnergy * swell * capillaryFade * directionalEnergy;
         float wavelength = max(domain * wavelengthFactors[i], 0.25);
         vec2 gradient;
         vec2 chop;

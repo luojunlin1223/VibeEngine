@@ -4013,6 +4013,10 @@ bool DeferredRenderer::UpdateHPWaterSpectrumTexture(uint32_t resolution,
                                                     bool enabled,
                                                     float amplitude,
                                                     float windAngle,
+                                                    float windSpeed,
+                                                    float directionalSpread,
+                                                    float swell,
+                                                    float shortWaveFade,
                                                     float time,
                                                     float normalStrength,
                                                     float choppiness) {
@@ -4033,6 +4037,10 @@ bool DeferredRenderer::UpdateHPWaterSpectrumTexture(uint32_t resolution,
     m_HPWaterSpectrumComputeShader->SetVec3("u_BoxSize", glm::max(boxSize, glm::vec3(0.001f)));
     m_HPWaterSpectrumComputeShader->SetFloat("u_Amplitude", std::max(amplitude, 0.0f));
     m_HPWaterSpectrumComputeShader->SetFloat("u_WindAngle", windAngle);
+    m_HPWaterSpectrumComputeShader->SetFloat("u_WindSpeed", std::clamp(windSpeed, 0.0f, 80.0f));
+    m_HPWaterSpectrumComputeShader->SetFloat("u_DirectionalSpread", std::clamp(directionalSpread, 0.0f, 1.0f));
+    m_HPWaterSpectrumComputeShader->SetFloat("u_Swell", std::clamp(swell, 0.0f, 1.0f));
+    m_HPWaterSpectrumComputeShader->SetFloat("u_ShortWaveFade", std::clamp(shortWaveFade, 0.0f, 2.0f));
     m_HPWaterSpectrumComputeShader->SetFloat("u_Time", time);
     m_HPWaterSpectrumComputeShader->SetFloat("u_NormalStrength", std::clamp(normalStrength, 0.0f, 4.0f));
     m_HPWaterSpectrumComputeShader->SetFloat("u_Choppiness", std::clamp(choppiness, 0.0f, 4.0f));
