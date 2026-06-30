@@ -1242,6 +1242,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRLightingRGBPreweighted();
     m_RenderDiagnostics.HPWaterSSRHitRefinementEnabled =
         m_DeferredRenderer.IsHPWaterSSRHitRefinementEnabled();
+    m_RenderDiagnostics.HPWaterSSRRoughnessConeTracingEnabled =
+        m_DeferredRenderer.IsHPWaterSSRRoughnessConeTracingEnabled();
     m_RenderDiagnostics.HPWaterCompositeConsumesSSRLightingBuffer =
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();
@@ -3688,6 +3690,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRLightingRGBPreweighted();
     m_RenderDiagnostics.HPWaterSSRHitRefinementEnabled =
         m_DeferredRenderer.IsHPWaterSSRHitRefinementEnabled();
+    m_RenderDiagnostics.HPWaterSSRRoughnessConeTracingEnabled =
+        m_DeferredRenderer.IsHPWaterSSRRoughnessConeTracingEnabled();
     m_RenderDiagnostics.HPWaterCompositeConsumesSSRLightingBuffer =
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();

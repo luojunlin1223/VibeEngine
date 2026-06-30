@@ -315,6 +315,7 @@ struct RenderDiagnostics {
     bool HPWaterSSRLightingBufferValid = false;
     bool HPWaterSSRLightingRGBPreweighted = false;
     bool HPWaterSSRHitRefinementEnabled = false;
+    bool HPWaterSSRRoughnessConeTracingEnabled = false;
     bool HPWaterCompositeConsumesSSRLightingBuffer = false;
     uint32_t HPWaterSSRLightingBufferTexture = 0;
     bool HPWaterSSRDiagnosticsValid = false;

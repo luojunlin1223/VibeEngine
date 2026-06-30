@@ -389,6 +389,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterSSRRoughnessConeTracingEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
@@ -529,6 +530,7 @@ void DeferredRenderer::CreateHPWaterSSRFBO() {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterSSRRoughnessConeTracingEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
 }
 
@@ -1347,6 +1349,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterSSRRoughnessConeTracingEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
@@ -1559,6 +1562,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterSSRLightingRan = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterSSRRoughnessConeTracingEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
@@ -1950,6 +1954,7 @@ bool DeferredRenderer::RenderHPWaterSSRLighting(uint32_t sceneColorTexture,
     m_HPWaterSSRLightingValid = false;
     m_HPWaterSSRLightingRGBPreweighted = false;
     m_HPWaterSSRHitRefinementEnabled = false;
+    m_HPWaterSSRRoughnessConeTracingEnabled = false;
     if (!m_HPWaterSSRShader || !m_HPWaterSSRFBO || !m_GBuffer || !m_HPWaterGBuffer ||
         m_QuadVAO == 0 || sceneColorTexture == 0) {
         return false;
@@ -2029,6 +2034,7 @@ bool DeferredRenderer::RenderHPWaterSSRLighting(uint32_t sceneColorTexture,
     m_HPWaterSSRLightingValid = hpWaterSSRActive;
     m_HPWaterSSRLightingRGBPreweighted = hpWaterSSRActive;
     m_HPWaterSSRHitRefinementEnabled = hpWaterSSRActive;
+    m_HPWaterSSRRoughnessConeTracingEnabled = hpWaterSSRActive && m_HPWaterSceneColorMipValid;
     return m_HPWaterSSRLightingValid;
 }
 

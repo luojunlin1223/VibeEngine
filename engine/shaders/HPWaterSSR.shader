@@ -110,6 +110,29 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
 }
 
+vec3 SampleSceneColorCone(vec2 uv, float roughness, float hitTravelled) {
+    float r = clamp(roughness, 0.0, 1.0);
+    float cone = r * r;
+    float maxLod = float(max(u_SceneColorMipCount - 1, 0));
+    float lod = clamp(cone * maxLod + log2(max(hitTravelled * cone * 0.35, 1.0)), 0.0, maxLod);
+
+    if (u_SceneColorMipEnabled != 1 || u_SceneColorMipCount <= 1 || cone <= 0.0001) {
+        return SampleSceneColorBlurred(uv, lod);
+    }
+
+    ivec2 colorSize = textureSize(u_SceneColor, 0);
+    vec2 texel = 1.0 / vec2(max(colorSize, ivec2(1)));
+    vec2 radius = texel * clamp(hitTravelled * cone * 1.25, 1.0, 32.0);
+
+    vec3 center = textureLod(u_SceneColor, uv, lod).rgb;
+    vec3 axis = textureLod(u_SceneColor, clamp(uv + vec2(radius.x, 0.0), vec2(0.001), vec2(0.999)), lod).rgb +
+        textureLod(u_SceneColor, clamp(uv - vec2(radius.x, 0.0), vec2(0.001), vec2(0.999)), lod).rgb +
+        textureLod(u_SceneColor, clamp(uv + vec2(0.0, radius.y), vec2(0.001), vec2(0.999)), lod).rgb +
+        textureLod(u_SceneColor, clamp(uv - vec2(0.0, radius.y), vec2(0.001), vec2(0.999)), lod).rgb;
+
+    return (center * 2.0 + axis) / 6.0;
+}
+
 bool ProjectSSRRay(vec3 rayPos, out vec2 uv, out float rayLinearDepth) {
     vec4 clip = u_ViewProjection * vec4(rayPos, 1.0);
     if (clip.w <= 0.00001) {
@@ -219,8 +242,7 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
                 float roughnessFade = mix(1.0, 0.35, clamp(roughness, 0.0, 1.0));
                 float confidence = edgeFade * distanceFade * roughnessFade *
                     clamp(u_HPWaterSSRStrength, 0.0, 1.0);
-                float lod = roughness * float(max(u_SceneColorMipCount - 1, 0));
-                vec3 color = SampleSceneColorBlurred(hitUV, lod) * confidence;
+                vec3 color = SampleSceneColorCone(hitUV, roughness, hitTravelled) * confidence;
                 return vec4(color, confidence);
             }
 

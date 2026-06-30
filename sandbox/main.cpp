@@ -7671,6 +7671,8 @@ private:
         out << "HPWaterSSRLightingBufferValid: " << d.HPWaterSSRLightingBufferValid << "\n";
         out << "HPWaterSSRLightingRGBPreweighted: " << d.HPWaterSSRLightingRGBPreweighted << "\n";
         out << "HPWaterSSRHitRefinementEnabled: " << d.HPWaterSSRHitRefinementEnabled << "\n";
+        out << "HPWaterSSRRoughnessConeTracingEnabled: "
+            << d.HPWaterSSRRoughnessConeTracingEnabled << "\n";
         out << "HPWaterCompositeConsumesSSRLightingBuffer: "
             << d.HPWaterCompositeConsumesSSRLightingBuffer << "\n";
         out << "HPWaterSSRLightingBufferTexture: " << d.HPWaterSSRLightingBufferTexture << "\n";
@@ -8207,6 +8209,7 @@ private:
                  d.HPWaterSSRLightingBufferValid &&
                  d.HPWaterSSRLightingRGBPreweighted &&
                  d.HPWaterSSRHitRefinementEnabled &&
+                 d.HPWaterSSRRoughnessConeTracingEnabled &&
                  d.HPWaterCompositeConsumesSSRLightingBuffer &&
                  d.HPWaterSSRLightingBufferTexture != 0 &&
                  d.HPWaterSSRDiagnosticsValid &&
@@ -8442,13 +8445,14 @@ private:
             d.HPWaterReflectionProbeBlend,
             d.HPWaterReflectionProbeInfluenceWeight,
             d.HPWaterReflectionProbeHierarchyWeight);
-        ImGui::Text("HPWater SSR hierarchy: enabled=%d blend=%d ssrBuf=%d/%d pre=%d refine=%d consume=%d (%u) diag=%d (%u) steps=%u step=%.3f thickness=%.3f maxDist=%.1f",
+        ImGui::Text("HPWater SSR hierarchy: enabled=%d blend=%d ssrBuf=%d/%d pre=%d refine=%d cone=%d consume=%d (%u) diag=%d (%u) steps=%u step=%.3f thickness=%.3f maxDist=%.1f",
             d.HPWaterSSRReflectionEnabled ? 1 : 0,
             d.HPWaterSSRHierarchyBlendEnabled ? 1 : 0,
             d.HPWaterSSRLightingBufferRan ? 1 : 0,
             d.HPWaterSSRLightingBufferValid ? 1 : 0,
             d.HPWaterSSRLightingRGBPreweighted ? 1 : 0,
             d.HPWaterSSRHitRefinementEnabled ? 1 : 0,
+            d.HPWaterSSRRoughnessConeTracingEnabled ? 1 : 0,
             d.HPWaterCompositeConsumesSSRLightingBuffer ? 1 : 0,
             d.HPWaterSSRLightingBufferTexture,
             d.HPWaterSSRDiagnosticsValid ? 1 : 0,
