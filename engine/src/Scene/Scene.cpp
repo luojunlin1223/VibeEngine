@@ -2642,7 +2642,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
                 if (wroteAnyPixel)
                     ++obstacleCount;
-                if (wroteAnyPixel && hpWaterFluidSources.size() < 8 && hpWaterFluidImpulseStrength > 0.001f) {
+                if (wroteAnyPixel && hpWaterFluidImpulseStrength > 0.001f) {
                     const float centerX = std::clamp(obstacle.Center.x, waterMinX, waterMaxX);
                     const float centerZ = std::clamp(obstacle.Center.z, waterMinZ, waterMaxZ);
                     const float u = std::clamp((centerX - waterMinX) * invX, 0.0f, 1.0f);
@@ -2663,8 +2663,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                         hpWaterFluidImpulseStrength * (0.45f + 0.55f * penetration01);
 
                     bool emittedMovingWake = false;
-                    if (obstacle.UUID != 0u && m_HasPreviousHPWaterObjectPositions &&
-                        hpWaterFluidSources.size() < 8) {
+                    if (obstacle.UUID != 0u && m_HasPreviousHPWaterObjectPositions) {
                         const auto previousIt = m_PreviousHPWaterObjectPositions.find(obstacle.UUID);
                         if (previousIt != m_PreviousHPWaterObjectPositions.end()) {
                             const glm::vec2 motionXZ(
@@ -2680,12 +2679,17 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                     glm::vec2(u, v) - glm::normalize(motionUV) *
                                         std::min(motionPixels / static_cast<float>(hpWaterFluidResolution),
                                                  radiusPixels / static_cast<float>(hpWaterFluidResolution));
-                                hpWaterFluidSources.push_back({
+                                HPWaterFluidSource wakeSource {
                                     std::clamp(wakeUV.x, 0.0f, 1.0f),
                                     std::clamp(wakeUV.y, 0.0f, 1.0f),
                                     std::clamp(radiusPixels * 1.35f, 1.0f, 128.0f),
                                     baseIntensity * std::clamp(0.55f + motionPixels * 0.08f, 0.55f, 1.2f)
-                                });
+                                };
+                                if (hpWaterFluidSources.size() < 8) {
+                                    hpWaterFluidSources.push_back(wakeSource);
+                                } else if (!hpWaterFluidSources.empty()) {
+                                    hpWaterFluidSources.back() = wakeSource;
+                                }
                                 emittedMovingWake = true;
                                 ++movingObjectSourceCount;
                             }

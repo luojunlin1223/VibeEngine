@@ -1462,9 +1462,11 @@ private:
         tc.Position[2] = 8.0f + m_HPWaterMotionDiagnosticTime * 3.0f;
     }
 
-    void EnsureHPWaterFluidFilterDiagnosticObjects() {
+    void EnsureHPWaterFluidFilterDiagnosticObjects(float deltaTime) {
         if (!m_HPWaterFluidFilterDiagnostics || !m_PlayMode)
             return;
+
+        m_HPWaterFluidFilterDiagnosticTime += std::max(deltaTime, 0.0f);
 
         auto ensureDiagnosticCube = [&](const std::string& name,
                                         const glm::vec3& position,
@@ -1516,6 +1518,14 @@ private:
             { 0.0f, 0.7f, 16.0f },
             { 1.2f, 1.2f, 1.2f },
             { 1.0f, 0.2f, 0.9f, 0.35f },
+            0);
+
+        const float movingX = 6.0f + std::sin(m_HPWaterFluidFilterDiagnosticTime * 2.5f) * 2.25f;
+        const float movingZ = 24.0f + std::cos(m_HPWaterFluidFilterDiagnosticTime * 1.7f) * 1.25f;
+        ensureDiagnosticCube("HPWater Fluid Moving Opaque Diagnostic",
+            { movingX, 0.55f, movingZ },
+            { 1.35f, 1.1f, 1.35f },
+            { 0.2f, 1.0f, 0.35f, 1.0f },
             0);
     }
 
@@ -1686,7 +1696,7 @@ private:
             return;
 
         UpdateHPWaterMotionDiagnosticObject(deltaTime);
-        EnsureHPWaterFluidFilterDiagnosticObjects();
+        EnsureHPWaterFluidFilterDiagnosticObjects(deltaTime);
         EnsureHPWaterSSRDiagnosticObjects();
 
         auto train = FindEntityByName("LauncherTrain");
@@ -8223,6 +8233,8 @@ private:
                  d.HPWaterFluidSourceCount > 1 &&
                  d.HPWaterFluidObjectSourceEnabled &&
                  d.HPWaterFluidObjectSourceCount > 0 &&
+                 d.HPWaterFluidMovingObjectSourceEnabled &&
+                 d.HPWaterFluidMovingObjectSourceCount > 0 &&
                  d.HPWaterFluidLayerFilteringParityEnabled &&
                  d.HPWaterFluidRenderQueueParityEnabled &&
                  d.HPWaterFluidWaterLayerCandidates > 0 &&
@@ -10154,6 +10166,7 @@ private:
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
     float m_HPWaterMotionDiagnosticTime = 0.0f;
+    float m_HPWaterFluidFilterDiagnosticTime = 0.0f;
     bool m_ShowContentBrowser = true;
     bool m_ShowScripting = false;
     bool m_ShowProjectSettings = false;
