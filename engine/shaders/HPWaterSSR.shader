@@ -34,6 +34,7 @@ void main() {
 #ifdef FRAGMENT
 layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 SSRResolveDiagnostics;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -134,11 +135,17 @@ vec3 SampleSceneColorBlurred(vec2 uv, float lod) {
     return textureLod(u_SceneColor, uv, clamp(lod, 0.0, maxLod)).rgb;
 }
 
-vec3 SampleSceneColorCone(vec2 uv, float roughness, float hitTravelled) {
+float RoughnessConeLOD(float roughness, float hitTravelled) {
     float r = clamp(roughness, 0.0, 1.0);
     float cone = r * r;
     float maxLod = float(max(u_SceneColorMipCount - 1, 0));
-    float lod = clamp(cone * maxLod + log2(max(hitTravelled * cone * 0.35, 1.0)), 0.0, maxLod);
+    return clamp(cone * maxLod + log2(max(hitTravelled * cone * 0.35, 1.0)), 0.0, maxLod);
+}
+
+vec3 SampleSceneColorCone(vec2 uv, float roughness, float hitTravelled) {
+    float r = clamp(roughness, 0.0, 1.0);
+    float cone = r * r;
+    float lod = RoughnessConeLOD(roughness, hitTravelled);
 
     if (u_SceneColorMipEnabled != 1 || u_SceneColorMipCount <= 1 || cone <= 0.0001) {
         return SampleSceneColorBlurred(uv, lod);
@@ -175,7 +182,9 @@ bool ProjectSSRRay(vec3 rayPos, out vec2 uv, out float rayLinearDepth) {
     return true;
 }
 
-vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughness, float waterLinearDepth) {
+vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughness, float waterLinearDepth,
+                     out vec4 traceDiagnostics) {
+    traceDiagnostics = vec4(0.0);
     if (u_HPWaterSSREnabled != 1 || u_HPWaterSSRMaxSteps <= 0) {
         return vec4(0.0);
     }
@@ -266,6 +275,13 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
                 float roughnessFade = mix(1.0, 0.35, clamp(roughness, 0.0, 1.0));
                 float confidence = edgeFade * distanceFade * roughnessFade *
                     clamp(u_HPWaterSSRStrength, 0.0, 1.0);
+                float maxColorMip = float(max(u_SceneColorMipCount - 1, 1));
+                float coneLod = RoughnessConeLOD(roughness, hitTravelled);
+                traceDiagnostics = vec4(
+                    clamp(coneLod / maxColorMip, 0.0, 1.0),
+                    clamp(hitTravelled / max(maxDistance, 0.0001), 0.0, 1.0),
+                    clamp(roughness, 0.0, 1.0),
+                    confidence);
                 vec3 color = SampleSceneColorCone(hitUV, roughness, hitTravelled) * confidence;
                 return vec4(color, confidence);
             }
@@ -282,18 +298,23 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
     return vec4(0.0);
 }
 
-vec4 ResolveTemporalSSR(vec4 current, vec3 waterWorldPos, float waterLinearDepth) {
+vec4 ResolveTemporalSSR(vec4 current, vec3 waterWorldPos, float waterLinearDepth,
+                        out vec4 temporalDiagnostics) {
+    temporalDiagnostics = vec4(0.0);
     if (u_HPWaterSSRHistoryValid != 1 || current.a <= 0.0001) {
         return current;
     }
 
     bool reprojectValid = true;
     vec2 historyUV = v_UV;
+    float motionVectorMode = 0.0;
     if (u_HPWaterSSRMotionVectorValid == 1) {
         vec2 motionVector = texture(u_HPWaterSSRMotionVector, v_UV).rg;
         historyUV = v_UV - motionVector;
+        motionVectorMode = 1.0;
     } else if (u_HPWaterSSRMotionReprojectionEnabled == 1) {
         historyUV = ProjectUV(u_PreviousViewProjection, waterWorldPos, reprojectValid);
+        motionVectorMode = 0.5;
         if (!reprojectValid) {
             return current;
         }
@@ -306,18 +327,21 @@ vec4 ResolveTemporalSSR(vec4 current, vec3 waterWorldPos, float waterLinearDepth
     if (u_HPWaterSSRDisocclusionRejectionEnabled == 1) {
         float reprojectedWaterDepth = texture(u_HPWaterDepth, historyUV).r;
         if (reprojectedWaterDepth >= 0.9999) {
+            temporalDiagnostics = vec4(0.0, motionVectorMode, 0.0, 0.0);
             return current;
         }
 
         float reprojectedWaterLinear = LinearizeDepth(reprojectedWaterDepth);
         float threshold = max(u_HPWaterSSRDepthRejectionThreshold, 0.0001) * max(waterLinearDepth, 1.0);
         if (abs(reprojectedWaterLinear - waterLinearDepth) > threshold) {
+            temporalDiagnostics = vec4(0.0, motionVectorMode, 0.0, 0.0);
             return current;
         }
     }
 
     vec4 history = texture(u_HPWaterSSRHistory, historyUV);
     if (history.a <= 0.0001) {
+        temporalDiagnostics = vec4(0.0, motionVectorMode, 1.0, 0.0);
         return current;
     }
 
@@ -327,6 +351,7 @@ vec4 ResolveTemporalSSR(vec4 current, vec3 waterWorldPos, float waterLinearDepth
     float historyWeight = blend * smoothstep(0.02, 0.25, current.a) * velocityWeight;
     vec3 rgb = mix(current.rgb, history.rgb, historyWeight);
     float alpha = max(current.a, mix(current.a, history.a, historyWeight));
+    temporalDiagnostics = vec4(historyWeight, motionVectorMode, 1.0, 1.0);
     return vec4(rgb, alpha);
 }
 
@@ -334,11 +359,13 @@ void main() {
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
     if (waterDepth >= 0.9999) {
         FragColor = vec4(0.0);
+        SSRResolveDiagnostics = vec4(0.0);
         return;
     }
 
     if (u_HPWaterMaskEnabled == 1 && texture(u_HPWaterMask, v_UV).r <= 0.001) {
         FragColor = vec4(0.0);
+        SSRResolveDiagnostics = vec4(0.0);
         return;
     }
 
@@ -348,9 +375,15 @@ void main() {
     vec3 waterWorldPos = ReconstructWorldPosition(v_UV, waterDepth);
     vec3 V = NormalizeOr(u_ViewPos - waterWorldPos, vec3(0.0, 0.0, 1.0));
     float waterLinear = LinearizeDepth(waterDepth);
-    FragColor = ResolveTemporalSSR(TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear),
-        waterWorldPos,
-        waterLinear);
+    vec4 traceDiagnostics;
+    vec4 temporalDiagnostics;
+    vec4 currentSSR = TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear, traceDiagnostics);
+    FragColor = ResolveTemporalSSR(currentSSR, waterWorldPos, waterLinear, temporalDiagnostics);
+    SSRResolveDiagnostics = vec4(
+        max(traceDiagnostics.r, traceDiagnostics.b * 0.25),
+        temporalDiagnostics.r,
+        temporalDiagnostics.b,
+        max(traceDiagnostics.a, temporalDiagnostics.g));
 }
 #endif
 

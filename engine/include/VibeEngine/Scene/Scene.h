@@ -327,9 +327,11 @@ struct RenderDiagnostics {
     bool HPWaterSSRMotionVectorHistoryEnabled = false;
     bool HPWaterSSRMotionReprojectionEnabled = false;
     bool HPWaterSSRDisocclusionRejectionEnabled = false;
+    bool HPWaterSSRResolveDiagnosticsValid = false;
     bool HPWaterCompositeConsumesSSRLightingBuffer = false;
     uint32_t HPWaterSSRLightingBufferTexture = 0;
     uint32_t HPWaterSSRMotionVectorTexture = 0;
+    uint32_t HPWaterSSRResolveDiagnosticsTexture = 0;
     bool HPWaterSSRDiagnosticsValid = false;
     uint32_t HPWaterSSRDiagnosticsTexture = 0;
     uint32_t HPWaterSSRMaxSteps = 0;

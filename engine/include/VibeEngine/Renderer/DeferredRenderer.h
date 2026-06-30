@@ -394,6 +394,7 @@ public:
     uint32_t GetHPWaterSSRDiagnosticsTexture() const;
     uint32_t GetHPWaterSSRLightingTexture() const;
     uint32_t GetHPWaterSSRMotionVectorTexture() const;
+    uint32_t GetHPWaterSSRResolveDiagnosticsTexture() const;
     bool IsHPWaterSSRLightingValid() const { return m_HPWaterSSRLightingValid; }
     bool DidHPWaterSSRLightingRun() const { return m_HPWaterSSRLightingRan; }
     bool IsHPWaterSSRLightingRGBPreweighted() const { return m_HPWaterSSRLightingRGBPreweighted; }
@@ -405,6 +406,7 @@ public:
     bool IsHPWaterSSRMotionVectorHistoryEnabled() const { return m_HPWaterSSRMotionVectorHistoryEnabled; }
     bool IsHPWaterSSRMotionReprojectionEnabled() const { return m_HPWaterSSRMotionReprojectionEnabled; }
     bool IsHPWaterSSRDisocclusionRejectionEnabled() const { return m_HPWaterSSRDisocclusionRejectionEnabled; }
+    bool IsHPWaterSSRResolveDiagnosticsValid() const { return m_HPWaterSSRResolveDiagnosticsValid; }
     bool DoesHPWaterCompositeConsumeSSRLightingBuffer() const {
         return m_HPWaterCompositeConsumesSSRLightingBuffer;
     }
@@ -839,6 +841,7 @@ private:
     bool m_HPWaterSSRMotionVectorHistoryEnabled = false;
     bool m_HPWaterSSRMotionReprojectionEnabled = false;
     bool m_HPWaterSSRDisocclusionRejectionEnabled = false;
+    bool m_HPWaterSSRResolveDiagnosticsValid = false;
     bool m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     bool m_HPWaterRefractionNDCMarchEnabled = false;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;

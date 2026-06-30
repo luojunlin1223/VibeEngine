@@ -577,6 +577,7 @@ void DeferredRenderer::CreateHPWaterSSRFBO() {
     ssrSpec.Height = m_Height;
     ssrSpec.ColorFormats = {
         { GL_RGBA16F }, // rgb: SSR lighting, a: consumed reflection hierarchy weight
+        { GL_RGBA16F }, // roughness cone LOD, temporal weight, disocclusion, motion mode/confidence
     };
     m_HPWaterSSRFBO = Framebuffer::Create(ssrSpec);
     m_HPWaterSSRHistoryFBO = Framebuffer::Create(ssrSpec);
@@ -599,6 +600,7 @@ void DeferredRenderer::CreateHPWaterSSRFBO() {
     m_HPWaterSSRMotionVectorHistoryEnabled = false;
     m_HPWaterSSRMotionReprojectionEnabled = false;
     m_HPWaterSSRDisocclusionRejectionEnabled = false;
+    m_HPWaterSSRResolveDiagnosticsValid = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
 }
 
@@ -2107,6 +2109,7 @@ bool DeferredRenderer::RenderHPWaterSSRLighting(uint32_t sceneColorTexture,
     m_HPWaterSSRMotionVectorHistoryEnabled = false;
     m_HPWaterSSRMotionReprojectionEnabled = false;
     m_HPWaterSSRDisocclusionRejectionEnabled = false;
+    m_HPWaterSSRResolveDiagnosticsValid = false;
     if (!m_HPWaterSSRShader || !m_HPWaterSSRFBO || !m_GBuffer || !m_HPWaterGBuffer ||
         m_QuadVAO == 0 || sceneColorTexture == 0) {
         m_HPWaterSSRHistoryValid = false;
@@ -2232,6 +2235,9 @@ bool DeferredRenderer::RenderHPWaterSSRLighting(uint32_t sceneColorTexture,
         hpWaterSSRMotionVectorValid && m_HPWaterSSRHistoryValid;
     m_HPWaterSSRMotionReprojectionEnabled = hpWaterSSRActive;
     m_HPWaterSSRDisocclusionRejectionEnabled = hpWaterSSRActive;
+    m_HPWaterSSRResolveDiagnosticsValid = hpWaterSSRActive &&
+        m_HPWaterSSRFBO->GetColorAttachmentCount() > 1 &&
+        m_HPWaterSSRFBO->GetColorAttachmentID(1) != 0;
     return m_HPWaterSSRLightingValid;
 }
 
@@ -4191,6 +4197,11 @@ uint32_t DeferredRenderer::GetHPWaterSSRLightingTexture() const {
 uint32_t DeferredRenderer::GetHPWaterSSRMotionVectorTexture() const {
     if (!m_HPWaterSSRMotionVectorFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterSSRMotionVectorFBO->GetColorAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterSSRResolveDiagnosticsTexture() const {
+    if (!m_HPWaterSSRFBO || m_HPWaterSSRFBO->GetColorAttachmentCount() < 2) return 0;
+    return static_cast<uint32_t>(m_HPWaterSSRFBO->GetColorAttachmentID(1));
 }
 
 uint32_t DeferredRenderer::GetHPWaterMaskTexture() const {
