@@ -7646,6 +7646,10 @@ private:
         out << "HPWaterSpectrumSwell: " << d.HPWaterSpectrumSwell << "\n";
         out << "HPWaterSpectrumShortWaveFade: " << d.HPWaterSpectrumShortWaveFade << "\n";
         out << "HPWaterSpectrumWindModelEnabled: " << d.HPWaterSpectrumWindModelEnabled << "\n";
+        out << "HPWaterSpectrumFrequencyDomainEnabled: "
+            << d.HPWaterSpectrumFrequencyDomainEnabled << "\n";
+        out << "HPWaterSpectrumPhillipsEnabled: " << d.HPWaterSpectrumPhillipsEnabled << "\n";
+        out << "HPWaterSpectrumJonswapEnabled: " << d.HPWaterSpectrumJonswapEnabled << "\n";
         out << "HPWaterSkyTextureReflectionBound: " << d.HPWaterSkyTextureReflectionBound << "\n";
         out << "HPWaterSkyTexture: " << d.HPWaterSkyTexture << "\n";
         out << "HPWaterReflectionProbeBound: " << d.HPWaterReflectionProbeBound << "\n";
@@ -8427,7 +8431,7 @@ private:
             d.HPWaterAreaLightSelectedInfluenceSum,
             d.HPWaterPunctualPointLightsCapacitySkipped,
             d.HPWaterPunctualSpotLightsCapacitySkipped);
-        ImGui::Text("HPWater spectrum: ocean=%d normal=%d compute=%d/%d consumed=%d tex=%u res=%u amp=%.3f normalStrength=%.3f wind=%.2f spread=%.2f swell=%.2f shortFade=%.2f windModel=%d",
+        ImGui::Text("HPWater spectrum: ocean=%d normal=%d compute=%d/%d consumed=%d tex=%u res=%u amp=%.3f normalStrength=%.3f wind=%.2f spread=%.2f swell=%.2f shortFade=%.2f windModel=%d freq=%d phillips=%d jonswap=%d",
             d.HPWaterSpectralOceanEnabled ? 1 : 0,
             d.HPWaterSpectralNormalParityEnabled ? 1 : 0,
             d.HPWaterSpectrumComputeRan ? 1 : 0,
@@ -8441,7 +8445,10 @@ private:
             d.HPWaterSpectrumDirectionalSpread,
             d.HPWaterSpectrumSwell,
             d.HPWaterSpectrumShortWaveFade,
-            d.HPWaterSpectrumWindModelEnabled ? 1 : 0);
+            d.HPWaterSpectrumWindModelEnabled ? 1 : 0,
+            d.HPWaterSpectrumFrequencyDomainEnabled ? 1 : 0,
+            d.HPWaterSpectrumPhillipsEnabled ? 1 : 0,
+            d.HPWaterSpectrumJonswapEnabled ? 1 : 0);
         ImGui::Text("HPWater environment: skyTex=%d (%u) probe=%d box=%d dominant=%d exact=%d multiBounce=%d (%u/%u) intensity=%.3f blend=%.3f influence=%.3f hierarchy=%.3f",
             d.HPWaterSkyTextureReflectionBound ? 1 : 0,
             d.HPWaterSkyTexture,

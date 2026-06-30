@@ -1269,6 +1269,9 @@ void DeferredRenderer::DestroyHPWaterSpectrumTexture() {
     m_HPWaterSpectrumResolution = 0;
     m_HPWaterSpectrumComputeValid = false;
     m_HPWaterSpectrumComputeRan = false;
+    m_HPWaterSpectrumFrequencyDomainEnabled = false;
+    m_HPWaterSpectrumPhillipsEnabled = false;
+    m_HPWaterSpectrumJonswapEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterGBuffer() {
@@ -4086,6 +4089,9 @@ bool DeferredRenderer::UpdateHPWaterSpectrumTexture(uint32_t resolution,
                                                     float choppiness) {
     m_HPWaterSpectrumComputeRan = false;
     m_HPWaterSpectrumComputeValid = false;
+    m_HPWaterSpectrumFrequencyDomainEnabled = false;
+    m_HPWaterSpectrumPhillipsEnabled = false;
+    m_HPWaterSpectrumJonswapEnabled = false;
 
     if (!m_HPWaterSpectrumComputeShader || !enabled || amplitude <= 0.0f)
         return false;
@@ -4118,6 +4124,9 @@ bool DeferredRenderer::UpdateHPWaterSpectrumTexture(uint32_t resolution,
 
     m_HPWaterSpectrumComputeRan = true;
     m_HPWaterSpectrumComputeValid = true;
+    m_HPWaterSpectrumFrequencyDomainEnabled = true;
+    m_HPWaterSpectrumPhillipsEnabled = true;
+    m_HPWaterSpectrumJonswapEnabled = true;
     return true;
 }
 

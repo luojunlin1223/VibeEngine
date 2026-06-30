@@ -654,6 +654,9 @@ public:
     uint32_t GetHPWaterSpectrumResolution() const { return m_HPWaterSpectrumResolution; }
     bool IsHPWaterSpectrumComputeValid() const { return m_HPWaterSpectrumComputeValid; }
     bool DidHPWaterSpectrumComputeRun() const { return m_HPWaterSpectrumComputeRan; }
+    bool IsHPWaterSpectrumFrequencyDomainEnabled() const { return m_HPWaterSpectrumFrequencyDomainEnabled; }
+    bool IsHPWaterSpectrumPhillipsEnabled() const { return m_HPWaterSpectrumPhillipsEnabled; }
+    bool IsHPWaterSpectrumJonswapEnabled() const { return m_HPWaterSpectrumJonswapEnabled; }
     uint32_t GetHPWaterFluidObstacleTexture() const { return m_HPWaterFluidObstacleTexture; }
     uint32_t GetHPWaterFluidWaterHeightTexture() const;
     uint32_t GetHPWaterFluidSceneHeightTexture() const;
@@ -966,6 +969,9 @@ private:
     uint32_t m_HPWaterSpectrumResolution = 0;
     bool m_HPWaterSpectrumComputeRan = false;
     bool m_HPWaterSpectrumComputeValid = false;
+    bool m_HPWaterSpectrumFrequencyDomainEnabled = false;
+    bool m_HPWaterSpectrumPhillipsEnabled = false;
+    bool m_HPWaterSpectrumJonswapEnabled = false;
 
     // Shaders
     std::shared_ptr<Shader> m_GBufferShader;

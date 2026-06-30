@@ -295,6 +295,9 @@ struct RenderDiagnostics {
     float HPWaterSpectrumSwell = 0.0f;
     float HPWaterSpectrumShortWaveFade = 0.0f;
     bool HPWaterSpectrumWindModelEnabled = false;
+    bool HPWaterSpectrumFrequencyDomainEnabled = false;
+    bool HPWaterSpectrumPhillipsEnabled = false;
+    bool HPWaterSpectrumJonswapEnabled = false;
     bool HPWaterSkyTextureReflectionBound = false;
     uint32_t HPWaterSkyTexture = 0;
     bool HPWaterReflectionProbeBound = false;

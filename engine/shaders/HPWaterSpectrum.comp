@@ -2,6 +2,11 @@
 
 // Generates a reusable HPWater ocean spectrum payload.
 // RGBA16F layout: encodedNormal.xyz + normalizedHeightSignal.
+//
+// The pass evaluates a deterministic frequency-domain ocean field on the GPU.
+// It is still a direct k-space summation rather than a multi-pass inverse FFT,
+// but the wave energy now follows Phillips/JONSWAP-style wind spectra and deep
+// water dispersion instead of the older hand-authored octave sine stack.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -19,18 +24,49 @@ uniform float u_NormalStrength;
 uniform float u_Choppiness;
 uniform int   u_Enabled;
 
-float SpectrumWave(vec2 localXZ, vec2 dir, float wavelength, float amplitude, float phaseOffset,
-                   out vec2 gradient) {
-    const float PI = 3.14159265358979323846;
-    const float TWO_PI = PI * 2.0;
-    const float GRAVITY = 9.81;
-    float k = TWO_PI / max(wavelength, 0.25);
+const float PI = 3.14159265358979323846;
+const float TWO_PI = PI * 2.0;
+const float GRAVITY = 9.81;
+
+float Hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float PhillipsSpectrum(vec2 kVec, vec2 windDir, float windSpeed, float directionalSpread, float shortWaveFade) {
+    float k = length(kVec);
+    if (k < 0.0001)
+        return 0.0;
+
+    vec2 kDir = kVec / k;
+    float windAlignment = max(dot(kDir, windDir), 0.0);
+    float spreadPower = mix(2.0, 14.0, clamp(directionalSpread, 0.0, 1.0));
+    float directional = pow(windAlignment, spreadPower);
+    directional += 0.08 * (1.0 - clamp(directionalSpread, 0.0, 1.0));
+
+    float L = max((windSpeed * windSpeed) / GRAVITY, 0.1);
+    float dampingLength = max(L * mix(0.004, 0.0008, clamp(shortWaveFade, 0.0, 2.0) * 0.5), 0.0001);
+    float longWaveSuppression = exp(-1.0 / max(k * k * L * L, 0.00001));
+    float shortWaveSuppression = exp(-k * k * dampingLength * dampingLength);
+    return directional * longWaveSuppression * shortWaveSuppression / max(k * k * k * k, 0.00001);
+}
+
+float JonswapSpectrum(vec2 kVec, float windSpeed, float swell) {
+    float k = length(kVec);
+    if (k < 0.0001)
+        return 0.0;
+
     float omega = sqrt(GRAVITY * k);
-    float phase = k * dot(dir, localXZ) + omega * u_Time + phaseOffset;
-    float s = sin(phase);
-    float c = cos(phase);
-    gradient = dir * (c * amplitude * k);
-    return s * amplitude;
+    float peakOmega = GRAVITY / max(windSpeed, 0.1);
+    float sigma = omega <= peakOmega ? 0.07 : 0.09;
+    float r = exp(-pow(omega - peakOmega, 2.0) / max(2.0 * sigma * sigma * peakOmega * peakOmega, 0.00001));
+    float gamma = mix(1.0, 3.3, clamp(swell, 0.0, 1.0));
+    float alpha = 0.0081;
+    float pm = alpha * GRAVITY * GRAVITY / max(pow(omega, 5.0), 0.00001) *
+        exp(-1.25 * pow(peakOmega / max(omega, 0.0001), 4.0));
+    float dOmegadK = 0.5 * sqrt(GRAVITY / max(k, 0.0001));
+    return pm * pow(gamma, r) * dOmegadK;
 }
 
 void main() {
@@ -49,40 +85,42 @@ void main() {
 
     float windRad = radians(u_WindAngle);
     vec2 wind = normalize(vec2(cos(windRad), sin(windRad)));
-    vec2 side = vec2(-wind.y, wind.x);
-    float domain = max(max(abs(u_BoxSize.x), abs(u_BoxSize.z)), 1.0);
+    vec2 domainSize = max(abs(u_BoxSize.xz), vec2(1.0));
     float windSpeed = clamp(u_WindSpeed, 0.1, 80.0);
-    float windEnergy = clamp(pow(windSpeed / 12.0, 0.65), 0.35, 3.0);
     float directionalSpread = clamp(u_DirectionalSpread, 0.0, 1.0);
-    float spreadPower = mix(0.75, 6.0, directionalSpread);
-    float spreadFloor = mix(0.42, 0.08, directionalSpread);
-    float swellDecay = mix(0.52, 0.22, clamp(u_Swell, 0.0, 1.0));
+    float swell = clamp(u_Swell, 0.0, 1.0);
     float shortWaveFade = clamp(u_ShortWaveFade, 0.0, 2.0);
     vec2 totalGradient = vec2(0.0);
     float totalHeight = 0.0;
 
-    const float wavelengthFactors[16] = float[16](
-        0.46, 0.32, 0.22, 0.155, 0.108, 0.076, 0.054, 0.038,
-        0.027, 0.019, 0.0135, 0.0095, 0.0068, 0.0048, 0.0034, 0.0024);
-    const float directionOffsets[16] = float[16](
-        0.00, 0.16, -0.21, 0.34, -0.43, 0.56, -0.69, 0.82,
-        -0.96, 1.10, -1.26, 1.42, -1.58, 1.74, -1.92, 2.10);
-    const float phaseOffsets[16] = float[16](
-        0.0, 1.7, 3.1, 4.6, 2.4, 5.2, 0.9, 3.9,
-        5.8, 2.8, 4.2, 1.2, 3.6, 5.0, 0.45, 2.15);
+    const int MODE_RADIUS = 4;
+    const float MODE_GAIN = 0.38;
+    for (int y = -MODE_RADIUS; y <= MODE_RADIUS; ++y) {
+        for (int x = -MODE_RADIUS; x <= MODE_RADIUS; ++x) {
+            if (x == 0 && y == 0)
+                continue;
 
-    for (int i = 0; i < 16; ++i) {
-        vec2 dir = normalize(wind + side * directionOffsets[i]);
-        float octave = float(i);
-        float swell = exp(-octave * swellDecay);
-        float capillaryFade = 1.0 / (1.0 + pow(max(octave - 9.0, 0.0), 1.35) * shortWaveFade);
-        float directionalEnergy = pow(max(dot(dir, wind), 0.0), spreadPower) * (1.0 - spreadFloor) + spreadFloor;
-        float amplitude = u_Amplitude * windEnergy * swell * capillaryFade * directionalEnergy;
-        float wavelength = max(domain * wavelengthFactors[i], 0.25);
-        vec2 gradient;
-        totalHeight += SpectrumWave(localXZ, dir, wavelength, amplitude, phaseOffsets[i], gradient);
-        totalGradient += gradient * u_NormalStrength * (1.15 + octave * 0.045) *
-                         (1.0 + clamp(u_Choppiness, 0.0, 4.0) * 0.08);
+            vec2 mode = vec2(float(x), float(y));
+            vec2 kVec = TWO_PI * mode / domainSize;
+            float k = length(kVec);
+            if (k < 0.0001)
+                continue;
+
+            float phillips = PhillipsSpectrum(kVec, wind, windSpeed, directionalSpread, shortWaveFade);
+            float jonswap = JonswapSpectrum(kVec, windSpeed, swell);
+            float spectrum = phillips * mix(0.35, 1.35, swell) + jonswap * mix(0.18, 0.85, swell);
+            float amplitude = u_Amplitude * MODE_GAIN * sqrt(max(spectrum, 0.0)) /
+                max(pow(float(MODE_RADIUS), 0.85), 1.0);
+            amplitude = clamp(amplitude, 0.0, u_Amplitude * 0.55);
+
+            float omega = sqrt(GRAVITY * k);
+            float phase = dot(kVec, localXZ) + omega * u_Time + Hash12(mode + vec2(17.0, 29.0)) * TWO_PI;
+            float s = sin(phase);
+            float c = cos(phase);
+            float chopGain = 1.0 + clamp(u_Choppiness, 0.0, 4.0) * 0.12;
+            totalHeight += c * amplitude;
+            totalGradient += -kVec * (s * amplitude) * u_NormalStrength * chopGain;
+        }
     }
 
     vec3 normal = normalize(vec3(-totalGradient.x, 1.0, -totalGradient.y));

@@ -2770,6 +2770,15 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 m_RenderDiagnostics.HPWaterSpectrumWindModelEnabled =
                     m_RenderDiagnostics.HPWaterSpectrumWindModelEnabled ||
                     (water->SpectrumWaves && water->SpectrumAmplitude > 0.0f && water->SpectrumWindSpeed > 0.0f);
+                m_RenderDiagnostics.HPWaterSpectrumFrequencyDomainEnabled =
+                    m_RenderDiagnostics.HPWaterSpectrumFrequencyDomainEnabled ||
+                    (spectrumComputeValid && m_DeferredRenderer.IsHPWaterSpectrumFrequencyDomainEnabled());
+                m_RenderDiagnostics.HPWaterSpectrumPhillipsEnabled =
+                    m_RenderDiagnostics.HPWaterSpectrumPhillipsEnabled ||
+                    (spectrumComputeValid && m_DeferredRenderer.IsHPWaterSpectrumPhillipsEnabled());
+                m_RenderDiagnostics.HPWaterSpectrumJonswapEnabled =
+                    m_RenderDiagnostics.HPWaterSpectrumJonswapEnabled ||
+                    (spectrumComputeValid && m_DeferredRenderer.IsHPWaterSpectrumJonswapEnabled());
 
                 RenderCommand::DrawIndexed(drawVAO);
                 m_RenderDiagnostics.HPWaterGBufferDrawn++;
