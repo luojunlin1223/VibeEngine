@@ -7492,6 +7492,7 @@ private:
 
         return causticProbe.Valid && causticProbe.NonBlackRatio > 0.0f &&
             computeProbe.Valid && computeProbe.NonBlackRatio > 0.0f &&
+            computeProbe.MaxRGBA[3] > 0 &&
             filteredProbe.Valid && filteredProbe.NonBlackRatio > 0.0f &&
             atlasProbe.Valid && atlasProbe.NonBlackRatio > 0.0f &&
             gbufferAtlasProbe.Valid && gbufferAtlasProbe.NonBlackRatio > 0.0f;
@@ -8372,6 +8373,15 @@ private:
                 ProbeTexture(d.HPWaterCausticComputeTexture,
                              d.HPWaterCausticComputeWidth,
                              d.HPWaterCausticComputeHeight));
+            const TextureProbeSummary causticComputeProbe =
+                ProbeTexture(d.HPWaterCausticComputeTexture,
+                             d.HPWaterCausticComputeWidth,
+                             d.HPWaterCausticComputeHeight);
+            out << "HPWaterCausticComputeAnyNDCReceiverHit: "
+                << (causticComputeProbe.MaxRGBA[3] > 0 ? 1 : 0) << "\n";
+            out << "HPWaterCausticComputeAverageNDCReceiverHit: "
+                << std::fixed << std::setprecision(4)
+                << causticComputeProbe.AverageRGBA[3] << "\n";
             SaveTextureBMP(d.HPWaterCausticComputeTexture,
                 d.HPWaterCausticComputeWidth,
                 d.HPWaterCausticComputeHeight,

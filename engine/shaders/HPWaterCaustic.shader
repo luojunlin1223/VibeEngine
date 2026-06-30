@@ -373,7 +373,8 @@ void main() {
         float blueStrands = CausticStrands(causticUV - dispersionAxis * dispersion);
         energyRGB = vec3(redStrands, centerStrands, blueStrands) * sharedEnergy;
     }
-    float computeWeight = step(0.00001, computeIrradiance.a);
+    float computeLuminance = max(max(computeIrradiance.r, computeIrradiance.g), computeIrradiance.b);
+    float computeWeight = step(0.00001, computeLuminance);
     energyRGB = mix(energyRGB, max(energyRGB * 0.25, computeIrradiance.rgb), 0.82 * computeWeight);
     if (atlasGBufferValid) {
         float atlasTransmittance = exp(-atlasExtinction * max(thickness, 0.0) *

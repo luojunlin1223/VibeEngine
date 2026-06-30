@@ -190,10 +190,12 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
                                          float jitter,
                                          out vec2 receiverUV,
                                          out float hitWeight,
-                                         out float hitDistance) {
+                                         out float hitDistance,
+                                         out float ndcHit) {
     receiverUV = vec2(0.0);
     hitWeight = 0.0;
     hitDistance = 0.0;
+    ndcHit = 0.0;
 
     if (u_ShadowDepthCascadeAtlasEnabled == 0)
         return false;
@@ -257,6 +259,7 @@ bool MarchRefractedLightToShadowReceiver(vec3 waterWorldPos,
                 float depthDelta = max(receiverDepth - sampleTC.z, 0.0);
                 hitWeight = 1.0 - smoothstep(0.0, 0.08, depthDelta);
                 hitWeight *= 1.0 - smoothstep(maxDistance * 0.15, maxDistance, hitDistance);
+                ndcHit = 1.0;
                 return true;
             }
         }
@@ -504,6 +507,7 @@ void main() {
     vec2 shadowReceiver = baseReceiver;
     float shadowReceiverWeight = 0.0;
     float shadowReceiverDistance = 0.0;
+    float shadowReceiverNdcHit = 0.0;
     bool shadowReceiverHit = MarchRefractedLightToShadowReceiver(
         waterWorldPos,
         N,
@@ -516,7 +520,8 @@ void main() {
             : Hash21(uv * vec2(u_OutputWidth, u_OutputHeight)),
         shadowReceiver,
         shadowReceiverWeight,
-        shadowReceiverDistance);
+        shadowReceiverDistance,
+        shadowReceiverNdcHit);
     if (shadowReceiverHit) {
         baseReceiver = mix(baseReceiver, shadowReceiver, clamp(0.55 + shadowReceiverWeight * 0.45, 0.0, 1.0));
         sharedEnergy *= mix(0.82, 1.42, shadowReceiverWeight);
@@ -574,5 +579,5 @@ void main() {
     ScatterChannel(receiverR, 0, sharedEnergy * spectralWeights.r * edgeR);
     ScatterChannel(receiverG, 1, sharedEnergy * spectralWeights.g * edgeG);
     ScatterChannel(receiverB, 2, sharedEnergy * spectralWeights.b * edgeB);
-    ScatterChannel(baseReceiver, 3, max(sharedEnergy, 0.0) * alphaEdge);
+    ScatterChannel(baseReceiver, 3, max(sharedEnergy, 0.0) * alphaEdge * shadowReceiverNdcHit);
 }
