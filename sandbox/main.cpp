@@ -150,9 +150,9 @@ public:
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             auto& ps = m_Scene->GetPipelineSettings();
             ps.SSREnabled = true;
-            ps.SSRMaxSteps = std::max(ps.SSRMaxSteps, 96);
-            ps.SSRStepSize = std::clamp(ps.SSRStepSize, 0.01f, 0.08f);
-            ps.SSRThickness = std::clamp(ps.SSRThickness, 0.03f, 0.25f);
+            ps.SSRMaxSteps = std::max(ps.SSRMaxSteps, 128);
+            ps.SSRStepSize = std::clamp(ps.SSRStepSize, 0.01f, 0.05f);
+            ps.SSRThickness = std::clamp(ps.SSRThickness, 0.25f, 0.75f);
             ps.SSRMaxDistance = std::max(ps.SSRMaxDistance, 80.0f);
             if (!m_PlayMode)
                 EnterPlayMode();
@@ -1340,6 +1340,15 @@ private:
             water.IndirectLightStrength = 1.0f;
             water.SpecularFGDStrength = 1.0f;
             water.GGXEnergyCompensation = 1.0f;
+            if (m_HPWaterSSRDiagnostics) {
+                water.HeightScale = 0.0f;
+                water.SpectrumAmplitude = 0.0f;
+                water.SpectrumNormalStrength = 0.0f;
+                water.Choppiness = 0.0f;
+                water.Roughness = 0.02f;
+                water.AutoImpulse = false;
+                water.FoamIntensity = 0.0f;
+            }
 
             auto& mr = waterEntity.AddComponent<VE::MeshRendererComponent>();
             mr.Mat = VE::MaterialLibrary::Get("Water");
@@ -1357,6 +1366,15 @@ private:
             water.SpectrumSwell = std::clamp(water.SpectrumSwell, 0.0f, 1.0f);
             water.SpectrumShortWaveFade = std::clamp(water.SpectrumShortWaveFade, 0.0f, 2.0f);
             water.SpectrumNormalStrength = std::clamp(water.SpectrumNormalStrength, 0.0f, 4.0f);
+            if (m_HPWaterSSRDiagnostics) {
+                water.HeightScale = 0.0f;
+                water.SpectrumAmplitude = 0.0f;
+                water.SpectrumNormalStrength = 0.0f;
+                water.Choppiness = 0.0f;
+                water.Roughness = 0.02f;
+                water.AutoImpulse = false;
+                water.FoamIntensity = 0.0f;
+            }
             auto& mr = waterEntity.HasComponent<VE::MeshRendererComponent>()
                 ? waterEntity.GetComponent<VE::MeshRendererComponent>()
                 : waterEntity.AddComponent<VE::MeshRendererComponent>();
@@ -1509,15 +1527,15 @@ private:
         auto train = FindEntityByName("LauncherTrain");
         if (train && train.HasComponent<VE::TransformComponent>()) {
             const auto& trainTc = train.GetComponent<VE::TransformComponent>();
-            anchor.z = trainTc.Position[2] + 24.0f;
+            anchor.z = trainTc.Position[2] + 36.0f;
         }
 
         auto entity = FindEntityByName("HPWater SSR Diagnostic Reflector");
         if (!entity) {
             entity = CreateLauncherPrimitive("HPWater SSR Diagnostic Reflector",
                 VE::MeshLibrary::GetCube(),
-                { anchor.x, 2.2f, anchor.z },
-                { 10.0f, 3.6f, 0.35f },
+                { anchor.x, 5.5f, anchor.z },
+                { 48.0f, 12.0f, 0.6f },
                 { 0.05f, 0.95f, 1.0f, 1.0f },
                 false);
         }
@@ -1531,8 +1549,8 @@ private:
         tag.Active = true;
 
         auto& tc = entity.GetComponent<VE::TransformComponent>();
-        tc.Position = { anchor.x, 2.2f, anchor.z };
-        tc.Scale = { 10.0f, 3.6f, 0.35f };
+        tc.Position = { anchor.x, 5.5f, anchor.z };
+        tc.Scale = { 48.0f, 12.0f, 0.6f };
 
         auto& mr = entity.HasComponent<VE::MeshRendererComponent>()
             ? entity.GetComponent<VE::MeshRendererComponent>()

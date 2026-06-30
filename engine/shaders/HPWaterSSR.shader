@@ -145,6 +145,9 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
     vec3 start = waterWorldPos + normal * max(thickness * 0.25, 0.01);
     float travelled = stepSize;
     float lastTravelled = 0.0;
+    float previousDelta = 0.0;
+    float previousTravelled = 0.0;
+    bool hasPreviousDepthSample = false;
 
     for (int i = 0; i < 128; ++i) {
         if (i >= maxSteps || travelled > maxDistance) {
@@ -170,10 +173,15 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
             float sceneLinear = LinearizeDepth(sceneDepth);
             float delta = rayLinear - sceneLinear;
             float adaptiveThickness = thickness + travelled * 0.015;
-            if (delta >= -adaptiveThickness * 0.25 && delta <= adaptiveThickness) {
+            bool nearSurface = delta >= -adaptiveThickness * 0.35 && delta <= adaptiveThickness;
+            bool crossedSurface = hasPreviousDepthSample &&
+                previousDelta < -adaptiveThickness * 0.35 &&
+                delta >= -adaptiveThickness * 0.35;
+
+            if (nearSurface || crossedSurface) {
                 vec2 hitUV = uv;
                 float hitTravelled = travelled;
-                float low = max(lastTravelled, 0.0);
+                float low = crossedSurface ? max(previousTravelled, 0.0) : max(lastTravelled, 0.0);
                 float high = travelled;
                 for (int refine = 0; refine < 6; ++refine) {
                     float mid = (low + high) * 0.5;
@@ -194,13 +202,15 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
                     float refinedSceneLinear = LinearizeDepth(refinedSceneDepth);
                     float refinedAdaptiveThickness = thickness + mid * 0.015;
                     float refinedDelta = refinedRayLinear - refinedSceneLinear;
-                    if (refinedDelta >= -refinedAdaptiveThickness * 0.25 &&
+                    if (refinedDelta >= -refinedAdaptiveThickness * 0.35 &&
                         refinedDelta <= refinedAdaptiveThickness) {
                         high = mid;
                         hitTravelled = mid;
                         hitUV = refinedUV;
-                    } else {
+                    } else if (refinedDelta < -refinedAdaptiveThickness * 0.35) {
                         low = mid;
+                    } else {
+                        high = mid;
                     }
                 }
 
@@ -213,6 +223,10 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
                 vec3 color = SampleSceneColorBlurred(hitUV, lod) * confidence;
                 return vec4(color, confidence);
             }
+
+            previousDelta = delta;
+            previousTravelled = travelled;
+            hasPreviousDepthSample = true;
         }
 
         lastTravelled = travelled;
