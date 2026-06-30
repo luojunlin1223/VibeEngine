@@ -7881,6 +7881,8 @@ private:
         out << "HPWaterFluidSourceClampEnabled: " << d.HPWaterFluidSourceClampEnabled << "\n";
         out << "HPWaterFluidMultiSourceEnabled: " << d.HPWaterFluidMultiSourceEnabled << "\n";
         out << "HPWaterFluidSourceCount: " << d.HPWaterFluidSourceCount << "\n";
+        out << "HPWaterFluidObjectSourceEnabled: " << d.HPWaterFluidObjectSourceEnabled << "\n";
+        out << "HPWaterFluidObjectSourceCount: " << d.HPWaterFluidObjectSourceCount << "\n";
         out << "HPWaterFluidWaveEquationParityEnabled: " << d.HPWaterFluidWaveEquationParityEnabled << "\n";
         out << "HPWaterFluidSampleClampParityEnabled: " << d.HPWaterFluidSampleClampParityEnabled << "\n";
         out << "HPWaterFluidStartFrameBakeEnabled: " << d.HPWaterFluidStartFrameBakeEnabled << "\n";
@@ -8217,6 +8219,8 @@ private:
                 (d.HPWaterFluidHeightCaptureValid &&
                  d.HPWaterFluidMultiSourceEnabled &&
                  d.HPWaterFluidSourceCount > 1 &&
+                 d.HPWaterFluidObjectSourceEnabled &&
+                 d.HPWaterFluidObjectSourceCount > 0 &&
                  d.HPWaterFluidLayerFilteringParityEnabled &&
                  d.HPWaterFluidRenderQueueParityEnabled &&
                  d.HPWaterFluidWaterLayerCandidates > 0 &&
@@ -8573,12 +8577,13 @@ private:
             d.HPWaterCausticAtlasCascades,
             d.HPWaterCausticAtlasTexture,
             d.HPWaterCausticAtlasDepthTexture);
-        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d multiSrc=%d sources=%u res=%u height=%u speed=%.3f damping=%.3f",
+        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d multiSrc=%d sources=%u objectSources=%u res=%u height=%u speed=%.3f damping=%.3f",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,
             d.HPWaterFluidComputeRan ? 1 : 0,
             d.HPWaterFluidMultiSourceEnabled ? 1 : 0,
             d.HPWaterFluidSourceCount,
+            d.HPWaterFluidObjectSourceCount,
             d.HPWaterFluidResolution,
             d.HPWaterFluidHeightTexture,
             d.HPWaterFluidWaveSpeed,

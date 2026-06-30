@@ -1993,7 +1993,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     uint32_t hpWaterFluidResolution = 128;
     float hpWaterFluidWaveSpeed = 1.0f;
     float hpWaterFluidDamping = 0.018f;
+    float hpWaterFluidImpulseRadius = 5.0f;
+    float hpWaterFluidImpulseStrength = 0.035f;
     std::vector<HPWaterFluidSource> hpWaterFluidSources;
+    uint32_t hpWaterFluidObjectSourceCount = 0;
     glm::vec3 hpWaterFluidBoxCenter(0.0f);
     glm::vec3 hpWaterFluidBoxSize(1.0f);
     bool hpWaterFluidObstaclesEnabled = false;
@@ -2268,14 +2271,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                         std::clamp(water->FluidResolution, 16, 1024));
                     hpWaterFluidWaveSpeed = water->FluidWaveSpeed;
                     hpWaterFluidDamping = water->FluidDamping;
+                    hpWaterFluidImpulseRadius = std::max(water->FluidImpulseRadius, 0.001f);
+                    hpWaterFluidImpulseStrength = water->FluidImpulseStrength;
                     hpWaterFluidObstaclesEnabled = water->FluidObstaclesEnabled;
                     hpWaterFluidStartFrameBake = water->FluidStartFrameBake;
                     hpWaterFluidObstaclePadding = std::max(water->FluidObstaclePadding, 0.0f);
                     hpWaterFluidObstacleHeightRange = std::max(water->FluidObstacleHeightRange, 0.0f);
                     if (water->AutoImpulse) {
                         const float t = water->_OceanTime + static_cast<float>(m_RenderDiagnostics.FrameIndex) * 0.017f;
-                        const float radius = std::max(water->FluidImpulseRadius, 0.001f);
-                        const float intensity = water->FluidImpulseStrength;
+                        const float radius = hpWaterFluidImpulseRadius;
+                        const float intensity = hpWaterFluidImpulseStrength;
                         auto addFluidSource = [&](float u, float v, float sourceIntensity, float sourceRadius) {
                             if (hpWaterFluidSources.size() >= 8 || sourceIntensity <= 0.001f)
                                 return;
@@ -2628,11 +2633,39 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
                 if (wroteAnyPixel)
                     ++obstacleCount;
+                if (wroteAnyPixel && hpWaterFluidSources.size() < 8 && hpWaterFluidImpulseStrength > 0.001f) {
+                    const float centerX = std::clamp((paddedMinX + paddedMaxX) * 0.5f, waterMinX, waterMaxX);
+                    const float centerZ = std::clamp((paddedMinZ + paddedMaxZ) * 0.5f, waterMinZ, waterMaxZ);
+                    const float u = (centerX - waterMinX) * invX;
+                    const float v = (centerZ - waterMinZ) * invZ;
+                    const float footprintPixels = std::max(
+                        (paddedMaxX - paddedMinX) * invX,
+                        (paddedMaxZ - paddedMinZ) * invZ) * static_cast<float>(hpWaterFluidResolution);
+                    const float radiusPixels = std::clamp(
+                        std::max(hpWaterFluidImpulseRadius * 0.85f, footprintPixels * 0.55f),
+                        1.0f,
+                        128.0f);
+                    const float penetration01 = std::clamp(
+                        (obstacle.Max.y - hpWaterFluidSurfaceY) /
+                            std::max(hpWaterFluidObstacleHeightRange, 0.001f),
+                        0.0f,
+                        1.0f);
+
+                    hpWaterFluidSources.push_back({
+                        std::clamp(u, 0.0f, 1.0f),
+                        std::clamp(v, 0.0f, 1.0f),
+                        radiusPixels,
+                        hpWaterFluidImpulseStrength * (0.45f + 0.55f * penetration01)
+                    });
+                    ++hpWaterFluidObjectSourceCount;
+                }
             }
         }
 
         m_RenderDiagnostics.HPWaterFluidObstacleCount = obstacleCount;
         m_RenderDiagnostics.HPWaterFluidObstaclePixels = obstaclePixels;
+        m_RenderDiagnostics.HPWaterFluidObjectSourceEnabled = hpWaterFluidObjectSourceCount > 0;
+        m_RenderDiagnostics.HPWaterFluidObjectSourceCount = hpWaterFluidObjectSourceCount;
         m_RenderDiagnostics.HPWaterFluidHeightCaptureRan =
             m_DeferredRenderer.DidHPWaterFluidHeightCaptureRun();
         m_RenderDiagnostics.HPWaterFluidHeightCaptureValid = gpuHeightCaptureValid;
