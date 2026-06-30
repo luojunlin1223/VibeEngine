@@ -196,6 +196,7 @@ public:
                           float hpWaterSSRStepSize,
                           float hpWaterSSRThickness,
                           float hpWaterSSRMaxDistance,
+                          bool hpWaterSSRLightingPassEnabled,
                           uint32_t skyTexture,
                           uint32_t reflectionProbeTexture,
                           uint32_t reflectionProbeSecondaryTexture,
@@ -208,6 +209,7 @@ public:
                           const glm::vec3& reflectionProbeSecondaryCenter,
                           const glm::vec3& reflectionProbeSecondaryBoxSize,
                           const glm::mat4& viewProjection,
+                          const glm::mat4& previousViewProjection,
                           const glm::mat4& inverseViewProjection);
 
     /// Build the opaque scene-depth pyramid used by HPWater refraction.
@@ -394,6 +396,8 @@ public:
     bool IsHPWaterSSRRoughnessConeTracingEnabled() const { return m_HPWaterSSRRoughnessConeTracingEnabled; }
     bool IsHPWaterSSRTemporalResolveEnabled() const { return m_HPWaterSSRTemporalResolveEnabled; }
     bool IsHPWaterSSRHistoryValid() const { return m_HPWaterSSRHistoryValid; }
+    bool IsHPWaterSSRMotionReprojectionEnabled() const { return m_HPWaterSSRMotionReprojectionEnabled; }
+    bool IsHPWaterSSRDisocclusionRejectionEnabled() const { return m_HPWaterSSRDisocclusionRejectionEnabled; }
     bool DoesHPWaterCompositeConsumeSSRLightingBuffer() const {
         return m_HPWaterCompositeConsumesSSRLightingBuffer;
     }
@@ -777,6 +781,7 @@ private:
                                   float hpWaterSSRThickness,
                                   float hpWaterSSRMaxDistance,
                                   const glm::mat4& viewProjection,
+                                  const glm::mat4& previousViewProjection,
                                   const glm::mat4& inverseViewProjection);
     static uint32_t GetHalfResolution(uint32_t value);
 
@@ -809,6 +814,8 @@ private:
     bool m_HPWaterSSRRoughnessConeTracingEnabled = false;
     bool m_HPWaterSSRTemporalResolveEnabled = false;
     bool m_HPWaterSSRHistoryValid = false;
+    bool m_HPWaterSSRMotionReprojectionEnabled = false;
+    bool m_HPWaterSSRDisocclusionRejectionEnabled = false;
     bool m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     bool m_HPWaterRefractionNDCMarchEnabled = false;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;

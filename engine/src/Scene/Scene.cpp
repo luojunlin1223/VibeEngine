@@ -1248,6 +1248,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRTemporalResolveEnabled();
     m_RenderDiagnostics.HPWaterSSRHistoryValid =
         m_DeferredRenderer.IsHPWaterSSRHistoryValid();
+    m_RenderDiagnostics.HPWaterSSRMotionReprojectionEnabled =
+        m_DeferredRenderer.IsHPWaterSSRMotionReprojectionEnabled();
+    m_RenderDiagnostics.HPWaterSSRDisocclusionRejectionEnabled =
+        m_DeferredRenderer.IsHPWaterSSRDisocclusionRejectionEnabled();
     m_RenderDiagnostics.HPWaterCompositeConsumesSSRLightingBuffer =
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();
@@ -3278,6 +3282,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             ps.SSRStepSize,
                                             ps.SSRThickness,
                                             ps.SSRMaxDistance,
+                                            false,
                                             hpWaterSkyTexture,
                                             hpWaterReflectionProbeTexture,
                                             hpWaterReflectionProbeSecondaryTexture,
@@ -3293,6 +3298,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterReflectionProbeSecondaryTexture != 0
                                                 ? hpWaterReflectionProbeSecondaryBoxSize
                                                 : hpWaterReflectionProbeBoxSize,
+                                            viewProjection,
                                             viewProjection,
                                             inverseViewProjection);
         m_RenderDiagnostics.HPWaterCausticRan =
@@ -3658,6 +3664,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 ps.SSRStepSize,
                                                 ps.SSRThickness,
                                                 ps.SSRMaxDistance,
+                                                true,
                                                 hpWaterSkyTexture,
                                                 hpWaterReflectionProbeTexture,
                                                 hpWaterReflectionProbeSecondaryTexture,
@@ -3674,6 +3681,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                     ? hpWaterReflectionProbeSecondaryBoxSize
                                                     : hpWaterReflectionProbeBoxSize,
                                                 viewProjection,
+                                                previousWaterVP,
                                                 inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
@@ -3700,6 +3708,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRTemporalResolveEnabled();
     m_RenderDiagnostics.HPWaterSSRHistoryValid =
         m_DeferredRenderer.IsHPWaterSSRHistoryValid();
+    m_RenderDiagnostics.HPWaterSSRMotionReprojectionEnabled =
+        m_DeferredRenderer.IsHPWaterSSRMotionReprojectionEnabled();
+    m_RenderDiagnostics.HPWaterSSRDisocclusionRejectionEnabled =
+        m_DeferredRenderer.IsHPWaterSSRDisocclusionRejectionEnabled();
     m_RenderDiagnostics.HPWaterCompositeConsumesSSRLightingBuffer =
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();

@@ -58,8 +58,12 @@ uniform int u_SceneColorMipEnabled;
 uniform int u_SceneColorMipCount;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterSSRHistoryValid;
+uniform int u_HPWaterSSRMotionReprojectionEnabled;
+uniform int u_HPWaterSSRDisocclusionRejectionEnabled;
 uniform float u_HPWaterSSRTemporalBlend;
+uniform float u_HPWaterSSRDepthRejectionThreshold;
 uniform mat4 u_ViewProjection;
+uniform mat4 u_PreviousViewProjection;
 uniform mat4 u_InverseViewProjection;
 
 float LinearizeDepth(float depth) {
@@ -74,6 +78,21 @@ vec3 ReconstructWorldPosition(vec2 uv, float depth) {
     vec4 world = u_InverseViewProjection * vec4(ndcXY, ndcZ, 1.0);
     float invW = abs(world.w) > 0.00001 ? 1.0 / world.w : 0.0;
     return world.xyz * invW;
+}
+
+vec2 ProjectUV(mat4 viewProjection, vec3 worldPos, out bool valid) {
+    vec4 clip = viewProjection * vec4(worldPos, 1.0);
+    if (abs(clip.w) <= 0.00001) {
+        valid = false;
+        return v_UV;
+    }
+
+    vec3 ndc = clip.xyz / clip.w;
+    vec2 projectedUV = ndc.xy * 0.5 + 0.5;
+    valid = ndc.z >= -1.0 && ndc.z <= 1.0 &&
+        all(greaterThanEqual(projectedUV, vec2(0.0))) &&
+        all(lessThanEqual(projectedUV, vec2(1.0)));
+    return projectedUV;
 }
 
 vec3 NormalizeOr(vec3 v, vec3 fallback) {
@@ -261,18 +280,46 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
     return vec4(0.0);
 }
 
-vec4 ResolveTemporalSSR(vec4 current) {
+vec4 ResolveTemporalSSR(vec4 current, vec3 waterWorldPos, float waterLinearDepth) {
     if (u_HPWaterSSRHistoryValid != 1 || current.a <= 0.0001) {
         return current;
     }
 
-    vec4 history = texture(u_HPWaterSSRHistory, v_UV);
+    bool reprojectValid = true;
+    vec2 historyUV = v_UV;
+    if (u_HPWaterSSRMotionReprojectionEnabled == 1) {
+        historyUV = ProjectUV(u_PreviousViewProjection, waterWorldPos, reprojectValid);
+        if (!reprojectValid) {
+            return current;
+        }
+    }
+
+    if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) {
+        return current;
+    }
+
+    if (u_HPWaterSSRDisocclusionRejectionEnabled == 1) {
+        float reprojectedWaterDepth = texture(u_HPWaterDepth, historyUV).r;
+        if (reprojectedWaterDepth >= 0.9999) {
+            return current;
+        }
+
+        float reprojectedWaterLinear = LinearizeDepth(reprojectedWaterDepth);
+        float threshold = max(u_HPWaterSSRDepthRejectionThreshold, 0.0001) * max(waterLinearDepth, 1.0);
+        if (abs(reprojectedWaterLinear - waterLinearDepth) > threshold) {
+            return current;
+        }
+    }
+
+    vec4 history = texture(u_HPWaterSSRHistory, historyUV);
     if (history.a <= 0.0001) {
         return current;
     }
 
     float blend = clamp(u_HPWaterSSRTemporalBlend, 0.0, 0.95);
-    float historyWeight = blend * smoothstep(0.02, 0.25, current.a);
+    vec2 velocityPixels = (v_UV - historyUV) * vec2(textureSize(u_HPWaterSSRHistory, 0));
+    float velocityWeight = clamp(1.0 - length(velocityPixels) * 0.025, 0.0, 1.0);
+    float historyWeight = blend * smoothstep(0.02, 0.25, current.a) * velocityWeight;
     vec3 rgb = mix(current.rgb, history.rgb, historyWeight);
     float alpha = max(current.a, mix(current.a, history.a, historyWeight));
     return vec4(rgb, alpha);
@@ -296,7 +343,9 @@ void main() {
     vec3 waterWorldPos = ReconstructWorldPosition(v_UV, waterDepth);
     vec3 V = NormalizeOr(u_ViewPos - waterWorldPos, vec3(0.0, 0.0, 1.0));
     float waterLinear = LinearizeDepth(waterDepth);
-    FragColor = ResolveTemporalSSR(TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear));
+    FragColor = ResolveTemporalSSR(TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear),
+        waterWorldPos,
+        waterLinear);
 }
 #endif
 
