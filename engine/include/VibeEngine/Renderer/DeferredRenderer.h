@@ -396,6 +396,8 @@ public:
     bool IsHPWaterSSRRoughnessConeTracingEnabled() const { return m_HPWaterSSRRoughnessConeTracingEnabled; }
     bool IsHPWaterSSRTemporalResolveEnabled() const { return m_HPWaterSSRTemporalResolveEnabled; }
     bool IsHPWaterSSRHistoryValid() const { return m_HPWaterSSRHistoryValid; }
+    bool IsHPWaterSSRExplicitMotionVectorEnabled() const { return m_HPWaterSSRExplicitMotionVectorEnabled; }
+    bool IsHPWaterSSRMotionVectorHistoryEnabled() const { return m_HPWaterSSRMotionVectorHistoryEnabled; }
     bool IsHPWaterSSRMotionReprojectionEnabled() const { return m_HPWaterSSRMotionReprojectionEnabled; }
     bool IsHPWaterSSRDisocclusionRejectionEnabled() const { return m_HPWaterSSRDisocclusionRejectionEnabled; }
     bool DoesHPWaterCompositeConsumeSSRLightingBuffer() const {
@@ -786,6 +788,9 @@ private:
                                   const glm::mat4& viewProjection,
                                   const glm::mat4& previousViewProjection,
                                   const glm::mat4& inverseViewProjection);
+    bool BuildHPWaterSSRMotionVectors(const glm::mat4& currentViewProjection,
+                                      const glm::mat4& previousViewProjection,
+                                      const glm::mat4& inverseViewProjection);
     static uint32_t GetHalfResolution(uint32_t value);
 
     uint32_t m_Width = 0;
@@ -809,6 +814,7 @@ private:
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     std::shared_ptr<Framebuffer> m_HPWaterSSRFBO;
     std::shared_ptr<Framebuffer> m_HPWaterSSRHistoryFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterSSRMotionVectorFBO;
     bool m_HPWaterCompositeValid = false;
     bool m_HPWaterSSRLightingValid = false;
     bool m_HPWaterSSRLightingRan = false;
@@ -817,6 +823,8 @@ private:
     bool m_HPWaterSSRRoughnessConeTracingEnabled = false;
     bool m_HPWaterSSRTemporalResolveEnabled = false;
     bool m_HPWaterSSRHistoryValid = false;
+    bool m_HPWaterSSRExplicitMotionVectorEnabled = false;
+    bool m_HPWaterSSRMotionVectorHistoryEnabled = false;
     bool m_HPWaterSSRMotionReprojectionEnabled = false;
     bool m_HPWaterSSRDisocclusionRejectionEnabled = false;
     bool m_HPWaterCompositeConsumesSSRLightingBuffer = false;
@@ -978,6 +986,7 @@ private:
     std::shared_ptr<Shader> m_HPWaterGBufferShader;
     std::shared_ptr<Shader> m_HPWaterMaskShader;
     std::shared_ptr<Shader> m_HPWaterSSRShader;
+    std::shared_ptr<Shader> m_HPWaterSSRMotionVectorShader;
     std::shared_ptr<Shader> m_HPWaterCompositeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeShader;
     std::shared_ptr<Shader> m_HPWaterVolumeMotionVectorShader;

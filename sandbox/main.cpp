@@ -7680,6 +7680,10 @@ private:
         out << "HPWaterSSRTemporalResolveEnabled: "
             << d.HPWaterSSRTemporalResolveEnabled << "\n";
         out << "HPWaterSSRHistoryValid: " << d.HPWaterSSRHistoryValid << "\n";
+        out << "HPWaterSSRExplicitMotionVectorEnabled: "
+            << d.HPWaterSSRExplicitMotionVectorEnabled << "\n";
+        out << "HPWaterSSRMotionVectorHistoryEnabled: "
+            << d.HPWaterSSRMotionVectorHistoryEnabled << "\n";
         out << "HPWaterSSRMotionReprojectionEnabled: "
             << d.HPWaterSSRMotionReprojectionEnabled << "\n";
         out << "HPWaterSSRDisocclusionRejectionEnabled: "
@@ -8223,6 +8227,8 @@ private:
                  d.HPWaterSSRRoughnessConeTracingEnabled &&
                  d.HPWaterSSRTemporalResolveEnabled &&
                  d.HPWaterSSRHistoryValid &&
+                 d.HPWaterSSRExplicitMotionVectorEnabled &&
+                 d.HPWaterSSRMotionVectorHistoryEnabled &&
                  d.HPWaterSSRMotionReprojectionEnabled &&
                  d.HPWaterSSRDisocclusionRejectionEnabled &&
                  d.HPWaterCompositeConsumesSSRLightingBuffer &&
@@ -8463,7 +8469,7 @@ private:
             d.HPWaterReflectionProbeBlend,
             d.HPWaterReflectionProbeInfluenceWeight,
             d.HPWaterReflectionProbeHierarchyWeight);
-        ImGui::Text("HPWater SSR hierarchy: enabled=%d blend=%d ssrBuf=%d/%d pre=%d refine=%d cone=%d temporal=%d history=%d reproj=%d disocc=%d consume=%d (%u) diag=%d (%u) steps=%u step=%.3f thickness=%.3f maxDist=%.1f",
+        ImGui::Text("HPWater SSR hierarchy: enabled=%d blend=%d ssrBuf=%d/%d pre=%d refine=%d cone=%d temporal=%d history=%d mv=%d mvHistory=%d reproj=%d disocc=%d consume=%d (%u) diag=%d (%u) steps=%u step=%.3f thickness=%.3f maxDist=%.1f",
             d.HPWaterSSRReflectionEnabled ? 1 : 0,
             d.HPWaterSSRHierarchyBlendEnabled ? 1 : 0,
             d.HPWaterSSRLightingBufferRan ? 1 : 0,
@@ -8473,6 +8479,8 @@ private:
             d.HPWaterSSRRoughnessConeTracingEnabled ? 1 : 0,
             d.HPWaterSSRTemporalResolveEnabled ? 1 : 0,
             d.HPWaterSSRHistoryValid ? 1 : 0,
+            d.HPWaterSSRExplicitMotionVectorEnabled ? 1 : 0,
+            d.HPWaterSSRMotionVectorHistoryEnabled ? 1 : 0,
             d.HPWaterSSRMotionReprojectionEnabled ? 1 : 0,
             d.HPWaterSSRDisocclusionRejectionEnabled ? 1 : 0,
             d.HPWaterCompositeConsumesSSRLightingBuffer ? 1 : 0,

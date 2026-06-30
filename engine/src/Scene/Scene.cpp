@@ -1248,6 +1248,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRTemporalResolveEnabled();
     m_RenderDiagnostics.HPWaterSSRHistoryValid =
         m_DeferredRenderer.IsHPWaterSSRHistoryValid();
+    m_RenderDiagnostics.HPWaterSSRExplicitMotionVectorEnabled =
+        m_DeferredRenderer.IsHPWaterSSRExplicitMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterSSRMotionVectorHistoryEnabled =
+        m_DeferredRenderer.IsHPWaterSSRMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterSSRMotionReprojectionEnabled =
         m_DeferredRenderer.IsHPWaterSSRMotionReprojectionEnabled();
     m_RenderDiagnostics.HPWaterSSRDisocclusionRejectionEnabled =
@@ -3717,6 +3721,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRTemporalResolveEnabled();
     m_RenderDiagnostics.HPWaterSSRHistoryValid =
         m_DeferredRenderer.IsHPWaterSSRHistoryValid();
+    m_RenderDiagnostics.HPWaterSSRExplicitMotionVectorEnabled =
+        m_DeferredRenderer.IsHPWaterSSRExplicitMotionVectorEnabled();
+    m_RenderDiagnostics.HPWaterSSRMotionVectorHistoryEnabled =
+        m_DeferredRenderer.IsHPWaterSSRMotionVectorHistoryEnabled();
     m_RenderDiagnostics.HPWaterSSRMotionReprojectionEnabled =
         m_DeferredRenderer.IsHPWaterSSRMotionReprojectionEnabled();
     m_RenderDiagnostics.HPWaterSSRDisocclusionRejectionEnabled =

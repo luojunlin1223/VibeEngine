@@ -42,6 +42,7 @@ uniform sampler2D u_HPWaterNormalRoughness;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterMask;
 uniform sampler2D u_HPWaterSSRHistory;
+uniform sampler2D u_HPWaterSSRMotionVector;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
@@ -58,6 +59,7 @@ uniform int u_SceneColorMipEnabled;
 uniform int u_SceneColorMipCount;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_HPWaterSSRHistoryValid;
+uniform int u_HPWaterSSRMotionVectorValid;
 uniform int u_HPWaterSSRMotionReprojectionEnabled;
 uniform int u_HPWaterSSRDisocclusionRejectionEnabled;
 uniform float u_HPWaterSSRTemporalBlend;
@@ -287,7 +289,10 @@ vec4 ResolveTemporalSSR(vec4 current, vec3 waterWorldPos, float waterLinearDepth
 
     bool reprojectValid = true;
     vec2 historyUV = v_UV;
-    if (u_HPWaterSSRMotionReprojectionEnabled == 1) {
+    if (u_HPWaterSSRMotionVectorValid == 1) {
+        vec2 motionVector = texture(u_HPWaterSSRMotionVector, v_UV).rg;
+        historyUV = v_UV - motionVector;
+    } else if (u_HPWaterSSRMotionReprojectionEnabled == 1) {
         historyUV = ProjectUV(u_PreviousViewProjection, waterWorldPos, reprojectValid);
         if (!reprojectValid) {
             return current;
