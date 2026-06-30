@@ -55,9 +55,10 @@ public:
                       bool hpwaterLightDiagnostics = false,
                       bool hpwaterCausticDiagnostics = false,
                       bool hpwaterVolumeDiagnostics = false,
-                      bool hpwaterRefractionDiagnostics = false)
+                      bool hpwaterRefractionDiagnostics = false,
+                      bool hpwaterSpectrumDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics || hpwaterVolumeDiagnostics || hpwaterRefractionDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics || hpwaterVolumeDiagnostics || hpwaterRefractionDiagnostics || hpwaterSpectrumDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
         , m_HPWaterFluidBakeDiagnostics(hpwaterFluidBakeDiagnostics)
@@ -66,6 +67,7 @@ public:
         , m_HPWaterCausticDiagnostics(hpwaterCausticDiagnostics)
         , m_HPWaterVolumeDiagnostics(hpwaterVolumeDiagnostics)
         , m_HPWaterRefractionDiagnostics(hpwaterRefractionDiagnostics)
+        , m_HPWaterSpectrumDiagnostics(hpwaterSpectrumDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -198,6 +200,15 @@ public:
             m_RenderDiagnosticsOnceMinFrame = 60;
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireRefraction = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
+
+        if (m_HPWaterSpectrumDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireSpectrum = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
                 EnterPlayMode();
@@ -7529,6 +7540,47 @@ private:
             uvProbe.NonZeroUVOffsetRatio > 0.0f;
     }
 
+    bool HasHPWaterSpectrumTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        if (!d.HPWaterSpectralOceanEnabled ||
+            !d.HPWaterSpectralNormalParityEnabled ||
+            !d.HPWaterSpectrumComputeRan ||
+            !d.HPWaterSpectrumComputeValid ||
+            !d.HPWaterSpectrumTextureConsumed ||
+            !d.HPWaterSpectrumWindModelEnabled ||
+            !d.HPWaterSpectrumFrequencyDomainEnabled ||
+            !d.HPWaterSpectrumPhillipsEnabled ||
+            !d.HPWaterSpectrumJonswapEnabled ||
+            !d.HPWaterSpectrumIFFTEnabled ||
+            d.HPWaterSpectrumButterflyPasses <= 0 ||
+            d.HPWaterSpectrumTexture == 0 ||
+            d.HPWaterSpectrumResolution == 0 ||
+            d.HPWaterSpectrumAmplitude <= 0.0f ||
+            d.HPWaterSpectrumNormalStrength <= 0.0f)
+            return false;
+
+        const TextureFloatProbeSummary spectrumProbe =
+            ProbeTextureFloat(d.HPWaterSpectrumTexture,
+                d.HPWaterSpectrumResolution,
+                d.HPWaterSpectrumResolution);
+        if (!spectrumProbe.Valid)
+            return false;
+
+        const float heightRange = spectrumProbe.MaxRGBA[3] - spectrumProbe.MinRGBA[3];
+        const float normalRange =
+            (spectrumProbe.MaxRGBA[0] - spectrumProbe.MinRGBA[0]) +
+            (spectrumProbe.MaxRGBA[1] - spectrumProbe.MinRGBA[1]) +
+            (spectrumProbe.MaxRGBA[2] - spectrumProbe.MinRGBA[2]);
+
+        return spectrumProbe.NonZeroRGBRatio > 0.0f &&
+            spectrumProbe.NonZeroAlphaRatio > 0.0f &&
+            heightRange > 0.0001f &&
+            normalRange > 0.0001f;
+    }
+
     bool HasHPWaterCausticTextureEvidence() {
         if (!m_Scene)
             return false;
@@ -8000,6 +8052,50 @@ private:
         out << "HPWaterSpectrumJonswapEnabled: " << d.HPWaterSpectrumJonswapEnabled << "\n";
         out << "HPWaterSpectrumIFFTEnabled: " << d.HPWaterSpectrumIFFTEnabled << "\n";
         out << "HPWaterSpectrumButterflyPasses: " << d.HPWaterSpectrumButterflyPasses << "\n";
+        if (d.HPWaterSpectrumTexture != 0 && d.HPWaterSpectrumResolution > 0) {
+            TextureFloatProbeSummary spectrumFloatProbe =
+                ProbeTextureFloat(d.HPWaterSpectrumTexture,
+                    d.HPWaterSpectrumResolution,
+                    d.HPWaterSpectrumResolution);
+            const float spectrumHeightRange =
+                spectrumFloatProbe.Valid
+                    ? (spectrumFloatProbe.MaxRGBA[3] - spectrumFloatProbe.MinRGBA[3])
+                    : 0.0f;
+            const float spectrumNormalRange =
+                spectrumFloatProbe.Valid
+                    ? (spectrumFloatProbe.MaxRGBA[0] - spectrumFloatProbe.MinRGBA[0]) +
+                      (spectrumFloatProbe.MaxRGBA[1] - spectrumFloatProbe.MinRGBA[1]) +
+                      (spectrumFloatProbe.MaxRGBA[2] - spectrumFloatProbe.MinRGBA[2])
+                    : 0.0f;
+            out << "HPWaterSpectrumFloatReadbackEnabled: " << spectrumFloatProbe.Valid << "\n";
+            out << "HPWaterSpectrumAverageNormalHeight: " << std::fixed << std::setprecision(6)
+                << spectrumFloatProbe.AverageRGBA[0] << ","
+                << spectrumFloatProbe.AverageRGBA[1] << ","
+                << spectrumFloatProbe.AverageRGBA[2] << ","
+                << spectrumFloatProbe.AverageRGBA[3] << "\n";
+            out << "HPWaterSpectrumMinNormalHeight: " << std::fixed << std::setprecision(6)
+                << spectrumFloatProbe.MinRGBA[0] << ","
+                << spectrumFloatProbe.MinRGBA[1] << ","
+                << spectrumFloatProbe.MinRGBA[2] << ","
+                << spectrumFloatProbe.MinRGBA[3] << "\n";
+            out << "HPWaterSpectrumMaxNormalHeight: " << std::fixed << std::setprecision(6)
+                << spectrumFloatProbe.MaxRGBA[0] << ","
+                << spectrumFloatProbe.MaxRGBA[1] << ","
+                << spectrumFloatProbe.MaxRGBA[2] << ","
+                << spectrumFloatProbe.MaxRGBA[3] << "\n";
+            out << "HPWaterSpectrumHeightRange: " << std::fixed << std::setprecision(6)
+                << spectrumHeightRange << "\n";
+            out << "HPWaterSpectrumNormalRange: " << std::fixed << std::setprecision(6)
+                << spectrumNormalRange << "\n";
+            out << "HPWaterSpectrumNonZeroHeightRatio: " << std::fixed << std::setprecision(4)
+                << spectrumFloatProbe.NonZeroAlphaRatio << "\n";
+            out << "HPWaterSpectrumNonZeroNormalRatio: " << std::fixed << std::setprecision(4)
+                << spectrumFloatProbe.NonZeroRGBRatio << "\n";
+            out << "HPWaterSpectrumAnyHeightVariation: "
+                << (spectrumHeightRange > 0.0001f ? 1 : 0) << "\n";
+            out << "HPWaterSpectrumAnyNormalVariation: "
+                << (spectrumNormalRange > 0.0001f ? 1 : 0) << "\n";
+        }
         out << "HPWaterSkyTextureReflectionBound: " << d.HPWaterSkyTextureReflectionBound << "\n";
         out << "HPWaterSkyTexture: " << d.HPWaterSkyTexture << "\n";
         out << "HPWaterReflectionProbeBound: " << d.HPWaterReflectionProbeBound << "\n";
@@ -8751,6 +8847,9 @@ private:
                  d.HPWaterRefractionDataTexture != 0 &&
                  d.HPWaterRefractionMetaTexture != 0 &&
                  HasHPWaterRefractionTextureEvidence());
+            const bool spectrumReady =
+                !m_RenderDiagnosticsRequireSpectrum ||
+                HasHPWaterSpectrumTextureEvidence();
             const bool ssrReady =
                 !m_RenderDiagnosticsRequireSSR ||
                 (d.HPWaterSSRReflectionEnabled &&
@@ -8926,8 +9025,9 @@ private:
                 m_RenderDiagnosticsRequireLightLoop ||
                 m_RenderDiagnosticsRequireCaustics ||
                 m_RenderDiagnosticsRequireVolume ||
-                m_RenderDiagnosticsRequireRefraction;
-            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && refractionReady && ssrReady && lightLoopReady && causticsReady && volumeReady;
+                m_RenderDiagnosticsRequireRefraction ||
+                m_RenderDiagnosticsRequireSpectrum;
+            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && refractionReady && spectrumReady && ssrReady && lightLoopReady && causticsReady && volumeReady;
             if (ready || (!strictReadinessRequired && d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame)) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
@@ -10832,6 +10932,7 @@ private:
     bool m_HPWaterCausticDiagnostics = false;
     bool m_HPWaterVolumeDiagnostics = false;
     bool m_HPWaterRefractionDiagnostics = false;
+    bool m_HPWaterSpectrumDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
     bool m_RenderDiagnosticsRequireFluidBake = false;
@@ -10840,6 +10941,7 @@ private:
     bool m_RenderDiagnosticsRequireCaustics = false;
     bool m_RenderDiagnosticsRequireVolume = false;
     bool m_RenderDiagnosticsRequireRefraction = false;
+    bool m_RenderDiagnosticsRequireSpectrum = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
@@ -10961,6 +11063,7 @@ int main(int argc, char** argv) {
     bool hpwaterCausticDiagnostics = false;
     bool hpwaterVolumeDiagnostics = false;
     bool hpwaterRefractionDiagnostics = false;
+    bool hpwaterSpectrumDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--render-diagnostics-once") {
@@ -10989,6 +11092,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-refraction-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterRefractionDiagnostics = true;
+        } else if (arg == "--hpwater-spectrum-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterSpectrumDiagnostics = true;
         }
     }
 
@@ -11000,7 +11106,8 @@ int main(int argc, char** argv) {
         hpwaterLightDiagnostics,
         hpwaterCausticDiagnostics,
         hpwaterVolumeDiagnostics,
-        hpwaterRefractionDiagnostics);
+        hpwaterRefractionDiagnostics,
+        hpwaterSpectrumDiagnostics);
     app.Run();
     return 0;
 }
