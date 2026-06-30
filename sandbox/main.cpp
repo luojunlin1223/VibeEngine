@@ -7452,6 +7452,28 @@ private:
         return hasSurfaceAreaBody && hasSurfaceAreaPath && hasVolumeAreaScatter;
     }
 
+    bool HasHPWaterForwardScatterMipTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() || dr.GetWidth() == 0 || dr.GetHeight() == 0)
+            return false;
+
+        if (!d.HPWaterForwardScatterMipEnabled ||
+            d.HPWaterForwardScatterMipCount <= 1 ||
+            d.HPWaterForwardScatterDiagnosticsTexture == 0)
+            return false;
+
+        const TextureProbeSummary forwardScatterProbe =
+            ProbeTexture(d.HPWaterForwardScatterDiagnosticsTexture, dr.GetWidth(), dr.GetHeight());
+        return forwardScatterProbe.Valid &&
+            forwardScatterProbe.MaxRGBA[0] > 0.0f &&
+            forwardScatterProbe.MaxRGBA[1] > 0.0f &&
+            forwardScatterProbe.MaxRGBA[3] > 0.0f;
+    }
+
     bool HasHPWaterCausticTextureEvidence() {
         if (!m_Scene)
             return false;
@@ -7934,6 +7956,8 @@ private:
             << d.HPWaterReflectionProbeSecondaryBoxSize.z << "\n";
         out << "HPWaterForwardScatterMipEnabled: " << d.HPWaterForwardScatterMipEnabled << "\n";
         out << "HPWaterForwardScatterMipCount: " << d.HPWaterForwardScatterMipCount << "\n";
+        out << "HPWaterForwardScatterDiagnosticsTexture: "
+            << d.HPWaterForwardScatterDiagnosticsTexture << "\n";
         out << "HPWaterVolumeRan: " << d.HPWaterVolumeRan << "\n";
         out << "HPWaterVolumeColorTexture: " << d.HPWaterVolumeColorTexture << "\n";
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
@@ -8322,6 +8346,33 @@ private:
             SaveTextureBMP(d.HPWaterAreaLightDiagnosticsTexture, dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_area_light_diagnostics.bmp");
         }
+        if (dr.IsInitialized() && d.HPWaterForwardScatterDiagnosticsTexture != 0) {
+            TextureProbeSummary forwardScatterDiagnosticsProbe =
+                ProbeTexture(d.HPWaterForwardScatterDiagnosticsTexture, dr.GetWidth(), dr.GetHeight());
+            writeProbe("HPWaterForwardScatterDiagnostics", forwardScatterDiagnosticsProbe);
+            out << "HPWaterForwardScatterDiagnosticsReadbackEnabled: "
+                << forwardScatterDiagnosticsProbe.Valid << "\n";
+            out << "HPWaterForwardScatterMipAverageLOD: "
+                << std::fixed << std::setprecision(4)
+                << forwardScatterDiagnosticsProbe.AverageRGBA[0] << "\n";
+            out << "HPWaterForwardScatterMipAverageSampleLuminance: "
+                << std::fixed << std::setprecision(4)
+                << forwardScatterDiagnosticsProbe.AverageRGBA[1] << "\n";
+            out << "HPWaterForwardScatterMipAverageScatterDensity: "
+                << std::fixed << std::setprecision(4)
+                << forwardScatterDiagnosticsProbe.AverageRGBA[2] << "\n";
+            out << "HPWaterForwardScatterMipAverageUsed: "
+                << std::fixed << std::setprecision(4)
+                << forwardScatterDiagnosticsProbe.AverageRGBA[3] << "\n";
+            out << "HPWaterForwardScatterMipAnyLOD: "
+                << (forwardScatterDiagnosticsProbe.MaxRGBA[0] > 0.0f ? 1 : 0) << "\n";
+            out << "HPWaterForwardScatterMipAnySampleContribution: "
+                << (forwardScatterDiagnosticsProbe.MaxRGBA[1] > 0.0f ? 1 : 0) << "\n";
+            out << "HPWaterForwardScatterMipAnyUsed: "
+                << (forwardScatterDiagnosticsProbe.MaxRGBA[3] > 0.0f ? 1 : 0) << "\n";
+            SaveTextureBMP(d.HPWaterForwardScatterDiagnosticsTexture, dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_forward_scatter_diagnostics.bmp");
+        }
         if (dr.IsInitialized() && d.HPWaterVolumeAreaLightDiagnosticsTexture != 0 &&
             d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
             TextureProbeSummary volumeAreaLightDiagnosticsProbe =
@@ -8616,7 +8667,11 @@ private:
                  d.HPWaterVolumeAreaLightLTCHorizonClippingEnabled &&
                  d.HPWaterAreaLightDiagnosticsTexture != 0 &&
                  d.HPWaterVolumeAreaLightDiagnosticsTexture != 0 &&
-                 HasHPWaterAreaLightTextureEvidence());
+                 d.HPWaterForwardScatterMipEnabled &&
+                 d.HPWaterForwardScatterMipCount > 1 &&
+                 d.HPWaterForwardScatterDiagnosticsTexture != 0 &&
+                 HasHPWaterAreaLightTextureEvidence() &&
+                 HasHPWaterForwardScatterMipTextureEvidence());
             const bool causticsReady =
                 !m_RenderDiagnosticsRequireCaustics ||
                 (d.HPWaterCausticRan &&

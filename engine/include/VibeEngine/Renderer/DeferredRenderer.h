@@ -393,6 +393,7 @@ public:
     /// Get the HPWater SSR hierarchy diagnostic texture.
     uint32_t GetHPWaterSSRDiagnosticsTexture() const;
     uint32_t GetHPWaterAreaLightDiagnosticsTexture() const;
+    uint32_t GetHPWaterForwardScatterDiagnosticsTexture() const;
     uint32_t GetHPWaterSSRLightingTexture() const;
     uint32_t GetHPWaterSSRMotionVectorTexture() const;
     uint32_t GetHPWaterSSRResolveDiagnosticsTexture() const;

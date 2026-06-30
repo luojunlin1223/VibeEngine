@@ -1292,6 +1292,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterAreaLightLTCHDRPTableEnabled();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
+    m_RenderDiagnostics.HPWaterForwardScatterDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterForwardScatterDiagnosticsTexture();
     m_RenderDiagnostics.HPWaterVolumeColorTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(0);
     m_RenderDiagnostics.HPWaterVolumeTransmittanceTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(1);
     m_RenderDiagnostics.HPWaterVolumeDepthTexture = m_DeferredRenderer.GetHPWaterVolumeTexture(2);
@@ -3879,6 +3881,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterStencilRef = m_DeferredRenderer.GetHPWaterStencilRef();
     m_RenderDiagnostics.HPWaterForwardScatterMipEnabled = m_DeferredRenderer.IsHPWaterSceneColorMipValid();
     m_RenderDiagnostics.HPWaterForwardScatterMipCount = m_DeferredRenderer.GetHPWaterSceneColorMipCount();
+    m_RenderDiagnostics.HPWaterForwardScatterDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterForwardScatterDiagnosticsTexture();
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {
         m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled = false;
         m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled = false;

@@ -38,6 +38,7 @@ layout(location = 1) out vec4 RefractData;
 layout(location = 2) out vec4 RefractMeta;
 layout(location = 3) out vec4 SSRDiagnostics;
 layout(location = 4) out vec4 AreaLightDiagnostics;
+layout(location = 5) out vec4 ForwardScatterDiagnostics;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -1017,6 +1018,7 @@ void main() {
         RefractMeta = vec4(v_UV, 1.0, 0.0);
         SSRDiagnostics = vec4(0.0);
         AreaLightDiagnostics = vec4(0.0);
+        ForwardScatterDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1030,6 +1032,7 @@ void main() {
         RefractMeta = vec4(v_UV, mergedSceneDepth, 0.0);
         SSRDiagnostics = vec4(0.0);
         AreaLightDiagnostics = vec4(0.0);
+        ForwardScatterDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1352,6 +1355,20 @@ void main() {
         Luminance(areaMacroContribution),
         Luminance(areaThinSSSContribution + areaBacklitContribution),
         areaCount > 0 ? 1.0 : 0.0);
+    float forwardMipUsed =
+        (u_SceneColorMipEnabled == 1 &&
+         u_SceneColorMipCount > 1 &&
+         forwardStrength > 0.0001 &&
+         forwardBlurLOD > 0.999)
+            ? 1.0
+            : 0.0;
+    float forwardMipLOD =
+        forwardMipUsed * clamp(forwardBlurLOD / max(float(u_SceneColorMipCount - 1), 1.0), 0.0, 1.0);
+    ForwardScatterDiagnostics = vec4(
+        forwardMipLOD,
+        Luminance(forwardBlur) * forwardStrength,
+        scatterDensity,
+        forwardMipUsed);
 }
 #endif
 
