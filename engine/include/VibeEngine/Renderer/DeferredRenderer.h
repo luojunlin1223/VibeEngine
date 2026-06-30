@@ -392,6 +392,8 @@ public:
     bool IsHPWaterSSRLightingRGBPreweighted() const { return m_HPWaterSSRLightingRGBPreweighted; }
     bool IsHPWaterSSRHitRefinementEnabled() const { return m_HPWaterSSRHitRefinementEnabled; }
     bool IsHPWaterSSRRoughnessConeTracingEnabled() const { return m_HPWaterSSRRoughnessConeTracingEnabled; }
+    bool IsHPWaterSSRTemporalResolveEnabled() const { return m_HPWaterSSRTemporalResolveEnabled; }
+    bool IsHPWaterSSRHistoryValid() const { return m_HPWaterSSRHistoryValid; }
     bool DoesHPWaterCompositeConsumeSSRLightingBuffer() const {
         return m_HPWaterCompositeConsumesSSRLightingBuffer;
     }
@@ -798,12 +800,15 @@ private:
     // HPWater final composite output and precomputed refraction payload.
     std::shared_ptr<Framebuffer> m_HPWaterCompositeFBO;
     std::shared_ptr<Framebuffer> m_HPWaterSSRFBO;
+    std::shared_ptr<Framebuffer> m_HPWaterSSRHistoryFBO;
     bool m_HPWaterCompositeValid = false;
     bool m_HPWaterSSRLightingValid = false;
     bool m_HPWaterSSRLightingRan = false;
     bool m_HPWaterSSRLightingRGBPreweighted = false;
     bool m_HPWaterSSRHitRefinementEnabled = false;
     bool m_HPWaterSSRRoughnessConeTracingEnabled = false;
+    bool m_HPWaterSSRTemporalResolveEnabled = false;
+    bool m_HPWaterSSRHistoryValid = false;
     bool m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     bool m_HPWaterRefractionNDCMarchEnabled = false;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;

@@ -41,6 +41,7 @@ uniform sampler2D u_HPWaterDepthPyramid;
 uniform sampler2D u_HPWaterNormalRoughness;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterMask;
+uniform sampler2D u_HPWaterSSRHistory;
 
 uniform float u_NearClip;
 uniform float u_FarClip;
@@ -56,6 +57,8 @@ uniform int u_HPWaterDepthPyramidMipCount;
 uniform int u_SceneColorMipEnabled;
 uniform int u_SceneColorMipCount;
 uniform int u_HPWaterMaskEnabled;
+uniform int u_HPWaterSSRHistoryValid;
+uniform float u_HPWaterSSRTemporalBlend;
 uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
 
@@ -258,6 +261,23 @@ vec4 TraceHPWaterSSR(vec3 waterWorldPos, vec3 normal, vec3 viewDir, float roughn
     return vec4(0.0);
 }
 
+vec4 ResolveTemporalSSR(vec4 current) {
+    if (u_HPWaterSSRHistoryValid != 1 || current.a <= 0.0001) {
+        return current;
+    }
+
+    vec4 history = texture(u_HPWaterSSRHistory, v_UV);
+    if (history.a <= 0.0001) {
+        return current;
+    }
+
+    float blend = clamp(u_HPWaterSSRTemporalBlend, 0.0, 0.95);
+    float historyWeight = blend * smoothstep(0.02, 0.25, current.a);
+    vec3 rgb = mix(current.rgb, history.rgb, historyWeight);
+    float alpha = max(current.a, mix(current.a, history.a, historyWeight));
+    return vec4(rgb, alpha);
+}
+
 void main() {
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
     if (waterDepth >= 0.9999) {
@@ -276,7 +296,7 @@ void main() {
     vec3 waterWorldPos = ReconstructWorldPosition(v_UV, waterDepth);
     vec3 V = NormalizeOr(u_ViewPos - waterWorldPos, vec3(0.0, 0.0, 1.0));
     float waterLinear = LinearizeDepth(waterDepth);
-    FragColor = TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear);
+    FragColor = ResolveTemporalSSR(TraceHPWaterSSR(waterWorldPos, N, V, roughness, waterLinear));
 }
 #endif
 
