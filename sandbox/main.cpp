@@ -50,11 +50,13 @@ public:
     explicit Sandbox(bool renderDiagnosticsOnce = false,
                       bool hpwaterMotionDiagnostics = false,
                       bool hpwaterFluidFilterDiagnostics = false,
+                      bool hpwaterFluidBakeDiagnostics = false,
                       bool hpwaterSSRDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterSSRDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
+        , m_HPWaterFluidBakeDiagnostics(hpwaterFluidBakeDiagnostics)
         , m_HPWaterSSRDiagnostics(hpwaterSSRDiagnostics)
     {
         VE_INFO("Sandbox application created");
@@ -134,10 +136,11 @@ public:
                 EnterPlayMode();
         }
 
-        if (m_HPWaterFluidFilterDiagnostics) {
+        if (m_HPWaterFluidFilterDiagnostics || m_HPWaterFluidBakeDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
             m_RenderDiagnosticsOnceMaxFrame = 240;
-            m_RenderDiagnosticsRequireFluidFiltering = true;
+            m_RenderDiagnosticsRequireFluidFiltering = m_HPWaterFluidFilterDiagnostics;
+            m_RenderDiagnosticsRequireFluidBake = m_HPWaterFluidBakeDiagnostics;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
                 EnterPlayMode();
@@ -1340,6 +1343,8 @@ private:
             water.IndirectLightStrength = 1.0f;
             water.SpecularFGDStrength = 1.0f;
             water.GGXEnergyCompensation = 1.0f;
+            if (m_HPWaterFluidBakeDiagnostics)
+                water.FluidStartFrameBake = true;
             if (m_HPWaterSSRDiagnostics) {
                 water.HeightScale = 0.0f;
                 water.SpectrumAmplitude = 0.0f;
@@ -1366,6 +1371,8 @@ private:
             water.SpectrumSwell = std::clamp(water.SpectrumSwell, 0.0f, 1.0f);
             water.SpectrumShortWaveFade = std::clamp(water.SpectrumShortWaveFade, 0.0f, 2.0f);
             water.SpectrumNormalStrength = std::clamp(water.SpectrumNormalStrength, 0.0f, 4.0f);
+            if (m_HPWaterFluidBakeDiagnostics)
+                water.FluidStartFrameBake = true;
             if (m_HPWaterSSRDiagnostics) {
                 water.HeightScale = 0.0f;
                 water.SpectrumAmplitude = 0.0f;
@@ -1463,7 +1470,7 @@ private:
     }
 
     void EnsureHPWaterFluidFilterDiagnosticObjects(float deltaTime) {
-        if (!m_HPWaterFluidFilterDiagnostics || !m_PlayMode)
+        if ((!m_HPWaterFluidFilterDiagnostics && !m_HPWaterFluidBakeDiagnostics) || !m_PlayMode)
             return;
 
         m_HPWaterFluidFilterDiagnosticTime += std::max(deltaTime, 0.0f);
@@ -8243,6 +8250,14 @@ private:
                  d.HPWaterFluidTransparentSkipped > 0 &&
                  d.HPWaterFluidWaterCaptureDraws > 0 &&
                  d.HPWaterFluidSceneCaptureDraws > 0);
+            const bool fluidBakeReady =
+                !m_RenderDiagnosticsRequireFluidBake ||
+                (d.HPWaterFluidStartFrameBakeEnabled &&
+                 d.HPWaterFluidHeightCaptureCacheReused &&
+                 d.HPWaterFluidHeightCaptureValid &&
+                 d.HPWaterFluidHeightFieldValid &&
+                 d.HPWaterFluidWaterHeightTexture != 0 &&
+                 d.HPWaterFluidSceneHeightTexture != 0);
             const bool ssrReady =
                 !m_RenderDiagnosticsRequireSSR ||
                 (d.HPWaterSSRReflectionEnabled &&
@@ -8263,7 +8278,13 @@ private:
                  d.HPWaterSSRDiagnosticsValid &&
                  d.HPWaterSSRDiagnosticsTexture != 0 &&
                  d.HPWaterSSRMaxSteps > 0);
-            if ((baseReady && objectMotionReady && fluidFilteringReady && ssrReady) || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
+            const bool strictReadinessRequired =
+                m_RenderDiagnosticsRequireObjectMotion ||
+                m_RenderDiagnosticsRequireFluidFiltering ||
+                m_RenderDiagnosticsRequireFluidBake ||
+                m_RenderDiagnosticsRequireSSR;
+            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady;
+            if (ready || (!strictReadinessRequired && d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame)) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
                 glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
@@ -10158,9 +10179,11 @@ private:
     bool m_RenderDiagnosticsOnce = false;
     bool m_HPWaterMotionDiagnostics = false;
     bool m_HPWaterFluidFilterDiagnostics = false;
+    bool m_HPWaterFluidBakeDiagnostics = false;
     bool m_HPWaterSSRDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
+    bool m_RenderDiagnosticsRequireFluidBake = false;
     bool m_RenderDiagnosticsRequireSSR = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
@@ -10277,6 +10300,7 @@ int main(int argc, char** argv) {
     bool renderDiagnosticsOnce = false;
     bool hpwaterMotionDiagnostics = false;
     bool hpwaterFluidFilterDiagnostics = false;
+    bool hpwaterFluidBakeDiagnostics = false;
     bool hpwaterSSRDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
@@ -10288,13 +10312,20 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-fluid-filter-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterFluidFilterDiagnostics = true;
+        } else if (arg == "--hpwater-fluid-bake-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterFluidBakeDiagnostics = true;
         } else if (arg == "--hpwater-ssr-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterSSRDiagnostics = true;
         }
     }
 
-    Sandbox app(renderDiagnosticsOnce, hpwaterMotionDiagnostics, hpwaterFluidFilterDiagnostics, hpwaterSSRDiagnostics);
+    Sandbox app(renderDiagnosticsOnce,
+        hpwaterMotionDiagnostics,
+        hpwaterFluidFilterDiagnostics,
+        hpwaterFluidBakeDiagnostics,
+        hpwaterSSRDiagnostics);
     app.Run();
     return 0;
 }
