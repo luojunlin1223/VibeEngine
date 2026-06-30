@@ -53,15 +53,17 @@ public:
                       bool hpwaterFluidBakeDiagnostics = false,
                       bool hpwaterSSRDiagnostics = false,
                       bool hpwaterLightDiagnostics = false,
-                      bool hpwaterCausticDiagnostics = false)
+                      bool hpwaterCausticDiagnostics = false,
+                      bool hpwaterVolumeDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics || hpwaterVolumeDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
         , m_HPWaterFluidBakeDiagnostics(hpwaterFluidBakeDiagnostics)
         , m_HPWaterSSRDiagnostics(hpwaterSSRDiagnostics)
         , m_HPWaterLightDiagnostics(hpwaterLightDiagnostics)
         , m_HPWaterCausticDiagnostics(hpwaterCausticDiagnostics)
+        , m_HPWaterVolumeDiagnostics(hpwaterVolumeDiagnostics)
     {
         VE_INFO("Sandbox application created");
         VE::AudioEngine::Init();
@@ -178,6 +180,15 @@ public:
             m_RenderDiagnosticsOnceMinFrame = 60;
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireCaustics = true;
+            LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
+            if (!m_PlayMode)
+                EnterPlayMode();
+        }
+
+        if (m_HPWaterVolumeDiagnostics) {
+            m_RenderDiagnosticsOnceMinFrame = 60;
+            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsRequireVolume = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
                 EnterPlayMode();
@@ -7443,6 +7454,52 @@ private:
             gbufferAtlasProbe.Valid && gbufferAtlasProbe.NonBlackRatio > 0.0f;
     }
 
+    bool HasHPWaterVolumeTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized())
+            return false;
+
+        if (d.HPWaterVolumeWidth == 0 || d.HPWaterVolumeHeight == 0 ||
+            d.HPWaterVolumeUpsampledWidth == 0 || d.HPWaterVolumeUpsampledHeight == 0)
+            return false;
+
+        if (d.HPWaterVolumeColorTexture == 0 ||
+            d.HPWaterVolumeDepthTexture == 0 ||
+            d.HPWaterVolumeFilteredColorTexture == 0 ||
+            d.HPWaterVolumeFilteredDepthTexture == 0 ||
+            d.HPWaterVolumeUpsampledColorTexture == 0 ||
+            d.HPWaterVolumeUpsampledDepthTexture == 0)
+            return false;
+
+        const TextureProbeSummary volumeColorProbe =
+            ProbeTexture(d.HPWaterVolumeColorTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
+        const TextureProbeSummary volumeDepthProbe =
+            ProbeTexture(d.HPWaterVolumeDepthTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
+        const TextureProbeSummary filteredColorProbe =
+            ProbeTexture(d.HPWaterVolumeFilteredColorTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
+        const TextureProbeSummary filteredDepthProbe =
+            ProbeTexture(d.HPWaterVolumeFilteredDepthTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
+        const TextureProbeSummary upsampledColorProbe =
+            ProbeTexture(d.HPWaterVolumeUpsampledColorTexture,
+                d.HPWaterVolumeUpsampledWidth,
+                d.HPWaterVolumeUpsampledHeight);
+        const TextureProbeSummary upsampledDepthProbe =
+            ProbeTexture(d.HPWaterVolumeUpsampledDepthTexture,
+                d.HPWaterVolumeUpsampledWidth,
+                d.HPWaterVolumeUpsampledHeight);
+
+        return volumeColorProbe.Valid && volumeColorProbe.NonBlackRatio > 0.0f &&
+            volumeDepthProbe.Valid && volumeDepthProbe.NonBlackRatio > 0.0f &&
+            filteredColorProbe.Valid && filteredColorProbe.NonBlackRatio > 0.0f &&
+            filteredDepthProbe.Valid && filteredDepthProbe.NonBlackRatio > 0.0f &&
+            upsampledColorProbe.Valid && upsampledColorProbe.NonBlackRatio > 0.0f &&
+            upsampledDepthProbe.Valid && upsampledDepthProbe.NonBlackRatio > 0.0f;
+    }
+
     TextureFloatProbeSummary ProbeTextureFloat(uint32_t textureID, uint32_t width, uint32_t height) {
         TextureFloatProbeSummary summary;
         summary.Width = width;
@@ -8450,14 +8507,69 @@ private:
                  d.HPWaterCausticAtlasConsumed &&
                  d.HPWaterCausticVolumeStrength > 0.0f &&
                  HasHPWaterCausticTextureEvidence());
+            const bool volumeReady =
+                !m_RenderDiagnosticsRequireVolume ||
+                (d.HPWaterVolumeRan &&
+                 d.HPWaterVolumeColorTexture != 0 &&
+                 d.HPWaterVolumeTransmittanceTexture != 0 &&
+                 d.HPWaterVolumeDepthTexture != 0 &&
+                 d.HPWaterVolumeWidth > 0 &&
+                 d.HPWaterVolumeHeight > 0 &&
+                 d.HPWaterVolumeTemporalRan &&
+                 d.HPWaterVolumeTemporalNeighborhoodClampEnabled &&
+                 d.HPWaterVolumeTemporalMotionReprojectionEnabled &&
+                 d.HPWaterVolumeExplicitMotionVectorEnabled &&
+                 d.HPWaterVolumeSceneMotionVectorEnabled &&
+                 d.HPWaterVolumeMotionVectorHistoryEnabled &&
+                 d.HPWaterVolumeExponentialIntegrationEnabled &&
+                 d.HPWaterVolumeSceneInScatteringEnabled &&
+                 d.HPWaterVolumeAlbedoPhaseBlendEnabled &&
+                 d.HPWaterVolumePhaseGEnabled &&
+                 d.HPWaterVolumeShadowSamplingEnabled &&
+                 d.HPWaterVolumeShadowParamsEnabled &&
+                 d.HPWaterVolumeMaxCrossDistanceEnabled &&
+                 d.HPWaterVolumeDynamicShadowDistanceEnabled &&
+                 d.HPWaterVolumeSampleCount >= 16 &&
+                 d.HPWaterVolumeMaxCrossDistance > 0.0f &&
+                 d.HPWaterVolumeMotionVectorTexture != 0 &&
+                 d.HPWaterVolumeTemporalBlendFactor > 0.0f &&
+                 d.HPWaterVolumeSpatialFilterEnabled &&
+                 d.HPWaterVolumeSpatialFilterIterations > 0 &&
+                 d.HPWaterVolumeMotionVectorsEnabled &&
+                 d.HPWaterVolumeMotionVectorVelocityScale > 0.0f &&
+                 d.HPWaterVolumeTemporalDepthRejectionEnabled &&
+                 d.HPWaterVolumeTemporalDepthThreshold > 0.0f &&
+                 d.HPWaterVolumeSpatialDepthAwareEnabled &&
+                 d.HPWaterVolumeSpatialDepthSensitivity > 0.0f &&
+                 d.HPWaterVolumeTemporalNeighborhoodClampStrength > 0.0f &&
+                 d.HPWaterVolumeHistoryValid &&
+                 d.HPWaterVolumeHistoryColorTexture != 0 &&
+                 d.HPWaterVolumeHistoryTransmittanceTexture != 0 &&
+                 d.HPWaterVolumeHistoryDepthTexture != 0 &&
+                 d.HPWaterVolumeFilterRan &&
+                 d.HPWaterVolumeFilterIterations > 0 &&
+                 d.HPWaterVolumeFilteredColorTexture != 0 &&
+                 d.HPWaterVolumeFilteredTransmittanceTexture != 0 &&
+                 d.HPWaterVolumeFilteredDepthTexture != 0 &&
+                 d.HPWaterVolumeUpsampleRan &&
+                 d.HPWaterVolumeUpsampledColorTexture != 0 &&
+                 d.HPWaterVolumeUpsampledTransmittanceTexture != 0 &&
+                 d.HPWaterVolumeUpsampledDepthTexture != 0 &&
+                 d.HPWaterVolumeUpsampledWidth > 0 &&
+                 d.HPWaterVolumeUpsampledHeight > 0 &&
+                 d.HPWaterVolumeUpsampleGatherParityEnabled &&
+                 d.HPWaterVolumeUpsampleDepthAwareEnabled &&
+                 d.HPWaterVolumeCompositeFullResolutionEnabled &&
+                 HasHPWaterVolumeTextureEvidence());
             const bool strictReadinessRequired =
                 m_RenderDiagnosticsRequireObjectMotion ||
                 m_RenderDiagnosticsRequireFluidFiltering ||
                 m_RenderDiagnosticsRequireFluidBake ||
                 m_RenderDiagnosticsRequireSSR ||
                 m_RenderDiagnosticsRequireLightLoop ||
-                m_RenderDiagnosticsRequireCaustics;
-            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady && lightLoopReady && causticsReady;
+                m_RenderDiagnosticsRequireCaustics ||
+                m_RenderDiagnosticsRequireVolume;
+            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && ssrReady && lightLoopReady && causticsReady && volumeReady;
             if (ready || (!strictReadinessRequired && d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame)) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
@@ -10357,12 +10469,14 @@ private:
     bool m_HPWaterSSRDiagnostics = false;
     bool m_HPWaterLightDiagnostics = false;
     bool m_HPWaterCausticDiagnostics = false;
+    bool m_HPWaterVolumeDiagnostics = false;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
     bool m_RenderDiagnosticsRequireFluidBake = false;
     bool m_RenderDiagnosticsRequireSSR = false;
     bool m_RenderDiagnosticsRequireLightLoop = false;
     bool m_RenderDiagnosticsRequireCaustics = false;
+    bool m_RenderDiagnosticsRequireVolume = false;
     uint64_t m_RenderDiagnosticsOnceMinFrame = 24;
     uint64_t m_RenderDiagnosticsOnceMaxFrame = 180;
     uint64_t m_LastAutoRenderDiagnosticFrame = 0;
@@ -10482,6 +10596,7 @@ int main(int argc, char** argv) {
     bool hpwaterSSRDiagnostics = false;
     bool hpwaterLightDiagnostics = false;
     bool hpwaterCausticDiagnostics = false;
+    bool hpwaterVolumeDiagnostics = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--render-diagnostics-once") {
@@ -10504,6 +10619,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-caustic-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterCausticDiagnostics = true;
+        } else if (arg == "--hpwater-volume-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterVolumeDiagnostics = true;
         }
     }
 
@@ -10513,7 +10631,8 @@ int main(int argc, char** argv) {
         hpwaterFluidBakeDiagnostics,
         hpwaterSSRDiagnostics,
         hpwaterLightDiagnostics,
-        hpwaterCausticDiagnostics);
+        hpwaterCausticDiagnostics,
+        hpwaterVolumeDiagnostics);
     app.Run();
     return 0;
 }
