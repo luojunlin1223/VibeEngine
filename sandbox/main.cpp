@@ -7515,6 +7515,8 @@ private:
         float MinLuminance = std::numeric_limits<float>::max();
         float MaxLuminance = std::numeric_limits<float>::lowest();
         float LuminanceRange = 0.0f;
+        float AverageLuminanceGradient = 0.0f;
+        float GradientPixelRatio = 0.0f;
         float AverageAlpha = 0.0f;
         std::array<float, 4> AverageRGBA = { 0.0f, 0.0f, 0.0f, 0.0f };
         float NonBlackRatio = 0.0f;
@@ -7761,8 +7763,11 @@ private:
 
         double luminanceSum = 0.0;
         double alphaSum = 0.0;
+        double gradientSum = 0.0;
         std::array<double, 4> channelSum = { 0.0, 0.0, 0.0, 0.0 };
         size_t nonBlack = 0;
+        size_t gradientSamples = 0;
+        size_t gradientPixels = 0;
         const size_t pixelCount = static_cast<size_t>(sampleWidth) * static_cast<size_t>(sampleHeight);
         const size_t step = 1;
         size_t sampled = 0;
@@ -7794,6 +7799,25 @@ private:
             sampled++;
         }
 
+        if (sampleWidth > 1 && sampleHeight > 1) {
+            auto readLuminance = [&](uint32_t x, uint32_t y) {
+                const size_t i = (static_cast<size_t>(y) * sampleWidth + x) * 4;
+                return static_cast<float>((0.2126 * pixels[i + 0] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]) / 255.0);
+            };
+            for (uint32_t y = 0; y + 1 < sampleHeight; ++y) {
+                for (uint32_t x = 0; x + 1 < sampleWidth; ++x) {
+                    const float center = readLuminance(x, y);
+                    const float dx = std::abs(readLuminance(x + 1, y) - center);
+                    const float dy = std::abs(readLuminance(x, y + 1) - center);
+                    const float gradient = std::max(dx, dy);
+                    gradientSum += gradient;
+                    if (gradient > 0.0025f)
+                        gradientPixels++;
+                    gradientSamples++;
+                }
+            }
+        }
+
         summary.Valid = sampled > 0;
         if (sampled > 0) {
             summary.AverageLuminance = static_cast<float>(luminanceSum / sampled);
@@ -7806,6 +7830,10 @@ private:
                 static_cast<float>(channelSum[3] / (255.0 * sampled))
             };
             summary.NonBlackRatio = static_cast<float>(static_cast<double>(nonBlack) / sampled);
+            if (gradientSamples > 0) {
+                summary.AverageLuminanceGradient = static_cast<float>(gradientSum / gradientSamples);
+                summary.GradientPixelRatio = static_cast<float>(static_cast<double>(gradientPixels) / gradientSamples);
+            }
         }
         return summary;
     }
@@ -8396,6 +8424,9 @@ private:
             computeProbe.Valid && computeProbe.NonBlackRatio > 0.0f &&
             computeProbe.MaxRGBA[3] > 0 &&
             filteredProbe.Valid && filteredProbe.NonBlackRatio > 0.0f &&
+            filteredProbe.LuminanceRange > 0.01f &&
+            filteredProbe.AverageLuminanceGradient > 0.00001f &&
+            filteredProbe.GradientPixelRatio > 0.0005f &&
             atlasProbe.Valid && atlasProbe.NonBlackRatio > 0.0f &&
             gbufferAtlasProbe.Valid && gbufferAtlasProbe.NonBlackRatio > 0.0f &&
             rgbChannelsValid;
@@ -9432,6 +9463,8 @@ private:
             out << "MinLuminance: " << std::fixed << std::setprecision(4) << p.MinLuminance << "\n";
             out << "MaxLuminance: " << std::fixed << std::setprecision(4) << p.MaxLuminance << "\n";
             out << "LuminanceRange: " << std::fixed << std::setprecision(4) << p.LuminanceRange << "\n";
+            out << "AverageLuminanceGradient: " << std::fixed << std::setprecision(8) << p.AverageLuminanceGradient << "\n";
+            out << "GradientPixelRatio: " << std::fixed << std::setprecision(4) << p.GradientPixelRatio << "\n";
             out << "AverageAlpha: " << std::fixed << std::setprecision(4) << p.AverageAlpha << "\n";
             out << "AverageRGBA: "
                 << std::fixed << std::setprecision(4)
