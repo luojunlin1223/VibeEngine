@@ -7543,6 +7543,16 @@ private:
         float AlphaGradientPixelRatio = 0.0f;
     };
 
+    struct RGBChannelSeparationSummary {
+        bool Valid = false;
+        uint32_t Width = 0;
+        uint32_t Height = 0;
+        float AverageDifference = 0.0f;
+        float MaxDifference = 0.0f;
+        float DifferentPixelRatio = 0.0f;
+        float NonZeroPixelRatio = 0.0f;
+    };
+
     struct RefractionMetaUVProbeSummary {
         bool Valid = false;
         uint32_t Width = 0;
@@ -7773,6 +7783,64 @@ private:
             };
             summary.NonBlackRatio = static_cast<float>(static_cast<double>(nonBlack) / sampled);
         }
+        return summary;
+    }
+
+    RGBChannelSeparationSummary ProbeRGBChannelSeparation(uint32_t redTexture,
+                                                          uint32_t greenTexture,
+                                                          uint32_t blueTexture,
+                                                          uint32_t width,
+                                                          uint32_t height) {
+        RGBChannelSeparationSummary summary;
+        summary.Width = width;
+        summary.Height = height;
+        if (redTexture == 0 || greenTexture == 0 || blueTexture == 0 || width == 0 || height == 0)
+            return summary;
+
+        std::vector<unsigned char> redPixels;
+        std::vector<unsigned char> greenPixels;
+        std::vector<unsigned char> bluePixels;
+        uint32_t redWidth = 0;
+        uint32_t redHeight = 0;
+        uint32_t greenWidth = 0;
+        uint32_t greenHeight = 0;
+        uint32_t blueWidth = 0;
+        uint32_t blueHeight = 0;
+        if (!ReadTextureThumbnailRGBA8(redTexture, width, height, 128, redPixels, redWidth, redHeight) ||
+            !ReadTextureThumbnailRGBA8(greenTexture, width, height, 128, greenPixels, greenWidth, greenHeight) ||
+            !ReadTextureThumbnailRGBA8(blueTexture, width, height, 128, bluePixels, blueWidth, blueHeight))
+            return summary;
+        if (redWidth == 0 || redHeight == 0 ||
+            redWidth != greenWidth || redHeight != greenHeight ||
+            redWidth != blueWidth || redHeight != blueHeight)
+            return summary;
+
+        double differenceSum = 0.0;
+        uint64_t differentPixels = 0;
+        uint64_t nonZeroPixels = 0;
+        const uint64_t pixelCount = static_cast<uint64_t>(redWidth) * static_cast<uint64_t>(redHeight);
+        for (uint64_t i = 0; i < pixelCount; ++i) {
+            const size_t base = static_cast<size_t>(i) * 4;
+            const float r = static_cast<float>(redPixels[base + 0]) / 255.0f;
+            const float g = static_cast<float>(greenPixels[base + 1]) / 255.0f;
+            const float b = static_cast<float>(bluePixels[base + 2]) / 255.0f;
+            const float difference = std::max({ std::abs(r - g), std::abs(g - b), std::abs(r - b) });
+            differenceSum += difference;
+            summary.MaxDifference = std::max(summary.MaxDifference, difference);
+            if (difference > (1.0f / 255.0f))
+                differentPixels++;
+            if (r > 0.0f || g > 0.0f || b > 0.0f)
+                nonZeroPixels++;
+        }
+
+        summary.Valid = pixelCount > 0;
+        summary.Width = redWidth;
+        summary.Height = redHeight;
+        summary.AverageDifference = static_cast<float>(differenceSum / static_cast<double>(pixelCount));
+        summary.DifferentPixelRatio =
+            static_cast<float>(static_cast<double>(differentPixels) / static_cast<double>(pixelCount));
+        summary.NonZeroPixelRatio =
+            static_cast<float>(static_cast<double>(nonZeroPixels) / static_cast<double>(pixelCount));
         return summary;
     }
 
@@ -8284,10 +8352,20 @@ private:
                 ProbeTexture(d.HPWaterCausticComputeTextureB,
                     d.HPWaterCausticComputeWidth,
                     d.HPWaterCausticComputeHeight);
+            const RGBChannelSeparationSummary rgbSeparation =
+                ProbeRGBChannelSeparation(d.HPWaterCausticComputeTextureR,
+                    d.HPWaterCausticComputeTextureG,
+                    d.HPWaterCausticComputeTextureB,
+                    d.HPWaterCausticComputeWidth,
+                    d.HPWaterCausticComputeHeight);
             rgbChannelsValid = redProbe.Valid && greenProbe.Valid && blueProbe.Valid &&
                 redProbe.MaxRGBA[0] > 0 &&
                 greenProbe.MaxRGBA[1] > 0 &&
-                blueProbe.MaxRGBA[2] > 0;
+                blueProbe.MaxRGBA[2] > 0 &&
+                rgbSeparation.Valid &&
+                rgbSeparation.NonZeroPixelRatio > 0.0005f &&
+                rgbSeparation.MaxDifference > 0.01f &&
+                rgbSeparation.DifferentPixelRatio > 0.0005f;
         }
 
         return causticProbe.Valid && causticProbe.NonBlackRatio > 0.0f &&
@@ -9793,6 +9871,33 @@ private:
                     << static_cast<int>(redProbe.MaxRGBA[0]) << ","
                     << static_cast<int>(greenProbe.MaxRGBA[1]) << ","
                     << static_cast<int>(blueProbe.MaxRGBA[2]) << "\n";
+                const RGBChannelSeparationSummary rgbSeparation =
+                    ProbeRGBChannelSeparation(d.HPWaterCausticComputeTextureR,
+                        d.HPWaterCausticComputeTextureG,
+                        d.HPWaterCausticComputeTextureB,
+                        d.HPWaterCausticComputeWidth,
+                        d.HPWaterCausticComputeHeight);
+                const bool hasRGBSeparation =
+                    rgbSeparation.Valid &&
+                    rgbSeparation.NonZeroPixelRatio > 0.0005f &&
+                    rgbSeparation.MaxDifference > 0.01f &&
+                    rgbSeparation.DifferentPixelRatio > 0.0005f;
+                out << "HPWaterCausticComputeRGBSeparationReadbackEnabled: "
+                    << (rgbSeparation.Valid ? 1 : 0) << "\n";
+                out << "HPWaterCausticComputeRGBAverageSeparation: "
+                    << std::fixed << std::setprecision(6)
+                    << rgbSeparation.AverageDifference << "\n";
+                out << "HPWaterCausticComputeRGBMaxSeparation: "
+                    << std::fixed << std::setprecision(6)
+                    << rgbSeparation.MaxDifference << "\n";
+                out << "HPWaterCausticComputeRGBDifferentPixelRatio: "
+                    << std::fixed << std::setprecision(4)
+                    << rgbSeparation.DifferentPixelRatio << "\n";
+                out << "HPWaterCausticComputeRGBNonZeroPixelRatio: "
+                    << std::fixed << std::setprecision(4)
+                    << rgbSeparation.NonZeroPixelRatio << "\n";
+                out << "HPWaterCausticComputeRGBSeparationEvidence: "
+                    << (hasRGBSeparation ? 1 : 0) << "\n";
                 SaveTextureBMP(d.HPWaterCausticComputeTextureR,
                     d.HPWaterCausticComputeWidth,
                     d.HPWaterCausticComputeHeight,

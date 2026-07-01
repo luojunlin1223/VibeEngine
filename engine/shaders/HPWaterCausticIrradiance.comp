@@ -540,11 +540,12 @@ void main() {
     }
 
     vec2 dispersionAxis = normalize(N.xz * 0.7 + L.xz * 0.3 + vec2(0.001));
+    float dispersionStrength = clamp(u_CausticDispersionStrength, 0.0, 2.0);
     float etaDispersion = u_CausticRGBDispersion == 1
-        ? clamp(u_CausticDispersionStrength, 0.0, 2.0) * 0.001
+        ? dispersionStrength * 0.015
         : 0.0;
     float dispersion = u_CausticRGBDispersion == 1
-        ? clamp(u_CausticDispersionStrength, 0.0, 2.0) * (0.003 + clamp(thickness, 0.0, 80.0) * 0.00008)
+        ? dispersionStrength * (0.028 + clamp(thickness, 0.0, 80.0) * 0.00055)
         : 0.0;
 
     vec2 receiverR = baseReceiver + dispersionAxis * dispersion;
