@@ -7527,6 +7527,152 @@ private:
         float ValidThicknessRatio = 0.0f;
     };
 
+    bool ReadTextureThumbnailRGBA8(uint32_t textureID,
+                                   uint32_t width,
+                                   uint32_t height,
+                                   uint32_t maxDimension,
+                                   std::vector<unsigned char>& pixels,
+                                   uint32_t& outWidth,
+                                   uint32_t& outHeight) {
+        pixels.clear();
+        outWidth = 0;
+        outHeight = 0;
+        if (textureID == 0 || width == 0 || height == 0 || maxDimension == 0)
+            return false;
+
+        const uint32_t largest = std::max(width, height);
+        const float scale = largest > maxDimension ? static_cast<float>(maxDimension) / static_cast<float>(largest) : 1.0f;
+        outWidth = std::max(1u, static_cast<uint32_t>(std::round(static_cast<float>(width) * scale)));
+        outHeight = std::max(1u, static_cast<uint32_t>(std::round(static_cast<float>(height) * scale)));
+
+        GLint previousReadFBO = 0;
+        GLint previousDrawFBO = 0;
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFBO);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFBO);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+        GLuint readFBO = 0;
+        GLuint drawFBO = 0;
+        GLuint thumbnail = 0;
+        glGenFramebuffers(1, &readFBO);
+        glGenFramebuffers(1, &drawFBO);
+        glGenTextures(1, &thumbnail);
+
+        glBindTexture(GL_TEXTURE_2D, thumbnail);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(outWidth), static_cast<GLsizei>(outHeight), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, readFBO);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFBO);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, thumbnail, 0);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+        const bool complete =
+            glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE &&
+            glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+        if (complete) {
+            glBlitFramebuffer(0, 0, static_cast<GLint>(width), static_cast<GLint>(height),
+                              0, 0, static_cast<GLint>(outWidth), static_cast<GLint>(outHeight),
+                              GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, drawFBO);
+            pixels.resize(static_cast<size_t>(outWidth) * static_cast<size_t>(outHeight) * 4);
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            glReadPixels(0, 0, static_cast<GLsizei>(outWidth), static_cast<GLsizei>(outHeight), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        }
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previousReadFBO));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(previousDrawFBO));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+        glDeleteTextures(1, &thumbnail);
+        glDeleteFramebuffers(1, &drawFBO);
+        glDeleteFramebuffers(1, &readFBO);
+        if (!complete) {
+            pixels.clear();
+            outWidth = 0;
+            outHeight = 0;
+        }
+        return complete;
+    }
+
+    bool ReadTextureThumbnailRGBA32F(uint32_t textureID,
+                                     uint32_t width,
+                                     uint32_t height,
+                                     uint32_t maxDimension,
+                                     std::vector<float>& pixels,
+                                     uint32_t& outWidth,
+                                     uint32_t& outHeight) {
+        pixels.clear();
+        outWidth = 0;
+        outHeight = 0;
+        if (textureID == 0 || width == 0 || height == 0 || maxDimension == 0)
+            return false;
+
+        const uint32_t largest = std::max(width, height);
+        const float scale = largest > maxDimension ? static_cast<float>(maxDimension) / static_cast<float>(largest) : 1.0f;
+        outWidth = std::max(1u, static_cast<uint32_t>(std::round(static_cast<float>(width) * scale)));
+        outHeight = std::max(1u, static_cast<uint32_t>(std::round(static_cast<float>(height) * scale)));
+
+        GLint previousReadFBO = 0;
+        GLint previousDrawFBO = 0;
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFBO);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFBO);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+        GLuint readFBO = 0;
+        GLuint drawFBO = 0;
+        GLuint thumbnail = 0;
+        glGenFramebuffers(1, &readFBO);
+        glGenFramebuffers(1, &drawFBO);
+        glGenTextures(1, &thumbnail);
+
+        glBindTexture(GL_TEXTURE_2D, thumbnail);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, static_cast<GLsizei>(outWidth), static_cast<GLsizei>(outHeight), 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, readFBO);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFBO);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, thumbnail, 0);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+        const bool complete =
+            glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE &&
+            glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+        if (complete) {
+            glBlitFramebuffer(0, 0, static_cast<GLint>(width), static_cast<GLint>(height),
+                              0, 0, static_cast<GLint>(outWidth), static_cast<GLint>(outHeight),
+                              GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, drawFBO);
+            pixels.resize(static_cast<size_t>(outWidth) * static_cast<size_t>(outHeight) * 4);
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            glReadPixels(0, 0, static_cast<GLsizei>(outWidth), static_cast<GLsizei>(outHeight), GL_RGBA, GL_FLOAT, pixels.data());
+        }
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previousReadFBO));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(previousDrawFBO));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+        glDeleteTextures(1, &thumbnail);
+        glDeleteFramebuffers(1, &drawFBO);
+        glDeleteFramebuffers(1, &readFBO);
+        if (!complete) {
+            pixels.clear();
+            outWidth = 0;
+            outHeight = 0;
+        }
+        return complete;
+    }
+
     TextureProbeSummary ProbeTexture(uint32_t textureID, uint32_t width, uint32_t height) {
         TextureProbeSummary summary;
         summary.Width = width;
@@ -7534,16 +7680,13 @@ private:
         if (textureID == 0 || width == 0 || height == 0)
             return summary;
 
-        GLint previousTexture = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+        std::vector<unsigned char> pixels;
+        uint32_t sampleWidth = 0;
+        uint32_t sampleHeight = 0;
+        if (!ReadTextureThumbnailRGBA8(textureID, width, height, 128, pixels, sampleWidth, sampleHeight))
+            return summary;
 
-        std::vector<unsigned char> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
-
-        const size_t centerIndex = ((static_cast<size_t>(height / 2) * width) + (width / 2)) * 4;
+        const size_t centerIndex = ((static_cast<size_t>(sampleHeight / 2) * sampleWidth) + (sampleWidth / 2)) * 4;
         if (centerIndex + 3 < pixels.size()) {
             summary.Center = {
                 pixels[centerIndex + 0],
@@ -7557,8 +7700,8 @@ private:
         double alphaSum = 0.0;
         std::array<double, 4> channelSum = { 0.0, 0.0, 0.0, 0.0 };
         size_t nonBlack = 0;
-        const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
-        const size_t step = std::max<size_t>(1, pixelCount / 65536);
+        const size_t pixelCount = static_cast<size_t>(sampleWidth) * static_cast<size_t>(sampleHeight);
+        const size_t step = 1;
         size_t sampled = 0;
         for (size_t pixel = 0; pixel < pixelCount; pixel += step) {
             const size_t i = pixel * 4;
@@ -7804,6 +7947,36 @@ private:
             normalRange > 0.0001f;
     }
 
+    bool HasHPWaterFinalCompositeEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() ||
+            d.HPWaterEntities == 0 ||
+            d.HPWaterGBufferDrawn == 0 ||
+            !d.HPWaterCompositeRan ||
+            !d.HPWaterMaskRan ||
+            d.HPWaterCompositeTexture == 0 ||
+            d.HPWaterMaskTexture == 0 ||
+            d.HPWaterMaskWidth == 0 ||
+            d.HPWaterMaskHeight == 0 ||
+            dr.GetWidth() == 0 ||
+            dr.GetHeight() == 0)
+            return false;
+
+        const TextureProbeSummary maskProbe =
+            ProbeTexture(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight);
+        const TextureProbeSummary compositeProbe =
+            ProbeTexture(d.HPWaterCompositeTexture, dr.GetWidth(), dr.GetHeight());
+
+        return maskProbe.Valid &&
+            compositeProbe.Valid &&
+            maskProbe.NonBlackRatio > 0.001f &&
+            compositeProbe.AverageAlpha > 0.0f;
+    }
+
     bool HasHPWaterCausticTextureEvidence() {
         if (!m_Scene)
             return false;
@@ -7903,16 +8076,13 @@ private:
         if (textureID == 0 || width == 0 || height == 0)
             return summary;
 
-        GLint previousTexture = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+        std::vector<float> pixels;
+        uint32_t sampleWidth = 0;
+        uint32_t sampleHeight = 0;
+        if (!ReadTextureThumbnailRGBA32F(textureID, width, height, 128, pixels, sampleWidth, sampleHeight))
+            return summary;
 
-        std::vector<float> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
-
-        const size_t centerIndex = ((static_cast<size_t>(height / 2) * width) + (width / 2)) * 4;
+        const size_t centerIndex = ((static_cast<size_t>(sampleHeight / 2) * sampleWidth) + (sampleWidth / 2)) * 4;
         if (centerIndex + 3 < pixels.size()) {
             summary.Center = {
                 pixels[centerIndex + 0],
@@ -7925,8 +8095,8 @@ private:
         std::array<double, 4> channelSum = { 0.0, 0.0, 0.0, 0.0 };
         size_t nonZeroRGB = 0;
         size_t nonZeroAlpha = 0;
-        const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
-        const size_t step = std::max<size_t>(1, pixelCount / 65536);
+        const size_t pixelCount = static_cast<size_t>(sampleWidth) * static_cast<size_t>(sampleHeight);
+        const size_t step = 1;
         size_t sampled = 0;
         for (size_t pixel = 0; pixel < pixelCount; pixel += step) {
             const size_t i = pixel * 4;
@@ -7972,17 +8142,14 @@ private:
         if (textureID == 0 || width == 0 || height == 0)
             return summary;
 
-        GLint previousTexture = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+        std::vector<float> pixels;
+        uint32_t sampleWidth = 0;
+        uint32_t sampleHeight = 0;
+        if (!ReadTextureThumbnailRGBA32F(textureID, width, height, 128, pixels, sampleWidth, sampleHeight))
+            return summary;
 
-        std::vector<float> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
-
-        const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
-        const size_t step = std::max<size_t>(1, pixelCount / 65536);
+        const size_t pixelCount = static_cast<size_t>(sampleWidth) * static_cast<size_t>(sampleHeight);
+        const size_t step = 1;
         size_t sampled = 0;
         size_t validThickness = 0;
         size_t nonZeroOffset = 0;
@@ -7995,11 +8162,11 @@ private:
             if (thickness <= 0.00001f)
                 continue;
 
-            const uint32_t x = static_cast<uint32_t>(pixel % width);
-            const uint32_t y = static_cast<uint32_t>(pixel / width);
+            const uint32_t x = static_cast<uint32_t>(pixel % sampleWidth);
+            const uint32_t y = static_cast<uint32_t>(pixel / sampleWidth);
             const glm::vec2 screenUV(
-                (static_cast<float>(x) + 0.5f) / static_cast<float>(width),
-                (static_cast<float>(y) + 0.5f) / static_cast<float>(height));
+                (static_cast<float>(x) + 0.5f) / static_cast<float>(sampleWidth),
+                (static_cast<float>(y) + 0.5f) / static_cast<float>(sampleHeight));
             const glm::vec2 refractUV(pixels[i + 0], pixels[i + 1]);
             const float offset = glm::length(refractUV - screenUV);
 
@@ -8050,17 +8217,14 @@ private:
         if (textureID == 0 || width == 0 || height == 0)
             return false;
 
-        GLint previousTexture = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+        std::vector<unsigned char> rgba;
+        uint32_t outputWidth = 0;
+        uint32_t outputHeight = 0;
+        if (!ReadTextureThumbnailRGBA8(textureID, width, height, 512, rgba, outputWidth, outputHeight))
+            return false;
 
-        std::vector<unsigned char> rgba(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
-
-        const uint32_t rowStride = ((width * 3 + 3) / 4) * 4;
-        const uint32_t pixelDataSize = rowStride * height;
+        const uint32_t rowStride = ((outputWidth * 3 + 3) / 4) * 4;
+        const uint32_t pixelDataSize = rowStride * outputHeight;
         const uint32_t fileSize = 54 + pixelDataSize;
         std::vector<unsigned char> bmp(fileSize, 0);
 
@@ -8080,17 +8244,17 @@ private:
         writeU32(2, fileSize);
         writeU32(10, 54);
         writeU32(14, 40);
-        writeU32(18, width);
-        writeU32(22, height);
+        writeU32(18, outputWidth);
+        writeU32(22, outputHeight);
         writeU16(26, 1);
         writeU16(28, 24);
         writeU32(34, pixelDataSize);
 
-        for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t y = 0; y < outputHeight; ++y) {
             const uint32_t srcY = y;
             unsigned char* dst = bmp.data() + 54 + static_cast<size_t>(y) * rowStride;
-            for (uint32_t x = 0; x < width; ++x) {
-                const size_t src = (static_cast<size_t>(srcY) * width + x) * 4;
+            for (uint32_t x = 0; x < outputWidth; ++x) {
+                const size_t src = (static_cast<size_t>(srcY) * outputWidth + x) * 4;
                 dst[x * 3 + 0] = rgba[src + 2];
                 dst[x * 3 + 1] = rgba[src + 1];
                 dst[x * 3 + 2] = rgba[src + 0];
@@ -8143,6 +8307,7 @@ private:
         out << "HPWaterMaskTexture: " << d.HPWaterMaskTexture << "\n";
         out << "HPWaterMaskSize: " << d.HPWaterMaskWidth << "x" << d.HPWaterMaskHeight << "\n";
         out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
+        out << "HPWaterFinalCompositeEvidence: " << (HasHPWaterFinalCompositeEvidence() ? 1 : 0) << "\n";
         out << "HPWaterRefractionDataTexture: " << d.HPWaterRefractionDataTexture << "\n";
         out << "HPWaterRefractionMetaTexture: " << d.HPWaterRefractionMetaTexture << "\n";
         out << "HPWaterDepthPyramidRan: " << d.HPWaterDepthPyramidRan << "\n";
@@ -9499,7 +9664,21 @@ private:
                 m_RenderDiagnosticsRequireVolume ||
                 m_RenderDiagnosticsRequireRefraction ||
                 m_RenderDiagnosticsRequireSpectrum;
-            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && refractionReady && spectrumReady && ssrReady && lightLoopReady && lightPayloadStressReady && causticsReady && volumeReady;
+            const bool finalCompositeReady =
+                !strictReadinessRequired ||
+                HasHPWaterFinalCompositeEvidence();
+            const bool ready = baseReady &&
+                finalCompositeReady &&
+                objectMotionReady &&
+                fluidFilteringReady &&
+                fluidBakeReady &&
+                refractionReady &&
+                spectrumReady &&
+                ssrReady &&
+                lightLoopReady &&
+                lightPayloadStressReady &&
+                causticsReady &&
+                volumeReady;
             if (ready || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
                 m_RenderDiagnosticsOnceFailed = strictReadinessRequired && !ready;
                 if (m_RenderDiagnosticsOnceFailed)
