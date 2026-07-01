@@ -7531,16 +7531,20 @@ private:
         uint32_t Height = 0;
         float MaskedPixelRatio = 0.0f;
         float MaskedAverageLuminance = 0.0f;
+        float MaskedLuminanceStdDev = 0.0f;
         float MaskedMinLuminance = std::numeric_limits<float>::max();
         float MaskedMaxLuminance = std::numeric_limits<float>::lowest();
         float MaskedLuminanceRange = 0.0f;
         float MaskedNonBlackRatio = 0.0f;
         std::array<float, 3> MaskedAverageRGB = { 0.0f, 0.0f, 0.0f };
+        std::array<float, 3> MaskedRGBStdDev = { 0.0f, 0.0f, 0.0f };
         std::array<unsigned char, 3> MaskedMinRGB = { 255, 255, 255 };
         std::array<unsigned char, 3> MaskedMaxRGB = { 0, 0, 0 };
         float MaskedColorRange = 0.0f;
+        float MaskedAverageChroma = 0.0f;
         float MaskedAverageLuminanceGradient = 0.0f;
         float MaskedGradientPixelRatio = 0.0f;
+        float MaskedVisualComplexity = 0.0f;
     };
 
     struct TextureFloatProbeSummary {
@@ -7922,7 +7926,10 @@ private:
         size_t maskedPixels = 0;
         size_t maskedNonBlack = 0;
         std::array<double, 3> rgbSum = { 0.0, 0.0, 0.0 };
+        std::array<double, 3> rgbSquareSum = { 0.0, 0.0, 0.0 };
         double luminanceSum = 0.0;
+        double luminanceSquareSum = 0.0;
+        double chromaSum = 0.0;
         double luminanceGradientSum = 0.0;
         size_t luminanceGradientSamples = 0;
         size_t luminanceGradientPixels = 0;
@@ -7939,6 +7946,9 @@ private:
             const unsigned char r = outputPixels[i + 0];
             const unsigned char g = outputPixels[i + 1];
             const unsigned char b = outputPixels[i + 2];
+            const float rf = static_cast<float>(r) / 255.0f;
+            const float gf = static_cast<float>(g) / 255.0f;
+            const float bf = static_cast<float>(b) / 255.0f;
             const float luminance = static_cast<float>((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0);
 
             summary.MaskedMinRGB[0] = std::min(summary.MaskedMinRGB[0], r);
@@ -7952,7 +7962,12 @@ private:
             rgbSum[0] += r;
             rgbSum[1] += g;
             rgbSum[2] += b;
+            rgbSquareSum[0] += static_cast<double>(rf) * rf;
+            rgbSquareSum[1] += static_cast<double>(gf) * gf;
+            rgbSquareSum[2] += static_cast<double>(bf) * bf;
             luminanceSum += luminance;
+            luminanceSquareSum += static_cast<double>(luminance) * luminance;
+            chromaSum += std::max({ rf, gf, bf }) - std::min({ rf, gf, bf });
             if (r > 2 || g > 2 || b > 2)
                 maskedNonBlack++;
             maskedPixels++;
@@ -7964,6 +7979,10 @@ private:
 
         summary.MaskedPixelRatio = static_cast<float>(static_cast<double>(maskedPixels) / pixelCount);
         summary.MaskedAverageLuminance = static_cast<float>(luminanceSum / maskedPixels);
+        const double luminanceVariance =
+            std::max(0.0, luminanceSquareSum / maskedPixels -
+                static_cast<double>(summary.MaskedAverageLuminance) * summary.MaskedAverageLuminance);
+        summary.MaskedLuminanceStdDev = static_cast<float>(std::sqrt(luminanceVariance));
         summary.MaskedLuminanceRange = summary.MaskedMaxLuminance - summary.MaskedMinLuminance;
         summary.MaskedNonBlackRatio = static_cast<float>(static_cast<double>(maskedNonBlack) / maskedPixels);
         summary.MaskedAverageRGB = {
@@ -7971,10 +7990,17 @@ private:
             static_cast<float>(rgbSum[1] / (255.0 * maskedPixels)),
             static_cast<float>(rgbSum[2] / (255.0 * maskedPixels))
         };
+        for (size_t channel = 0; channel < 3; ++channel) {
+            const double channelVariance =
+                std::max(0.0, rgbSquareSum[channel] / maskedPixels -
+                    static_cast<double>(summary.MaskedAverageRGB[channel]) * summary.MaskedAverageRGB[channel]);
+            summary.MaskedRGBStdDev[channel] = static_cast<float>(std::sqrt(channelVariance));
+        }
         summary.MaskedColorRange =
             (static_cast<float>(summary.MaskedMaxRGB[0]) - static_cast<float>(summary.MaskedMinRGB[0]) +
              static_cast<float>(summary.MaskedMaxRGB[1]) - static_cast<float>(summary.MaskedMinRGB[1]) +
              static_cast<float>(summary.MaskedMaxRGB[2]) - static_cast<float>(summary.MaskedMinRGB[2])) / (3.0f * 255.0f);
+        summary.MaskedAverageChroma = static_cast<float>(chromaSum / maskedPixels);
 
         auto isMasked = [&](uint32_t x, uint32_t y) {
             const size_t i = (static_cast<size_t>(y) * outputWidth + x) * 4;
@@ -8014,6 +8040,11 @@ private:
             summary.MaskedGradientPixelRatio =
                 static_cast<float>(static_cast<double>(luminanceGradientPixels) / static_cast<double>(maskedPixels));
         }
+        summary.MaskedVisualComplexity =
+            summary.MaskedLuminanceStdDev +
+            0.5f * summary.MaskedAverageChroma +
+            2.0f * summary.MaskedAverageLuminanceGradient +
+            0.25f * summary.MaskedColorRange;
         return summary;
     }
 
@@ -8343,6 +8374,8 @@ private:
             maskedOutputProbe.MaskedPixelRatio > 0.001f &&
             maskedOutputProbe.MaskedNonBlackRatio > 0.5f &&
             maskedOutputProbe.MaskedAverageLuminance > 0.01f &&
+            maskedOutputProbe.MaskedLuminanceStdDev > 0.0025f &&
+            maskedOutputProbe.MaskedVisualComplexity > 0.01f &&
             maskedOutputProbe.MaskedAverageLuminanceGradient > 0.0002f &&
             maskedOutputProbe.MaskedGradientPixelRatio > 0.001f &&
             (maskedOutputProbe.MaskedLuminanceRange > 0.01f ||
@@ -8795,6 +8828,10 @@ private:
         out << "ScenePath: " << m_CurrentScenePath << "\n";
         out << "FrameIndex: " << d.FrameIndex << "\n";
         out << "HPWaterDiagnosticSafeResourceMode: " << (IsHPWaterDiagnosticMode() ? 1 : 0) << "\n";
+        out << "HPWaterDiagnosticFidelity: "
+            << (IsHPWaterDiagnosticMode() ? "connectivity_safe_mode" : "editor_runtime_mode") << "\n";
+        out << "HPWaterDiagnosticVisualOracle: "
+            << "thumbnail_readback_metrics_not_reference_image_match" << "\n";
         out << "HPWaterDiagnosticMinFrame: " << m_RenderDiagnosticsOnceMinFrame << "\n";
         out << "HPWaterDiagnosticMaxFrame: " << m_RenderDiagnosticsOnceMaxFrame << "\n";
         out << "HPWaterDiagnosticMaxWaterResolution: "
@@ -9502,6 +9539,7 @@ private:
             out << "Size: " << p.Width << "x" << p.Height << "\n";
             out << "MaskedPixelRatio: " << std::fixed << std::setprecision(4) << p.MaskedPixelRatio << "\n";
             out << "MaskedAverageLuminance: " << std::fixed << std::setprecision(4) << p.MaskedAverageLuminance << "\n";
+            out << "MaskedLuminanceStdDev: " << std::fixed << std::setprecision(6) << p.MaskedLuminanceStdDev << "\n";
             out << "MaskedMinLuminance: " << std::fixed << std::setprecision(4) << p.MaskedMinLuminance << "\n";
             out << "MaskedMaxLuminance: " << std::fixed << std::setprecision(4) << p.MaskedMaxLuminance << "\n";
             out << "MaskedLuminanceRange: " << std::fixed << std::setprecision(4) << p.MaskedLuminanceRange << "\n";
@@ -9511,6 +9549,11 @@ private:
                 << p.MaskedAverageRGB[0] << ","
                 << p.MaskedAverageRGB[1] << ","
                 << p.MaskedAverageRGB[2] << "\n";
+            out << "MaskedRGBStdDev: "
+                << std::fixed << std::setprecision(6)
+                << p.MaskedRGBStdDev[0] << ","
+                << p.MaskedRGBStdDev[1] << ","
+                << p.MaskedRGBStdDev[2] << "\n";
             out << "MaskedMinRGB: "
                 << static_cast<int>(p.MaskedMinRGB[0]) << ","
                 << static_cast<int>(p.MaskedMinRGB[1]) << ","
@@ -9520,10 +9563,13 @@ private:
                 << static_cast<int>(p.MaskedMaxRGB[1]) << ","
                 << static_cast<int>(p.MaskedMaxRGB[2]) << "\n";
             out << "MaskedColorRange: " << std::fixed << std::setprecision(4) << p.MaskedColorRange << "\n";
+            out << "MaskedAverageChroma: " << std::fixed << std::setprecision(6) << p.MaskedAverageChroma << "\n";
             out << "MaskedAverageLuminanceGradient: "
                 << std::fixed << std::setprecision(6) << p.MaskedAverageLuminanceGradient << "\n";
             out << "MaskedGradientPixelRatio: "
                 << std::fixed << std::setprecision(4) << p.MaskedGradientPixelRatio << "\n";
+            out << "MaskedVisualComplexity: "
+                << std::fixed << std::setprecision(6) << p.MaskedVisualComplexity << "\n";
         };
 
         if (m_Framebuffer) {
