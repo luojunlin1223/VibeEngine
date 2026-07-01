@@ -274,6 +274,16 @@ struct RenderDiagnostics {
     uint32_t HPWaterPunctualSpotLightsCapacitySkipped = 0;
     uint32_t HPWaterAreaLightsLayerSkipped = 0;
     uint32_t HPWaterAreaLightsCapacitySkipped = 0;
+    bool HPWaterTiledLightListEnabled = false;
+    uint32_t HPWaterTiledLightListTileSize = 0;
+    uint32_t HPWaterTiledLightListGridWidth = 0;
+    uint32_t HPWaterTiledLightListGridHeight = 0;
+    uint32_t HPWaterTiledLightListWaterTileCount = 0;
+    uint32_t HPWaterTiledLightListNonEmptyTileCount = 0;
+    uint32_t HPWaterTiledLightListMaxLightsPerTile = 0;
+    uint32_t HPWaterTiledLightListPunctualReferences = 0;
+    uint32_t HPWaterTiledLightListAreaReferences = 0;
+    float HPWaterTiledLightListAverageLightsPerTile = 0.0f;
     uint32_t HPWaterVolumePointLightCount = 0;
     uint32_t HPWaterVolumeSpotLightCount = 0;
     uint32_t HPWaterVolumeAreaLightCount = 0;

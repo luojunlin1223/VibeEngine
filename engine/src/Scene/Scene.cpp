@@ -1475,6 +1475,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     glm::vec3 hpWaterLightSelectionCenter = cameraPos;
     float hpWaterLightSelectionRadius = 0.0f;
     bool hpWaterLightSelectionBoundsValid = false;
+    glm::vec3 hpWaterLightSelectionBoundsMin(0.0f);
+    glm::vec3 hpWaterLightSelectionBoundsMax(0.0f);
     {
         bool hasBounds = false;
         glm::vec3 boundsMin(0.0f);
@@ -1513,6 +1515,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterLightSelectionCenter = (boundsMin + boundsMax) * 0.5f;
             hpWaterLightSelectionRadius = glm::length(boundsMax - boundsMin) * 0.5f;
             hpWaterLightSelectionBoundsValid = true;
+            hpWaterLightSelectionBoundsMin = boundsMin;
+            hpWaterLightSelectionBoundsMax = boundsMax;
         }
     }
     auto hpWaterColorLuminance = [](const glm::vec3& color) -> float {
@@ -1828,6 +1832,142 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     if (hpWaterAreaCandidates.size() > static_cast<size_t>(MAX_AREA_LIGHTS)) {
         hpWaterAreaLightsCapacitySkipped =
             static_cast<uint32_t>(hpWaterAreaCandidates.size() - static_cast<size_t>(MAX_AREA_LIGHTS));
+    }
+
+    bool hpWaterTiledLightListEnabled = false;
+    uint32_t hpWaterTiledLightListTileSize = 16;
+    uint32_t hpWaterTiledLightListGridWidth = (viewportWidth + hpWaterTiledLightListTileSize - 1u) /
+                                              hpWaterTiledLightListTileSize;
+    uint32_t hpWaterTiledLightListGridHeight = (viewportHeight + hpWaterTiledLightListTileSize - 1u) /
+                                               hpWaterTiledLightListTileSize;
+    uint32_t hpWaterTiledLightListWaterTileCount = 0;
+    uint32_t hpWaterTiledLightListNonEmptyTileCount = 0;
+    uint32_t hpWaterTiledLightListMaxLightsPerTile = 0;
+    uint32_t hpWaterTiledLightListPunctualReferences = 0;
+    uint32_t hpWaterTiledLightListAreaReferences = 0;
+    float hpWaterTiledLightListAverageLightsPerTile = 0.0f;
+    if (hpWaterLightSelectionBoundsValid && viewportWidth > 0 && viewportHeight > 0) {
+        float minScreenX = static_cast<float>(viewportWidth);
+        float minScreenY = static_cast<float>(viewportHeight);
+        float maxScreenX = 0.0f;
+        float maxScreenY = 0.0f;
+        bool hasProjectedCorner = false;
+        const glm::vec3 boundsCorners[8] = {
+            {hpWaterLightSelectionBoundsMin.x, hpWaterLightSelectionBoundsMin.y, hpWaterLightSelectionBoundsMin.z},
+            {hpWaterLightSelectionBoundsMax.x, hpWaterLightSelectionBoundsMin.y, hpWaterLightSelectionBoundsMin.z},
+            {hpWaterLightSelectionBoundsMin.x, hpWaterLightSelectionBoundsMax.y, hpWaterLightSelectionBoundsMin.z},
+            {hpWaterLightSelectionBoundsMax.x, hpWaterLightSelectionBoundsMax.y, hpWaterLightSelectionBoundsMin.z},
+            {hpWaterLightSelectionBoundsMin.x, hpWaterLightSelectionBoundsMin.y, hpWaterLightSelectionBoundsMax.z},
+            {hpWaterLightSelectionBoundsMax.x, hpWaterLightSelectionBoundsMin.y, hpWaterLightSelectionBoundsMax.z},
+            {hpWaterLightSelectionBoundsMin.x, hpWaterLightSelectionBoundsMax.y, hpWaterLightSelectionBoundsMax.z},
+            {hpWaterLightSelectionBoundsMax.x, hpWaterLightSelectionBoundsMax.y, hpWaterLightSelectionBoundsMax.z}
+        };
+        for (const glm::vec3& corner : boundsCorners) {
+            const glm::vec4 clip = viewProjection * glm::vec4(corner, 1.0f);
+            if (clip.w <= 0.0001f)
+                continue;
+            const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            const float screenX = (ndc.x * 0.5f + 0.5f) * static_cast<float>(viewportWidth);
+            const float screenY = (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(viewportHeight);
+            minScreenX = std::min(minScreenX, screenX);
+            minScreenY = std::min(minScreenY, screenY);
+            maxScreenX = std::max(maxScreenX, screenX);
+            maxScreenY = std::max(maxScreenY, screenY);
+            hasProjectedCorner = true;
+        }
+        if (hasProjectedCorner) {
+            minScreenX = glm::clamp(minScreenX, 0.0f, static_cast<float>(viewportWidth - 1u));
+            minScreenY = glm::clamp(minScreenY, 0.0f, static_cast<float>(viewportHeight - 1u));
+            maxScreenX = glm::clamp(maxScreenX, 0.0f, static_cast<float>(viewportWidth - 1u));
+            maxScreenY = glm::clamp(maxScreenY, 0.0f, static_cast<float>(viewportHeight - 1u));
+            if (maxScreenX >= minScreenX && maxScreenY >= minScreenY) {
+                const uint32_t minTileX = static_cast<uint32_t>(minScreenX) / hpWaterTiledLightListTileSize;
+                const uint32_t minTileY = static_cast<uint32_t>(minScreenY) / hpWaterTiledLightListTileSize;
+                const uint32_t maxTileX = std::min(static_cast<uint32_t>(maxScreenX) / hpWaterTiledLightListTileSize,
+                                                   hpWaterTiledLightListGridWidth - 1u);
+                const uint32_t maxTileY = std::min(static_cast<uint32_t>(maxScreenY) / hpWaterTiledLightListTileSize,
+                                                   hpWaterTiledLightListGridHeight - 1u);
+                auto lightSphereOverlapsTile = [&](const glm::vec3& position,
+                                                   float radius,
+                                                   uint32_t tileX,
+                                                   uint32_t tileY) -> bool {
+                    const glm::vec4 clip = viewProjection * glm::vec4(position, 1.0f);
+                    if (clip.w <= 0.0001f)
+                        return false;
+
+                    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                    const float centerX = (ndc.x * 0.5f + 0.5f) * static_cast<float>(viewportWidth);
+                    const float centerY = (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(viewportHeight);
+                    const float distanceToCamera = std::max(glm::length(position - cameraPos), 0.001f);
+                    const float radiusPixels =
+                        std::max(radius, 0.001f) * static_cast<float>(viewportHeight) / distanceToCamera;
+                    const float minLightX = centerX - radiusPixels;
+                    const float maxLightX = centerX + radiusPixels;
+                    const float minLightY = centerY - radiusPixels;
+                    const float maxLightY = centerY + radiusPixels;
+                    const float minTileScreenX = static_cast<float>(tileX * hpWaterTiledLightListTileSize);
+                    const float minTileScreenY = static_cast<float>(tileY * hpWaterTiledLightListTileSize);
+                    const float maxTileScreenX =
+                        static_cast<float>(std::min((tileX + 1u) * hpWaterTiledLightListTileSize, viewportWidth));
+                    const float maxTileScreenY =
+                        static_cast<float>(std::min((tileY + 1u) * hpWaterTiledLightListTileSize, viewportHeight));
+                    return maxLightX >= minTileScreenX && minLightX <= maxTileScreenX &&
+                           maxLightY >= minTileScreenY && minLightY <= maxTileScreenY;
+                };
+                for (uint32_t tileY = minTileY; tileY <= maxTileY; ++tileY) {
+                    for (uint32_t tileX = minTileX; tileX <= maxTileX; ++tileX) {
+                        uint32_t tilePunctualCount = 0;
+                        uint32_t tileAreaCount = 0;
+                        for (int i = 0; i < hpWaterNumPointLights; ++i) {
+                            if (lightSphereOverlapsTile(hpWaterPointPositions[i],
+                                                        hpWaterPointRanges[i],
+                                                        tileX,
+                                                        tileY))
+                                ++tilePunctualCount;
+                        }
+                        for (int i = 0; i < hpWaterNumSpotLights; ++i) {
+                            const glm::vec3 toWaterCenter = hpWaterLightSelectionCenter - hpWaterSpotPositions[i];
+                            const float distanceToWaterCenter = glm::length(toWaterCenter);
+                            const glm::vec3 spotToWater = distanceToWaterCenter > 0.0001f
+                                ? toWaterCenter / distanceToWaterCenter
+                                : -hpWaterSpotDirections[i];
+                            const float cone = glm::dot(spotToWater, glm::normalize(-hpWaterSpotDirections[i]));
+                            if (cone >= hpWaterSpotOuterCos[i] &&
+                                lightSphereOverlapsTile(hpWaterSpotPositions[i],
+                                                        hpWaterSpotRanges[i],
+                                                        tileX,
+                                                        tileY))
+                                ++tilePunctualCount;
+                        }
+                        for (int i = 0; i < hpWaterNumAreaLights; ++i) {
+                            const float areaRadius = hpWaterAreaRanges[i] +
+                                0.5f * glm::length(glm::vec2(hpWaterAreaWidths[i], hpWaterAreaHeights[i]));
+                            if (lightSphereOverlapsTile(hpWaterAreaPositions[i],
+                                                        areaRadius,
+                                                        tileX,
+                                                        tileY))
+                                ++tileAreaCount;
+                        }
+
+                        const uint32_t tileLightCount = tilePunctualCount + tileAreaCount;
+                        ++hpWaterTiledLightListWaterTileCount;
+                        hpWaterTiledLightListPunctualReferences += tilePunctualCount;
+                        hpWaterTiledLightListAreaReferences += tileAreaCount;
+                        hpWaterTiledLightListMaxLightsPerTile =
+                            std::max(hpWaterTiledLightListMaxLightsPerTile, tileLightCount);
+                        if (tileLightCount > 0)
+                            ++hpWaterTiledLightListNonEmptyTileCount;
+                    }
+                }
+                hpWaterTiledLightListEnabled = hpWaterTiledLightListWaterTileCount > 0;
+                if (hpWaterTiledLightListWaterTileCount > 0) {
+                    hpWaterTiledLightListAverageLightsPerTile =
+                        static_cast<float>(hpWaterTiledLightListPunctualReferences +
+                                           hpWaterTiledLightListAreaReferences) /
+                        static_cast<float>(hpWaterTiledLightListWaterTileCount);
+                }
+            }
+        }
     }
 
     auto& ps = m_PipelineSettings;
@@ -3183,6 +3323,26 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterAreaLightsLayerSkipped;
         m_RenderDiagnostics.HPWaterAreaLightsCapacitySkipped =
             hpWaterAreaLightsCapacitySkipped;
+        m_RenderDiagnostics.HPWaterTiledLightListEnabled =
+            hpWaterTiledLightListEnabled;
+        m_RenderDiagnostics.HPWaterTiledLightListTileSize =
+            hpWaterTiledLightListTileSize;
+        m_RenderDiagnostics.HPWaterTiledLightListGridWidth =
+            hpWaterTiledLightListGridWidth;
+        m_RenderDiagnostics.HPWaterTiledLightListGridHeight =
+            hpWaterTiledLightListGridHeight;
+        m_RenderDiagnostics.HPWaterTiledLightListWaterTileCount =
+            hpWaterTiledLightListWaterTileCount;
+        m_RenderDiagnostics.HPWaterTiledLightListNonEmptyTileCount =
+            hpWaterTiledLightListNonEmptyTileCount;
+        m_RenderDiagnostics.HPWaterTiledLightListMaxLightsPerTile =
+            hpWaterTiledLightListMaxLightsPerTile;
+        m_RenderDiagnostics.HPWaterTiledLightListPunctualReferences =
+            hpWaterTiledLightListPunctualReferences;
+        m_RenderDiagnostics.HPWaterTiledLightListAreaReferences =
+            hpWaterTiledLightListAreaReferences;
+        m_RenderDiagnostics.HPWaterTiledLightListAverageLightsPerTile =
+            hpWaterTiledLightListAverageLightsPerTile;
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;

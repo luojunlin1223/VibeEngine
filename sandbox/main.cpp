@@ -8040,6 +8040,25 @@ private:
             << d.HPWaterAreaLightsLayerSkipped << "\n";
         out << "HPWaterAreaLightsCapacitySkipped: "
             << d.HPWaterAreaLightsCapacitySkipped << "\n";
+        out << "HPWaterTiledLightListEnabled: "
+            << d.HPWaterTiledLightListEnabled << "\n";
+        out << "HPWaterTiledLightListTileSize: "
+            << d.HPWaterTiledLightListTileSize << "\n";
+        out << "HPWaterTiledLightListGridSize: "
+            << d.HPWaterTiledLightListGridWidth << "x"
+            << d.HPWaterTiledLightListGridHeight << "\n";
+        out << "HPWaterTiledLightListWaterTileCount: "
+            << d.HPWaterTiledLightListWaterTileCount << "\n";
+        out << "HPWaterTiledLightListNonEmptyTileCount: "
+            << d.HPWaterTiledLightListNonEmptyTileCount << "\n";
+        out << "HPWaterTiledLightListMaxLightsPerTile: "
+            << d.HPWaterTiledLightListMaxLightsPerTile << "\n";
+        out << "HPWaterTiledLightListPunctualReferences: "
+            << d.HPWaterTiledLightListPunctualReferences << "\n";
+        out << "HPWaterTiledLightListAreaReferences: "
+            << d.HPWaterTiledLightListAreaReferences << "\n";
+        out << "HPWaterTiledLightListAverageLightsPerTile: "
+            << d.HPWaterTiledLightListAverageLightsPerTile << "\n";
         out << "HPWaterVolumePointLightCount: " << d.HPWaterVolumePointLightCount << "\n";
         out << "HPWaterVolumeSpotLightCount: " << d.HPWaterVolumeSpotLightCount << "\n";
         out << "HPWaterVolumeAreaLightCount: " << d.HPWaterVolumeAreaLightCount << "\n";
@@ -8949,6 +8968,16 @@ private:
                  d.HPWaterSpecularSelfOcclusionEnabled &&
                  d.HPWaterLightSelectionBoundsValid &&
                  d.HPWaterLightSelectionRadius > 0.0f &&
+                 d.HPWaterTiledLightListEnabled &&
+                 d.HPWaterTiledLightListTileSize == 16 &&
+                 d.HPWaterTiledLightListGridWidth > 0 &&
+                 d.HPWaterTiledLightListGridHeight > 0 &&
+                 d.HPWaterTiledLightListWaterTileCount > 0 &&
+                 d.HPWaterTiledLightListNonEmptyTileCount > 0 &&
+                 d.HPWaterTiledLightListMaxLightsPerTile > 0 &&
+                 d.HPWaterTiledLightListPunctualReferences > 0 &&
+                 d.HPWaterTiledLightListAreaReferences > 0 &&
+                 d.HPWaterTiledLightListAverageLightsPerTile > 0.0f &&
                  d.HPWaterVolumePunctualLightLoopEnabled &&
                  d.HPWaterVolumePointLightCount > 0 &&
                  d.HPWaterVolumeAreaLightLoopEnabled &&
