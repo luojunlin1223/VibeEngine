@@ -7597,6 +7597,24 @@ private:
         float BoundaryPixelRatio = 0.0f;
     };
 
+    struct HPWaterVisualOracleSummary {
+        bool Valid = false;
+        bool HasMaskedFinal = false;
+        bool HasNormalVariation = false;
+        bool HasSpectrumVariation = false;
+        bool HasRefractionOffset = false;
+        float MaskedVisualComplexity = 0.0f;
+        float MaskedAverageLuminanceGradient = 0.0f;
+        float MaskedGradientPixelRatio = 0.0f;
+        float NormalAverageGradient = 0.0f;
+        float NormalGradientPixelRatio = 0.0f;
+        float SpectrumHeightRange = 0.0f;
+        float SpectrumAverageHeightGradient = 0.0f;
+        float SpectrumHeightGradientPixelRatio = 0.0f;
+        float RefractionAverageUVOffset = 0.0f;
+        float RefractionUVOffsetGradientPixelRatio = 0.0f;
+    };
+
     bool ReadTextureThumbnailRGBA8(uint32_t textureID,
                                    uint32_t width,
                                    uint32_t height,
@@ -8386,6 +8404,95 @@ private:
              maskedOutputProbe.MaskedColorRange > 0.01f);
     }
 
+    HPWaterVisualOracleSummary ProbeHPWaterVisualOracle() {
+        HPWaterVisualOracleSummary summary;
+        if (!m_Scene)
+            return summary;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() ||
+            d.HPWaterEntities == 0 ||
+            d.HPWaterGBufferDrawn == 0 ||
+            !d.HPWaterCompositeRan ||
+            d.HPWaterMaskTexture == 0 ||
+            d.HPWaterMaskWidth == 0 ||
+            d.HPWaterMaskHeight == 0 ||
+            dr.GetWidth() == 0 ||
+            dr.GetHeight() == 0)
+            return summary;
+
+        const MaskedTextureProbeSummary maskedFinal =
+            ProbeMaskedTextureVisibility(d.DeferredOutputTexture != 0 ? d.DeferredOutputTexture : d.HPWaterCompositeTexture,
+                d.HPWaterMaskTexture,
+                dr.GetWidth(),
+                dr.GetHeight());
+        summary.MaskedVisualComplexity = maskedFinal.MaskedVisualComplexity;
+        summary.MaskedAverageLuminanceGradient = maskedFinal.MaskedAverageLuminanceGradient;
+        summary.MaskedGradientPixelRatio = maskedFinal.MaskedGradientPixelRatio;
+        summary.HasMaskedFinal =
+            maskedFinal.Valid &&
+            maskedFinal.MaskedPixelRatio > 0.001f &&
+            maskedFinal.MaskedNonBlackRatio > 0.5f &&
+            maskedFinal.MaskedVisualComplexity > 0.05f &&
+            maskedFinal.MaskedAverageLuminanceGradient > 0.001f &&
+            maskedFinal.MaskedGradientPixelRatio > 0.05f;
+
+        const TextureProbeSummary normalProbe =
+            ProbeTexture(dr.GetHPWaterGBufferTexture(0), dr.GetWidth(), dr.GetHeight());
+        summary.NormalAverageGradient = normalProbe.AverageLuminanceGradient;
+        summary.NormalGradientPixelRatio = normalProbe.GradientPixelRatio;
+        summary.HasNormalVariation =
+            normalProbe.Valid &&
+            normalProbe.NonBlackRatio > 0.001f &&
+            normalProbe.LuminanceRange > 0.005f &&
+            normalProbe.AverageLuminanceGradient > 0.00005f &&
+            normalProbe.GradientPixelRatio > 0.001f;
+
+        if (d.HPWaterSpectrumTexture != 0 && d.HPWaterSpectrumResolution > 0) {
+            const TextureFloatProbeSummary spectrumProbe =
+                ProbeTextureFloat(d.HPWaterSpectrumTexture,
+                    d.HPWaterSpectrumResolution,
+                    d.HPWaterSpectrumResolution);
+            summary.SpectrumHeightRange = spectrumProbe.MaxRGBA[3] - spectrumProbe.MinRGBA[3];
+            summary.SpectrumAverageHeightGradient = spectrumProbe.AverageAlphaGradient;
+            summary.SpectrumHeightGradientPixelRatio = spectrumProbe.AlphaGradientPixelRatio;
+            summary.HasSpectrumVariation =
+                spectrumProbe.Valid &&
+                d.HPWaterSpectralOceanEnabled &&
+                d.HPWaterSpectrumComputeRan &&
+                d.HPWaterSpectrumTextureConsumed &&
+                summary.SpectrumHeightRange > 0.0001f &&
+                spectrumProbe.AverageAlphaGradient > 0.000001f &&
+                spectrumProbe.AlphaGradientPixelRatio > 0.001f;
+        }
+
+        if (d.HPWaterRefractionMetaTexture != 0) {
+            const RefractionMetaUVProbeSummary refractionProbe =
+                ProbeHPWaterRefractionMetaUVOffset(d.HPWaterRefractionMetaTexture,
+                    dr.GetWidth(),
+                    dr.GetHeight());
+            summary.RefractionAverageUVOffset = refractionProbe.AverageUVOffset;
+            summary.RefractionUVOffsetGradientPixelRatio = refractionProbe.UVOffsetGradientPixelRatio;
+            summary.HasRefractionOffset =
+                refractionProbe.Valid &&
+                refractionProbe.WaterMarkerRatio > 0.001f &&
+                refractionProbe.AverageUVOffset > 0.00001f &&
+                refractionProbe.UVOffsetGradientPixelRatio > 0.001f;
+        }
+
+        summary.Valid =
+            summary.HasMaskedFinal &&
+            summary.HasNormalVariation &&
+            summary.HasSpectrumVariation &&
+            summary.HasRefractionOffset;
+        return summary;
+    }
+
+    bool HasHPWaterVisualOracleEvidence() {
+        return ProbeHPWaterVisualOracle().Valid;
+    }
+
     bool HasHPWaterCausticTextureEvidence() {
         if (!m_Scene)
             return false;
@@ -8853,7 +8960,7 @@ private:
         out << "HPWaterDiagnosticFidelity: "
             << (IsHPWaterDiagnosticMode() ? "connectivity_safe_mode" : "editor_runtime_mode") << "\n";
         out << "HPWaterDiagnosticVisualOracle: "
-            << "thumbnail_readback_metrics_not_reference_image_match" << "\n";
+            << "spectral_masked_final_readback_metrics" << "\n";
         out << "HPWaterDiagnosticMinFrame: " << m_RenderDiagnosticsOnceMinFrame << "\n";
         out << "HPWaterDiagnosticMaxFrame: " << m_RenderDiagnosticsOnceMaxFrame << "\n";
         out << "HPWaterDiagnosticMaxWaterResolution: "
@@ -8892,6 +8999,33 @@ private:
         out << "HPWaterMaskSize: " << d.HPWaterMaskWidth << "x" << d.HPWaterMaskHeight << "\n";
         out << "HPWaterCompositeTexture: " << d.HPWaterCompositeTexture << "\n";
         out << "HPWaterFinalCompositeEvidence: " << (HasHPWaterFinalCompositeEvidence() ? 1 : 0) << "\n";
+        const HPWaterVisualOracleSummary visualOracle = ProbeHPWaterVisualOracle();
+        out << "HPWaterVisualOracleEvidence: " << (visualOracle.Valid ? 1 : 0) << "\n";
+        out << "HPWaterVisualOracleMode: spectral_masked_final_readback_metrics\n";
+        out << "HPWaterVisualOracleMaskedFinal: " << (visualOracle.HasMaskedFinal ? 1 : 0) << "\n";
+        out << "HPWaterVisualOracleNormalVariation: " << (visualOracle.HasNormalVariation ? 1 : 0) << "\n";
+        out << "HPWaterVisualOracleSpectrumVariation: " << (visualOracle.HasSpectrumVariation ? 1 : 0) << "\n";
+        out << "HPWaterVisualOracleRefractionOffset: " << (visualOracle.HasRefractionOffset ? 1 : 0) << "\n";
+        out << "HPWaterVisualOracleMaskedVisualComplexity: "
+            << std::fixed << std::setprecision(6) << visualOracle.MaskedVisualComplexity << "\n";
+        out << "HPWaterVisualOracleMaskedAverageLuminanceGradient: "
+            << std::fixed << std::setprecision(8) << visualOracle.MaskedAverageLuminanceGradient << "\n";
+        out << "HPWaterVisualOracleMaskedGradientPixelRatio: "
+            << std::fixed << std::setprecision(4) << visualOracle.MaskedGradientPixelRatio << "\n";
+        out << "HPWaterVisualOracleNormalAverageGradient: "
+            << std::fixed << std::setprecision(8) << visualOracle.NormalAverageGradient << "\n";
+        out << "HPWaterVisualOracleNormalGradientPixelRatio: "
+            << std::fixed << std::setprecision(4) << visualOracle.NormalGradientPixelRatio << "\n";
+        out << "HPWaterVisualOracleSpectrumHeightRange: "
+            << std::fixed << std::setprecision(6) << visualOracle.SpectrumHeightRange << "\n";
+        out << "HPWaterVisualOracleSpectrumAverageHeightGradient: "
+            << std::fixed << std::setprecision(8) << visualOracle.SpectrumAverageHeightGradient << "\n";
+        out << "HPWaterVisualOracleSpectrumHeightGradientPixelRatio: "
+            << std::fixed << std::setprecision(4) << visualOracle.SpectrumHeightGradientPixelRatio << "\n";
+        out << "HPWaterVisualOracleRefractionAverageUVOffset: "
+            << std::fixed << std::setprecision(8) << visualOracle.RefractionAverageUVOffset << "\n";
+        out << "HPWaterVisualOracleRefractionUVOffsetGradientPixelRatio: "
+            << std::fixed << std::setprecision(4) << visualOracle.RefractionUVOffsetGradientPixelRatio << "\n";
         out << "HPWaterRefractionDataTexture: " << d.HPWaterRefractionDataTexture << "\n";
         out << "HPWaterRefractionMetaTexture: " << d.HPWaterRefractionMetaTexture << "\n";
         out << "HPWaterDepthPyramidRan: " << d.HPWaterDepthPyramidRan << "\n";
@@ -10266,7 +10400,8 @@ private:
             const bool spectrumReady =
                 !m_RenderDiagnosticsRequireSpectrum ||
                 (HasHPWaterSpectrumTextureEvidence() &&
-                 HasHPWaterGBufferPackingEvidence(true));
+                 HasHPWaterGBufferPackingEvidence(true) &&
+                 HasHPWaterVisualOracleEvidence());
             const bool ssrReady =
                 !m_RenderDiagnosticsRequireSSR ||
                 (d.HPWaterSSRReflectionEnabled &&
@@ -10515,7 +10650,8 @@ private:
                 m_RenderDiagnosticsRequireSpectrum;
             const bool finalCompositeReady =
                 !strictReadinessRequired ||
-                HasHPWaterFinalCompositeEvidence();
+                (HasHPWaterFinalCompositeEvidence() &&
+                 (!m_RenderDiagnosticsRequireSpectrum || HasHPWaterVisualOracleEvidence()));
             const bool ready = baseReady &&
                 finalCompositeReady &&
                 objectMotionReady &&
