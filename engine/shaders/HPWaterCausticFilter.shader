@@ -47,6 +47,8 @@ uniform float u_FilterRadius;
 uniform float u_DepthSigma;
 uniform float u_LuminanceWeight;
 uniform int u_HPWaterMaskEnabled;
+uniform int u_MipAwareFilterEnabled;
+uniform int u_LuminanceFadeEnabled;
 
 float CausticLuminance(vec4 value) {
     return max(dot(max(value.rgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)), max(value.a, 0.0));
@@ -69,6 +71,14 @@ float AtrousKernel3x3(int x, int y) {
 float R2Dither(vec2 samplePosition) {
     const vec2 alpha = vec2(0.75487765, 0.56984026);
     return fract(dot(samplePosition, alpha));
+}
+
+float CalculateCausticMipLevel(float depthDiff, float radius, float centerLum) {
+    const float maxMipLevel = 6.0;
+    float scaledDepth = max(depthDiff, 0.0) * max(radius, 0.25) * 24.0;
+    float energyScale = clamp(centerLum * 8.0, 0.0, 1.0);
+    float mipLevel = log2(1.0 + scaledDepth) * mix(0.75, 1.35, energyScale);
+    return clamp(mipLevel, 0.0, maxMipLevel);
 }
 
 void main() {
@@ -110,8 +120,17 @@ void main() {
 
             float sampleLum = CausticLuminance(sampleCaustic);
             float spatialWeight = AtrousKernel3x3(x, y);
+            float depthDiff = abs(sampleDepth - centerDepth);
+            float mipLevel = u_MipAwareFilterEnabled == 1
+                ? max(0.0, CalculateCausticMipLevel(depthDiff, u_FilterRadius, centerLum) - r2Noise * 0.25)
+                : 0.0;
+            if (u_MipAwareFilterEnabled == 1)
+                sampleCaustic = textureLod(u_CausticInput, sampleUV, mipLevel);
+            sampleLum = CausticLuminance(sampleCaustic);
             float edgeWeight = ComputeEdgeWeight(centerLum, sampleLum, u_LuminanceWeight);
-            float depthWeight = exp(-abs(sampleDepth - centerDepth) / depthSigma);
+            if (u_LuminanceFadeEnabled == 1)
+                edgeWeight = mix(edgeWeight, 1.0, smoothstep(3.0, 4.0, mipLevel));
+            float depthWeight = exp(-depthDiff / depthSigma);
             float guardWeight = sampleMask * mix(depthWeight, 1.0, 0.35);
             float w = spatialWeight * mix(edgeWeight, 1.0, 0.25) * guardWeight;
             accum += sampleCaustic * w;

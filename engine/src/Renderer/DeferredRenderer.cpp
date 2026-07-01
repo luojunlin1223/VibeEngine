@@ -513,6 +513,8 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticFilterComputeParityEnabled = false;
     m_HPWaterCausticFilterLDSHaloEnabled = false;
     m_HPWaterCausticFilterR2DitherEnabled = false;
+    m_HPWaterCausticFilterMipAwareEnabled = false;
+    m_HPWaterCausticFilterLuminanceFadeEnabled = false;
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
@@ -2059,6 +2061,8 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterCausticFilterComputeParityEnabled = false;
     m_HPWaterCausticFilterLDSHaloEnabled = false;
     m_HPWaterCausticFilterR2DitherEnabled = false;
+    m_HPWaterCausticFilterMipAwareEnabled = false;
+    m_HPWaterCausticFilterLuminanceFadeEnabled = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
 
@@ -4200,10 +4204,18 @@ bool DeferredRenderer::RunHPWaterCausticFilterPass(const std::shared_ptr<Framebu
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
+    const GLuint inputTexture = static_cast<GLuint>(inputFBO->GetColorAttachmentID());
+    glBindTexture(GL_TEXTURE_2D, inputTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 6);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
     m_HPWaterCausticFilterShader->Bind();
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(inputFBO->GetColorAttachmentID()));
+    glBindTexture(GL_TEXTURE_2D, inputTexture);
     m_HPWaterCausticFilterShader->SetInt("u_CausticInput", 0);
 
     glActiveTexture(GL_TEXTURE1);
@@ -4221,6 +4233,8 @@ bool DeferredRenderer::RunHPWaterCausticFilterPass(const std::shared_ptr<Framebu
     m_HPWaterCausticFilterShader->SetFloat("u_DepthSigma", std::clamp(depthSigma, 0.00001f, 0.05f));
     m_HPWaterCausticFilterShader->SetFloat("u_LuminanceWeight", std::clamp(luminanceWeight, 0.0f, 128.0f));
     m_HPWaterCausticFilterShader->SetInt("u_HPWaterMaskEnabled", m_HPWaterMaskValid ? 1 : 0);
+    m_HPWaterCausticFilterShader->SetInt("u_MipAwareFilterEnabled", 1);
+    m_HPWaterCausticFilterShader->SetInt("u_LuminanceFadeEnabled", 1);
 
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -4246,10 +4260,18 @@ bool DeferredRenderer::RunHPWaterCausticFilterComputePass(const std::shared_ptr<
     if (outputTexture == 0)
         return false;
 
+    const GLuint inputTexture = static_cast<GLuint>(inputFBO->GetColorAttachmentID());
+    glBindTexture(GL_TEXTURE_2D, inputTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 6);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
     m_HPWaterCausticFilterComputeShader->Bind();
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(inputFBO->GetColorAttachmentID()));
+    glBindTexture(GL_TEXTURE_2D, inputTexture);
     m_HPWaterCausticFilterComputeShader->SetInt("u_CausticInput", 0);
 
     glActiveTexture(GL_TEXTURE1);
@@ -4271,6 +4293,8 @@ bool DeferredRenderer::RunHPWaterCausticFilterComputePass(const std::shared_ptr<
     m_HPWaterCausticFilterComputeShader->SetFloat("u_DepthSigma", std::clamp(depthSigma, 0.00001f, 0.05f));
     m_HPWaterCausticFilterComputeShader->SetFloat("u_LuminanceWeight", std::clamp(luminanceWeight, 0.0f, 128.0f));
     m_HPWaterCausticFilterComputeShader->SetInt("u_HPWaterMaskEnabled", m_HPWaterMaskValid ? 1 : 0);
+    m_HPWaterCausticFilterComputeShader->SetInt("u_MipAwareFilterEnabled", 1);
+    m_HPWaterCausticFilterComputeShader->SetInt("u_LuminanceFadeEnabled", 1);
 
     m_HPWaterCausticFilterComputeShader->Dispatch((m_Width + 15u) / 16u, (m_Height + 15u) / 16u, 1u);
     m_HPWaterCausticFilterComputeShader->MemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -4293,6 +4317,8 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
         m_HPWaterCausticFilterComputeParityEnabled = false;
         m_HPWaterCausticFilterLDSHaloEnabled = false;
         m_HPWaterCausticFilterR2DitherEnabled = false;
+        m_HPWaterCausticFilterMipAwareEnabled = false;
+        m_HPWaterCausticFilterLuminanceFadeEnabled = false;
         return false;
     }
 
@@ -4300,6 +4326,8 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
     m_HPWaterCausticFilterComputeParityEnabled = false;
     m_HPWaterCausticFilterLDSHaloEnabled = false;
     m_HPWaterCausticFilterR2DitherEnabled = false;
+    m_HPWaterCausticFilterMipAwareEnabled = false;
+    m_HPWaterCausticFilterLuminanceFadeEnabled = false;
     const int clampedIterations = std::clamp(iterations, 1, 2);
     std::shared_ptr<Framebuffer> inputFBO = m_HPWaterCausticFBO;
     for (int i = 0; i < clampedIterations; ++i) {
@@ -4318,6 +4346,8 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
                 m_HPWaterCausticFilterComputeParityEnabled = true;
                 m_HPWaterCausticFilterLDSHaloEnabled = true;
                 m_HPWaterCausticFilterR2DitherEnabled = true;
+                m_HPWaterCausticFilterMipAwareEnabled = true;
+                m_HPWaterCausticFilterLuminanceFadeEnabled = true;
             }
         }
         if (!filtered) {
@@ -4327,14 +4357,19 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
                                                    radius,
                                                    depthSigma,
                                                    luminanceWeight);
-            if (filtered)
+            if (filtered) {
                 m_HPWaterCausticFilterR2DitherEnabled = true;
+                m_HPWaterCausticFilterMipAwareEnabled = true;
+                m_HPWaterCausticFilterLuminanceFadeEnabled = true;
+            }
         }
         if (!filtered) {
             m_HPWaterCausticFilteredValid = false;
             m_HPWaterCausticFilterComputeParityEnabled = false;
             m_HPWaterCausticFilterLDSHaloEnabled = false;
             m_HPWaterCausticFilterR2DitherEnabled = false;
+            m_HPWaterCausticFilterMipAwareEnabled = false;
+            m_HPWaterCausticFilterLuminanceFadeEnabled = false;
             return false;
         }
         ++m_HPWaterCausticFilterIterations;

@@ -735,6 +735,8 @@ public:
     bool IsHPWaterCausticFilterComputeParityEnabled() const { return m_HPWaterCausticFilterComputeParityEnabled; }
     bool IsHPWaterCausticFilterLDSHaloEnabled() const { return m_HPWaterCausticFilterLDSHaloEnabled; }
     bool IsHPWaterCausticFilterR2DitherEnabled() const { return m_HPWaterCausticFilterR2DitherEnabled; }
+    bool IsHPWaterCausticFilterMipAwareEnabled() const { return m_HPWaterCausticFilterMipAwareEnabled; }
+    bool IsHPWaterCausticFilterLuminanceFadeEnabled() const { return m_HPWaterCausticFilterLuminanceFadeEnabled; }
     bool BeginHPWaterCausticAtlas(uint32_t tileResolution);
     void BeginHPWaterCausticAtlasCascade(uint32_t cascadeIndex);
     void EndHPWaterCausticAtlas(bool valid);
@@ -1067,6 +1069,8 @@ private:
     bool m_HPWaterCausticFilterComputeParityEnabled = false;
     bool m_HPWaterCausticFilterLDSHaloEnabled = false;
     bool m_HPWaterCausticFilterR2DitherEnabled = false;
+    bool m_HPWaterCausticFilterMipAwareEnabled = false;
+    bool m_HPWaterCausticFilterLuminanceFadeEnabled = false;
     uint32_t m_HPWaterCausticComputeIrradianceTexture = 0;
     uint32_t m_HPWaterCausticComputeIrradianceChannelTextures[3] = {};
     uint32_t m_HPWaterCausticComputeAtomicTextures[4] = {};

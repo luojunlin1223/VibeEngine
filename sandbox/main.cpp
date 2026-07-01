@@ -8461,6 +8461,8 @@ private:
             filteredProbe.LuminanceRange > 0.01f &&
             filteredProbe.AverageLuminanceGradient > 0.00001f &&
             filteredProbe.GradientPixelRatio > 0.0005f &&
+            d.HPWaterCausticFilterMipAwareEnabled &&
+            d.HPWaterCausticFilterLuminanceFadeEnabled &&
             atlasProbe.Valid && atlasProbe.NonBlackRatio > 0.0f &&
             gbufferAtlasProbe.Valid && gbufferAtlasProbe.NonBlackRatio > 0.0f &&
             rgbChannelsValid;
@@ -9425,6 +9427,8 @@ private:
         out << "HPWaterCausticFilterComputeParityEnabled: " << d.HPWaterCausticFilterComputeParityEnabled << "\n";
         out << "HPWaterCausticFilterLDSHaloEnabled: " << d.HPWaterCausticFilterLDSHaloEnabled << "\n";
         out << "HPWaterCausticFilterR2DitherEnabled: " << d.HPWaterCausticFilterR2DitherEnabled << "\n";
+        out << "HPWaterCausticFilterMipAwareEnabled: " << d.HPWaterCausticFilterMipAwareEnabled << "\n";
+        out << "HPWaterCausticFilterLuminanceFadeEnabled: " << d.HPWaterCausticFilterLuminanceFadeEnabled << "\n";
         out << "HPWaterCausticStrength: " << d.HPWaterCausticStrength << "\n";
         out << "HPWaterCausticScale: " << d.HPWaterCausticScale << "\n";
         out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
@@ -10388,6 +10392,8 @@ private:
                  d.HPWaterCausticFilterComputeParityEnabled &&
                  d.HPWaterCausticFilterLDSHaloEnabled &&
                  d.HPWaterCausticFilterR2DitherEnabled &&
+                 d.HPWaterCausticFilterMipAwareEnabled &&
+                 d.HPWaterCausticFilterLuminanceFadeEnabled &&
                  d.HPWaterCausticStrength > 0.0f &&
                  d.HPWaterCausticTransmittanceMaskEnabled &&
                  d.HPWaterCausticTransmittanceStrength > 0.0f &&
@@ -10780,7 +10786,7 @@ private:
             d.HPWaterVolumeUpsampledColorTexture,
             d.HPWaterVolumeUpsampledTransmittanceTexture,
             d.HPWaterVolumeUpsampledDepthTexture);
-        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d ndc=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u kernel=%d computeFilter=%d lds=%d tex=%u strength=%.3f scale=%.2f depthFade=%.2f trans=%.2f leak=%.2f scatter=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f lum=%.2f volume=%.3f",
+        ImGui::Text("HPWater caustic: ran=%d valid=%d tex=%u compute=%d/%d atomic=%d tex=%u %ux%u exp=%d dither=%d ndc=%d atlasRecv=%d blend=%d edge=%d spec=%d filtered=%d/%u kernel=%d computeFilter=%d lds=%d mip=%d lumFade=%d tex=%u strength=%.3f scale=%.2f depthFade=%.2f trans=%.2f leak=%.2f scatter=%.2f rgb=%d dispersion=%.3f filterRadius=%.2f lum=%.2f volume=%.3f",
             d.HPWaterCausticRan ? 1 : 0,
             d.HPWaterCausticValid ? 1 : 0,
             d.HPWaterCausticTexture,
@@ -10802,6 +10808,8 @@ private:
             d.HPWaterCausticFilterKernelParityEnabled ? 1 : 0,
             d.HPWaterCausticFilterComputeParityEnabled ? 1 : 0,
             d.HPWaterCausticFilterLDSHaloEnabled ? 1 : 0,
+            d.HPWaterCausticFilterMipAwareEnabled ? 1 : 0,
+            d.HPWaterCausticFilterLuminanceFadeEnabled ? 1 : 0,
             d.HPWaterCausticFilteredTexture,
             d.HPWaterCausticStrength,
             d.HPWaterCausticScale,
