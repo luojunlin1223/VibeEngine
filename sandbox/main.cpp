@@ -7488,11 +7488,31 @@ private:
         uint32_t Width = 0;
         uint32_t Height = 0;
         float AverageLuminance = 0.0f;
+        float MinLuminance = std::numeric_limits<float>::max();
+        float MaxLuminance = std::numeric_limits<float>::lowest();
+        float LuminanceRange = 0.0f;
         float AverageAlpha = 0.0f;
         std::array<float, 4> AverageRGBA = { 0.0f, 0.0f, 0.0f, 0.0f };
         float NonBlackRatio = 0.0f;
         std::array<unsigned char, 4> Center = { 0, 0, 0, 0 };
+        std::array<unsigned char, 4> MinRGBA = { 255, 255, 255, 255 };
         std::array<unsigned char, 4> MaxRGBA = { 0, 0, 0, 0 };
+    };
+
+    struct MaskedTextureProbeSummary {
+        bool Valid = false;
+        uint32_t Width = 0;
+        uint32_t Height = 0;
+        float MaskedPixelRatio = 0.0f;
+        float MaskedAverageLuminance = 0.0f;
+        float MaskedMinLuminance = std::numeric_limits<float>::max();
+        float MaskedMaxLuminance = std::numeric_limits<float>::lowest();
+        float MaskedLuminanceRange = 0.0f;
+        float MaskedNonBlackRatio = 0.0f;
+        std::array<float, 3> MaskedAverageRGB = { 0.0f, 0.0f, 0.0f };
+        std::array<unsigned char, 3> MaskedMinRGB = { 255, 255, 255 };
+        std::array<unsigned char, 3> MaskedMaxRGB = { 0, 0, 0 };
+        float MaskedColorRange = 0.0f;
     };
 
     struct TextureFloatProbeSummary {
@@ -7709,11 +7729,18 @@ private:
             const unsigned char g = pixels[i + 1];
             const unsigned char b = pixels[i + 2];
             const unsigned char a = pixels[i + 3];
+            summary.MinRGBA[0] = std::min(summary.MinRGBA[0], r);
+            summary.MinRGBA[1] = std::min(summary.MinRGBA[1], g);
+            summary.MinRGBA[2] = std::min(summary.MinRGBA[2], b);
+            summary.MinRGBA[3] = std::min(summary.MinRGBA[3], a);
             summary.MaxRGBA[0] = std::max(summary.MaxRGBA[0], r);
             summary.MaxRGBA[1] = std::max(summary.MaxRGBA[1], g);
             summary.MaxRGBA[2] = std::max(summary.MaxRGBA[2], b);
             summary.MaxRGBA[3] = std::max(summary.MaxRGBA[3], a);
-            luminanceSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            const float luminance = static_cast<float>((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0);
+            summary.MinLuminance = std::min(summary.MinLuminance, luminance);
+            summary.MaxLuminance = std::max(summary.MaxLuminance, luminance);
+            luminanceSum += static_cast<double>(luminance);
             alphaSum += a;
             channelSum[0] += r;
             channelSum[1] += g;
@@ -7726,7 +7753,8 @@ private:
 
         summary.Valid = sampled > 0;
         if (sampled > 0) {
-            summary.AverageLuminance = static_cast<float>(luminanceSum / (255.0 * sampled));
+            summary.AverageLuminance = static_cast<float>(luminanceSum / sampled);
+            summary.LuminanceRange = summary.MaxLuminance - summary.MinLuminance;
             summary.AverageAlpha = static_cast<float>(alphaSum / (255.0 * sampled));
             summary.AverageRGBA = {
                 static_cast<float>(channelSum[0] / (255.0 * sampled)),
@@ -7736,6 +7764,85 @@ private:
             };
             summary.NonBlackRatio = static_cast<float>(static_cast<double>(nonBlack) / sampled);
         }
+        return summary;
+    }
+
+    MaskedTextureProbeSummary ProbeMaskedTextureVisibility(uint32_t outputTexture,
+                                                           uint32_t maskTexture,
+                                                           uint32_t width,
+                                                           uint32_t height) {
+        MaskedTextureProbeSummary summary;
+        summary.Width = width;
+        summary.Height = height;
+        if (outputTexture == 0 || maskTexture == 0 || width == 0 || height == 0)
+            return summary;
+
+        std::vector<unsigned char> outputPixels;
+        std::vector<unsigned char> maskPixels;
+        uint32_t outputWidth = 0;
+        uint32_t outputHeight = 0;
+        uint32_t maskWidth = 0;
+        uint32_t maskHeight = 0;
+        if (!ReadTextureThumbnailRGBA8(outputTexture, width, height, 128, outputPixels, outputWidth, outputHeight) ||
+            !ReadTextureThumbnailRGBA8(maskTexture, width, height, 128, maskPixels, maskWidth, maskHeight) ||
+            outputWidth == 0 || outputHeight == 0 ||
+            outputWidth != maskWidth || outputHeight != maskHeight)
+            return summary;
+
+        const size_t pixelCount = static_cast<size_t>(outputWidth) * static_cast<size_t>(outputHeight);
+        size_t maskedPixels = 0;
+        size_t maskedNonBlack = 0;
+        std::array<double, 3> rgbSum = { 0.0, 0.0, 0.0 };
+        double luminanceSum = 0.0;
+
+        for (size_t pixel = 0; pixel < pixelCount; ++pixel) {
+            const size_t i = pixel * 4;
+            const unsigned char mr = maskPixels[i + 0];
+            const unsigned char mg = maskPixels[i + 1];
+            const unsigned char mb = maskPixels[i + 2];
+            const unsigned char ma = maskPixels[i + 3];
+            if (mr <= 2 && mg <= 2 && mb <= 2 && ma <= 2)
+                continue;
+
+            const unsigned char r = outputPixels[i + 0];
+            const unsigned char g = outputPixels[i + 1];
+            const unsigned char b = outputPixels[i + 2];
+            const float luminance = static_cast<float>((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0);
+
+            summary.MaskedMinRGB[0] = std::min(summary.MaskedMinRGB[0], r);
+            summary.MaskedMinRGB[1] = std::min(summary.MaskedMinRGB[1], g);
+            summary.MaskedMinRGB[2] = std::min(summary.MaskedMinRGB[2], b);
+            summary.MaskedMaxRGB[0] = std::max(summary.MaskedMaxRGB[0], r);
+            summary.MaskedMaxRGB[1] = std::max(summary.MaskedMaxRGB[1], g);
+            summary.MaskedMaxRGB[2] = std::max(summary.MaskedMaxRGB[2], b);
+            summary.MaskedMinLuminance = std::min(summary.MaskedMinLuminance, luminance);
+            summary.MaskedMaxLuminance = std::max(summary.MaskedMaxLuminance, luminance);
+            rgbSum[0] += r;
+            rgbSum[1] += g;
+            rgbSum[2] += b;
+            luminanceSum += luminance;
+            if (r > 2 || g > 2 || b > 2)
+                maskedNonBlack++;
+            maskedPixels++;
+        }
+
+        summary.Valid = pixelCount > 0 && maskedPixels > 0;
+        if (!summary.Valid)
+            return summary;
+
+        summary.MaskedPixelRatio = static_cast<float>(static_cast<double>(maskedPixels) / pixelCount);
+        summary.MaskedAverageLuminance = static_cast<float>(luminanceSum / maskedPixels);
+        summary.MaskedLuminanceRange = summary.MaskedMaxLuminance - summary.MaskedMinLuminance;
+        summary.MaskedNonBlackRatio = static_cast<float>(static_cast<double>(maskedNonBlack) / maskedPixels);
+        summary.MaskedAverageRGB = {
+            static_cast<float>(rgbSum[0] / (255.0 * maskedPixels)),
+            static_cast<float>(rgbSum[1] / (255.0 * maskedPixels)),
+            static_cast<float>(rgbSum[2] / (255.0 * maskedPixels))
+        };
+        summary.MaskedColorRange =
+            (static_cast<float>(summary.MaskedMaxRGB[0]) - static_cast<float>(summary.MaskedMinRGB[0]) +
+             static_cast<float>(summary.MaskedMaxRGB[1]) - static_cast<float>(summary.MaskedMinRGB[1]) +
+             static_cast<float>(summary.MaskedMaxRGB[2]) - static_cast<float>(summary.MaskedMinRGB[2])) / (3.0f * 255.0f);
         return summary;
     }
 
@@ -7973,11 +8080,22 @@ private:
             ProbeTexture(d.HPWaterMaskTexture, d.HPWaterMaskWidth, d.HPWaterMaskHeight);
         const TextureProbeSummary compositeProbe =
             ProbeTexture(d.HPWaterCompositeTexture, dr.GetWidth(), dr.GetHeight());
+        const MaskedTextureProbeSummary maskedOutputProbe =
+            ProbeMaskedTextureVisibility(d.DeferredOutputTexture != 0 ? d.DeferredOutputTexture : d.HPWaterCompositeTexture,
+                d.HPWaterMaskTexture,
+                dr.GetWidth(),
+                dr.GetHeight());
 
         return maskProbe.Valid &&
             compositeProbe.Valid &&
+            maskedOutputProbe.Valid &&
             maskProbe.NonBlackRatio > 0.001f &&
-            compositeProbe.AverageAlpha > 0.0f;
+            compositeProbe.AverageAlpha > 0.0f &&
+            maskedOutputProbe.MaskedPixelRatio > 0.001f &&
+            maskedOutputProbe.MaskedNonBlackRatio > 0.5f &&
+            maskedOutputProbe.MaskedAverageLuminance > 0.01f &&
+            (maskedOutputProbe.MaskedLuminanceRange > 0.01f ||
+             maskedOutputProbe.MaskedColorRange > 0.01f);
     }
 
     bool HasHPWaterCausticTextureEvidence() {
@@ -8911,6 +9029,9 @@ private:
             out << "Valid: " << p.Valid << "\n";
             out << "Size: " << p.Width << "x" << p.Height << "\n";
             out << "AverageLuminance: " << std::fixed << std::setprecision(4) << p.AverageLuminance << "\n";
+            out << "MinLuminance: " << std::fixed << std::setprecision(4) << p.MinLuminance << "\n";
+            out << "MaxLuminance: " << std::fixed << std::setprecision(4) << p.MaxLuminance << "\n";
+            out << "LuminanceRange: " << std::fixed << std::setprecision(4) << p.LuminanceRange << "\n";
             out << "AverageAlpha: " << std::fixed << std::setprecision(4) << p.AverageAlpha << "\n";
             out << "AverageRGBA: "
                 << std::fixed << std::setprecision(4)
@@ -8924,11 +9045,41 @@ private:
                 << static_cast<int>(p.Center[1]) << ","
                 << static_cast<int>(p.Center[2]) << ","
                 << static_cast<int>(p.Center[3]) << "\n";
+            out << "MinRGBA: "
+                << static_cast<int>(p.MinRGBA[0]) << ","
+                << static_cast<int>(p.MinRGBA[1]) << ","
+                << static_cast<int>(p.MinRGBA[2]) << ","
+                << static_cast<int>(p.MinRGBA[3]) << "\n";
             out << "MaxRGBA: "
                 << static_cast<int>(p.MaxRGBA[0]) << ","
                 << static_cast<int>(p.MaxRGBA[1]) << ","
                 << static_cast<int>(p.MaxRGBA[2]) << ","
                 << static_cast<int>(p.MaxRGBA[3]) << "\n";
+        };
+        auto writeMaskedProbe = [&](const char* name, const MaskedTextureProbeSummary& p) {
+            out << "\n[" << name << "]\n";
+            out << "Valid: " << p.Valid << "\n";
+            out << "Size: " << p.Width << "x" << p.Height << "\n";
+            out << "MaskedPixelRatio: " << std::fixed << std::setprecision(4) << p.MaskedPixelRatio << "\n";
+            out << "MaskedAverageLuminance: " << std::fixed << std::setprecision(4) << p.MaskedAverageLuminance << "\n";
+            out << "MaskedMinLuminance: " << std::fixed << std::setprecision(4) << p.MaskedMinLuminance << "\n";
+            out << "MaskedMaxLuminance: " << std::fixed << std::setprecision(4) << p.MaskedMaxLuminance << "\n";
+            out << "MaskedLuminanceRange: " << std::fixed << std::setprecision(4) << p.MaskedLuminanceRange << "\n";
+            out << "MaskedNonBlackRatio: " << std::fixed << std::setprecision(4) << p.MaskedNonBlackRatio << "\n";
+            out << "MaskedAverageRGB: "
+                << std::fixed << std::setprecision(4)
+                << p.MaskedAverageRGB[0] << ","
+                << p.MaskedAverageRGB[1] << ","
+                << p.MaskedAverageRGB[2] << "\n";
+            out << "MaskedMinRGB: "
+                << static_cast<int>(p.MaskedMinRGB[0]) << ","
+                << static_cast<int>(p.MaskedMinRGB[1]) << ","
+                << static_cast<int>(p.MaskedMinRGB[2]) << "\n";
+            out << "MaskedMaxRGB: "
+                << static_cast<int>(p.MaskedMaxRGB[0]) << ","
+                << static_cast<int>(p.MaskedMaxRGB[1]) << ","
+                << static_cast<int>(p.MaskedMaxRGB[2]) << "\n";
+            out << "MaskedColorRange: " << std::fixed << std::setprecision(4) << p.MaskedColorRange << "\n";
         };
 
         if (m_Framebuffer) {
@@ -8946,6 +9097,20 @@ private:
             writeProbe("HPWaterComposite", ProbeTexture(dr.GetHPWaterCompositeTexture(), dr.GetWidth(), dr.GetHeight()));
             SaveTextureBMP(dr.GetHPWaterCompositeTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_composite.bmp");
+        }
+        if (dr.IsInitialized() && dr.GetHPWaterCompositeTexture() != 0 && dr.GetHPWaterMaskTexture() != 0) {
+            const uint32_t finalOutputTexture = dr.GetOutputTexture() != 0
+                ? dr.GetOutputTexture()
+                : dr.GetHPWaterCompositeTexture();
+            writeMaskedProbe("HPWaterMaskedFinalOutput",
+                ProbeMaskedTextureVisibility(finalOutputTexture,
+                    dr.GetHPWaterMaskTexture(),
+                    dr.GetWidth(),
+                    dr.GetHeight()));
+            SaveTextureBMP(dr.GetHPWaterMaskTexture(), dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_mask.bmp");
+            SaveTextureBMP(finalOutputTexture, dr.GetWidth(), dr.GetHeight(),
+                std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_final_output.bmp");
         }
         if (dr.IsInitialized() && dr.GetHPWaterRefractionDataTexture() != 0) {
             TextureProbeSummary refractionWorldProbe =
