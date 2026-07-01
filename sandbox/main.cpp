@@ -7537,6 +7537,10 @@ private:
         std::array<float, 4> Center = { 0.0f, 0.0f, 0.0f, 0.0f };
         float NonZeroRGBRatio = 0.0f;
         float NonZeroAlphaRatio = 0.0f;
+        float AverageRGBGradient = 0.0f;
+        float AverageAlphaGradient = 0.0f;
+        float RGBGradientPixelRatio = 0.0f;
+        float AlphaGradientPixelRatio = 0.0f;
     };
 
     struct RefractionMetaUVProbeSummary {
@@ -8099,7 +8103,11 @@ private:
         return spectrumProbe.NonZeroRGBRatio > 0.0f &&
             spectrumProbe.NonZeroAlphaRatio > 0.0f &&
             heightRange > 0.0001f &&
-            normalRange > 0.0001f;
+            normalRange > 0.0001f &&
+            spectrumProbe.AverageAlphaGradient > 0.000001f &&
+            spectrumProbe.AlphaGradientPixelRatio > 0.001f &&
+            spectrumProbe.AverageRGBGradient > 0.000001f &&
+            spectrumProbe.RGBGradientPixelRatio > 0.001f;
     }
 
     bool HasHPWaterFinalCompositeEvidence() {
@@ -8288,6 +8296,11 @@ private:
         std::array<double, 4> channelSum = { 0.0, 0.0, 0.0, 0.0 };
         size_t nonZeroRGB = 0;
         size_t nonZeroAlpha = 0;
+        double rgbGradientSum = 0.0;
+        double alphaGradientSum = 0.0;
+        size_t gradientSamples = 0;
+        size_t rgbGradientPixels = 0;
+        size_t alphaGradientPixels = 0;
         const size_t pixelCount = static_cast<size_t>(sampleWidth) * static_cast<size_t>(sampleHeight);
         const size_t step = 1;
         size_t sampled = 0;
@@ -8312,6 +8325,42 @@ private:
             sampled++;
         }
 
+        auto samplePixel = [&](uint32_t x, uint32_t y, size_t channel) {
+            const size_t i = (static_cast<size_t>(y) * sampleWidth + x) * 4 + channel;
+            const float value = pixels[i];
+            return std::isfinite(value) ? value : 0.0f;
+        };
+        for (uint32_t y = 0; y < sampleHeight; ++y) {
+            for (uint32_t x = 0; x < sampleWidth; ++x) {
+                const float r = samplePixel(x, y, 0);
+                const float g = samplePixel(x, y, 1);
+                const float b = samplePixel(x, y, 2);
+                const float a = samplePixel(x, y, 3);
+                float maxRGBDelta = 0.0f;
+                float maxAlphaDelta = 0.0f;
+                auto accumulateNeighbor = [&](uint32_t nx, uint32_t ny) {
+                    const float rgbDelta =
+                        (std::abs(r - samplePixel(nx, ny, 0)) +
+                         std::abs(g - samplePixel(nx, ny, 1)) +
+                         std::abs(b - samplePixel(nx, ny, 2))) / 3.0f;
+                    const float alphaDelta = std::abs(a - samplePixel(nx, ny, 3));
+                    rgbGradientSum += rgbDelta;
+                    alphaGradientSum += alphaDelta;
+                    gradientSamples++;
+                    maxRGBDelta = std::max(maxRGBDelta, rgbDelta);
+                    maxAlphaDelta = std::max(maxAlphaDelta, alphaDelta);
+                };
+                if (x + 1 < sampleWidth)
+                    accumulateNeighbor(x + 1, y);
+                if (y + 1 < sampleHeight)
+                    accumulateNeighbor(x, y + 1);
+                if (maxRGBDelta > 0.0001f)
+                    rgbGradientPixels++;
+                if (maxAlphaDelta > 0.0001f)
+                    alphaGradientPixels++;
+            }
+        }
+
         summary.Valid = sampled > 0;
         if (sampled > 0) {
             summary.AverageRGBA = {
@@ -8322,6 +8371,16 @@ private:
             };
             summary.NonZeroRGBRatio = static_cast<float>(static_cast<double>(nonZeroRGB) / sampled);
             summary.NonZeroAlphaRatio = static_cast<float>(static_cast<double>(nonZeroAlpha) / sampled);
+            if (gradientSamples > 0) {
+                summary.AverageRGBGradient =
+                    static_cast<float>(rgbGradientSum / static_cast<double>(gradientSamples));
+                summary.AverageAlphaGradient =
+                    static_cast<float>(alphaGradientSum / static_cast<double>(gradientSamples));
+                summary.RGBGradientPixelRatio =
+                    static_cast<float>(static_cast<double>(rgbGradientPixels) / static_cast<double>(sampled));
+                summary.AlphaGradientPixelRatio =
+                    static_cast<float>(static_cast<double>(alphaGradientPixels) / static_cast<double>(sampled));
+            }
         }
         return summary;
     }
@@ -8768,10 +8827,24 @@ private:
                 << spectrumFloatProbe.NonZeroAlphaRatio << "\n";
             out << "HPWaterSpectrumNonZeroNormalRatio: " << std::fixed << std::setprecision(4)
                 << spectrumFloatProbe.NonZeroRGBRatio << "\n";
+            out << "HPWaterSpectrumAverageHeightGradient: " << std::fixed << std::setprecision(8)
+                << spectrumFloatProbe.AverageAlphaGradient << "\n";
+            out << "HPWaterSpectrumAverageNormalGradient: " << std::fixed << std::setprecision(8)
+                << spectrumFloatProbe.AverageRGBGradient << "\n";
+            out << "HPWaterSpectrumHeightGradientPixelRatio: " << std::fixed << std::setprecision(4)
+                << spectrumFloatProbe.AlphaGradientPixelRatio << "\n";
+            out << "HPWaterSpectrumNormalGradientPixelRatio: " << std::fixed << std::setprecision(4)
+                << spectrumFloatProbe.RGBGradientPixelRatio << "\n";
             out << "HPWaterSpectrumAnyHeightVariation: "
                 << (spectrumHeightRange > 0.0001f ? 1 : 0) << "\n";
             out << "HPWaterSpectrumAnyNormalVariation: "
                 << (spectrumNormalRange > 0.0001f ? 1 : 0) << "\n";
+            out << "HPWaterSpectrumAnyHeightGradient: "
+                << (spectrumFloatProbe.AverageAlphaGradient > 0.000001f &&
+                    spectrumFloatProbe.AlphaGradientPixelRatio > 0.001f ? 1 : 0) << "\n";
+            out << "HPWaterSpectrumAnyNormalGradient: "
+                << (spectrumFloatProbe.AverageRGBGradient > 0.000001f &&
+                    spectrumFloatProbe.RGBGradientPixelRatio > 0.001f ? 1 : 0) << "\n";
         }
         out << "HPWaterSkyTextureReflectionBound: " << d.HPWaterSkyTextureReflectionBound << "\n";
         out << "HPWaterSkyTexture: " << d.HPWaterSkyTexture << "\n";
