@@ -9349,6 +9349,7 @@ private:
         out << "HPWaterCausticFilterKernelParityEnabled: " << d.HPWaterCausticFilterKernelParityEnabled << "\n";
         out << "HPWaterCausticFilterComputeParityEnabled: " << d.HPWaterCausticFilterComputeParityEnabled << "\n";
         out << "HPWaterCausticFilterLDSHaloEnabled: " << d.HPWaterCausticFilterLDSHaloEnabled << "\n";
+        out << "HPWaterCausticFilterR2DitherEnabled: " << d.HPWaterCausticFilterR2DitherEnabled << "\n";
         out << "HPWaterCausticStrength: " << d.HPWaterCausticStrength << "\n";
         out << "HPWaterCausticScale: " << d.HPWaterCausticScale << "\n";
         out << "HPWaterCausticDepthFade: " << d.HPWaterCausticDepthFade << "\n";
@@ -10300,6 +10301,7 @@ private:
                  d.HPWaterCausticFilterKernelParityEnabled &&
                  d.HPWaterCausticFilterComputeParityEnabled &&
                  d.HPWaterCausticFilterLDSHaloEnabled &&
+                 d.HPWaterCausticFilterR2DitherEnabled &&
                  d.HPWaterCausticStrength > 0.0f &&
                  d.HPWaterCausticTransmittanceMaskEnabled &&
                  d.HPWaterCausticTransmittanceStrength > 0.0f &&

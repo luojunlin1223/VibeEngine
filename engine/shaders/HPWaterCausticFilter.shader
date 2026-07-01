@@ -66,6 +66,11 @@ float AtrousKernel3x3(int x, int y) {
     return 1.0 / 16.0;
 }
 
+float R2Dither(vec2 samplePosition) {
+    const vec2 alpha = vec2(0.75487765, 0.56984026);
+    return fract(dot(samplePosition, alpha));
+}
+
 void main() {
     float centerDepth = texture(u_HPWaterDepth, v_UV).r;
     float centerMask = u_HPWaterMaskEnabled == 1
@@ -80,6 +85,12 @@ void main() {
     ivec2 texSize = textureSize(u_CausticInput, 0);
     vec2 texel = 1.0 / vec2(max(texSize, ivec2(1)));
     float stepRadius = max(u_FilterStep, 1.0) * max(u_FilterRadius, 0.25);
+    float r2Noise = R2Dither(v_UV * vec2(texSize));
+    float angle = 6.2831853 * r2Noise * 0.125;
+    float s = sin(angle);
+    float c = cos(angle);
+    mat2 rot = mat2(c, s, -s, c);
+    stepRadius *= mix(0.875, 1.125, r2Noise);
     float depthSigma = max(u_DepthSigma, 0.00001);
     vec4 centerCaustic = texture(u_CausticInput, v_UV);
     float centerLum = CausticLuminance(centerCaustic);
@@ -90,7 +101,7 @@ void main() {
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
             vec2 offset = vec2(x, y);
-            vec2 sampleUV = clamp(v_UV + offset * texel * stepRadius, vec2(0.001), vec2(0.999));
+            vec2 sampleUV = clamp(v_UV + (rot * offset) * texel * stepRadius, vec2(0.001), vec2(0.999));
             vec4 sampleCaustic = texture(u_CausticInput, sampleUV);
             float sampleDepth = texture(u_HPWaterDepth, sampleUV).r;
             float sampleMask = u_HPWaterMaskEnabled == 1

@@ -511,6 +511,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticFilterComputeParityEnabled = false;
     m_HPWaterCausticFilterLDSHaloEnabled = false;
+    m_HPWaterCausticFilterR2DitherEnabled = false;
     m_HPWaterCausticComputeIrradianceValid = false;
     m_HPWaterCausticComputeIrradianceRan = false;
     m_HPWaterCausticComputeAtomicEnabled = false;
@@ -2053,6 +2054,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterCausticFilteredValid = false;
     m_HPWaterCausticFilterComputeParityEnabled = false;
     m_HPWaterCausticFilterLDSHaloEnabled = false;
+    m_HPWaterCausticFilterR2DitherEnabled = false;
     m_HPWaterVolumeFilterIterations = 0;
     m_HPWaterCausticFilterIterations = 0;
 
@@ -4280,12 +4282,14 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
         m_HPWaterCausticFilterIterations = 0;
         m_HPWaterCausticFilterComputeParityEnabled = false;
         m_HPWaterCausticFilterLDSHaloEnabled = false;
+        m_HPWaterCausticFilterR2DitherEnabled = false;
         return false;
     }
 
     m_HPWaterCausticFilterIterations = 0;
     m_HPWaterCausticFilterComputeParityEnabled = false;
     m_HPWaterCausticFilterLDSHaloEnabled = false;
+    m_HPWaterCausticFilterR2DitherEnabled = false;
     const int clampedIterations = std::clamp(iterations, 1, 2);
     std::shared_ptr<Framebuffer> inputFBO = m_HPWaterCausticFBO;
     for (int i = 0; i < clampedIterations; ++i) {
@@ -4303,6 +4307,7 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
             if (filtered) {
                 m_HPWaterCausticFilterComputeParityEnabled = true;
                 m_HPWaterCausticFilterLDSHaloEnabled = true;
+                m_HPWaterCausticFilterR2DitherEnabled = true;
             }
         }
         if (!filtered) {
@@ -4312,11 +4317,14 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
                                                    radius,
                                                    depthSigma,
                                                    luminanceWeight);
+            if (filtered)
+                m_HPWaterCausticFilterR2DitherEnabled = true;
         }
         if (!filtered) {
             m_HPWaterCausticFilteredValid = false;
             m_HPWaterCausticFilterComputeParityEnabled = false;
             m_HPWaterCausticFilterLDSHaloEnabled = false;
+            m_HPWaterCausticFilterR2DitherEnabled = false;
             return false;
         }
         ++m_HPWaterCausticFilterIterations;

@@ -1471,6 +1471,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticFilterComputeParityEnabled();
     m_RenderDiagnostics.HPWaterCausticFilterLDSHaloEnabled =
         m_DeferredRenderer.IsHPWaterCausticFilterLDSHaloEnabled();
+    m_RenderDiagnostics.HPWaterCausticFilterR2DitherEnabled =
+        m_DeferredRenderer.IsHPWaterCausticFilterR2DitherEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasTexture = m_DeferredRenderer.GetHPWaterCausticAtlasTexture();
     m_RenderDiagnostics.HPWaterCausticGBufferAtlasTexture =
         m_DeferredRenderer.GetHPWaterCausticGBufferAtlasTexture();
@@ -4506,6 +4508,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticFilterComputeParityEnabled();
     m_RenderDiagnostics.HPWaterCausticFilterLDSHaloEnabled =
         m_DeferredRenderer.IsHPWaterCausticFilterLDSHaloEnabled();
+    m_RenderDiagnostics.HPWaterCausticFilterR2DitherEnabled =
+        m_DeferredRenderer.IsHPWaterCausticFilterR2DitherEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasValid = m_DeferredRenderer.IsHPWaterCausticAtlasValid();
     m_RenderDiagnostics.HPWaterCausticAtlasTexture = m_DeferredRenderer.GetHPWaterCausticAtlasTexture();
     m_RenderDiagnostics.HPWaterCausticGBufferAtlasTexture =
