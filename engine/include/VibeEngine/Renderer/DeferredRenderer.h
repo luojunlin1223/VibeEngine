@@ -342,6 +342,7 @@ public:
     bool UpdateHPWaterFluidDynamics(uint32_t resolution,
                                     float waveSpeed,
                                     float damping,
+                                    float deltaTime,
                                     const std::vector<HPWaterFluidSource>& sources,
                                     const glm::vec3& boxCenter,
                                     const glm::vec3& boxSize);
@@ -764,6 +765,8 @@ public:
     uint32_t GetHPWaterFluidResolution() const { return m_HPWaterFluidResolution; }
     bool IsHPWaterFluidDynamicsValid() const { return m_HPWaterFluidValid; }
     bool DidHPWaterFluidComputeRun() const { return m_HPWaterFluidComputeRan; }
+    float GetHPWaterFluidDeltaTime() const { return m_HPWaterFluidDeltaTime; }
+    bool IsHPWaterFluidDeltaTimeDriven() const { return m_HPWaterFluidDeltaTimeDriven; }
     bool IsHPWaterFluidEdgeAbsorptionParityEnabled() const { return m_HPWaterFluidEdgeAbsorptionParityEnabled; }
     bool IsHPWaterFluidSourceClampEnabled() const { return m_HPWaterFluidSourceClampEnabled; }
     bool IsHPWaterFluidMultiSourceEnabled() const { return m_HPWaterFluidMultiSourceEnabled; }
@@ -1088,6 +1091,7 @@ private:
     bool m_HPWaterFluidSourceClampEnabled = false;
     bool m_HPWaterFluidMultiSourceEnabled = false;
     bool m_HPWaterFluidWaveEquationParityEnabled = false;
+    bool m_HPWaterFluidDeltaTimeDriven = false;
     bool m_HPWaterFluidObstacleValid = false;
     bool m_HPWaterFluidHeightFieldValid = false;
     bool m_HPWaterFluidHeightCaptureRan = false;
@@ -1097,6 +1101,7 @@ private:
     bool m_HPWaterFluidSceneHeightCaptured = false;
     uint32_t m_HPWaterFluidObstacleTexture = 0;
     uint32_t m_HPWaterFluidSourceCount = 0;
+    float m_HPWaterFluidDeltaTime = 0.0f;
     uint32_t m_HPWaterFluidObstacleResolution = 0;
     uint32_t m_HPWaterFluidWaterHeightTexture = 0;
     uint32_t m_HPWaterFluidSceneHeightTexture = 0;

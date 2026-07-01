@@ -527,6 +527,8 @@ struct RenderDiagnostics {
     uint32_t HPWaterFluidResolution = 0;
     float HPWaterFluidWaveSpeed = 0.0f;
     float HPWaterFluidDamping = 0.0f;
+    float HPWaterFluidDeltaTime = 0.0f;
+    bool HPWaterFluidDeltaTimeDriven = false;
     bool HPWaterFluidObstacleValid = false;
     uint32_t HPWaterFluidObstacleTexture = 0;
     bool HPWaterFluidHeightFieldValid = false;
@@ -678,6 +680,7 @@ private:
     std::unique_ptr<PhysicsWorld> m_PhysicsWorld;
     bool  m_PhysicsRunning = false;
     float m_PhysicsAccumulator = 0.0f;
+    float m_LastUpdateDeltaTime = 1.0f / 60.0f;
 
     std::string m_PendingScenePath; // scene to load at end of frame
     std::unique_ptr<NavGrid> m_NavGrid;

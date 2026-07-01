@@ -43,6 +43,7 @@ uniform sampler2D u_SceneHeightTexture;
 
 uniform float u_WaveSpeed;
 uniform float u_DampingFactor;
+uniform float u_DeltaTime;
 uniform int   u_WaveSourceCount;
 uniform vec3  u_WaveSourceUVRadius[8];
 uniform float u_WaveSourceIntensity[8];
@@ -116,6 +117,7 @@ void main() {
     float laplacian = left + right + down + up - 4.0 * current;
     float c2 = u_WaveSpeed * u_WaveSpeed;
     float damping = u_DampingFactor;
+    float dt = clamp(u_DeltaTime, 1.0 / 240.0, 1.0 / 15.0);
 
     float distToEdgeX = min(float(coord.x), float(size.x - 1 - coord.x));
     float distToEdgeY = min(float(coord.y), float(size.y - 1 - coord.y));
@@ -126,8 +128,10 @@ void main() {
     float edgeAbsorption = 1.0 - (1.0 - edgeX) * (1.0 - edgeY);
     edgeAbsorption = clamp(1.0 - edgeAbsorption * edgeAbsorption, 0.0, 1.0);
 
-    float inertia = (current - previous) * (1.0 - damping) * edgeAbsorption;
-    float next = current + inertia + c2 * (1.0 / 3600.0) * laplacian;
+    float dampingStep = clamp(dt * 60.0, 0.0, 4.0);
+    float energyRetention = pow(max(1.0 - damping, 0.0), dampingStep) * edgeAbsorption;
+    float inertia = (current - previous) * energyRetention;
+    float next = current + inertia + c2 * dt * dt * laplacian;
 
     next += ReadSourceImpulse(coord, width) * edgeAbsorption;
 

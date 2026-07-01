@@ -8874,6 +8874,8 @@ private:
         out << "HPWaterFluidResolution: " << d.HPWaterFluidResolution << "\n";
         out << "HPWaterFluidWaveSpeed: " << d.HPWaterFluidWaveSpeed << "\n";
         out << "HPWaterFluidDamping: " << d.HPWaterFluidDamping << "\n";
+        out << "HPWaterFluidDeltaTime: " << d.HPWaterFluidDeltaTime << "\n";
+        out << "HPWaterFluidDeltaTimeDriven: " << d.HPWaterFluidDeltaTimeDriven << "\n";
         out << "HPWaterFluidObstacleValid: " << d.HPWaterFluidObstacleValid << "\n";
         out << "HPWaterFluidObstacleTexture: " << d.HPWaterFluidObstacleTexture << "\n";
         out << "HPWaterFluidHeightFieldValid: " << d.HPWaterFluidHeightFieldValid << "\n";
@@ -9466,6 +9468,8 @@ private:
                  d.HPWaterFluidObjectSourceCount > 0 &&
                  d.HPWaterFluidMovingObjectSourceEnabled &&
                  d.HPWaterFluidMovingObjectSourceCount > 0 &&
+                 d.HPWaterFluidDeltaTimeDriven &&
+                 d.HPWaterFluidDeltaTime > 0.0f &&
                  d.HPWaterFluidLayerFilteringParityEnabled &&
                  d.HPWaterFluidRenderQueueParityEnabled &&
                  d.HPWaterFluidWaterLayerCandidates > 0 &&
@@ -10088,7 +10092,7 @@ private:
             d.HPWaterCausticAtlasCascades,
             d.HPWaterCausticAtlasTexture,
             d.HPWaterCausticAtlasDepthTexture);
-        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d multiSrc=%d sources=%u objectSources=%u movingWake=%u res=%u height=%u speed=%.3f damping=%.3f",
+        ImGui::Text("HPWater fluid: ran=%d valid=%d compute=%d multiSrc=%d sources=%u objectSources=%u movingWake=%u res=%u height=%u speed=%.3f damping=%.3f dt=%.4f dtDriven=%d",
             d.HPWaterFluidDynamicsRan ? 1 : 0,
             d.HPWaterFluidDynamicsValid ? 1 : 0,
             d.HPWaterFluidComputeRan ? 1 : 0,
@@ -10099,7 +10103,9 @@ private:
             d.HPWaterFluidResolution,
             d.HPWaterFluidHeightTexture,
             d.HPWaterFluidWaveSpeed,
-            d.HPWaterFluidDamping);
+            d.HPWaterFluidDamping,
+            d.HPWaterFluidDeltaTime,
+            d.HPWaterFluidDeltaTimeDriven ? 1 : 0);
         ImGui::Text("HPWater fluid obstacles: valid=%d texture=%u count=%u pixels=%u",
             d.HPWaterFluidObstacleValid ? 1 : 0,
             d.HPWaterFluidObstacleTexture,

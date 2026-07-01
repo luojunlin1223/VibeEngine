@@ -669,6 +669,8 @@ std::unordered_map<uint64_t, glm::vec3> Scene::CollectHPWaterObjectCenters() {
 }
 
 void Scene::OnUpdate(float deltaTime) {
+    m_LastUpdateDeltaTime = std::isfinite(deltaTime) && deltaTime > 0.0f ? deltaTime : (1.0f / 60.0f);
+
     // Update entity count for profiler
     Profiler::SetEntityCount(static_cast<uint32_t>(m_Registry.storage<entt::entity>().size()));
 
@@ -3082,6 +3084,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.UpdateHPWaterFluidDynamics(hpWaterFluidResolution,
                                                           hpWaterFluidWaveSpeed,
                                                           hpWaterFluidDamping,
+                                                          m_LastUpdateDeltaTime,
                                                           hpWaterFluidSources,
                                                           hpWaterFluidBoxCenter,
                                                           hpWaterFluidBoxSize);
@@ -4495,6 +4498,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterFluidResolution = m_DeferredRenderer.GetHPWaterFluidResolution();
     m_RenderDiagnostics.HPWaterFluidWaveSpeed = hpWaterFluidWaveSpeed;
     m_RenderDiagnostics.HPWaterFluidDamping = hpWaterFluidDamping;
+    m_RenderDiagnostics.HPWaterFluidDeltaTime = m_DeferredRenderer.GetHPWaterFluidDeltaTime();
+    m_RenderDiagnostics.HPWaterFluidDeltaTimeDriven = m_DeferredRenderer.IsHPWaterFluidDeltaTimeDriven();
     m_RenderDiagnostics.HPWaterFluidObstacleValid = m_DeferredRenderer.IsHPWaterFluidObstacleValid();
     m_RenderDiagnostics.HPWaterFluidObstacleTexture = m_DeferredRenderer.GetHPWaterFluidObstacleTexture();
     m_RenderDiagnostics.HPWaterFluidHeightFieldValid = m_DeferredRenderer.IsHPWaterFluidHeightFieldValid();

@@ -4312,10 +4312,15 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
 bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
                                                   float waveSpeed,
                                                   float damping,
+                                                  float deltaTime,
                                                   const std::vector<HPWaterFluidSource>& sources,
                                                   const glm::vec3& boxCenter,
                                                   const glm::vec3& boxSize) {
     constexpr uint32_t kMaxFluidSources = 8;
+    const float effectiveDeltaTime = std::clamp(
+        std::isfinite(deltaTime) && deltaTime > 0.0f ? deltaTime : (1.0f / 60.0f),
+        1.0f / 240.0f,
+        1.0f / 15.0f);
     std::array<HPWaterFluidSource, kMaxFluidSources> packedSources {};
     uint32_t sourceCount = 0;
     for (const auto& source : sources) {
@@ -4342,6 +4347,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidMultiSourceEnabled = false;
         m_HPWaterFluidSourceCount = 0;
         m_HPWaterFluidWaveEquationParityEnabled = false;
+        m_HPWaterFluidDeltaTimeDriven = false;
+        m_HPWaterFluidDeltaTime = 0.0f;
         return false;
     }
 
@@ -4355,6 +4362,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidMultiSourceEnabled = false;
         m_HPWaterFluidSourceCount = 0;
         m_HPWaterFluidWaveEquationParityEnabled = false;
+        m_HPWaterFluidDeltaTimeDriven = false;
+        m_HPWaterFluidDeltaTime = 0.0f;
         return false;
     }
 
@@ -4383,6 +4392,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidComputeShader->SetInt("u_SceneHeightTexture", 2);
         m_HPWaterFluidComputeShader->SetFloat("u_WaveSpeed", waveSpeed);
         m_HPWaterFluidComputeShader->SetFloat("u_DampingFactor", damping);
+        m_HPWaterFluidComputeShader->SetFloat("u_DeltaTime", effectiveDeltaTime);
         m_HPWaterFluidComputeShader->SetInt("u_WaveSourceCount", static_cast<int>(sourceCount));
         for (uint32_t i = 0; i < kMaxFluidSources; ++i) {
             const std::string index = std::to_string(i);
@@ -4425,6 +4435,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
         m_HPWaterFluidMultiSourceEnabled = sourceCount > 1;
         m_HPWaterFluidSourceCount = sourceCount;
         m_HPWaterFluidWaveEquationParityEnabled = true;
+        m_HPWaterFluidDeltaTimeDriven = true;
+        m_HPWaterFluidDeltaTime = effectiveDeltaTime;
         return true;
     }
 
@@ -4466,6 +4478,7 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
 
     m_HPWaterFluidShader->SetFloat("u_WaveSpeed", waveSpeed);
     m_HPWaterFluidShader->SetFloat("u_DampingFactor", damping);
+    m_HPWaterFluidShader->SetFloat("u_DeltaTime", effectiveDeltaTime);
     m_HPWaterFluidShader->SetInt("u_WaveSourceCount", static_cast<int>(sourceCount));
     for (uint32_t i = 0; i < kMaxFluidSources; ++i) {
         const std::string index = std::to_string(i);
@@ -4507,6 +4520,8 @@ bool DeferredRenderer::UpdateHPWaterFluidDynamics(uint32_t resolution,
     m_HPWaterFluidMultiSourceEnabled = sourceCount > 1;
     m_HPWaterFluidSourceCount = sourceCount;
     m_HPWaterFluidWaveEquationParityEnabled = true;
+    m_HPWaterFluidDeltaTimeDriven = true;
+    m_HPWaterFluidDeltaTime = effectiveDeltaTime;
     return true;
 }
 
