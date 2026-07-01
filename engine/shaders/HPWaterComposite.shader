@@ -155,6 +155,7 @@ uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
 
 #include "shadows.glslinc"
+#include "hpwater_normal.glslinc"
 
 const float PI = 3.14159265358979323846;
 const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 10.0;
@@ -1473,7 +1474,7 @@ void main() {
     vec4 scatterThickness = texture(u_HPWaterScatterThickness, v_UV);
     vec4 absorptionFoam = texture(u_HPWaterAbsorptionFoam, v_UV);
 
-    vec3 N = normalize(normalRoughness.xyz * 2.0 - 1.0);
+    vec3 N = DecodeHPWaterNormalRoughness(normalRoughness);
     float roughness = clamp(normalRoughness.a, 0.02, 0.85);
     vec3 scatterColor = max(scatterThickness.rgb, vec3(0.0));
     float depthTintDistance = max(scatterThickness.a, 0.1);

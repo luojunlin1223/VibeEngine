@@ -1,0 +1,35 @@
+// HPWater normal packing helpers.
+// The dedicated water G-buffer uses compact octahedral normal storage, while
+// VibeEngine's main scene G-buffer continues to store direct normal.xyz.
+
+vec2 HPWaterOctWrap(vec2 v) {
+    return (vec2(1.0) - abs(v.yx)) *
+        vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+vec2 EncodeHPWaterNormalOct(vec3 normalWS) {
+    vec3 n = normalize(normalWS);
+    n /= max(abs(n.x) + abs(n.y) + abs(n.z), 0.000001);
+    vec2 encoded = n.xz;
+    if (n.y < 0.0) {
+        encoded = HPWaterOctWrap(encoded);
+    }
+    return encoded * 0.5 + 0.5;
+}
+
+vec3 DecodeHPWaterNormalOct(vec2 packedNormal) {
+    vec2 f = packedNormal * 2.0 - 1.0;
+    vec3 n = vec3(f.x, 1.0 - abs(f.x) - abs(f.y), f.y);
+    if (n.y < 0.0) {
+        n.xz = HPWaterOctWrap(n.xz);
+    }
+    return normalize(n);
+}
+
+vec4 EncodeHPWaterNormalRoughness(vec3 normalWS, float roughness) {
+    return vec4(EncodeHPWaterNormalOct(normalWS), 0.0, roughness);
+}
+
+vec3 DecodeHPWaterNormalRoughness(vec4 normalRoughness) {
+    return DecodeHPWaterNormalOct(normalRoughness.xy);
+}

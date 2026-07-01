@@ -271,6 +271,10 @@ public:
         VE_INFO("Sandbox application destroyed");
     }
 
+    bool DidRenderDiagnosticsFail() const {
+        return m_RenderDiagnosticsOnceFailed;
+    }
+
 protected:
     void OnUpdate() override {
         // Pause support: skip scene update when paused (unless stepping)
@@ -1423,7 +1427,7 @@ private:
             water.GGXEnergyCompensation = 1.0f;
             if (m_HPWaterFluidBakeDiagnostics)
                 water.FluidStartFrameBake = true;
-            if (m_HPWaterSSRDiagnostics) {
+            if (m_HPWaterSSRDiagnostics && !m_HPWaterSpectrumDiagnostics) {
                 water.HeightScale = 0.0f;
                 water.SpectrumAmplitude = 0.0f;
                 water.SpectrumNormalStrength = 0.0f;
@@ -1432,6 +1436,8 @@ private:
                 water.AutoImpulse = false;
                 water.FoamIntensity = 0.0f;
             }
+            if (m_HPWaterSpectrumDiagnostics)
+                ApplyLauncherSpectrumDiagnosticSettings(water);
 
             auto& mr = waterEntity.AddComponent<VE::MeshRendererComponent>();
             mr.Mat = VE::MaterialLibrary::Get("Water");
@@ -1451,7 +1457,7 @@ private:
             water.SpectrumNormalStrength = std::clamp(water.SpectrumNormalStrength, 0.0f, 4.0f);
             if (m_HPWaterFluidBakeDiagnostics)
                 water.FluidStartFrameBake = true;
-            if (m_HPWaterSSRDiagnostics) {
+            if (m_HPWaterSSRDiagnostics && !m_HPWaterSpectrumDiagnostics) {
                 water.HeightScale = 0.0f;
                 water.SpectrumAmplitude = 0.0f;
                 water.SpectrumNormalStrength = 0.0f;
@@ -1460,12 +1466,26 @@ private:
                 water.AutoImpulse = false;
                 water.FoamIntensity = 0.0f;
             }
+            if (m_HPWaterSpectrumDiagnostics)
+                ApplyLauncherSpectrumDiagnosticSettings(water);
             auto& mr = waterEntity.HasComponent<VE::MeshRendererComponent>()
                 ? waterEntity.GetComponent<VE::MeshRendererComponent>()
                 : waterEntity.AddComponent<VE::MeshRendererComponent>();
             mr.Mat = VE::MaterialLibrary::Get("Water");
             mr.CastShadows = false;
         }
+    }
+
+    void ApplyLauncherSpectrumDiagnosticSettings(VE::HPWaterComponent& water) {
+        water.SpectrumWaves = true;
+        water.SpectrumAmplitude = std::max(water.SpectrumAmplitude, 0.85f);
+        water.SpectrumNormalStrength = std::max(water.SpectrumNormalStrength, 1.35f);
+        water.Choppiness = std::max(water.Choppiness, 0.45f);
+        water.HeightScale = std::max(water.HeightScale, 0.45f);
+        water.SpectrumWindSpeed = std::max(water.SpectrumWindSpeed, 13.0f);
+        water.SpectrumDirectionalSpread = std::clamp(std::max(water.SpectrumDirectionalSpread, 0.76f), 0.0f, 1.0f);
+        water.SpectrumSwell = std::clamp(std::max(water.SpectrumSwell, 0.62f), 0.0f, 1.0f);
+        water.SpectrumShortWaveFade = std::clamp(std::max(water.SpectrumShortWaveFade, 0.34f), 0.0f, 2.0f);
     }
 
     void EnsureLauncherReflectionProbe() {
@@ -9481,6 +9501,9 @@ private:
                 m_RenderDiagnosticsRequireSpectrum;
             const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && refractionReady && spectrumReady && ssrReady && lightLoopReady && lightPayloadStressReady && causticsReady && volumeReady;
             if (ready || d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame) {
+                m_RenderDiagnosticsOnceFailed = strictReadinessRequired && !ready;
+                if (m_RenderDiagnosticsOnceFailed)
+                    VE_ERROR("Render diagnostics timed out before all required evidence was ready");
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
                 glfwSetWindowShouldClose(GetWindow().GetNativeWindow(), true);
@@ -11385,6 +11408,7 @@ private:
     bool m_ShowRenderDebugger = true;
     bool m_AutoExportRenderDiagnostics = true;
     bool m_RenderDiagnosticsOnce = false;
+    bool m_RenderDiagnosticsOnceFailed = false;
     bool m_HPWaterMotionDiagnostics = false;
     bool m_HPWaterFluidFilterDiagnostics = false;
     bool m_HPWaterFluidBakeDiagnostics = false;
@@ -11616,5 +11640,5 @@ int main(int argc, char** argv) {
         hpwaterRefractionDiagnostics,
         hpwaterSpectrumDiagnostics);
     app.Run();
-    return 0;
+    return app.DidRenderDiagnosticsFail() ? 2 : 0;
 }

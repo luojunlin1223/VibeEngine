@@ -73,6 +73,8 @@ uniform mat4 u_InverseViewProjection;
 uniform mat4 u_WaterCascadeVP[4];
 uniform float u_WaterCascadeSplits[4];
 
+#include "hpwater_normal.glslinc"
+
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
     return (2.0 * u_NearClip * u_FarClip) /
@@ -288,7 +290,7 @@ float SampleAtlasFocus(vec2 screenUV, vec2 causticUV, vec3 waterNormal, vec3 lig
     vec4 atlasY = texture(u_HPWaterCausticAtlas, atlasUV + vec2(0.0, texel.y));
     float atlasDepth = texture(u_HPWaterCausticAtlasDepth, atlasUV).r;
 
-    vec3 atlasNormal = normalize(atlasCenter.rgb * 2.0 - 1.0);
+    vec3 atlasNormal = DecodeHPWaterNormalRoughness(atlasCenter);
     float normalGradient = length(atlasCenter.rgb - atlasX.rgb) + length(atlasCenter.rgb - atlasY.rgb);
     float atlasCoverage = step(0.0001, atlasCenter.a) * step(atlasDepth, 0.9999);
     float slopeFocus = smoothstep(0.015, 0.42, length(atlasNormal.xz));
@@ -325,7 +327,7 @@ void main() {
     vec4 scatterThickness = texture(u_HPWaterScatterThickness, v_UV);
     vec4 absorptionFoam = texture(u_HPWaterAbsorptionFoam, v_UV);
 
-    vec3 N = normalize(normalRoughness.xyz * 2.0 - 1.0);
+    vec3 N = DecodeHPWaterNormalRoughness(normalRoughness);
     vec3 L = normalize(-u_LightDir);
     float sunFacing = clamp(dot(N, L) * 0.5 + 0.5, 0.0, 1.0);
 

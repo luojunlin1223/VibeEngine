@@ -112,6 +112,7 @@ uniform mat4 u_InverseViewProjection;
 uniform vec4 u_HPWaterVolumeResolution; // xy = low-res size, zw = 1 / low-res size
 
 #include "shadows.glslinc"
+#include "hpwater_normal.glslinc"
 
 const float PI = 3.14159265358979323846;
 const int HPWATER_MAX_TILE_LIGHT_REFERENCES = 64;
@@ -896,7 +897,7 @@ void main() {
     vec4 scatterThickness = texture(u_HPWaterScatterThickness, sourceUV);
     vec4 absorptionFoam = texture(u_HPWaterAbsorptionFoam, sourceUV);
 
-    vec3 N = normalize(normalRoughness.xyz * 2.0 - 1.0);
+    vec3 N = DecodeHPWaterNormalRoughness(normalRoughness);
     vec3 scatterColor = max(scatterThickness.rgb, vec3(0.0));
     float depthTintDistance = max(scatterThickness.a, 0.1);
     vec3 absorptionColor = max(absorptionFoam.rgb, vec3(0.0001));

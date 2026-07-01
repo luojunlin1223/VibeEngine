@@ -39,13 +39,16 @@ layout(location = 0) out vec4 OutNormalRoughness;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterNormalRoughness;
 
+#include "hpwater_normal.glslinc"
+
 void main() {
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
     if (waterDepth >= 0.9999)
         discard;
 
     gl_FragDepth = waterDepth;
-    OutNormalRoughness = texture(u_HPWaterNormalRoughness, v_UV);
+    vec4 normalRoughness = texture(u_HPWaterNormalRoughness, v_UV);
+    OutNormalRoughness = vec4(DecodeHPWaterNormalRoughness(normalRoughness), normalRoughness.a);
 }
 #endif
 

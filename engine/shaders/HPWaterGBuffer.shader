@@ -74,6 +74,8 @@ uniform vec3  u_HPFluidBoxCenter;
 uniform vec3  u_HPFluidBoxSize;
 uniform float u_HPFluidHeightScale;
 
+#include "hpwater_normal.glslinc"
+
 layout(location = 0) out vec4 gWaterNormalRoughness;
 layout(location = 1) out vec4 gWaterScatterThickness;
 layout(location = 2) out vec4 gWaterAbsorptionFoam;
@@ -198,8 +200,7 @@ void main() {
     float foam = smoothstep(0.32, 0.86, slope + heightSignal * 0.45 + spectrumHeightSignal * 0.28 + fluidSignal * 0.35) *
         clamp(u_HPFoamIntensity, 0.0, 2.0);
 
-    vec3 encodedNormal = N * 0.5 + 0.5;
-    gWaterNormalRoughness = vec4(encodedNormal, roughness);
+    gWaterNormalRoughness = EncodeHPWaterNormalRoughness(N, roughness);
     gWaterScatterThickness = vec4(max(u_HPScatterColor, vec3(0.0)), max(u_HPThickness, 0.0));
     gWaterAbsorptionFoam = vec4(max(u_HPAbsorptionColor, vec3(0.0)), clamp(foam, 0.0, 1.0));
 }
