@@ -114,6 +114,10 @@ uniform int u_HPWaterTiledLightListTileRectHeight;
 uniform int u_HPWaterTiledLightListTileHeaderCount;
 uniform int u_HPWaterTiledLightListReferenceOffset;
 uniform int u_HPWaterTiledLightListReferenceCount;
+uniform int u_HPWaterLightPayloadEnabled;
+uniform int u_HPWaterPointLightPayloadCount;
+uniform int u_HPWaterSpotLightPayloadCount;
+uniform int u_HPWaterAreaLightPayloadCount;
 uniform vec3 u_IndirectSkyColor;
 uniform vec3 u_IndirectGroundColor;
 uniform vec3 u_IndirectTint;
@@ -168,6 +172,15 @@ const uint HPWATER_LIGHT_REF_AREA_FLAG = 0x80000000u;
 
 layout(std430, binding = 7) readonly buffer HPWaterTiledLightListBuffer {
     uint u_HPWaterTiledLightListData[];
+};
+layout(std430, binding = 8) readonly buffer HPWaterPointLightPayloadBuffer {
+    vec4 u_HPWaterPointLightPayload[];
+};
+layout(std430, binding = 9) readonly buffer HPWaterSpotLightPayloadBuffer {
+    vec4 u_HPWaterSpotLightPayload[];
+};
+layout(std430, binding = 10) readonly buffer HPWaterAreaLightPayloadBuffer {
+    vec4 u_HPWaterAreaLightPayload[];
 };
 
 float LinearizeDepth(float depth) {
@@ -764,13 +777,38 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
                                      int lightIndex,
                                      out vec3 L,
                                      out float diffuseScale) {
+    if (u_HPWaterLightPayloadEnabled == 1 && lightIndex >= u_HPWaterAreaLightPayloadCount) {
+        L = vec3(0.0, 1.0, 0.0);
+        diffuseScale = 1.0;
+        return vec3(0.0);
+    }
+
     vec3 center = u_AreaLightPositions[lightIndex];
     vec3 right = NormalizeOr(u_AreaLightRights[lightIndex], vec3(1.0, 0.0, 0.0));
     vec3 up = NormalizeOr(u_AreaLightUps[lightIndex], vec3(0.0, 1.0, 0.0));
     vec3 forward = NormalizeOr(u_AreaLightForwards[lightIndex], vec3(0.0, 0.0, 1.0));
+    vec3 color = u_AreaLightColors[lightIndex];
+    float intensity = u_AreaLightIntensities[lightIndex];
     float width = max(u_AreaLightWidths[lightIndex], 0.001);
     float height = max(u_AreaLightHeights[lightIndex], 0.001);
     float range = max(u_AreaLightRanges[lightIndex], 0.001);
+    if (u_HPWaterLightPayloadEnabled == 1) {
+        int base = lightIndex * 5;
+        vec4 positionRange = u_HPWaterAreaLightPayload[base + 0];
+        vec4 rightWidth = u_HPWaterAreaLightPayload[base + 1];
+        vec4 upHeight = u_HPWaterAreaLightPayload[base + 2];
+        vec4 forwardPayload = u_HPWaterAreaLightPayload[base + 3];
+        vec4 colorIntensity = u_HPWaterAreaLightPayload[base + 4];
+        center = positionRange.xyz;
+        range = max(positionRange.w, 0.001);
+        right = NormalizeOr(rightWidth.xyz, vec3(1.0, 0.0, 0.0));
+        width = max(rightWidth.w, 0.001);
+        up = NormalizeOr(upHeight.xyz, vec3(0.0, 1.0, 0.0));
+        height = max(upHeight.w, 0.001);
+        forward = NormalizeOr(forwardPayload.xyz, vec3(0.0, 0.0, 1.0));
+        color = colorIntensity.xyz;
+        intensity = colorIntensity.w;
+    }
     vec2 halfSize = vec2(width, height) * 0.5;
     vec3 centerVector = center - positionWS;
     float distanceToLight = length(centerVector);
@@ -811,8 +849,7 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
 
     diffuseScale = clamp(diffuseIrradiance / max(specIrradiance, 0.001), 0.0, 1.5);
     float attenuation = rangeWindow * emissionFacing * specIrradiance;
-    return u_AreaLightColors[lightIndex] *
-        max(u_AreaLightIntensities[lightIndex], 0.0) * attenuation;
+    return color * max(intensity, 0.0) * attenuation;
 }
 
 bool HPWaterFetchTiledLightList(vec2 pixelCoord, out int referenceOffset, out int referenceCount) {
@@ -903,9 +940,27 @@ void AccumulateHPWaterPointLight(int i,
                                  inout vec3 macroContribution,
                                  inout vec3 thinSSSContribution,
                                  inout vec3 backlitContribution) {
-    vec3 lightVector = u_PointLightPositions[i] - waterWorldPos;
+    if (u_HPWaterLightPayloadEnabled == 1 && i >= u_HPWaterPointLightPayloadCount) {
+        return;
+    }
+
+    vec3 position = u_PointLightPositions[i];
+    vec3 color = u_PointLightColors[i];
+    float intensity = u_PointLightIntensities[i];
+    float range = u_PointLightRanges[i];
+    if (u_HPWaterLightPayloadEnabled == 1) {
+        int base = i * 2;
+        vec4 positionRange = u_HPWaterPointLightPayload[base + 0];
+        vec4 colorIntensity = u_HPWaterPointLightPayload[base + 1];
+        position = positionRange.xyz;
+        range = positionRange.w;
+        color = colorIntensity.xyz;
+        intensity = colorIntensity.w;
+    }
+
+    vec3 lightVector = position - waterWorldPos;
     float lightDistance = length(lightVector);
-    float lightRange = max(u_PointLightRanges[i], 0.001);
+    float lightRange = max(range, 0.001);
     if (lightDistance <= 0.0001 || lightDistance >= lightRange) {
         return;
     }
@@ -915,7 +970,7 @@ void AccumulateHPWaterPointLight(int i,
     float rangeWindow = 1.0 - pow(range01, 4.0);
     rangeWindow *= rangeWindow;
     float attenuation = rangeWindow / (lightDistance * lightDistance + 1.0);
-    vec3 radiance = u_PointLightColors[i] * max(u_PointLightIntensities[i], 0.0) * attenuation;
+    vec3 radiance = color * max(intensity, 0.0) * attenuation;
     AccumulateHPWaterRadiance(radiance, localL, N, V, roughness, F, energyCompensation,
                               directSpecular, specularContribution,
                               macroLight, thinSSSLight, backlitLight,
@@ -935,20 +990,46 @@ void AccumulateHPWaterSpotLight(int i,
                                 inout vec3 thinSSSLight,
                                 inout vec3 backlitLight,
                                 inout vec3 macroContribution,
-                                inout vec3 thinSSSContribution,
-                                inout vec3 backlitContribution) {
-    vec3 lightVector = u_SpotLightPositions[i] - waterWorldPos;
+                                 inout vec3 thinSSSContribution,
+                                 inout vec3 backlitContribution) {
+    if (u_HPWaterLightPayloadEnabled == 1 && i >= u_HPWaterSpotLightPayloadCount) {
+        return;
+    }
+
+    vec3 position = u_SpotLightPositions[i];
+    vec3 direction = u_SpotLightDirections[i];
+    vec3 color = u_SpotLightColors[i];
+    float intensity = u_SpotLightIntensities[i];
+    float range = u_SpotLightRanges[i];
+    float innerCos = u_SpotLightInnerCos[i];
+    float outerCos = u_SpotLightOuterCos[i];
+    if (u_HPWaterLightPayloadEnabled == 1) {
+        int base = i * 4;
+        vec4 positionRange = u_HPWaterSpotLightPayload[base + 0];
+        vec4 directionInner = u_HPWaterSpotLightPayload[base + 1];
+        vec4 colorIntensity = u_HPWaterSpotLightPayload[base + 2];
+        vec4 outerPayload = u_HPWaterSpotLightPayload[base + 3];
+        position = positionRange.xyz;
+        range = positionRange.w;
+        direction = directionInner.xyz;
+        innerCos = directionInner.w;
+        color = colorIntensity.xyz;
+        intensity = colorIntensity.w;
+        outerCos = outerPayload.x;
+    }
+
+    vec3 lightVector = position - waterWorldPos;
     float lightDistance = length(lightVector);
-    float lightRange = max(u_SpotLightRanges[i], 0.001);
+    float lightRange = max(range, 0.001);
     if (lightDistance <= 0.0001 || lightDistance >= lightRange) {
         return;
     }
 
     vec3 localL = lightVector / lightDistance;
-    vec3 spotForward = NormalizeOr(-u_SpotLightDirections[i], vec3(0.0, -1.0, 0.0));
+    vec3 spotForward = NormalizeOr(-direction, vec3(0.0, -1.0, 0.0));
     float theta = dot(localL, spotForward);
-    float coneWidth = max(u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i], 0.0001);
-    float spotFactor = clamp((theta - u_SpotLightOuterCos[i]) / coneWidth, 0.0, 1.0);
+    float coneWidth = max(innerCos - outerCos, 0.0001);
+    float spotFactor = clamp((theta - outerCos) / coneWidth, 0.0, 1.0);
     if (spotFactor <= 0.0001) {
         return;
     }
@@ -957,7 +1038,7 @@ void AccumulateHPWaterSpotLight(int i,
     float rangeWindow = 1.0 - pow(range01, 4.0);
     rangeWindow *= rangeWindow;
     float attenuation = rangeWindow * spotFactor / (lightDistance * lightDistance + 1.0);
-    vec3 radiance = u_SpotLightColors[i] * max(u_SpotLightIntensities[i], 0.0) * attenuation;
+    vec3 radiance = color * max(intensity, 0.0) * attenuation;
     AccumulateHPWaterRadiance(radiance, localL, N, V, roughness, F, energyCompensation,
                               directSpecular, specularContribution,
                               macroLight, thinSSSLight, backlitLight,
@@ -1334,15 +1415,21 @@ void main() {
     vec3 punctualThinSSSLight = vec3(0.0);
     vec3 punctualBacklitLight = vec3(0.0);
 
-    int pointCount = clamp(u_NumPointLights, 0, 8);
-    int spotCount = clamp(u_NumSpotLights, 0, 4);
+    int pointCount = u_HPWaterLightPayloadEnabled == 1
+        ? max(u_HPWaterPointLightPayloadCount, 0)
+        : clamp(u_NumPointLights, 0, 8);
+    int spotCount = u_HPWaterLightPayloadEnabled == 1
+        ? max(u_HPWaterSpotLightPayloadCount, 0)
+        : clamp(u_NumSpotLights, 0, 4);
 
     vec3 areaSpecularContribution = vec3(0.0);
     vec3 areaMacroContribution = vec3(0.0);
     vec3 areaThinSSSContribution = vec3(0.0);
     vec3 areaBacklitContribution = vec3(0.0);
 
-    int areaCount = clamp(u_NumAreaLights, 0, 4);
+    int areaCount = u_HPWaterLightPayloadEnabled == 1
+        ? max(u_HPWaterAreaLightPayloadCount, 0)
+        : clamp(u_NumAreaLights, 0, 4);
     int tiledReferenceOffset = 0;
     int tiledReferenceCount = 0;
     bool usedTiledLightList = HPWaterFetchTiledLightList(gl_FragCoord.xy,

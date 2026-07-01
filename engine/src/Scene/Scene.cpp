@@ -1264,6 +1264,18 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
     m_RenderDiagnostics.HPWaterTiledLightListShaderConsumerEnabled =
         m_DeferredRenderer.IsHPWaterTiledLightListShaderConsumerEnabled();
+    m_RenderDiagnostics.HPWaterLightPayloadGPUUploadEnabled =
+        m_DeferredRenderer.IsHPWaterLightPayloadGPUUploadValid();
+    m_RenderDiagnostics.HPWaterLightPayloadShaderConsumerEnabled =
+        m_DeferredRenderer.IsHPWaterLightPayloadShaderConsumerEnabled();
+    m_RenderDiagnostics.HPWaterLightPayloadPointCount =
+        m_DeferredRenderer.GetHPWaterLightPayloadPointCount();
+    m_RenderDiagnostics.HPWaterLightPayloadSpotCount =
+        m_DeferredRenderer.GetHPWaterLightPayloadSpotCount();
+    m_RenderDiagnostics.HPWaterLightPayloadAreaCount =
+        m_DeferredRenderer.GetHPWaterLightPayloadAreaCount();
+    m_RenderDiagnostics.HPWaterLightPayloadGPUBufferBytes =
+        m_DeferredRenderer.GetHPWaterLightPayloadGPUBufferBytes();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();
     m_RenderDiagnostics.HPWaterSSRMotionVectorTexture = m_DeferredRenderer.GetHPWaterSSRMotionVectorTexture();
     m_RenderDiagnostics.HPWaterSSRResolveDiagnosticsTexture =
@@ -1836,6 +1848,46 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             static_cast<uint32_t>(hpWaterAreaCandidates.size() - static_cast<size_t>(MAX_AREA_LIGHTS));
     }
 
+    const uint32_t hpWaterLightPayloadPointCount =
+        std::min<uint32_t>(static_cast<uint32_t>(hpWaterPointCandidates.size()), 0xffffu);
+    const uint32_t hpWaterLightPayloadSpotCount =
+        std::min<uint32_t>(static_cast<uint32_t>(hpWaterSpotCandidates.size()), 0xffffu);
+    const uint32_t hpWaterLightPayloadAreaCount =
+        std::min<uint32_t>(static_cast<uint32_t>(hpWaterAreaCandidates.size()), 0xffffu);
+    std::vector<glm::vec4> hpWaterPointLightPayload;
+    std::vector<glm::vec4> hpWaterSpotLightPayload;
+    std::vector<glm::vec4> hpWaterAreaLightPayload;
+    hpWaterPointLightPayload.reserve(static_cast<size_t>(hpWaterLightPayloadPointCount) * 2u);
+    hpWaterSpotLightPayload.reserve(static_cast<size_t>(hpWaterLightPayloadSpotCount) * 4u);
+    hpWaterAreaLightPayload.reserve(static_cast<size_t>(hpWaterLightPayloadAreaCount) * 5u);
+    for (uint32_t i = 0; i < hpWaterLightPayloadPointCount; ++i) {
+        const auto& candidate = hpWaterPointCandidates[i];
+        hpWaterPointLightPayload.emplace_back(candidate.Position, candidate.Range);
+        hpWaterPointLightPayload.emplace_back(candidate.Color, candidate.Intensity);
+    }
+    for (uint32_t i = 0; i < hpWaterLightPayloadSpotCount; ++i) {
+        const auto& candidate = hpWaterSpotCandidates[i];
+        hpWaterSpotLightPayload.emplace_back(candidate.Position, candidate.Range);
+        hpWaterSpotLightPayload.emplace_back(candidate.Direction, candidate.InnerCos);
+        hpWaterSpotLightPayload.emplace_back(candidate.Color, candidate.Intensity);
+        hpWaterSpotLightPayload.emplace_back(candidate.OuterCos, 0.0f, 0.0f, 0.0f);
+    }
+    for (uint32_t i = 0; i < hpWaterLightPayloadAreaCount; ++i) {
+        const auto& candidate = hpWaterAreaCandidates[i];
+        hpWaterAreaLightPayload.emplace_back(candidate.Position, candidate.Range);
+        hpWaterAreaLightPayload.emplace_back(candidate.Right, candidate.Width);
+        hpWaterAreaLightPayload.emplace_back(candidate.Up, candidate.Height);
+        hpWaterAreaLightPayload.emplace_back(candidate.Forward, 0.0f);
+        hpWaterAreaLightPayload.emplace_back(candidate.Color, candidate.Intensity);
+    }
+    const bool hpWaterLightPayloadGPUUploadEnabled =
+        m_DeferredRenderer.UploadHPWaterLightPayloads(hpWaterPointLightPayload,
+                                                      hpWaterLightPayloadPointCount,
+                                                      hpWaterSpotLightPayload,
+                                                      hpWaterLightPayloadSpotCount,
+                                                      hpWaterAreaLightPayload,
+                                                      hpWaterLightPayloadAreaCount);
+
     bool hpWaterTiledLightListEnabled = false;
     m_DeferredRenderer.ResetHPWaterTiledLightListShaderConsumerState();
     uint32_t hpWaterTiledLightListTileSize = 16;
@@ -1913,8 +1965,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 tileLightOffsets.reserve(waterTileCapacity);
                 tileLightCounts.reserve(waterTileCapacity);
                 hpWaterTiledLightListReferences.reserve(waterTileCapacity *
-                    static_cast<uint32_t>(std::max(hpWaterNumPointLights + hpWaterNumSpotLights +
-                                                   hpWaterNumAreaLights, 1)));
+                    std::max(hpWaterLightPayloadPointCount + hpWaterLightPayloadSpotCount +
+                             hpWaterLightPayloadAreaCount, 1u));
                 auto lightSphereOverlapsTile = [&](const glm::vec3& position,
                                                    float radius,
                                                    uint32_t tileX,
@@ -1947,35 +1999,38 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                         uint32_t tilePunctualCount = 0;
                         uint32_t tileAreaCount = 0;
                         tileLightOffsets.push_back(static_cast<uint32_t>(hpWaterTiledLightListReferences.size()));
-                        for (int i = 0; i < hpWaterNumPointLights; ++i) {
-                            if (lightSphereOverlapsTile(hpWaterPointPositions[i],
-                                                        hpWaterPointRanges[i],
+                        for (uint32_t i = 0; i < hpWaterLightPayloadPointCount; ++i) {
+                            const auto& candidate = hpWaterPointCandidates[i];
+                            if (lightSphereOverlapsTile(candidate.Position,
+                                                        candidate.Range,
                                                         tileX,
                                                         tileY)) {
                                 ++tilePunctualCount;
-                                hpWaterTiledLightListReferences.push_back(static_cast<uint32_t>(i));
+                                hpWaterTiledLightListReferences.push_back(i);
                             }
                         }
-                        for (int i = 0; i < hpWaterNumSpotLights; ++i) {
-                            const glm::vec3 toWaterCenter = hpWaterLightSelectionCenter - hpWaterSpotPositions[i];
+                        for (uint32_t i = 0; i < hpWaterLightPayloadSpotCount; ++i) {
+                            const auto& candidate = hpWaterSpotCandidates[i];
+                            const glm::vec3 toWaterCenter = hpWaterLightSelectionCenter - candidate.Position;
                             const float distanceToWaterCenter = glm::length(toWaterCenter);
                             const glm::vec3 spotToWater = distanceToWaterCenter > 0.0001f
                                 ? toWaterCenter / distanceToWaterCenter
-                                : -hpWaterSpotDirections[i];
-                            const float cone = glm::dot(spotToWater, glm::normalize(-hpWaterSpotDirections[i]));
-                            if (cone >= hpWaterSpotOuterCos[i] &&
-                                lightSphereOverlapsTile(hpWaterSpotPositions[i],
-                                                        hpWaterSpotRanges[i],
+                                : -candidate.Direction;
+                            const float cone = glm::dot(spotToWater, glm::normalize(-candidate.Direction));
+                            if (cone >= candidate.OuterCos &&
+                                lightSphereOverlapsTile(candidate.Position,
+                                                        candidate.Range,
                                                         tileX,
                                                         tileY)) {
                                 ++tilePunctualCount;
                                 hpWaterTiledLightListReferences.push_back(0x00010000u | static_cast<uint32_t>(i));
                             }
                         }
-                        for (int i = 0; i < hpWaterNumAreaLights; ++i) {
-                            const float areaRadius = hpWaterAreaRanges[i] +
-                                0.5f * glm::length(glm::vec2(hpWaterAreaWidths[i], hpWaterAreaHeights[i]));
-                            if (lightSphereOverlapsTile(hpWaterAreaPositions[i],
+                        for (uint32_t i = 0; i < hpWaterLightPayloadAreaCount; ++i) {
+                            const auto& candidate = hpWaterAreaCandidates[i];
+                            const float areaRadius = candidate.Range +
+                                0.5f * glm::length(glm::vec2(candidate.Width, candidate.Height));
+                            if (lightSphereOverlapsTile(candidate.Position,
                                                         areaRadius,
                                                         tileX,
                                                         tileY)) {
@@ -3472,6 +3527,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.GetHPWaterTiledLightListTileRectWidth();
         m_RenderDiagnostics.HPWaterTiledLightListTileRectHeight =
             m_DeferredRenderer.GetHPWaterTiledLightListTileRectHeight();
+        m_RenderDiagnostics.HPWaterLightPayloadGPUUploadEnabled =
+            hpWaterLightPayloadGPUUploadEnabled &&
+            m_DeferredRenderer.IsHPWaterLightPayloadGPUUploadValid();
+        m_RenderDiagnostics.HPWaterLightPayloadShaderConsumerEnabled =
+            m_DeferredRenderer.IsHPWaterLightPayloadShaderConsumerEnabled();
+        m_RenderDiagnostics.HPWaterLightPayloadPointCount =
+            m_DeferredRenderer.GetHPWaterLightPayloadPointCount();
+        m_RenderDiagnostics.HPWaterLightPayloadSpotCount =
+            m_DeferredRenderer.GetHPWaterLightPayloadSpotCount();
+        m_RenderDiagnostics.HPWaterLightPayloadAreaCount =
+            m_DeferredRenderer.GetHPWaterLightPayloadAreaCount();
+        m_RenderDiagnostics.HPWaterLightPayloadGPUBufferBytes =
+            m_DeferredRenderer.GetHPWaterLightPayloadGPUBufferBytes();
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;
@@ -4112,6 +4180,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 inverseViewProjection);
         if (m_RenderDiagnostics.HPWaterCompositeRan)
             m_RenderDiagnostics.HPWaterDrawn = m_RenderDiagnostics.HPWaterGBufferDrawn;
+
+        m_RenderDiagnostics.HPWaterTiledLightListShaderConsumerEnabled =
+            m_DeferredRenderer.IsHPWaterTiledLightListShaderConsumerEnabled();
+        m_RenderDiagnostics.HPWaterLightPayloadShaderConsumerEnabled =
+            m_DeferredRenderer.IsHPWaterLightPayloadShaderConsumerEnabled();
 
         m_PreviousHPWaterViewProjection = viewProjection;
         m_HasPreviousHPWaterViewProjection = true;

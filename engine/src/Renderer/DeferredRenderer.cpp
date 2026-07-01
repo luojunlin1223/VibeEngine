@@ -25,6 +25,9 @@ static constexpr GLuint kHPWaterStencilWaterSurface = 1u << 5u;
 static constexpr GLuint kHPWaterStencilRef =
     kHPWaterStencilTraceReflectionRay | kHPWaterStencilWaterSurface;
 static constexpr GLuint kHPWaterTiledLightListBinding = 7u;
+static constexpr GLuint kHPWaterPointLightPayloadBinding = 8u;
+static constexpr GLuint kHPWaterSpotLightPayloadBinding = 9u;
+static constexpr GLuint kHPWaterAreaLightPayloadBinding = 10u;
 
 static uint32_t CalculateMipCount(uint32_t width, uint32_t height) {
     uint32_t maxDim = std::max(width, height);
@@ -377,6 +380,7 @@ void DeferredRenderer::Shutdown() {
     DestroyHPWaterFGDLUT();
     DestroyHPWaterAreaLightLTCLUT();
     DestroyHPWaterTiledLightListBuffer();
+    DestroyHPWaterLightPayloadBuffers();
 
     m_GBuffer.reset();
     m_LightingFBO.reset();
@@ -524,6 +528,12 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterTiledLightListTileRectWidth = 0;
     m_HPWaterTiledLightListTileRectHeight = 0;
     m_HPWaterTiledLightListShaderConsumerEnabled = false;
+    m_HPWaterLightPayloadGPUUploadValid = false;
+    m_HPWaterLightPayloadPointCount = 0;
+    m_HPWaterLightPayloadSpotCount = 0;
+    m_HPWaterLightPayloadAreaCount = 0;
+    m_HPWaterLightPayloadGPUBufferBytes = 0;
+    m_HPWaterLightPayloadShaderConsumerEnabled = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
     m_HPWaterCausticAtlasTileResolution = 0;
@@ -809,6 +819,83 @@ void DeferredRenderer::DestroyHPWaterTiledLightListBuffer() {
     m_HPWaterTiledLightListShaderConsumerEnabled = false;
 }
 
+void DeferredRenderer::DestroyHPWaterLightPayloadBuffers() {
+    GLuint buffers[3] = {
+        static_cast<GLuint>(m_HPWaterPointLightPayloadBuffer),
+        static_cast<GLuint>(m_HPWaterSpotLightPayloadBuffer),
+        static_cast<GLuint>(m_HPWaterAreaLightPayloadBuffer)
+    };
+    for (GLuint& buffer : buffers) {
+        if (buffer != 0)
+            glDeleteBuffers(1, &buffer);
+    }
+    m_HPWaterPointLightPayloadBuffer = 0;
+    m_HPWaterSpotLightPayloadBuffer = 0;
+    m_HPWaterAreaLightPayloadBuffer = 0;
+    m_HPWaterLightPayloadPointCount = 0;
+    m_HPWaterLightPayloadSpotCount = 0;
+    m_HPWaterLightPayloadAreaCount = 0;
+    m_HPWaterLightPayloadGPUBufferBytes = 0;
+    m_HPWaterLightPayloadGPUUploadValid = false;
+    m_HPWaterLightPayloadShaderConsumerEnabled = false;
+}
+
+static bool UploadHPWaterVec4Payload(GLuint& buffer, const std::vector<glm::vec4>& payload) {
+    if (payload.empty()) {
+        if (buffer != 0) {
+            glDeleteBuffers(1, &buffer);
+            buffer = 0;
+        }
+        return true;
+    }
+
+    if (buffer == 0)
+        glGenBuffers(1, &buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER,
+                 static_cast<GLsizeiptr>(payload.size() * sizeof(glm::vec4)),
+                 payload.data(),
+                 GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    return buffer != 0 && glGetError() == GL_NO_ERROR;
+}
+
+bool DeferredRenderer::UploadHPWaterLightPayloads(const std::vector<glm::vec4>& pointPayload,
+                                                  uint32_t pointLightCount,
+                                                  const std::vector<glm::vec4>& spotPayload,
+                                                  uint32_t spotLightCount,
+                                                  const std::vector<glm::vec4>& areaPayload,
+                                                  uint32_t areaLightCount) {
+    m_HPWaterLightPayloadGPUUploadValid = false;
+    m_HPWaterLightPayloadPointCount = pointLightCount;
+    m_HPWaterLightPayloadSpotCount = spotLightCount;
+    m_HPWaterLightPayloadAreaCount = areaLightCount;
+    m_HPWaterLightPayloadGPUBufferBytes =
+        static_cast<uint32_t>((pointPayload.size() + spotPayload.size() + areaPayload.size()) *
+                              sizeof(glm::vec4));
+
+    const bool pointValid = pointPayload.size() == static_cast<size_t>(pointLightCount) * 2u;
+    const bool spotValid = spotPayload.size() == static_cast<size_t>(spotLightCount) * 4u;
+    const bool areaValid = areaPayload.size() == static_cast<size_t>(areaLightCount) * 5u;
+    if (!pointValid || !spotValid || !areaValid ||
+        (pointLightCount + spotLightCount + areaLightCount) == 0u) {
+        return false;
+    }
+
+    GLuint pointBuffer = static_cast<GLuint>(m_HPWaterPointLightPayloadBuffer);
+    GLuint spotBuffer = static_cast<GLuint>(m_HPWaterSpotLightPayloadBuffer);
+    GLuint areaBuffer = static_cast<GLuint>(m_HPWaterAreaLightPayloadBuffer);
+    const bool uploaded =
+        UploadHPWaterVec4Payload(pointBuffer, pointPayload) &&
+        UploadHPWaterVec4Payload(spotBuffer, spotPayload) &&
+        UploadHPWaterVec4Payload(areaBuffer, areaPayload);
+    m_HPWaterPointLightPayloadBuffer = static_cast<uint32_t>(pointBuffer);
+    m_HPWaterSpotLightPayloadBuffer = static_cast<uint32_t>(spotBuffer);
+    m_HPWaterAreaLightPayloadBuffer = static_cast<uint32_t>(areaBuffer);
+    m_HPWaterLightPayloadGPUUploadValid = uploaded;
+    return uploaded;
+}
+
 bool DeferredRenderer::UploadHPWaterTiledLightList(const std::vector<uint32_t>& tileHeaders,
                                                    const std::vector<uint32_t>& lightReferences,
                                                    uint32_t tileSize,
@@ -878,6 +965,9 @@ bool DeferredRenderer::UploadHPWaterTiledLightList(const std::vector<uint32_t>& 
 bool DeferredRenderer::BindHPWaterTiledLightListForShader(const std::shared_ptr<Shader>& shader) {
     if (!shader) {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterTiledLightListBinding, 0);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterPointLightPayloadBinding, 0);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterSpotLightPayloadBinding, 0);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterAreaLightPayloadBinding, 0);
         return false;
     }
 
@@ -905,6 +995,13 @@ bool DeferredRenderer::BindHPWaterTiledLightListForShader(const std::shared_ptr<
         m_HPWaterTiledLightListGPUReferenceCount > 0 &&
         m_HPWaterTiledLightListGPUBufferBytes > 0 &&
         tileRectValid;
+    const bool payloadEnabled =
+        enabled &&
+        m_HPWaterLightPayloadGPUUploadValid &&
+        (m_HPWaterLightPayloadPointCount +
+         m_HPWaterLightPayloadSpotCount +
+         m_HPWaterLightPayloadAreaCount) > 0u &&
+        m_HPWaterLightPayloadGPUBufferBytes > 0u;
 
     shader->SetInt("u_HPWaterTiledLightListEnabled", enabled ? 1 : 0);
     shader->SetInt("u_HPWaterTiledLightListTileSize",
@@ -927,17 +1024,38 @@ bool DeferredRenderer::BindHPWaterTiledLightListForShader(const std::shared_ptr<
                    static_cast<int>(referenceOffset));
     shader->SetInt("u_HPWaterTiledLightListReferenceCount",
                    static_cast<int>(m_HPWaterTiledLightListGPUReferenceCount));
+    shader->SetInt("u_HPWaterLightPayloadEnabled", payloadEnabled ? 1 : 0);
+    shader->SetInt("u_HPWaterPointLightPayloadCount",
+                   payloadEnabled ? static_cast<int>(m_HPWaterLightPayloadPointCount) : 0);
+    shader->SetInt("u_HPWaterSpotLightPayloadCount",
+                   payloadEnabled ? static_cast<int>(m_HPWaterLightPayloadSpotCount) : 0);
+    shader->SetInt("u_HPWaterAreaLightPayloadCount",
+                   payloadEnabled ? static_cast<int>(m_HPWaterLightPayloadAreaCount) : 0);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
                      kHPWaterTiledLightListBinding,
                      enabled ? static_cast<GLuint>(m_HPWaterTiledLightListBuffer) : 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                     kHPWaterPointLightPayloadBinding,
+                     payloadEnabled ? static_cast<GLuint>(m_HPWaterPointLightPayloadBuffer) : 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                     kHPWaterSpotLightPayloadBinding,
+                     payloadEnabled ? static_cast<GLuint>(m_HPWaterSpotLightPayloadBuffer) : 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                     kHPWaterAreaLightPayloadBinding,
+                     payloadEnabled ? static_cast<GLuint>(m_HPWaterAreaLightPayloadBuffer) : 0);
     m_HPWaterTiledLightListShaderConsumerEnabled =
         m_HPWaterTiledLightListShaderConsumerEnabled || enabled;
+    m_HPWaterLightPayloadShaderConsumerEnabled =
+        m_HPWaterLightPayloadShaderConsumerEnabled || payloadEnabled;
     return enabled;
 }
 
 void DeferredRenderer::UnbindHPWaterTiledLightListForShader() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterTiledLightListBinding, 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterPointLightPayloadBinding, 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterSpotLightPayloadBinding, 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterAreaLightPayloadBinding, 0);
 }
 
 void DeferredRenderer::CreateHPWaterAreaLightLTCLUT() {

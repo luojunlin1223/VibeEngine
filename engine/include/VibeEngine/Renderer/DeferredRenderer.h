@@ -373,8 +373,20 @@ public:
                                      uint32_t tileMinY,
                                      uint32_t tileRectWidth,
                                      uint32_t tileRectHeight);
+    /// Upload HPWater light parameter payloads consumed by tiled light-list references.
+    /// Records are std430-safe vec4 blocks:
+    /// point = position/range, color/intensity;
+    /// spot = position/range, direction/innerCos, color/intensity, outerCos;
+    /// area = position/range, right/width, up/height, forward, color/intensity.
+    bool UploadHPWaterLightPayloads(const std::vector<glm::vec4>& pointPayload,
+                                    uint32_t pointLightCount,
+                                    const std::vector<glm::vec4>& spotPayload,
+                                    uint32_t spotLightCount,
+                                    const std::vector<glm::vec4>& areaPayload,
+                                    uint32_t areaLightCount);
     void ResetHPWaterTiledLightListShaderConsumerState() {
         m_HPWaterTiledLightListShaderConsumerEnabled = false;
+        m_HPWaterLightPayloadShaderConsumerEnabled = false;
     }
 
     bool BeginHPWaterFluidWaterHeightCapture(uint32_t resolution,
@@ -479,6 +491,24 @@ public:
     }
     uint32_t GetHPWaterTiledLightListTileRectHeight() const {
         return m_HPWaterTiledLightListTileRectHeight;
+    }
+    bool IsHPWaterLightPayloadGPUUploadValid() const {
+        return m_HPWaterLightPayloadGPUUploadValid;
+    }
+    bool IsHPWaterLightPayloadShaderConsumerEnabled() const {
+        return m_HPWaterLightPayloadShaderConsumerEnabled;
+    }
+    uint32_t GetHPWaterLightPayloadPointCount() const {
+        return m_HPWaterLightPayloadPointCount;
+    }
+    uint32_t GetHPWaterLightPayloadSpotCount() const {
+        return m_HPWaterLightPayloadSpotCount;
+    }
+    uint32_t GetHPWaterLightPayloadAreaCount() const {
+        return m_HPWaterLightPayloadAreaCount;
+    }
+    uint32_t GetHPWaterLightPayloadGPUBufferBytes() const {
+        return m_HPWaterLightPayloadGPUBufferBytes;
     }
 
     /// Get HPWater explicit coverage mask texture.
@@ -796,6 +826,7 @@ private:
     void DestroyHPWaterFGDLUT();
     void DestroyHPWaterAreaLightLTCLUT();
     void DestroyHPWaterTiledLightListBuffer();
+    void DestroyHPWaterLightPayloadBuffers();
     bool BindHPWaterTiledLightListForShader(const std::shared_ptr<Shader>& shader);
     void UnbindHPWaterTiledLightListForShader();
     void ClearHPWaterFluidFBOs();
@@ -925,6 +956,15 @@ private:
     uint32_t m_HPWaterTiledLightListTileRectHeight = 0;
     bool m_HPWaterTiledLightListGPUUploadValid = false;
     bool m_HPWaterTiledLightListShaderConsumerEnabled = false;
+    uint32_t m_HPWaterPointLightPayloadBuffer = 0;
+    uint32_t m_HPWaterSpotLightPayloadBuffer = 0;
+    uint32_t m_HPWaterAreaLightPayloadBuffer = 0;
+    uint32_t m_HPWaterLightPayloadPointCount = 0;
+    uint32_t m_HPWaterLightPayloadSpotCount = 0;
+    uint32_t m_HPWaterLightPayloadAreaCount = 0;
+    uint32_t m_HPWaterLightPayloadGPUBufferBytes = 0;
+    bool m_HPWaterLightPayloadGPUUploadValid = false;
+    bool m_HPWaterLightPayloadShaderConsumerEnabled = false;
 
     // HPWater opaque scene-depth pyramid for Hi-Z assisted refraction.
     uint32_t m_HPWaterDepthPyramidTexture = 0;

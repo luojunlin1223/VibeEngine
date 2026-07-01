@@ -8090,6 +8090,18 @@ private:
             << d.HPWaterTiledLightListTileMinY << " "
             << d.HPWaterTiledLightListTileRectWidth << "x"
             << d.HPWaterTiledLightListTileRectHeight << "\n";
+        out << "HPWaterLightPayloadGPUUploadEnabled: "
+            << d.HPWaterLightPayloadGPUUploadEnabled << "\n";
+        out << "HPWaterLightPayloadShaderConsumerEnabled: "
+            << d.HPWaterLightPayloadShaderConsumerEnabled << "\n";
+        out << "HPWaterLightPayloadPointCount: "
+            << d.HPWaterLightPayloadPointCount << "\n";
+        out << "HPWaterLightPayloadSpotCount: "
+            << d.HPWaterLightPayloadSpotCount << "\n";
+        out << "HPWaterLightPayloadAreaCount: "
+            << d.HPWaterLightPayloadAreaCount << "\n";
+        out << "HPWaterLightPayloadGPUBufferBytes: "
+            << d.HPWaterLightPayloadGPUBufferBytes << "\n";
         out << "HPWaterVolumePointLightCount: " << d.HPWaterVolumePointLightCount << "\n";
         out << "HPWaterVolumeSpotLightCount: " << d.HPWaterVolumeSpotLightCount << "\n";
         out << "HPWaterVolumeAreaLightCount: " << d.HPWaterVolumeAreaLightCount << "\n";
@@ -9037,6 +9049,12 @@ private:
                      d.HPWaterTiledLightListGridWidth &&
                  d.HPWaterTiledLightListTileMinY + d.HPWaterTiledLightListTileRectHeight <=
                      d.HPWaterTiledLightListGridHeight &&
+                 d.HPWaterLightPayloadGPUUploadEnabled &&
+                 d.HPWaterLightPayloadShaderConsumerEnabled &&
+                 d.HPWaterLightPayloadPointCount == d.HPWaterPunctualPointLightCandidates &&
+                 d.HPWaterLightPayloadSpotCount == d.HPWaterPunctualSpotLightCandidates &&
+                 d.HPWaterLightPayloadAreaCount == d.HPWaterAreaLightCandidates &&
+                 d.HPWaterLightPayloadGPUBufferBytes > 0 &&
                  d.HPWaterVolumePunctualLightLoopEnabled &&
                  d.HPWaterVolumePointLightCount > 0 &&
                  d.HPWaterVolumeAreaLightLoopEnabled &&
