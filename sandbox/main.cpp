@@ -153,7 +153,7 @@ public:
 
         if (m_HPWaterMotionDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireObjectMotion = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
@@ -162,7 +162,7 @@ public:
 
         if (m_HPWaterFluidFilterDiagnostics || m_HPWaterFluidBakeDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireFluidFiltering = m_HPWaterFluidFilterDiagnostics;
             m_RenderDiagnosticsRequireFluidBake = m_HPWaterFluidBakeDiagnostics;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
@@ -172,7 +172,7 @@ public:
 
         if (m_HPWaterSSRDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireSSR = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             auto& ps = m_Scene->GetPipelineSettings();
@@ -187,7 +187,7 @@ public:
 
         if (m_HPWaterLightDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireLightLoop = true;
             m_RenderDiagnosticsRequireLightPayloadStress = m_HPWaterLightPayloadStressDiagnostics;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
@@ -197,7 +197,7 @@ public:
 
         if (m_HPWaterCausticDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireCaustics = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
@@ -206,7 +206,7 @@ public:
 
         if (m_HPWaterVolumeDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireVolume = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
@@ -215,7 +215,7 @@ public:
 
         if (m_HPWaterRefractionDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireRefraction = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
@@ -224,7 +224,7 @@ public:
 
         if (m_HPWaterSpectrumDiagnostics) {
             m_RenderDiagnosticsOnceMinFrame = 60;
-            m_RenderDiagnosticsOnceMaxFrame = 240;
+            m_RenderDiagnosticsOnceMaxFrame = 180;
             m_RenderDiagnosticsRequireSpectrum = true;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
             if (!m_PlayMode)
@@ -1438,6 +1438,7 @@ private:
             }
             if (m_HPWaterSpectrumDiagnostics)
                 ApplyLauncherSpectrumDiagnosticSettings(water);
+            ApplyLauncherHPWaterDiagnosticResourceBudget(water);
 
             auto& mr = waterEntity.AddComponent<VE::MeshRendererComponent>();
             mr.Mat = VE::MaterialLibrary::Get("Water");
@@ -1468,12 +1469,35 @@ private:
             }
             if (m_HPWaterSpectrumDiagnostics)
                 ApplyLauncherSpectrumDiagnosticSettings(water);
+            ApplyLauncherHPWaterDiagnosticResourceBudget(water);
             auto& mr = waterEntity.HasComponent<VE::MeshRendererComponent>()
                 ? waterEntity.GetComponent<VE::MeshRendererComponent>()
                 : waterEntity.AddComponent<VE::MeshRendererComponent>();
             mr.Mat = VE::MaterialLibrary::Get("Water");
             mr.CastShadows = false;
         }
+    }
+
+    bool IsHPWaterDiagnosticMode() const {
+        return m_HPWaterMotionDiagnostics ||
+            m_HPWaterFluidFilterDiagnostics ||
+            m_HPWaterFluidBakeDiagnostics ||
+            m_HPWaterSSRDiagnostics ||
+            m_HPWaterLightDiagnostics ||
+            m_HPWaterLightPayloadStressDiagnostics ||
+            m_HPWaterCausticDiagnostics ||
+            m_HPWaterVolumeDiagnostics ||
+            m_HPWaterRefractionDiagnostics ||
+            m_HPWaterSpectrumDiagnostics;
+    }
+
+    void ApplyLauncherHPWaterDiagnosticResourceBudget(VE::HPWaterComponent& water) const {
+        if (!IsHPWaterDiagnosticMode())
+            return;
+
+        water.Resolution = std::clamp(water.Resolution, 8, kMaxDiagnosticWaterResolution);
+        water.CausticAtlasResolution = std::clamp(water.CausticAtlasResolution, 128, kMaxDiagnosticCausticAtlasResolution);
+        water.FluidResolution = std::clamp(water.FluidResolution, 16, kMaxDiagnosticFluidResolution);
     }
 
     void ApplyLauncherSpectrumDiagnosticSettings(VE::HPWaterComponent& water) {
@@ -8738,6 +8762,15 @@ private:
         out << "VibeEngine Render Diagnostics\n";
         out << "ScenePath: " << m_CurrentScenePath << "\n";
         out << "FrameIndex: " << d.FrameIndex << "\n";
+        out << "HPWaterDiagnosticSafeResourceMode: " << (IsHPWaterDiagnosticMode() ? 1 : 0) << "\n";
+        out << "HPWaterDiagnosticMinFrame: " << m_RenderDiagnosticsOnceMinFrame << "\n";
+        out << "HPWaterDiagnosticMaxFrame: " << m_RenderDiagnosticsOnceMaxFrame << "\n";
+        out << "HPWaterDiagnosticMaxWaterResolution: "
+            << (IsHPWaterDiagnosticMode() ? kMaxDiagnosticWaterResolution : 0) << "\n";
+        out << "HPWaterDiagnosticMaxCausticAtlasResolution: "
+            << (IsHPWaterDiagnosticMode() ? kMaxDiagnosticCausticAtlasResolution : 0) << "\n";
+        out << "HPWaterDiagnosticMaxFluidResolution: "
+            << (IsHPWaterDiagnosticMode() ? kMaxDiagnosticFluidResolution : 0) << "\n";
         out << "Viewport: " << d.ViewportWidth << "x" << d.ViewportHeight << "\n";
         out << "DeferredInitialized: " << d.DeferredInitialized << "\n";
         out << "LightingPassRan: " << d.LightingPassRan << "\n";
@@ -12291,6 +12324,9 @@ private:
     bool m_HPWaterVolumeDiagnostics = false;
     bool m_HPWaterRefractionDiagnostics = false;
     bool m_HPWaterSpectrumDiagnostics = false;
+    static constexpr int kMaxDiagnosticWaterResolution = 96;
+    static constexpr int kMaxDiagnosticCausticAtlasResolution = 512;
+    static constexpr int kMaxDiagnosticFluidResolution = 128;
     bool m_RenderDiagnosticsRequireObjectMotion = false;
     bool m_RenderDiagnosticsRequireFluidFiltering = false;
     bool m_RenderDiagnosticsRequireFluidBake = false;
