@@ -697,6 +697,9 @@ public:
     uint32_t GetHPWaterCausticTexture() const;
     bool IsHPWaterCausticValid() const { return m_HPWaterCausticValid; }
     uint32_t GetHPWaterCausticComputeIrradianceTexture() const { return m_HPWaterCausticComputeIrradianceTexture; }
+    uint32_t GetHPWaterCausticComputeIrradianceTextureR() const { return m_HPWaterCausticComputeIrradianceChannelTextures[0]; }
+    uint32_t GetHPWaterCausticComputeIrradianceTextureG() const { return m_HPWaterCausticComputeIrradianceChannelTextures[1]; }
+    uint32_t GetHPWaterCausticComputeIrradianceTextureB() const { return m_HPWaterCausticComputeIrradianceChannelTextures[2]; }
     bool IsHPWaterCausticComputeIrradianceValid() const { return m_HPWaterCausticComputeIrradianceValid; }
     bool DidRunHPWaterCausticComputeIrradiance() const { return m_HPWaterCausticComputeIrradianceRan; }
     uint32_t GetHPWaterCausticComputeAtomicTexture() const { return m_HPWaterCausticComputeAtomicTextures[0]; }
@@ -1046,6 +1049,7 @@ private:
     bool m_HPWaterCausticFilterComputeParityEnabled = false;
     bool m_HPWaterCausticFilterLDSHaloEnabled = false;
     uint32_t m_HPWaterCausticComputeIrradianceTexture = 0;
+    uint32_t m_HPWaterCausticComputeIrradianceChannelTextures[3] = {};
     uint32_t m_HPWaterCausticComputeAtomicTextures[4] = {};
     uint32_t m_HPWaterCausticComputeWidth = 0;
     uint32_t m_HPWaterCausticComputeHeight = 0;

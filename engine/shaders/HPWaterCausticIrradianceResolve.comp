@@ -7,6 +7,11 @@ uniform usampler2D u_AtomicIrradianceG;
 uniform usampler2D u_AtomicIrradianceB;
 uniform usampler2D u_AtomicIrradianceA;
 layout(binding = 4, rgba16f) uniform writeonly image2D u_ResolvedIrradiance;
+layout(binding = 5, rgba16f) uniform writeonly image2D u_ResolvedIrradianceR;
+layout(binding = 6, rgba16f) uniform writeonly image2D u_ResolvedIrradianceG;
+layout(binding = 7, rgba16f) uniform writeonly image2D u_ResolvedIrradianceB;
+
+uniform int u_WriteRGBChannels;
 
 uniform int u_OutputWidth;
 uniform int u_OutputHeight;
@@ -27,4 +32,9 @@ void main() {
     irradiance.a = clamp(irradiance.a, 0.0, 4.0);
 
     imageStore(u_ResolvedIrradiance, pixel, irradiance);
+    if (u_WriteRGBChannels == 1) {
+        imageStore(u_ResolvedIrradianceR, pixel, vec4(irradiance.r, 0.0, 0.0, irradiance.a));
+        imageStore(u_ResolvedIrradianceG, pixel, vec4(0.0, irradiance.g, 0.0, irradiance.a));
+        imageStore(u_ResolvedIrradianceB, pixel, vec4(0.0, 0.0, irradiance.b, irradiance.a));
+    }
 }

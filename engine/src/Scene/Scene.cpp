@@ -1411,6 +1411,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCausticValid = m_DeferredRenderer.IsHPWaterCausticValid();
     m_RenderDiagnostics.HPWaterCausticComputeTexture =
         m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTexture();
+    m_RenderDiagnostics.HPWaterCausticComputeTextureR =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTextureR();
+    m_RenderDiagnostics.HPWaterCausticComputeTextureG =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTextureG();
+    m_RenderDiagnostics.HPWaterCausticComputeTextureB =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTextureB();
     m_RenderDiagnostics.HPWaterCausticComputeWidth =
         m_DeferredRenderer.GetHPWaterCausticComputeWidth();
     m_RenderDiagnostics.HPWaterCausticComputeHeight =
@@ -4404,6 +4410,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterCausticTexture = m_DeferredRenderer.GetHPWaterCausticTexture();
     m_RenderDiagnostics.HPWaterCausticComputeTexture =
         m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTexture();
+    m_RenderDiagnostics.HPWaterCausticComputeTextureR =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTextureR();
+    m_RenderDiagnostics.HPWaterCausticComputeTextureG =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTextureG();
+    m_RenderDiagnostics.HPWaterCausticComputeTextureB =
+        m_DeferredRenderer.GetHPWaterCausticComputeIrradianceTextureB();
     m_RenderDiagnostics.HPWaterCausticComputeWidth =
         m_DeferredRenderer.GetHPWaterCausticComputeWidth();
     m_RenderDiagnostics.HPWaterCausticComputeHeight =

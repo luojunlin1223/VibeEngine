@@ -7997,6 +7997,11 @@ private:
             d.HPWaterCausticAtlasTexture == 0 ||
             d.HPWaterCausticGBufferAtlasTexture == 0)
             return false;
+        if (d.HPWaterCausticRGBDispersion &&
+            (d.HPWaterCausticComputeTextureR == 0 ||
+             d.HPWaterCausticComputeTextureG == 0 ||
+             d.HPWaterCausticComputeTextureB == 0))
+            return false;
 
         const TextureProbeSummary causticProbe =
             ProbeTexture(d.HPWaterCausticTexture, d.ViewportWidth, d.ViewportHeight);
@@ -8014,13 +8019,33 @@ private:
             ProbeTexture(d.HPWaterCausticGBufferAtlasTexture,
                 d.HPWaterCausticAtlasWidth,
                 d.HPWaterCausticAtlasHeight);
+        bool rgbChannelsValid = true;
+        if (d.HPWaterCausticRGBDispersion) {
+            const TextureProbeSummary redProbe =
+                ProbeTexture(d.HPWaterCausticComputeTextureR,
+                    d.HPWaterCausticComputeWidth,
+                    d.HPWaterCausticComputeHeight);
+            const TextureProbeSummary greenProbe =
+                ProbeTexture(d.HPWaterCausticComputeTextureG,
+                    d.HPWaterCausticComputeWidth,
+                    d.HPWaterCausticComputeHeight);
+            const TextureProbeSummary blueProbe =
+                ProbeTexture(d.HPWaterCausticComputeTextureB,
+                    d.HPWaterCausticComputeWidth,
+                    d.HPWaterCausticComputeHeight);
+            rgbChannelsValid = redProbe.Valid && greenProbe.Valid && blueProbe.Valid &&
+                redProbe.MaxRGBA[0] > 0 &&
+                greenProbe.MaxRGBA[1] > 0 &&
+                blueProbe.MaxRGBA[2] > 0;
+        }
 
         return causticProbe.Valid && causticProbe.NonBlackRatio > 0.0f &&
             computeProbe.Valid && computeProbe.NonBlackRatio > 0.0f &&
             computeProbe.MaxRGBA[3] > 0 &&
             filteredProbe.Valid && filteredProbe.NonBlackRatio > 0.0f &&
             atlasProbe.Valid && atlasProbe.NonBlackRatio > 0.0f &&
-            gbufferAtlasProbe.Valid && gbufferAtlasProbe.NonBlackRatio > 0.0f;
+            gbufferAtlasProbe.Valid && gbufferAtlasProbe.NonBlackRatio > 0.0f &&
+            rgbChannelsValid;
     }
 
     bool HasHPWaterVolumeTextureEvidence() {
@@ -8777,6 +8802,9 @@ private:
         out << "HPWaterCausticComputeRan: " << d.HPWaterCausticComputeRan << "\n";
         out << "HPWaterCausticComputeValid: " << d.HPWaterCausticComputeValid << "\n";
         out << "HPWaterCausticComputeTexture: " << d.HPWaterCausticComputeTexture << "\n";
+        out << "HPWaterCausticComputeTextureR: " << d.HPWaterCausticComputeTextureR << "\n";
+        out << "HPWaterCausticComputeTextureG: " << d.HPWaterCausticComputeTextureG << "\n";
+        out << "HPWaterCausticComputeTextureB: " << d.HPWaterCausticComputeTextureB << "\n";
         out << "HPWaterCausticComputeSize: " << d.HPWaterCausticComputeWidth << "x" << d.HPWaterCausticComputeHeight << "\n";
         out << "HPWaterCausticComputeAtomicEnabled: " << d.HPWaterCausticComputeAtomicEnabled << "\n";
         out << "HPWaterCausticComputeAtomicTexture: " << d.HPWaterCausticComputeAtomicTexture << "\n";
@@ -9238,6 +9266,46 @@ private:
                 d.HPWaterCausticComputeWidth,
                 d.HPWaterCausticComputeHeight,
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_compute_irradiance.bmp");
+            if (d.HPWaterCausticComputeTextureR != 0 &&
+                d.HPWaterCausticComputeTextureG != 0 &&
+                d.HPWaterCausticComputeTextureB != 0) {
+                const TextureProbeSummary redProbe =
+                    ProbeTexture(d.HPWaterCausticComputeTextureR,
+                                 d.HPWaterCausticComputeWidth,
+                                 d.HPWaterCausticComputeHeight);
+                const TextureProbeSummary greenProbe =
+                    ProbeTexture(d.HPWaterCausticComputeTextureG,
+                                 d.HPWaterCausticComputeWidth,
+                                 d.HPWaterCausticComputeHeight);
+                const TextureProbeSummary blueProbe =
+                    ProbeTexture(d.HPWaterCausticComputeTextureB,
+                                 d.HPWaterCausticComputeWidth,
+                                 d.HPWaterCausticComputeHeight);
+                writeProbe("HPWaterCausticComputeIrradianceR", redProbe);
+                writeProbe("HPWaterCausticComputeIrradianceG", greenProbe);
+                writeProbe("HPWaterCausticComputeIrradianceB", blueProbe);
+                out << "HPWaterCausticComputeRGBChannelsValid: "
+                    << (redProbe.Valid && greenProbe.Valid && blueProbe.Valid &&
+                        redProbe.MaxRGBA[0] > 0 &&
+                        greenProbe.MaxRGBA[1] > 0 &&
+                        blueProbe.MaxRGBA[2] > 0 ? 1 : 0) << "\n";
+                out << "HPWaterCausticComputeRGBChannelMax: "
+                    << static_cast<int>(redProbe.MaxRGBA[0]) << ","
+                    << static_cast<int>(greenProbe.MaxRGBA[1]) << ","
+                    << static_cast<int>(blueProbe.MaxRGBA[2]) << "\n";
+                SaveTextureBMP(d.HPWaterCausticComputeTextureR,
+                    d.HPWaterCausticComputeWidth,
+                    d.HPWaterCausticComputeHeight,
+                    std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_compute_r.bmp");
+                SaveTextureBMP(d.HPWaterCausticComputeTextureG,
+                    d.HPWaterCausticComputeWidth,
+                    d.HPWaterCausticComputeHeight,
+                    std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_compute_g.bmp");
+                SaveTextureBMP(d.HPWaterCausticComputeTextureB,
+                    d.HPWaterCausticComputeWidth,
+                    d.HPWaterCausticComputeHeight,
+                    std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_caustic_compute_b.bmp");
+            }
         }
         if (dr.IsInitialized() && d.HPWaterCausticFilteredTexture != 0 &&
             d.ViewportWidth > 0 && d.ViewportHeight > 0) {
