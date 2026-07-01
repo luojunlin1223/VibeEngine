@@ -1507,6 +1507,15 @@ void main() {
     vec3 refractedColor = texture(u_SceneColor, refractUV).rgb;
     float worldDepth = refractedSceneDepth >= 0.9999 ? waterDepth : refractedSceneDepth;
     vec3 refractedWorldPos = ReconstructWorldPosition(refractUV, worldDepth);
+    if (refractedSceneDepth < 0.9999 && refractedWorldPos.y > waterWorldPos.y + 0.01) {
+        refractUV = v_UV;
+        refractedSceneDepth = sceneDepth;
+        refractedColor = texture(u_SceneColor, refractUV).rgb;
+        worldDepth = refractedSceneDepth >= 0.9999 ? waterDepth : refractedSceneDepth;
+        refractedWorldPos = refractedSceneDepth >= 0.9999
+            ? waterWorldPos
+            : ReconstructWorldPosition(refractUV, worldDepth);
+    }
     float rayLength = length(refractedWorldPos - waterWorldPos);
     vec3 fallbackTransmittance = exp(-absorptionColor * (0.35 + normalizedThickness * 2.35));
     vec3 fallbackBodyColor = refractedColor * fallbackTransmittance +

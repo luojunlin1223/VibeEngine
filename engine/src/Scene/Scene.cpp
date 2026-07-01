@@ -4267,6 +4267,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterSSRHierarchyBlendEnabled;
     m_RenderDiagnostics.HPWaterRefractionNDCMarchEnabled =
         m_DeferredRenderer.IsHPWaterRefractionNDCMarchEnabled();
+    m_RenderDiagnostics.HPWaterRefractionAboveSurfaceRejectEnabled =
+        m_RenderDiagnostics.HPWaterRefractionNDCMarchEnabled &&
+        m_RenderDiagnostics.HPWaterRefractionStrength > 0.0001f;
     m_RenderDiagnostics.HPWaterMaskTexture = m_DeferredRenderer.GetHPWaterMaskTexture();
     m_RenderDiagnostics.HPWaterMaskWidth = m_DeferredRenderer.GetWidth();
     m_RenderDiagnostics.HPWaterMaskHeight = m_DeferredRenderer.GetHeight();
