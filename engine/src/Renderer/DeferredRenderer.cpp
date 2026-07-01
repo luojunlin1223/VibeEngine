@@ -1190,6 +1190,7 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     motionSpec.Height = volumeSpec.Height;
     motionSpec.ColorFormats = {
         { GL_RG16F }, // RT0: previousUV - currentUV for volume temporal rejection
+        { GL_RGBA16F }, // RT1: object motion slot diagnostics
     };
     m_HPWaterVolumeMotionVectorFBO = Framebuffer::Create(motionSpec);
 
@@ -4547,6 +4548,12 @@ uint32_t DeferredRenderer::GetHPWaterVolumeAreaLightDiagnosticsTexture() const {
 uint32_t DeferredRenderer::GetHPWaterVolumeMotionVectorTexture() const {
     if (!m_HPWaterVolumeMotionVectorFBO) return 0;
     return static_cast<uint32_t>(m_HPWaterVolumeMotionVectorFBO->GetColorAttachmentID());
+}
+
+uint32_t DeferredRenderer::GetHPWaterVolumeObjectMotionDiagnosticsTexture() const {
+    if (!m_HPWaterVolumeMotionVectorFBO ||
+        m_HPWaterVolumeMotionVectorFBO->GetColorAttachmentCount() < 2) return 0;
+    return static_cast<uint32_t>(m_HPWaterVolumeMotionVectorFBO->GetColorAttachmentID(1));
 }
 
 uint32_t DeferredRenderer::GetHPWaterVolumeFilteredTexture(int index) const {

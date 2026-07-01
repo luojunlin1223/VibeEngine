@@ -7993,6 +7993,30 @@ private:
         return summary;
     }
 
+    bool HasHPWaterVolumeObjectMotionTextureEvidence() {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized())
+            return false;
+
+        if (d.HPWaterVolumeWidth == 0 || d.HPWaterVolumeHeight == 0 ||
+            d.HPWaterVolumeObjectMotionDiagnosticsTexture == 0)
+            return false;
+
+        const TextureFloatProbeSummary objectMotionProbe =
+            ProbeTextureFloat(d.HPWaterVolumeObjectMotionDiagnosticsTexture,
+                d.HPWaterVolumeWidth,
+                d.HPWaterVolumeHeight);
+
+        return objectMotionProbe.Valid &&
+            objectMotionProbe.MaxRGBA[0] >= 1.0f &&
+            objectMotionProbe.MaxRGBA[1] > 0.0f &&
+            objectMotionProbe.MaxRGBA[3] > 0.0f;
+    }
+
     bool SaveTextureBMP(uint32_t textureID, uint32_t width, uint32_t height, const std::filesystem::path& path) {
         if (textureID == 0 || width == 0 || height == 0)
             return false;
@@ -8448,6 +8472,25 @@ private:
             << d.HPWaterVolumeObjectMotionFieldEnabled << "\n";
         out << "HPWaterVolumeObjectMotionIDSelectionEnabled: "
             << d.HPWaterVolumeObjectMotionIDSelectionEnabled << "\n";
+        out << "HPWaterVolumeObjectMotionDiagnosticsTexture: "
+            << d.HPWaterVolumeObjectMotionDiagnosticsTexture << "\n";
+        if (d.HPWaterVolumeObjectMotionDiagnosticsTexture != 0 &&
+            d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
+            const TextureFloatProbeSummary objectMotionProbe =
+                ProbeTextureFloat(d.HPWaterVolumeObjectMotionDiagnosticsTexture,
+                    d.HPWaterVolumeWidth,
+                    d.HPWaterVolumeHeight);
+            out << "HPWaterVolumeObjectMotionDiagnosticsReadbackEnabled: "
+                << (objectMotionProbe.Valid ? 1 : 0) << "\n";
+            out << "HPWaterVolumeObjectMotionDiagnosticsAnySlot: "
+                << (objectMotionProbe.MaxRGBA[0] >= 1.0f ? 1 : 0) << "\n";
+            out << "HPWaterVolumeObjectMotionDiagnosticsMaxSlot: "
+                << objectMotionProbe.MaxRGBA[1] << "\n";
+            out << "HPWaterVolumeObjectMotionDiagnosticsMaxWeight: "
+                << objectMotionProbe.MaxRGBA[2] << "\n";
+            out << "HPWaterVolumeObjectMotionDiagnosticsMaxMotion: "
+                << objectMotionProbe.MaxRGBA[3] << "\n";
+        }
         out << "HPWaterVolumeObjectMotionWorldOffset: "
             << d.HPWaterVolumeObjectMotionWorldOffset.x << " "
             << d.HPWaterVolumeObjectMotionWorldOffset.y << " "
@@ -9074,6 +9117,7 @@ private:
                 { "HPWaterVolumeTransmittance", "render_diagnostics_hpwater_volume_transmittance.bmp", d.HPWaterVolumeTransmittanceTexture },
                 { "HPWaterVolumeDepth", "render_diagnostics_hpwater_volume_depth.bmp", d.HPWaterVolumeDepthTexture },
                 { "HPWaterVolumeMotionVector", "render_diagnostics_hpwater_volume_motion_vector.bmp", d.HPWaterVolumeMotionVectorTexture },
+                { "HPWaterVolumeObjectMotionDiagnostics", "render_diagnostics_hpwater_volume_object_motion_diagnostics.bmp", d.HPWaterVolumeObjectMotionDiagnosticsTexture },
                 { "HPWaterVolumeHistoryColor", "render_diagnostics_hpwater_volume_history_color.bmp", d.HPWaterVolumeHistoryColorTexture },
                 { "HPWaterVolumeHistoryTransmittance", "render_diagnostics_hpwater_volume_history_transmittance.bmp", d.HPWaterVolumeHistoryTransmittanceTexture },
                 { "HPWaterVolumeHistoryDepth", "render_diagnostics_hpwater_volume_history_depth.bmp", d.HPWaterVolumeHistoryDepthTexture },
@@ -9148,7 +9192,9 @@ private:
                 (d.HPWaterVolumeObjectMotionSourceCount > 0 &&
                  d.HPWaterVolumeObjectMotionFieldEnabled &&
                  d.HPWaterVolumeObjectMotionIDSelectionEnabled &&
-                 d.HPWaterVolumeObjectMotionFieldSelected > 0);
+                 d.HPWaterVolumeObjectMotionFieldSelected > 0 &&
+                 d.HPWaterVolumeObjectMotionDiagnosticsTexture != 0 &&
+                 HasHPWaterVolumeObjectMotionTextureEvidence());
             const bool fluidFilteringReady =
                 !m_RenderDiagnosticsRequireFluidFiltering ||
                 (d.HPWaterFluidHeightCaptureValid &&
@@ -9515,6 +9561,8 @@ private:
             d.HPWaterVolumeObjectMotionSourceCount,
             d.HPWaterVolumeMotionVectorHistoryEnabled ? 1 : 0,
             d.HPWaterVolumeTemporalNeighborhoodClampStrength);
+        ImGui::Text("HPWater volume object motion diagnostics tex=%u",
+            d.HPWaterVolumeObjectMotionDiagnosticsTexture);
         ImGui::Text("HPWater volume object motion offset: %.4f %.4f %.4f",
             d.HPWaterVolumeObjectMotionWorldOffset.x,
             d.HPWaterVolumeObjectMotionWorldOffset.y,

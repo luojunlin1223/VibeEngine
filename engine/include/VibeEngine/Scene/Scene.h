@@ -396,6 +396,7 @@ struct RenderDiagnostics {
     bool HPWaterVolumeObjectMotionVectorEnabled = false;
     bool HPWaterVolumeObjectMotionFieldEnabled = false;
     bool HPWaterVolumeObjectMotionIDSelectionEnabled = false;
+    uint32_t HPWaterVolumeObjectMotionDiagnosticsTexture = 0;
     glm::vec3 HPWaterVolumeObjectMotionWorldOffset = glm::vec3(0.0f);
     uint32_t HPWaterVolumeObjectMotionSourceCount = 0;
     uint32_t HPWaterVolumeObjectMotionTrackedCount = 0;

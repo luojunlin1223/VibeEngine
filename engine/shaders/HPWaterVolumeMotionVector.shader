@@ -35,6 +35,7 @@ void main() {
 #ifdef FRAGMENT
 layout(location = 0) in vec2 v_UV;
 layout(location = 0) out vec2 MotionVector;
+layout(location = 1) out vec4 ObjectMotionDiagnostics;
 
 uniform sampler2D u_CurrentDepth;
 uniform sampler2D u_HPWaterRefractionWorldData;
@@ -87,9 +88,10 @@ bool BuildMotionVector(vec3 worldPos, out vec2 motionVector) {
     return BuildMotionVectorFromWorldPair(worldPos, worldPos, motionVector);
 }
 
-vec3 SelectObjectMotionOffset(vec3 sceneWorld) {
+vec3 SelectObjectMotionOffset(vec3 sceneWorld, out vec4 diagnostics) {
     vec3 selectedOffset = u_ObjectMotionWorldOffset;
     float bestDistanceRatio = 1.0e20;
+    int selectedSlot = -1;
 
     for (int i = 0; i < 8; ++i) {
         if (i >= u_ObjectMotionFieldCount) {
@@ -104,13 +106,26 @@ vec3 SelectObjectMotionOffset(vec3 sceneWorld) {
         if (distanceRatio <= 1.0 && distanceRatio < bestDistanceRatio) {
             bestDistanceRatio = distanceRatio;
             selectedOffset = offset;
+            selectedSlot = i;
         }
     }
 
+    if (selectedSlot >= 0) {
+        diagnostics = vec4(
+            1.0,
+            (float(selectedSlot) + 1.0) / 8.0,
+            clamp(1.0 - bestDistanceRatio, 0.0, 1.0),
+            clamp(length(selectedOffset), 0.0, 64.0) / 64.0);
+    } else if (dot(selectedOffset, selectedOffset) > 0.00000001) {
+        diagnostics = vec4(0.5, 0.0, 0.0, clamp(length(selectedOffset), 0.0, 64.0) / 64.0);
+    } else {
+        diagnostics = vec4(0.0);
+    }
     return selectedOffset;
 }
 
 void main() {
+    ObjectMotionDiagnostics = vec4(0.0);
     vec4 currentDepth = texture(u_CurrentDepth, v_UV);
     if (currentDepth.a <= 0.0001) {
         MotionVector = vec2(0.0);
@@ -119,8 +134,9 @@ void main() {
 
     if (u_SceneMotionVectorEnabled == 1) {
         vec3 sceneWorld = texture(u_ScenePositionMetallic, v_UV).xyz;
+        vec4 objectDiagnostics = vec4(0.0);
         vec3 objectOffset = u_ObjectMotionVectorEnabled == 1
-            ? SelectObjectMotionOffset(sceneWorld)
+            ? SelectObjectMotionOffset(sceneWorld, objectDiagnostics)
             : vec3(0.0);
         vec3 previousSceneWorld = u_ObjectMotionVectorEnabled == 1
             ? sceneWorld - objectOffset
@@ -128,6 +144,7 @@ void main() {
         if (IsFinitePosition(sceneWorld) &&
             IsFinitePosition(previousSceneWorld) &&
             BuildMotionVectorFromWorldPair(sceneWorld, previousSceneWorld, MotionVector)) {
+            ObjectMotionDiagnostics = objectDiagnostics;
             return;
         }
     }

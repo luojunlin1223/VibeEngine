@@ -549,6 +549,7 @@ public:
     bool IsHPWaterVolumeObjectMotionIDSelectionEnabled() const {
         return m_HPWaterVolumeObjectMotionIDSelectionEnabled;
     }
+    uint32_t GetHPWaterVolumeObjectMotionDiagnosticsTexture() const;
     glm::vec3 GetHPWaterVolumeObjectMotionWorldOffset() const {
         return m_HPWaterVolumeObjectMotionWorldOffset;
     }
