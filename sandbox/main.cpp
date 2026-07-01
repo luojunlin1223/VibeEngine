@@ -8315,6 +8315,7 @@ private:
             d.HPWaterEntities == 0 ||
             d.HPWaterGBufferDrawn == 0 ||
             !d.HPWaterCompositeRan ||
+            !d.HPWaterFoamColorCompositeEnabled ||
             !d.HPWaterMaskRan ||
             d.HPWaterCompositeTexture == 0 ||
             d.HPWaterMaskTexture == 0 ||
@@ -8866,6 +8867,12 @@ private:
         out << "HPWaterPhaseG: " << d.HPWaterPhaseG << "\n";
         out << "HPWaterSpecularFGDStrength: " << d.HPWaterSpecularFGDStrength << "\n";
         out << "HPWaterGGXEnergyCompensation: " << d.HPWaterGGXEnergyCompensation << "\n";
+        out << "HPWaterFoamColor: "
+            << d.HPWaterFoamColor.r << ","
+            << d.HPWaterFoamColor.g << ","
+            << d.HPWaterFoamColor.b << "\n";
+        out << "HPWaterFoamColorCompositeEnabled: "
+            << d.HPWaterFoamColorCompositeEnabled << "\n";
         out << "HPWaterPreintegratedFGDLUTValid: " << d.HPWaterPreintegratedFGDLUTValid << "\n";
         out << "HPWaterPreintegratedFGDLUTTexture: " << d.HPWaterPreintegratedFGDLUTTexture << "\n";
         out << "HPWaterPreintegratedFGDLUTResolution: " << d.HPWaterPreintegratedFGDLUTResolution << "\n";

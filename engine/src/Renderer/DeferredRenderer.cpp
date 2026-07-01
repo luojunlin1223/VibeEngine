@@ -458,6 +458,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterSSRMotionReprojectionEnabled = false;
     m_HPWaterSSRDisocclusionRejectionEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
+    m_HPWaterFoamColorCompositeEnabled = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeTemporalValid = false;
@@ -645,6 +646,7 @@ void DeferredRenderer::CreateHPWaterSSRFBO() {
     m_HPWaterSSRDisocclusionRejectionEnabled = false;
     m_HPWaterSSRResolveDiagnosticsValid = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
+    m_HPWaterFoamColorCompositeEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterCausticFBO() {
@@ -1787,6 +1789,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterSSRMotionReprojectionEnabled = false;
     m_HPWaterSSRDisocclusionRejectionEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
+    m_HPWaterFoamColorCompositeEnabled = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeTemporalValid = false;
@@ -2009,6 +2012,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterSSRMotionReprojectionEnabled = false;
     m_HPWaterSSRDisocclusionRejectionEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
+    m_HPWaterFoamColorCompositeEnabled = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeFilteredValid = false;
@@ -2597,6 +2601,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
                                         float phaseG,
                                         float specularFGDStrength,
                                         float ggxEnergyCompensation,
+                                        const glm::vec3& foamColor,
                                         const glm::vec3& cameraPosition,
                                         const glm::vec3& lightDir,
                                         const glm::vec3& lightColor,
@@ -2669,6 +2674,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterRefractionExponentialStepFactor = 0.0f;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
+        m_HPWaterFoamColorCompositeEnabled = false;
         return false;
     }
 
@@ -2868,6 +2874,10 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         std::clamp(specularFGDStrength, 0.0f, 1.0f));
     m_HPWaterCompositeShader->SetFloat("u_GGXEnergyCompensation",
         std::clamp(ggxEnergyCompensation, 0.0f, 2.0f));
+    const glm::vec3 safeFoamColor = glm::clamp(foamColor, glm::vec3(0.0f), glm::vec3(8.0f));
+    m_HPWaterCompositeShader->SetVec3("u_HPFoamColor", safeFoamColor);
+    m_HPWaterCompositeFoamColor = safeFoamColor;
+    m_HPWaterFoamColorCompositeEnabled = true;
     const glm::vec3 safeLightDir = glm::length(lightDir) > 0.0001f
         ? glm::normalize(lightDir)
         : glm::normalize(glm::vec3(-0.35f, 0.82f, 0.44f));

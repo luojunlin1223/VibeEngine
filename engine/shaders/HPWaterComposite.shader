@@ -77,6 +77,7 @@ uniform float u_MultiScatterScale;
 uniform float u_PhaseG;
 uniform float u_SpecularFGDStrength;
 uniform float u_GGXEnergyCompensation;
+uniform vec3 u_HPFoamColor;
 uniform vec3 u_ViewPos;
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
@@ -1816,7 +1817,8 @@ void main() {
     vec3 T_exit = vec3(1.0) - vec3(SchlickFresnel(NdotV, HPWATER_WATER_F0));
     vec3 exitedBodyColor = bodyColor * T_exit;
 
-    vec3 foamColor = mix(vec3(0.88, 0.94, 0.98), vec3(1.0), foam);
+    vec3 foamTint = max(u_HPFoamColor, vec3(0.0));
+    vec3 foamColor = mix(foamTint * 0.88, foamTint, foam);
     vec3 waterColor = mix(exitedBodyColor + reflected, foamColor, foam * 0.65);
     float waterAlpha = clamp(0.28 + normalizedThickness * 0.62 + foam * 0.45, 0.0, 0.92);
 

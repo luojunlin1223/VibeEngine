@@ -220,6 +220,8 @@ struct RenderDiagnostics {
     float HPWaterPhaseG = 0.0f;
     float HPWaterSpecularFGDStrength = 0.0f;
     float HPWaterGGXEnergyCompensation = 0.0f;
+    glm::vec3 HPWaterFoamColor = glm::vec3(0.85f, 0.96f, 1.0f);
+    bool HPWaterFoamColorCompositeEnabled = false;
     bool HPWaterPreintegratedFGDLUTValid = false;
     uint32_t HPWaterPreintegratedFGDLUTTexture = 0;
     uint32_t HPWaterPreintegratedFGDLUTResolution = 0;

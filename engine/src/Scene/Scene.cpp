@@ -1275,6 +1275,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRResolveDiagnosticsValid();
     m_RenderDiagnostics.HPWaterCompositeConsumesSSRLightingBuffer =
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
+    m_RenderDiagnostics.HPWaterFoamColorCompositeEnabled =
+        m_DeferredRenderer.IsHPWaterFoamColorCompositeEnabled();
+    m_RenderDiagnostics.HPWaterFoamColor =
+        m_DeferredRenderer.GetHPWaterCompositeFoamColor();
     m_RenderDiagnostics.HPWaterTiledLightListShaderConsumerEnabled =
         m_DeferredRenderer.IsHPWaterTiledLightListShaderConsumerEnabled();
     m_RenderDiagnostics.HPWaterLightPayloadGPUUploadEnabled =
@@ -2308,6 +2312,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterPhaseG = -0.95f;
     float hpWaterSpecularFGDStrength = 0.0f;
     float hpWaterGGXEnergyCompensation = 0.0f;
+    glm::vec3 hpWaterFoamColor(0.85f, 0.96f, 1.0f);
+    glm::vec3 hpWaterFoamColorSum(0.0f);
+    uint32_t hpWaterFoamColorCount = 0;
     bool hpWaterCausticsEnabled = false;
     float hpWaterCausticStrength = 0.0f;
     float hpWaterCausticScale = 12.0f;
@@ -2579,6 +2586,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterGGXEnergyCompensation = std::max(
                     hpWaterGGXEnergyCompensation,
                     water->GGXEnergyCompensation);
+                hpWaterFoamColorSum += glm::clamp(
+                    glm::vec3(water->FoamColor[0], water->FoamColor[1], water->FoamColor[2]),
+                    glm::vec3(0.0f),
+                    glm::vec3(8.0f));
+                ++hpWaterFoamColorCount;
                 hpWaterCausticsEnabled = hpWaterCausticsEnabled || water->CausticsEnabled;
                 hpWaterCausticStrength = std::max(hpWaterCausticStrength, water->CausticStrength);
                 hpWaterCausticScale = std::max(hpWaterCausticScale, water->CausticScale);
@@ -3426,6 +3438,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
 
     if (m_RenderDiagnostics.HPWaterGBufferDrawn > 0) {
         glm::mat4 inverseViewProjection = glm::inverse(viewProjection);
+        if (hpWaterFoamColorCount > 0) {
+            hpWaterFoamColor = hpWaterFoamColorSum / static_cast<float>(hpWaterFoamColorCount);
+        }
         m_RenderDiagnostics.HPWaterRefractionStrength = hpWaterRefractionStrength;
         m_RenderDiagnostics.HPWaterMaxRefractionCrossDistance = hpWaterMaxRefractionCrossDistance;
         m_RenderDiagnostics.HPWaterRefractionThicknessOffset = hpWaterRefractionThicknessOffset;
@@ -3441,6 +3456,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterMultiScatterScale = hpWaterMultiScatterScale;
         m_RenderDiagnostics.HPWaterSpecularFGDStrength = hpWaterSpecularFGDStrength;
         m_RenderDiagnostics.HPWaterGGXEnergyCompensation = hpWaterGGXEnergyCompensation;
+        m_RenderDiagnostics.HPWaterFoamColor = hpWaterFoamColor;
         m_RenderDiagnostics.HPWaterLightLoopInputsValid = true;
         m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled =
             ps.IndirectLightingEnabled && hpWaterIndirectLightStrength > 0.0001f;
@@ -3776,6 +3792,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                             hpWaterPhaseG,
                                             hpWaterSpecularFGDStrength,
                                             hpWaterGGXEnergyCompensation,
+                                            hpWaterFoamColor,
                                             cameraPos,
                                             lightDir,
                                             lightColor,
@@ -4163,6 +4180,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                 hpWaterPhaseG,
                                                 hpWaterSpecularFGDStrength,
                                                 hpWaterGGXEnergyCompensation,
+                                                hpWaterFoamColor,
                                                 cameraPos,
                                                 lightDir,
                                                 lightColor,
@@ -4272,6 +4290,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRResolveDiagnosticsValid();
     m_RenderDiagnostics.HPWaterCompositeConsumesSSRLightingBuffer =
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
+    m_RenderDiagnostics.HPWaterFoamColorCompositeEnabled =
+        m_DeferredRenderer.IsHPWaterFoamColorCompositeEnabled();
+    m_RenderDiagnostics.HPWaterFoamColor =
+        m_DeferredRenderer.GetHPWaterCompositeFoamColor();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();
     m_RenderDiagnostics.HPWaterSSRMotionVectorTexture = m_DeferredRenderer.GetHPWaterSSRMotionVectorTexture();
     m_RenderDiagnostics.HPWaterSSRResolveDiagnosticsTexture =

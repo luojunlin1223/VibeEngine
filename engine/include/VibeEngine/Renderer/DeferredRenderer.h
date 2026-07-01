@@ -155,6 +155,7 @@ public:
                           float phaseG,
                           float specularFGDStrength,
                           float ggxEnergyCompensation,
+                          const glm::vec3& foamColor,
                           const glm::vec3& cameraPosition,
                           const glm::vec3& lightDir,
                           const glm::vec3& lightColor,
@@ -677,6 +678,8 @@ public:
 
     /// Whether the current output texture is the HPWater composite.
     bool IsHPWaterCompositeValid() const { return m_HPWaterCompositeValid; }
+    bool IsHPWaterFoamColorCompositeEnabled() const { return m_HPWaterFoamColorCompositeEnabled; }
+    glm::vec3 GetHPWaterCompositeFoamColor() const { return m_HPWaterCompositeFoamColor; }
 
     /// Get G-buffer depth texture (for SSAO, post-processing, etc.)
     uint32_t GetDepthTexture() const;
@@ -945,6 +948,8 @@ private:
     bool m_HPWaterSSRDisocclusionRejectionEnabled = false;
     bool m_HPWaterSSRResolveDiagnosticsValid = false;
     bool m_HPWaterCompositeConsumesSSRLightingBuffer = false;
+    bool m_HPWaterFoamColorCompositeEnabled = false;
+    glm::vec3 m_HPWaterCompositeFoamColor = glm::vec3(0.85f, 0.96f, 1.0f);
     bool m_HPWaterRefractionNDCMarchEnabled = false;
     float m_HPWaterRefractionExponentialStepFactor = 0.0f;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;
