@@ -1041,7 +1041,8 @@ void main() {
 
     VolumeColor = vec4(max(volumeColor, vec3(0.0)), 1.0);
     VolumeTransmittance = vec4(clamp(transmittance, vec3(0.0), vec3(1.0)), 1.0);
-    VolumeDepth = vec4(refractedLinearDepth, rayLength, normalizedThickness, 1.0);
+    float ditherEvidence = clamp(dither, 0.001, 0.999);
+    VolumeDepth = vec4(refractedLinearDepth, rayLength, normalizedThickness, ditherEvidence);
     VolumeAreaLightDiagnostics = vec4(
         max(areaScatterDiagnostics, vec3(0.0)),
         u_NumAreaLights > 0 ? 1.0 : 0.0);

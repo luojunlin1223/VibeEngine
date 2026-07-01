@@ -8324,6 +8324,8 @@ private:
             ProbeTexture(d.HPWaterVolumeColorTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
         const TextureProbeSummary volumeDepthProbe =
             ProbeTexture(d.HPWaterVolumeDepthTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
+        const TextureFloatProbeSummary volumeDepthFloatProbe =
+            ProbeTextureFloat(d.HPWaterVolumeDepthTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
         const TextureProbeSummary filteredColorProbe =
             ProbeTexture(d.HPWaterVolumeFilteredColorTexture, d.HPWaterVolumeWidth, d.HPWaterVolumeHeight);
         const TextureProbeSummary filteredDepthProbe =
@@ -8336,9 +8338,16 @@ private:
             ProbeTexture(d.HPWaterVolumeUpsampledDepthTexture,
                 d.HPWaterVolumeUpsampledWidth,
                 d.HPWaterVolumeUpsampledHeight);
+        const bool hasVolumeDitherDistribution =
+            volumeDepthFloatProbe.Valid &&
+            volumeDepthFloatProbe.AverageRGBA[3] > 0.001f &&
+            (volumeDepthFloatProbe.MaxRGBA[3] - volumeDepthFloatProbe.MinRGBA[3]) > 0.01f &&
+            volumeDepthFloatProbe.AverageAlphaGradient > 0.000001f &&
+            volumeDepthFloatProbe.AlphaGradientPixelRatio > 0.001f;
 
         return volumeColorProbe.Valid && volumeColorProbe.NonBlackRatio > 0.0f &&
             volumeDepthProbe.Valid && volumeDepthProbe.NonBlackRatio > 0.0f &&
+            hasVolumeDitherDistribution &&
             filteredColorProbe.Valid && filteredColorProbe.NonBlackRatio > 0.0f &&
             filteredDepthProbe.Valid && filteredDepthProbe.NonBlackRatio > 0.0f &&
             upsampledColorProbe.Valid && upsampledColorProbe.NonBlackRatio > 0.0f &&
@@ -9046,6 +9055,32 @@ private:
         out << "HPWaterVolumeTransmittanceTexture: " << d.HPWaterVolumeTransmittanceTexture << "\n";
         out << "HPWaterVolumeDepthTexture: " << d.HPWaterVolumeDepthTexture << "\n";
         out << "HPWaterVolumeSize: " << d.HPWaterVolumeWidth << "x" << d.HPWaterVolumeHeight << "\n";
+        if (d.HPWaterVolumeDepthTexture != 0 && d.HPWaterVolumeWidth > 0 && d.HPWaterVolumeHeight > 0) {
+            const TextureFloatProbeSummary volumeDepthDitherProbe =
+                ProbeTextureFloat(d.HPWaterVolumeDepthTexture,
+                    d.HPWaterVolumeWidth,
+                    d.HPWaterVolumeHeight);
+            const float ditherRange =
+                volumeDepthDitherProbe.MaxRGBA[3] - volumeDepthDitherProbe.MinRGBA[3];
+            const bool hasDitherDistribution =
+                volumeDepthDitherProbe.Valid &&
+                volumeDepthDitherProbe.AverageRGBA[3] > 0.001f &&
+                ditherRange > 0.01f &&
+                volumeDepthDitherProbe.AverageAlphaGradient > 0.000001f &&
+                volumeDepthDitherProbe.AlphaGradientPixelRatio > 0.001f;
+            out << "HPWaterVolumeDepthDitherReadbackEnabled: "
+                << (volumeDepthDitherProbe.Valid ? 1 : 0) << "\n";
+            out << "HPWaterVolumeDepthAverageDither: " << std::fixed << std::setprecision(6)
+                << volumeDepthDitherProbe.AverageRGBA[3] << "\n";
+            out << "HPWaterVolumeDepthDitherRange: " << std::fixed << std::setprecision(6)
+                << ditherRange << "\n";
+            out << "HPWaterVolumeDepthAverageDitherGradient: " << std::fixed << std::setprecision(8)
+                << volumeDepthDitherProbe.AverageAlphaGradient << "\n";
+            out << "HPWaterVolumeDepthDitherGradientPixelRatio: " << std::fixed << std::setprecision(4)
+                << volumeDepthDitherProbe.AlphaGradientPixelRatio << "\n";
+            out << "HPWaterVolumeDepthAnyDitherDistribution: "
+                << (hasDitherDistribution ? 1 : 0) << "\n";
+        }
         out << "HPWaterVolumeTemporalRan: " << d.HPWaterVolumeTemporalRan << "\n";
         out << "HPWaterVolumeTemporalNeighborhoodClampEnabled: "
             << d.HPWaterVolumeTemporalNeighborhoodClampEnabled << "\n";
