@@ -96,7 +96,7 @@ struct HPWaterFluidSource {
 class DeferredRenderer {
 public:
     DeferredRenderer() = default;
-    ~DeferredRenderer() = default;
+    ~DeferredRenderer();
 
     /// Initialize the G-buffer FBO and load deferred shaders.
     void Init(uint32_t width, uint32_t height);

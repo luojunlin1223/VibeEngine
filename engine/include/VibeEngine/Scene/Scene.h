@@ -557,6 +557,8 @@ public:
     Scene() = default;
     ~Scene() = default;
 
+    static void ShutdownRendererCaches();
+
     Entity CreateEntity(const std::string& name = "GameObject");
     Entity CreateEntityWithUUID(UUID uuid, const std::string& name = "GameObject");
     void DestroyEntity(Entity entity);

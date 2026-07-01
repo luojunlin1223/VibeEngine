@@ -37,6 +37,8 @@ class LightProbe {
 public:
     LightProbe() = default;
 
+    static void ShutdownSharedResources();
+
     /// Bake the probe from a cubemap rendered at `position` in the given scene.
     /// Internally: renders 6 faces, accumulates SH, normalises.
     /// `cubemapResolution` is the per-face resolution (e.g. 64).

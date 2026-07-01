@@ -18,6 +18,9 @@
 
 namespace VE {
 
+static std::shared_ptr<Shader> s_ProbeBlit;
+static GLuint s_ProbeBlitVAO = 0;
+
 // ── Static face view directions ──────────────────────────────────────────
 // These are the standard cubemap face orientations (OpenGL convention):
 //   +X: look right    -X: look left
@@ -78,6 +81,14 @@ ReflectionProbe& ReflectionProbe::operator=(ReflectionProbe&& other) noexcept {
         other.m_Baked = false;
     }
     return *this;
+}
+
+void ReflectionProbe::ShutdownSharedResources() {
+    s_ProbeBlit.reset();
+    if (s_ProbeBlitVAO != 0) {
+        glDeleteVertexArrays(1, &s_ProbeBlitVAO);
+        s_ProbeBlitVAO = 0;
+    }
 }
 
 // ── Init / Cleanup ───────────────────────────────────────────────────────
@@ -201,7 +212,6 @@ void ReflectionProbe::RenderFace(Scene& scene, int faceIndex, const glm::vec3& p
             glDisable(GL_DEPTH_TEST);
             glDepthMask(GL_FALSE);
 
-            static std::shared_ptr<Shader> s_ProbeBlit;
             if (!s_ProbeBlit) {
                 static const char* vs = R"(
 #version 450 core
@@ -223,9 +233,8 @@ void main() { FragColor = texture(u_Source, v_UV); }
             if (s_ProbeBlit) {
                 s_ProbeBlit->Bind();
                 s_ProbeBlit->SetInt("u_Source", 0);
-                static GLuint probeBlitVAO = 0;
-                if (!probeBlitVAO) glGenVertexArrays(1, &probeBlitVAO);
-                glBindVertexArray(probeBlitVAO);
+                if (!s_ProbeBlitVAO) glGenVertexArrays(1, &s_ProbeBlitVAO);
+                glBindVertexArray(s_ProbeBlitVAO);
                 glDrawArrays(GL_TRIANGLES, 0, 3);
                 glBindVertexArray(0);
             }

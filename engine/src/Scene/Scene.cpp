@@ -57,6 +57,7 @@ static const char* s_SpotLightRanges[]      = { "u_SpotLightRanges[0]", "u_SpotL
 static const char* s_SpotLightInnerCos[]    = { "u_SpotLightInnerCos[0]", "u_SpotLightInnerCos[1]", "u_SpotLightInnerCos[2]", "u_SpotLightInnerCos[3]" };
 static const char* s_SpotLightOuterCos[]    = { "u_SpotLightOuterCos[0]", "u_SpotLightOuterCos[1]", "u_SpotLightOuterCos[2]", "u_SpotLightOuterCos[3]" };
 static const char* s_TerrainLayers[] = { "u_Layer0", "u_Layer1", "u_Layer2", "u_Layer3" };
+static std::shared_ptr<Shader> s_TerrainShader;
 
 // ── Dummy textures for unused sampler slots ──
 static GLuint s_DummyColorTexCube = 0;     // for samplerCube (reflection probes - color format)
@@ -93,6 +94,14 @@ static void BindDummyReflectionProbe(const std::shared_ptr<Shader>& shader) {
     shader->SetInt("u_ReflectionProbe", 13);
     shader->SetInt("u_HasReflectionProbe", 0);
     shader->SetFloat("u_ReflectionIntensity", 0.0f);
+}
+
+void Scene::ShutdownRendererCaches() {
+    s_TerrainShader.reset();
+    if (s_DummyColorTexCube != 0) {
+        glDeleteTextures(1, &s_DummyColorTexCube);
+        s_DummyColorTexCube = 0;
+    }
 }
 
 static int ClampHPWaterResolution(int resolution) {
@@ -4518,7 +4527,6 @@ void Scene::OnRenderTerrain(const glm::mat4& viewProjection, const glm::vec3& ca
         if (!terrain._Mesh) continue;
 
         // Load terrain shader
-        static std::shared_ptr<Shader> s_TerrainShader;
         if (!s_TerrainShader) {
             s_TerrainShader = Shader::CreateFromFile("shaders/Terrain.shader");
             if (!s_TerrainShader) {

@@ -29,6 +29,8 @@ public:
     static constexpr int RES_256 = 256;
     static constexpr int RES_512 = 512;
 
+    static void ShutdownSharedResources();
+
     explicit ReflectionProbe(int resolution = RES_128);
     ~ReflectionProbe();
 

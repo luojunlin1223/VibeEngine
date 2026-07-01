@@ -238,12 +238,26 @@ public:
         // Release GPU resources before renderer shutdown
         m_Scene.reset();
         m_SceneManager.UnloadAllScenes();
+        m_LauncherTextureCache.clear();
         m_Framebuffer.reset();
         m_GameFramebuffer.reset();
         m_PostProcessing.Shutdown();
         m_GamePostProcessing.Shutdown();
+        m_SceneBlitShader.reset();
+        m_GameBlitShader.reset();
+        if (m_SceneBlitVAO != 0) {
+            glDeleteVertexArrays(1, &m_SceneBlitVAO);
+            m_SceneBlitVAO = 0;
+        }
+        if (m_GameBlitVAO != 0) {
+            glDeleteVertexArrays(1, &m_GameBlitVAO);
+            m_GameBlitVAO = 0;
+        }
         m_ThumbnailCache.Clear();
 
+        VE::Scene::ShutdownRendererCaches();
+        VE::LightProbe::ShutdownSharedResources();
+        VE::ReflectionProbe::ShutdownSharedResources();
         VE::MeshLibrary::Shutdown();
         VE::MeshImporter::ClearCache();
         VE::UIRenderer::Shutdown();
@@ -549,8 +563,7 @@ protected:
                 glDisable(GL_DEPTH_TEST);
                 glDepthMask(GL_FALSE);
 
-                static std::shared_ptr<VE::Shader> s_BlitShader;
-                if (!s_BlitShader) {
+                if (!m_SceneBlitShader) {
                     static const char* blitFrag = R"(
 #version 450 core
 layout(location = 0) in vec2 v_UV;
@@ -558,14 +571,13 @@ layout(location = 0) out vec4 FragColor;
 uniform sampler2D u_Source;
 void main() { FragColor = texture(u_Source, v_UV); }
 )";
-                    s_BlitShader = VE::Shader::Create(VE::QuadVertexShaderSrc, blitFrag);
+                    m_SceneBlitShader = VE::Shader::Create(VE::QuadVertexShaderSrc, blitFrag);
                 }
-                if (s_BlitShader) {
-                    s_BlitShader->Bind();
-                    s_BlitShader->SetInt("u_Source", 0);
-                    static GLuint blitVAO = 0;
-                    if (!blitVAO) glGenVertexArrays(1, &blitVAO);
-                    glBindVertexArray(blitVAO);
+                if (m_SceneBlitShader) {
+                    m_SceneBlitShader->Bind();
+                    m_SceneBlitShader->SetInt("u_Source", 0);
+                    if (!m_SceneBlitVAO) glGenVertexArrays(1, &m_SceneBlitVAO);
+                    glBindVertexArray(m_SceneBlitVAO);
                     glDrawArrays(GL_TRIANGLES, 0, 3);
                     glBindVertexArray(0);
                 }
@@ -754,8 +766,7 @@ void main() { FragColor = texture(u_Source, v_UV); }
                         glDisable(GL_DEPTH_TEST);
                         glDepthMask(GL_FALSE);
 
-                        static std::shared_ptr<VE::Shader> s_GameBlitShader;
-                        if (!s_GameBlitShader) {
+                        if (!m_GameBlitShader) {
                             static const char* blitFrag = R"(
 #version 450 core
 layout(location = 0) in vec2 v_UV;
@@ -763,14 +774,13 @@ layout(location = 0) out vec4 FragColor;
 uniform sampler2D u_Source;
 void main() { FragColor = texture(u_Source, v_UV); }
 )";
-                            s_GameBlitShader = VE::Shader::Create(VE::QuadVertexShaderSrc, blitFrag);
+                            m_GameBlitShader = VE::Shader::Create(VE::QuadVertexShaderSrc, blitFrag);
                         }
-                        if (s_GameBlitShader) {
-                            s_GameBlitShader->Bind();
-                            s_GameBlitShader->SetInt("u_Source", 0);
-                            static GLuint gameBlitVAO = 0;
-                            if (!gameBlitVAO) glGenVertexArrays(1, &gameBlitVAO);
-                            glBindVertexArray(gameBlitVAO);
+                        if (m_GameBlitShader) {
+                            m_GameBlitShader->Bind();
+                            m_GameBlitShader->SetInt("u_Source", 0);
+                            if (!m_GameBlitVAO) glGenVertexArrays(1, &m_GameBlitVAO);
+                            glBindVertexArray(m_GameBlitVAO);
                             glDrawArrays(GL_TRIANGLES, 0, 3);
                             glBindVertexArray(0);
                         }
@@ -1321,14 +1331,12 @@ private:
     }
 
     std::shared_ptr<VE::Texture2D> GetLauncherTexture(const std::string& resolvedTexturePath) {
-        static std::unordered_map<std::string, std::shared_ptr<VE::Texture2D>> textureCache;
-
-        auto it = textureCache.find(resolvedTexturePath);
-        if (it != textureCache.end())
+        auto it = m_LauncherTextureCache.find(resolvedTexturePath);
+        if (it != m_LauncherTextureCache.end())
             return it->second;
 
         auto texture = VE::Texture2D::Create(resolvedTexturePath);
-        textureCache[resolvedTexturePath] = texture;
+        m_LauncherTextureCache[resolvedTexturePath] = texture;
         return texture;
     }
 
@@ -11469,6 +11477,7 @@ private:
     std::vector<std::pair<std::string, ImVec2>> m_ContentItemPositions; // for box select hit test
     std::shared_ptr<VE::Material> m_InspectedMaterial;
     std::string m_InspectedMaterialPath;
+    std::unordered_map<std::string, std::shared_ptr<VE::Texture2D>> m_LauncherTextureCache;
 
     // Mesh asset inspector
     VE::FBXImportSettings m_InspectedMeshSettings;
@@ -11482,6 +11491,10 @@ private:
     VE::SSAO m_GameSSAO;
     VE::SSR  m_SSR;
     VE::SSR  m_GameSSR;
+    std::shared_ptr<VE::Shader> m_SceneBlitShader;
+    std::shared_ptr<VE::Shader> m_GameBlitShader;
+    uint32_t m_SceneBlitVAO = 0;
+    uint32_t m_GameBlitVAO = 0;
 
     // Game viewport
     bool m_ShowGameView = false;

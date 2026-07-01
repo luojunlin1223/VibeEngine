@@ -372,7 +372,13 @@ void DeferredRenderer::Init(uint32_t width, uint32_t height) {
     VE_ENGINE_INFO("DeferredRenderer initialized ({}x{}, 4 MRT attachments)", width, height);
 }
 
+DeferredRenderer::~DeferredRenderer() {
+    Shutdown();
+}
+
 void DeferredRenderer::Shutdown() {
+    if (!m_Initialized) return;
+
     DestroyHPWaterDepthPyramid();
     DestroyHPWaterFluidObstacleTexture();
     DestroyHPWaterFluidHeightFieldTextures();

@@ -23,6 +23,9 @@
 
 namespace VE {
 
+static std::shared_ptr<Shader> s_LPBlit;
+static GLuint s_LPBlitVAO = 0;
+
 // ── SH basis functions (L2, order 2, real) ────────────────────────────
 // Uses the convention from "Stupid Spherical Harmonics Tricks" (P. Sloan)
 // and "An Efficient Representation for Irradiance Environment Maps" (Ramamoorthi & Hanrahan).
@@ -56,6 +59,14 @@ glm::vec3 SH_Evaluate(const glm::vec3& normal, const SHCoefficients& coeffs) {
     for (int i = 0; i < 9; ++i)
         result += coeffs[i] * Y[i];
     return glm::max(result, glm::vec3(0.0f));
+}
+
+void LightProbe::ShutdownSharedResources() {
+    s_LPBlit.reset();
+    if (s_LPBlitVAO != 0) {
+        glDeleteVertexArrays(1, &s_LPBlitVAO);
+        s_LPBlitVAO = 0;
+    }
 }
 
 // ── Cubemap face matrices ─────────────────────────────────────────────
@@ -160,7 +171,6 @@ void LightProbe::Bake(Scene& scene, const glm::vec3& position, uint32_t cubemapR
                 glDisable(GL_DEPTH_TEST);
                 glDepthMask(GL_FALSE);
 
-                static std::shared_ptr<Shader> s_LPBlit;
                 if (!s_LPBlit) {
                     static const char* vs = R"(
 #version 450 core
@@ -182,9 +192,8 @@ void main() { FragColor = texture(u_Source, v_UV); }
                 if (s_LPBlit) {
                     s_LPBlit->Bind();
                     s_LPBlit->SetInt("u_Source", 0);
-                    static GLuint lpBlitVAO = 0;
-                    if (!lpBlitVAO) glGenVertexArrays(1, &lpBlitVAO);
-                    glBindVertexArray(lpBlitVAO);
+                    if (!s_LPBlitVAO) glGenVertexArrays(1, &s_LPBlitVAO);
+                    glBindVertexArray(s_LPBlitVAO);
                     glDrawArrays(GL_TRIANGLES, 0, 3);
                     glBindVertexArray(0);
                 }
