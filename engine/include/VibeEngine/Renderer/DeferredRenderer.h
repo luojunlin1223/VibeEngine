@@ -361,6 +361,12 @@ public:
                                         const glm::vec3& boxCenter,
                                         const glm::vec3& boxSize);
 
+    /// Upload the HPWater compact tiled light-list payload.
+    /// The first block stores packed tile headers as offset/count uint pairs,
+    /// followed by encoded punctual/area light references.
+    bool UploadHPWaterTiledLightList(const std::vector<uint32_t>& tileHeaders,
+                                     const std::vector<uint32_t>& lightReferences);
+
     bool BeginHPWaterFluidWaterHeightCapture(uint32_t resolution,
                                              const glm::vec3& boxCenter,
                                              const glm::vec3& boxSize);
@@ -433,6 +439,22 @@ public:
     uint32_t GetHPWaterAreaLightLTCLUTLayers() const { return m_HPWaterAreaLightLTCLUTLayers; }
     bool IsHPWaterAreaLightLTCLUTValid() const { return m_HPWaterAreaLightLTCLUTValid; }
     bool IsHPWaterAreaLightLTCHDRPTableEnabled() const { return m_HPWaterAreaLightLTCHDRPTableEnabled; }
+    uint32_t GetHPWaterTiledLightListBuffer() const { return m_HPWaterTiledLightListBuffer; }
+    bool IsHPWaterTiledLightListGPUUploadValid() const {
+        return m_HPWaterTiledLightListGPUUploadValid;
+    }
+    uint32_t GetHPWaterTiledLightListGPUBufferBytes() const {
+        return m_HPWaterTiledLightListGPUBufferBytes;
+    }
+    uint32_t GetHPWaterTiledLightListGPUHeaderBytes() const {
+        return m_HPWaterTiledLightListGPUHeaderBytes;
+    }
+    uint32_t GetHPWaterTiledLightListGPUReferenceBytes() const {
+        return m_HPWaterTiledLightListGPUReferenceBytes;
+    }
+    uint32_t GetHPWaterTiledLightListGPUReferenceCount() const {
+        return m_HPWaterTiledLightListGPUReferenceCount;
+    }
 
     /// Get HPWater explicit coverage mask texture.
     uint32_t GetHPWaterMaskTexture() const;
@@ -748,6 +770,7 @@ private:
     void DestroyHPWaterCausticComputeTexture();
     void DestroyHPWaterFGDLUT();
     void DestroyHPWaterAreaLightLTCLUT();
+    void DestroyHPWaterTiledLightListBuffer();
     void ClearHPWaterFluidFBOs();
     void ClearHPWaterGBuffer();
     bool BuildHPWaterVolumeMotionVectors(const glm::mat4& currentViewProjection,
@@ -861,6 +884,12 @@ private:
     uint32_t m_HPWaterAreaLightLTCLUTLayers = 0;
     bool m_HPWaterAreaLightLTCLUTValid = false;
     bool m_HPWaterAreaLightLTCHDRPTableEnabled = false;
+    uint32_t m_HPWaterTiledLightListBuffer = 0;
+    uint32_t m_HPWaterTiledLightListGPUBufferBytes = 0;
+    uint32_t m_HPWaterTiledLightListGPUHeaderBytes = 0;
+    uint32_t m_HPWaterTiledLightListGPUReferenceBytes = 0;
+    uint32_t m_HPWaterTiledLightListGPUReferenceCount = 0;
+    bool m_HPWaterTiledLightListGPUUploadValid = false;
 
     // HPWater opaque scene-depth pyramid for Hi-Z assisted refraction.
     uint32_t m_HPWaterDepthPyramidTexture = 0;

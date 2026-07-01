@@ -1852,6 +1852,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     uint32_t hpWaterTiledLightListLightReferenceCount = 0;
     uint32_t hpWaterTiledLightListMaxReferencesPerTile = 0;
     uint32_t hpWaterTiledLightListReferenceChecksum = 0;
+    std::vector<uint32_t> hpWaterTiledLightListTileHeaders;
+    std::vector<uint32_t> hpWaterTiledLightListReferences;
     if (hpWaterLightSelectionBoundsValid && viewportWidth > 0 && viewportHeight > 0) {
         float minScreenX = static_cast<float>(viewportWidth);
         float minScreenY = static_cast<float>(viewportHeight);
@@ -1895,11 +1897,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                    hpWaterTiledLightListGridHeight - 1u);
                 std::vector<uint32_t> tileLightOffsets;
                 std::vector<uint32_t> tileLightCounts;
-                std::vector<uint32_t> compactLightReferences;
                 const uint32_t waterTileCapacity = (maxTileX - minTileX + 1u) * (maxTileY - minTileY + 1u);
                 tileLightOffsets.reserve(waterTileCapacity);
                 tileLightCounts.reserve(waterTileCapacity);
-                compactLightReferences.reserve(waterTileCapacity *
+                hpWaterTiledLightListReferences.reserve(waterTileCapacity *
                     static_cast<uint32_t>(std::max(hpWaterNumPointLights + hpWaterNumSpotLights +
                                                    hpWaterNumAreaLights, 1)));
                 auto lightSphereOverlapsTile = [&](const glm::vec3& position,
@@ -1933,14 +1934,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     for (uint32_t tileX = minTileX; tileX <= maxTileX; ++tileX) {
                         uint32_t tilePunctualCount = 0;
                         uint32_t tileAreaCount = 0;
-                        tileLightOffsets.push_back(static_cast<uint32_t>(compactLightReferences.size()));
+                        tileLightOffsets.push_back(static_cast<uint32_t>(hpWaterTiledLightListReferences.size()));
                         for (int i = 0; i < hpWaterNumPointLights; ++i) {
                             if (lightSphereOverlapsTile(hpWaterPointPositions[i],
                                                         hpWaterPointRanges[i],
                                                         tileX,
                                                         tileY)) {
                                 ++tilePunctualCount;
-                                compactLightReferences.push_back(static_cast<uint32_t>(i));
+                                hpWaterTiledLightListReferences.push_back(static_cast<uint32_t>(i));
                             }
                         }
                         for (int i = 0; i < hpWaterNumSpotLights; ++i) {
@@ -1956,7 +1957,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                         tileX,
                                                         tileY)) {
                                 ++tilePunctualCount;
-                                compactLightReferences.push_back(0x00010000u | static_cast<uint32_t>(i));
+                                hpWaterTiledLightListReferences.push_back(0x00010000u | static_cast<uint32_t>(i));
                             }
                         }
                         for (int i = 0; i < hpWaterNumAreaLights; ++i) {
@@ -1967,7 +1968,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                         tileX,
                                                         tileY)) {
                                 ++tileAreaCount;
-                                compactLightReferences.push_back(0x80000000u | static_cast<uint32_t>(i));
+                                hpWaterTiledLightListReferences.push_back(0x80000000u | static_cast<uint32_t>(i));
                             }
                         }
 
@@ -1991,7 +1992,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 }
                 hpWaterTiledLightListTileHeaderCount = static_cast<uint32_t>(tileLightOffsets.size());
                 hpWaterTiledLightListLightReferenceCount =
-                    static_cast<uint32_t>(compactLightReferences.size());
+                    static_cast<uint32_t>(hpWaterTiledLightListReferences.size());
                 hpWaterTiledLightListMaxReferencesPerTile = 0;
                 hpWaterTiledLightListReferenceChecksum = 2166136261u;
                 hpWaterTiledLightListOffsetTableValid =
@@ -2018,7 +2019,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                         (hpWaterTiledLightListReferenceChecksum << 6u) +
                         (hpWaterTiledLightListReferenceChecksum >> 2u);
                 }
-                for (uint32_t reference : compactLightReferences) {
+                hpWaterTiledLightListTileHeaders.reserve(tileLightOffsets.size() * 2u);
+                for (size_t tileIndex = 0; tileIndex < tileLightOffsets.size(); ++tileIndex) {
+                    hpWaterTiledLightListTileHeaders.push_back(tileLightOffsets[tileIndex]);
+                    hpWaterTiledLightListTileHeaders.push_back(tileLightCounts[tileIndex]);
+                }
+                for (uint32_t reference : hpWaterTiledLightListReferences) {
                     hpWaterTiledLightListReferenceChecksum ^= reference + 0xc2b2ae35u +
                         (hpWaterTiledLightListReferenceChecksum << 6u) +
                         (hpWaterTiledLightListReferenceChecksum >> 2u);
@@ -2033,6 +2039,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             }
         }
     }
+    const bool hpWaterTiledLightListGPUUploadEnabled =
+        hpWaterTiledLightListCompactBuildEnabled &&
+        m_DeferredRenderer.UploadHPWaterTiledLightList(hpWaterTiledLightListTileHeaders,
+                                                       hpWaterTiledLightListReferences);
 
     auto& ps = m_PipelineSettings;
     auto colorToVec3 = [](const std::array<float, 3>& color) {
@@ -3419,6 +3429,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             hpWaterTiledLightListMaxReferencesPerTile;
         m_RenderDiagnostics.HPWaterTiledLightListReferenceChecksum =
             hpWaterTiledLightListReferenceChecksum;
+        m_RenderDiagnostics.HPWaterTiledLightListGPUUploadEnabled =
+            hpWaterTiledLightListGPUUploadEnabled &&
+            m_DeferredRenderer.IsHPWaterTiledLightListGPUUploadValid();
+        m_RenderDiagnostics.HPWaterTiledLightListGPUBuffer =
+            m_DeferredRenderer.GetHPWaterTiledLightListBuffer();
+        m_RenderDiagnostics.HPWaterTiledLightListGPUBufferBytes =
+            m_DeferredRenderer.GetHPWaterTiledLightListGPUBufferBytes();
+        m_RenderDiagnostics.HPWaterTiledLightListGPUHeaderBytes =
+            m_DeferredRenderer.GetHPWaterTiledLightListGPUHeaderBytes();
+        m_RenderDiagnostics.HPWaterTiledLightListGPUReferenceBytes =
+            m_DeferredRenderer.GetHPWaterTiledLightListGPUReferenceBytes();
+        m_RenderDiagnostics.HPWaterTiledLightListGPUReferenceCount =
+            m_DeferredRenderer.GetHPWaterTiledLightListGPUReferenceCount();
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;

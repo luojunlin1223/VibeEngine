@@ -375,6 +375,7 @@ void DeferredRenderer::Shutdown() {
     DestroyHPWaterCausticComputeTexture();
     DestroyHPWaterFGDLUT();
     DestroyHPWaterAreaLightLTCLUT();
+    DestroyHPWaterTiledLightListBuffer();
 
     m_GBuffer.reset();
     m_LightingFBO.reset();
@@ -509,6 +510,11 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCausticGBufferAtlasDepthAwareEnabled = false;
     m_HPWaterCausticSpectralWeightingEnabled = false;
     m_HPWaterFGDLUTValid = false;
+    m_HPWaterTiledLightListGPUUploadValid = false;
+    m_HPWaterTiledLightListGPUBufferBytes = 0;
+    m_HPWaterTiledLightListGPUHeaderBytes = 0;
+    m_HPWaterTiledLightListGPUReferenceBytes = 0;
+    m_HPWaterTiledLightListGPUReferenceCount = 0;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
     m_HPWaterCausticAtlasTileResolution = 0;
@@ -770,6 +776,62 @@ void DeferredRenderer::DestroyHPWaterAreaLightLTCLUT() {
     m_HPWaterAreaLightLTCLUTValid = false;
     m_HPWaterAreaLightLTCHDRPTableEnabled = false;
     m_HPWaterAreaLightLTCLUTLayers = 0;
+}
+
+void DeferredRenderer::DestroyHPWaterTiledLightListBuffer() {
+    if (m_HPWaterTiledLightListBuffer != 0) {
+        GLuint buffer = static_cast<GLuint>(m_HPWaterTiledLightListBuffer);
+        glDeleteBuffers(1, &buffer);
+        m_HPWaterTiledLightListBuffer = 0;
+    }
+
+    m_HPWaterTiledLightListGPUUploadValid = false;
+    m_HPWaterTiledLightListGPUBufferBytes = 0;
+    m_HPWaterTiledLightListGPUHeaderBytes = 0;
+    m_HPWaterTiledLightListGPUReferenceBytes = 0;
+    m_HPWaterTiledLightListGPUReferenceCount = 0;
+}
+
+bool DeferredRenderer::UploadHPWaterTiledLightList(const std::vector<uint32_t>& tileHeaders,
+                                                   const std::vector<uint32_t>& lightReferences) {
+    m_HPWaterTiledLightListGPUUploadValid = false;
+    m_HPWaterTiledLightListGPUHeaderBytes =
+        static_cast<uint32_t>(tileHeaders.size() * sizeof(uint32_t));
+    m_HPWaterTiledLightListGPUReferenceBytes =
+        static_cast<uint32_t>(lightReferences.size() * sizeof(uint32_t));
+    m_HPWaterTiledLightListGPUReferenceCount =
+        static_cast<uint32_t>(lightReferences.size());
+    m_HPWaterTiledLightListGPUBufferBytes =
+        m_HPWaterTiledLightListGPUHeaderBytes + m_HPWaterTiledLightListGPUReferenceBytes;
+
+    if (tileHeaders.empty() || lightReferences.empty() ||
+        (tileHeaders.size() % 2u) != 0u ||
+        m_HPWaterTiledLightListGPUBufferBytes == 0) {
+        return false;
+    }
+
+    std::vector<uint32_t> packed;
+    packed.reserve(tileHeaders.size() + lightReferences.size());
+    packed.insert(packed.end(), tileHeaders.begin(), tileHeaders.end());
+    packed.insert(packed.end(), lightReferences.begin(), lightReferences.end());
+
+    if (m_HPWaterTiledLightListBuffer == 0) {
+        GLuint buffer = 0;
+        glGenBuffers(1, &buffer);
+        m_HPWaterTiledLightListBuffer = static_cast<uint32_t>(buffer);
+    }
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, static_cast<GLuint>(m_HPWaterTiledLightListBuffer));
+    glBufferData(GL_SHADER_STORAGE_BUFFER,
+                 static_cast<GLsizeiptr>(packed.size() * sizeof(uint32_t)),
+                 packed.data(),
+                 GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    m_HPWaterTiledLightListGPUUploadValid =
+        m_HPWaterTiledLightListBuffer != 0 &&
+        glGetError() == GL_NO_ERROR;
+    return m_HPWaterTiledLightListGPUUploadValid;
 }
 
 void DeferredRenderer::CreateHPWaterAreaLightLTCLUT() {

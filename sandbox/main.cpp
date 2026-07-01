@@ -8071,6 +8071,18 @@ private:
             << d.HPWaterTiledLightListMaxReferencesPerTile << "\n";
         out << "HPWaterTiledLightListReferenceChecksum: "
             << d.HPWaterTiledLightListReferenceChecksum << "\n";
+        out << "HPWaterTiledLightListGPUUploadEnabled: "
+            << d.HPWaterTiledLightListGPUUploadEnabled << "\n";
+        out << "HPWaterTiledLightListGPUBuffer: "
+            << d.HPWaterTiledLightListGPUBuffer << "\n";
+        out << "HPWaterTiledLightListGPUBufferBytes: "
+            << d.HPWaterTiledLightListGPUBufferBytes << "\n";
+        out << "HPWaterTiledLightListGPUHeaderBytes: "
+            << d.HPWaterTiledLightListGPUHeaderBytes << "\n";
+        out << "HPWaterTiledLightListGPUReferenceBytes: "
+            << d.HPWaterTiledLightListGPUReferenceBytes << "\n";
+        out << "HPWaterTiledLightListGPUReferenceCount: "
+            << d.HPWaterTiledLightListGPUReferenceCount << "\n";
         out << "HPWaterVolumePointLightCount: " << d.HPWaterVolumePointLightCount << "\n";
         out << "HPWaterVolumeSpotLightCount: " << d.HPWaterVolumeSpotLightCount << "\n";
         out << "HPWaterVolumeAreaLightCount: " << d.HPWaterVolumeAreaLightCount << "\n";
@@ -8997,6 +9009,16 @@ private:
                      d.HPWaterTiledLightListPunctualReferences + d.HPWaterTiledLightListAreaReferences &&
                  d.HPWaterTiledLightListMaxReferencesPerTile == d.HPWaterTiledLightListMaxLightsPerTile &&
                  d.HPWaterTiledLightListReferenceChecksum != 0 &&
+                 d.HPWaterTiledLightListGPUUploadEnabled &&
+                 d.HPWaterTiledLightListGPUBuffer != 0 &&
+                 d.HPWaterTiledLightListGPUHeaderBytes ==
+                     d.HPWaterTiledLightListTileHeaderCount * 2u * static_cast<uint32_t>(sizeof(uint32_t)) &&
+                 d.HPWaterTiledLightListGPUReferenceBytes ==
+                     d.HPWaterTiledLightListLightReferenceCount * static_cast<uint32_t>(sizeof(uint32_t)) &&
+                 d.HPWaterTiledLightListGPUBufferBytes ==
+                     d.HPWaterTiledLightListGPUHeaderBytes + d.HPWaterTiledLightListGPUReferenceBytes &&
+                 d.HPWaterTiledLightListGPUReferenceCount ==
+                     d.HPWaterTiledLightListLightReferenceCount &&
                  d.HPWaterVolumePunctualLightLoopEnabled &&
                  d.HPWaterVolumePointLightCount > 0 &&
                  d.HPWaterVolumeAreaLightLoopEnabled &&
