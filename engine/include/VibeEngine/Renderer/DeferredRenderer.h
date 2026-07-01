@@ -455,6 +455,9 @@ public:
     uint32_t GetHPWaterStencilRef() const { return m_HPWaterStencilRef; }
     bool IsHPWaterRefractionNDCMarchEnabled() const { return m_HPWaterRefractionNDCMarchEnabled; }
     bool IsHPWaterRefractionBoundaryFadeEnabled() const { return m_HPWaterRefractionBoundaryFadeEnabled; }
+    bool IsHPWaterRefractionBufferFormatParityEnabled() const {
+        return m_HPWaterRefractionBufferFormatParityEnabled;
+    }
     float GetHPWaterRefractionExponentialStepFactor() const {
         return m_HPWaterRefractionExponentialStepFactor;
     }
@@ -955,6 +958,7 @@ private:
     glm::vec3 m_HPWaterCompositeFoamColor = glm::vec3(0.85f, 0.96f, 1.0f);
     bool m_HPWaterRefractionNDCMarchEnabled = false;
     bool m_HPWaterRefractionBoundaryFadeEnabled = false;
+    bool m_HPWaterRefractionBufferFormatParityEnabled = false;
     float m_HPWaterRefractionExponentialStepFactor = 0.0f;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;
     bool m_HPWaterShadowCascadeDitherEnabled = false;

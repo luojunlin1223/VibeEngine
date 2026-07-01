@@ -884,8 +884,9 @@ void main() {
     float waterMask = u_HPWaterMaskEnabled == 1
         ? texture(u_HPWaterMask, sourceUV).r
         : (waterDepth < 0.9999 ? 1.0 : 0.0);
+    float waterMarker = refractMeta.w;
 
-    if (waterMask < 0.5 || waterDepth >= 0.9999) {
+    if (waterMask < 0.5 || waterMarker < 0.5 || waterDepth >= 0.9999) {
         VolumeColor = vec4(0.0);
         VolumeTransmittance = vec4(1.0, 1.0, 1.0, 0.0);
         VolumeDepth = vec4(0.0);
@@ -906,18 +907,12 @@ void main() {
     vec3 waterWorldPos = ReconstructWorldPosition(sourceUV, waterDepth);
     vec3 refractedWorldPos = refractData.xyz;
     float rayLength = refractData.w;
-    float normalizedThickness = clamp(refractMeta.w, 0.0, 1.0);
     vec3 V = SafeNormalize(u_CameraPosition - waterWorldPos, vec3(0.0, 1.0, 0.0));
     if (rayLength <= 0.001) {
-        float fallbackThickness = normalizedThickness > 0.0001
-            ? normalizedThickness
-            : 0.35;
-        rayLength = max(fallbackThickness * depthTintDistance, 0.05);
+        rayLength = max(0.35 * depthTintDistance, 0.05);
         refractedWorldPos = waterWorldPos - V * rayLength;
     }
-    if (normalizedThickness <= 0.0001) {
-        normalizedThickness = clamp(rayLength / max(depthTintDistance, 0.1), 0.05, 1.0);
-    }
+    float normalizedThickness = clamp(rayLength / max(depthTintDistance, 0.1), 0.05, 1.0);
 
     vec3 L = normalize(u_LightDir);
     float NdotL = clamp(dot(N, L), 0.0, 1.0);

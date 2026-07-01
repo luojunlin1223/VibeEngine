@@ -2676,6 +2676,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterVolumeCompositeFullResolutionEnabled = false;
         m_HPWaterRefractionNDCMarchEnabled = false;
         m_HPWaterRefractionBoundaryFadeEnabled = false;
+        m_HPWaterRefractionBufferFormatParityEnabled = false;
         m_HPWaterRefractionExponentialStepFactor = 0.0f;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
@@ -3001,6 +3002,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         refractionStrength > 0.0001f &&
         maxRefractionCrossDistance > 0.0001f;
     m_HPWaterRefractionBoundaryFadeEnabled = m_HPWaterRefractionNDCMarchEnabled;
+    m_HPWaterRefractionBufferFormatParityEnabled = m_HPWaterRefractionNDCMarchEnabled;
     m_HPWaterRefractionExponentialStepFactor = m_HPWaterRefractionNDCMarchEnabled
         ? HPWaterAdaptiveRefractionExpFactor(clampedMaxRefractionCrossDistance)
         : 0.0f;
@@ -3751,6 +3753,10 @@ bool DeferredRenderer::UpsampleHPWaterVolume(float nearClip, float farClip) {
         ? static_cast<GLuint>(m_HPWaterMaskFBO->GetColorAttachmentID())
         : static_cast<GLuint>(m_HPWaterGBuffer->GetDepthAttachmentID()));
     m_HPWaterVolumeUpsampleShader->SetInt("u_HPWaterMask", 5);
+
+    glActiveTexture(GL_TEXTURE6);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(m_HPWaterCompositeFBO->GetColorAttachmentID(1)));
+    m_HPWaterVolumeUpsampleShader->SetInt("u_HPWaterRefractionWorldData", 6);
 
     m_HPWaterVolumeUpsampleShader->SetFloat("u_NearClip", nearClip);
     m_HPWaterVolumeUpsampleShader->SetFloat("u_FarClip", farClip);

@@ -4311,6 +4311,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterRefractionNDCMarchEnabled();
     m_RenderDiagnostics.HPWaterRefractionBoundaryFadeEnabled =
         m_DeferredRenderer.IsHPWaterRefractionBoundaryFadeEnabled();
+    m_RenderDiagnostics.HPWaterRefractionBufferFormatParityEnabled =
+        m_DeferredRenderer.IsHPWaterRefractionBufferFormatParityEnabled();
     m_RenderDiagnostics.HPWaterRefractionExponentialStepFactor =
         m_DeferredRenderer.GetHPWaterRefractionExponentialStepFactor();
     {

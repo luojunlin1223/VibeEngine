@@ -7593,7 +7593,8 @@ private:
         float AverageUVOffsetGradient = 0.0f;
         float NonZeroUVOffsetRatio = 0.0f;
         float UVOffsetGradientPixelRatio = 0.0f;
-        float ValidThicknessRatio = 0.0f;
+        float WaterMarkerRatio = 0.0f;
+        float BoundaryPixelRatio = 0.0f;
     };
 
     bool ReadTextureThumbnailRGBA8(uint32_t textureID,
@@ -8215,6 +8216,7 @@ private:
 
         if (!d.HPWaterRefractionNDCMarchEnabled ||
             !d.HPWaterRefractionBoundaryFadeEnabled ||
+            !d.HPWaterRefractionBufferFormatParityEnabled ||
             !d.HPWaterRefractionAdaptiveStepParityEnabled ||
             !d.HPWaterRefractionAboveSurfaceRejectEnabled ||
             d.HPWaterRefractionDataTexture == 0 ||
@@ -8237,6 +8239,7 @@ private:
             worldProbe.NonZeroAlphaRatio > 0.0f &&
             metaProbe.MaxRGBA[3] > 0.00001f &&
             metaProbe.NonZeroAlphaRatio > 0.0f &&
+            uvProbe.WaterMarkerRatio > 0.001f &&
             uvProbe.MaxUVOffset > 0.0001f &&
             uvProbe.NonZeroUVOffsetRatio > 0.0f &&
             uvProbe.UVOffsetVariance > 0.000000001f &&
@@ -8657,10 +8660,11 @@ private:
         const size_t pixelCount = static_cast<size_t>(sampleWidth) * static_cast<size_t>(sampleHeight);
         const size_t step = 1;
         size_t sampled = 0;
-        size_t validThickness = 0;
+        size_t waterMarked = 0;
         size_t nonZeroOffset = 0;
         size_t offsetGradientSamples = 0;
         size_t offsetGradientPixels = 0;
+        size_t boundaryPixels = 0;
         double offsetSum = 0.0;
         double offsetSquaredSum = 0.0;
         double offsetGradientSum = 0.0;
@@ -8669,20 +8673,15 @@ private:
 
         for (size_t pixel = 0; pixel < pixelCount; pixel += step) {
             const size_t i = pixel * 4;
-            const float thickness = pixels[i + 3];
+            const float waterMarker = pixels[i + 3];
             sampled++;
-            if (thickness <= 0.00001f)
+            if (waterMarker <= 0.5f)
                 continue;
 
-            const uint32_t x = static_cast<uint32_t>(pixel % sampleWidth);
-            const uint32_t y = static_cast<uint32_t>(pixel / sampleWidth);
-            const glm::vec2 screenUV(
-                (static_cast<float>(x) + 0.5f) / static_cast<float>(sampleWidth),
-                (static_cast<float>(y) + 0.5f) / static_cast<float>(sampleHeight));
-            const glm::vec2 refractUV(pixels[i + 0], pixels[i + 1]);
-            const float offset = glm::length(refractUV - screenUV);
+            const glm::vec2 uvOffset(pixels[i + 0], pixels[i + 1]);
+            const float offset = glm::length(uvOffset);
 
-            validThickness++;
+            waterMarked++;
             offsetSum += offset;
             offsetSquaredSum += static_cast<double>(offset) * static_cast<double>(offset);
             offsets[pixel] = offset;
@@ -8694,27 +8693,30 @@ private:
 
         summary.Valid = sampled > 0;
         if (sampled > 0)
-            summary.ValidThicknessRatio = static_cast<float>(validThickness) / static_cast<float>(sampled);
-        if (validThickness > 0) {
-            summary.AverageUVOffset = static_cast<float>(offsetSum / static_cast<double>(validThickness));
+            summary.WaterMarkerRatio = static_cast<float>(waterMarked) / static_cast<float>(sampled);
+        if (waterMarked > 0) {
+            summary.AverageUVOffset = static_cast<float>(offsetSum / static_cast<double>(waterMarked));
             const double mean = summary.AverageUVOffset;
             summary.UVOffsetVariance = static_cast<float>(std::max(
                 0.0,
-                offsetSquaredSum / static_cast<double>(validThickness) - mean * mean));
+                offsetSquaredSum / static_cast<double>(waterMarked) - mean * mean));
             summary.NonZeroUVOffsetRatio =
-                static_cast<float>(nonZeroOffset) / static_cast<float>(validThickness);
+                static_cast<float>(nonZeroOffset) / static_cast<float>(waterMarked);
         }
-        if (validThickness > 0) {
+        if (waterMarked > 0) {
             for (uint32_t y = 0; y < sampleHeight; ++y) {
                 for (uint32_t x = 0; x < sampleWidth; ++x) {
                     const size_t pixel = static_cast<size_t>(y) * sampleWidth + x;
                     if (!validPixels[pixel])
                         continue;
                     float maxDelta = 0.0f;
+                    bool touchesNonWater = false;
                     auto accumulateNeighbor = [&](uint32_t nx, uint32_t ny) {
                         const size_t neighbor = static_cast<size_t>(ny) * sampleWidth + nx;
-                        if (!validPixels[neighbor])
+                        if (!validPixels[neighbor]) {
+                            touchesNonWater = true;
                             return;
+                        }
                         const float delta = std::abs(offsets[pixel] - offsets[neighbor]);
                         offsetGradientSum += delta;
                         offsetGradientSamples++;
@@ -8722,10 +8724,24 @@ private:
                     };
                     if (x + 1 < sampleWidth)
                         accumulateNeighbor(x + 1, y);
+                    else
+                        touchesNonWater = true;
                     if (y + 1 < sampleHeight)
                         accumulateNeighbor(x, y + 1);
+                    else
+                        touchesNonWater = true;
+                    if (x > 0)
+                        accumulateNeighbor(x - 1, y);
+                    else
+                        touchesNonWater = true;
+                    if (y > 0)
+                        accumulateNeighbor(x, y - 1);
+                    else
+                        touchesNonWater = true;
                     if (maxDelta > 0.00001f)
                         offsetGradientPixels++;
+                    if (touchesNonWater)
+                        boundaryPixels++;
                 }
             }
         }
@@ -8733,8 +8749,11 @@ private:
             summary.AverageUVOffsetGradient =
                 static_cast<float>(offsetGradientSum / static_cast<double>(offsetGradientSamples));
             summary.UVOffsetGradientPixelRatio =
-                static_cast<float>(static_cast<double>(offsetGradientPixels) / static_cast<double>(validThickness));
+                static_cast<float>(static_cast<double>(offsetGradientPixels) / static_cast<double>(waterMarked));
         }
+        if (waterMarked > 0)
+            summary.BoundaryPixelRatio =
+                static_cast<float>(static_cast<double>(boundaryPixels) / static_cast<double>(waterMarked));
 
         return summary;
     }
@@ -8892,6 +8911,8 @@ private:
         out << "HPWaterRefractionNDCMarchEnabled: " << d.HPWaterRefractionNDCMarchEnabled << "\n";
         out << "HPWaterRefractionBoundaryFadeEnabled: "
             << d.HPWaterRefractionBoundaryFadeEnabled << "\n";
+        out << "HPWaterRefractionBufferFormatParityEnabled: "
+            << d.HPWaterRefractionBufferFormatParityEnabled << "\n";
         out << "HPWaterRefractionExponentialStepFactor: "
             << d.HPWaterRefractionExponentialStepFactor << "\n";
         out << "HPWaterRefractionAdaptiveStepParityEnabled: "
@@ -9642,21 +9663,23 @@ private:
                     dr.GetWidth(),
                     dr.GetHeight());
             writeProbe("HPWaterRefractionMeta", refractionMetaProbe);
-            out << "HPWaterRefractionMetaAverageUV: " << std::fixed << std::setprecision(4)
+            out << "HPWaterRefractionMetaAverageUVOffsetXY: " << std::fixed << std::setprecision(4)
                 << refractionMetaFloatProbe.AverageRGBA[0] << ","
                 << refractionMetaFloatProbe.AverageRGBA[1] << "\n";
             out << "HPWaterRefractionMetaAverageSceneDepth: "
                 << refractionMetaFloatProbe.AverageRGBA[2] << "\n";
-            out << "HPWaterRefractionMetaAverageNormalizedThickness: "
+            out << "HPWaterRefractionMetaAverageWaterMarker: "
                 << refractionMetaFloatProbe.AverageRGBA[3] << "\n";
-            out << "HPWaterRefractionMetaMaxNormalizedThickness: "
+            out << "HPWaterRefractionMetaMaxWaterMarker: "
                 << refractionMetaFloatProbe.MaxRGBA[3] << "\n";
             out << "HPWaterRefractionMetaNonBlackRatio: " << std::fixed << std::setprecision(4)
                 << refractionMetaProbe.NonBlackRatio << "\n";
-            out << "HPWaterRefractionMetaNonZeroThicknessRatio: "
+            out << "HPWaterRefractionMetaWaterMarkerRatio: "
                 << refractionMetaFloatProbe.NonZeroAlphaRatio << "\n";
-            out << "HPWaterRefractionMetaAnyThickness: "
+            out << "HPWaterRefractionMetaAnyWaterMarker: "
                 << (refractionMetaFloatProbe.MaxRGBA[3] > 0.00001f ? 1 : 0) << "\n";
+            out << "HPWaterRefractionMetaFormatParityEnabled: "
+                << d.HPWaterRefractionBufferFormatParityEnabled << "\n";
             out << "HPWaterRefractionMetaUVOffsetReadbackEnabled: "
                 << refractionMetaUVProbe.Valid << "\n";
             out << "HPWaterRefractionMetaAverageUVOffset: "
@@ -9677,9 +9700,12 @@ private:
             out << "HPWaterRefractionMetaUVOffsetGradientPixelRatio: "
                 << std::fixed << std::setprecision(4)
                 << refractionMetaUVProbe.UVOffsetGradientPixelRatio << "\n";
-            out << "HPWaterRefractionMetaValidThicknessRatio: "
+            out << "HPWaterRefractionMetaWaterMarkerReadbackRatio: "
                 << std::fixed << std::setprecision(4)
-                << refractionMetaUVProbe.ValidThicknessRatio << "\n";
+                << refractionMetaUVProbe.WaterMarkerRatio << "\n";
+            out << "HPWaterRefractionMetaBoundaryPixelRatio: "
+                << std::fixed << std::setprecision(4)
+                << refractionMetaUVProbe.BoundaryPixelRatio << "\n";
             out << "HPWaterRefractionMetaAnyUVOffset: "
                 << (refractionMetaUVProbe.MaxUVOffset > 0.0001f ? 1 : 0) << "\n";
             out << "HPWaterRefractionMetaAnyUVOffsetDistribution: "
@@ -10232,6 +10258,7 @@ private:
                 (d.HPWaterCompositeRan &&
                  d.HPWaterRefractionNDCMarchEnabled &&
                  d.HPWaterRefractionBoundaryFadeEnabled &&
+                 d.HPWaterRefractionBufferFormatParityEnabled &&
                  d.HPWaterRefractionAdaptiveStepParityEnabled &&
                  d.HPWaterRefractionDataTexture != 0 &&
                  d.HPWaterRefractionMetaTexture != 0 &&
@@ -10627,9 +10654,10 @@ private:
             d.HPWaterMaskWidth,
             d.HPWaterMaskHeight,
             d.HPWaterMaskTexture);
-        ImGui::Text("HPWater refraction: ndc=%d bound=%d strength=%.3f dispersion=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
+        ImGui::Text("HPWater refraction: ndc=%d bound=%d format=%d strength=%.3f dispersion=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
             d.HPWaterRefractionNDCMarchEnabled ? 1 : 0,
             d.HPWaterRefractionBoundaryFadeEnabled ? 1 : 0,
+            d.HPWaterRefractionBufferFormatParityEnabled ? 1 : 0,
             d.HPWaterRefractionStrength,
             d.HPWaterWaterDispersionStrength,
             d.HPWaterMaxRefractionCrossDistance,

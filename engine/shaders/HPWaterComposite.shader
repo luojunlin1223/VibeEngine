@@ -1460,7 +1460,7 @@ void main() {
     if (waterMask < 0.5 || waterDepth >= 0.9999) {
         FragColor = sceneColor;
         RefractData = vec4(0.0);
-        RefractMeta = vec4(v_UV, 1.0, 0.0);
+        RefractMeta = vec4(0.0, 0.0, 1.0, 0.0);
         SSRDiagnostics = vec4(0.0);
         AreaLightDiagnostics = vec4(0.0);
         ForwardScatterDiagnostics = vec4(0.0);
@@ -1476,7 +1476,7 @@ void main() {
     if (mergedSceneDepth < waterDepth - 0.00005) {
         FragColor = sceneColor;
         RefractData = vec4(0.0);
-        RefractMeta = vec4(v_UV, mergedSceneDepth, 0.0);
+        RefractMeta = vec4(0.0, 0.0, mergedSceneDepth, 0.0);
         SSRDiagnostics = vec4(0.0);
         AreaLightDiagnostics = vec4(0.0);
         ForwardScatterDiagnostics = vec4(0.0);
@@ -1834,7 +1834,7 @@ void main() {
 
     FragColor = vec4(mix(sceneColor.rgb, waterColor, waterAlpha), sceneColor.a);
     RefractData = vec4(refractedWorldPos, rayLength);
-    RefractMeta = vec4(refractUV, refractedSceneDepth, normalizedThickness);
+    RefractMeta = vec4(refractUV - v_UV, refractedSceneDepth, 1.0);
     SSRDiagnostics = vec4(ssrConfidence,
                           ssrHit,
                           probeHierarchyWeight,

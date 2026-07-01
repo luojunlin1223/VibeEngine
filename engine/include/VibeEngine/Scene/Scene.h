@@ -207,6 +207,7 @@ struct RenderDiagnostics {
     bool HPWaterRefractionJitterEnabled = false;
     bool HPWaterRefractionNDCMarchEnabled = false;
     bool HPWaterRefractionBoundaryFadeEnabled = false;
+    bool HPWaterRefractionBufferFormatParityEnabled = false;
     float HPWaterRefractionExponentialStepFactor = 0.0f;
     bool HPWaterRefractionAdaptiveStepParityEnabled = false;
     bool HPWaterRefractionAboveSurfaceRejectEnabled = false;

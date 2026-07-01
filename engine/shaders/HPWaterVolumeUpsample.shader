@@ -43,6 +43,7 @@ uniform sampler2D u_LowResVolumeTransmittance;
 uniform sampler2D u_LowResVolumeDepth;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterRefractionMeta;
+uniform sampler2D u_HPWaterRefractionWorldData;
 uniform sampler2D u_HPWaterMask;
 
 uniform float u_NearClip;
@@ -77,10 +78,11 @@ VolumeTap LoadVolumeTap(ivec2 p) {
 void main() {
     float waterDepth = texture(u_HPWaterDepth, v_UV).r;
     vec4 refractMeta = texture(u_HPWaterRefractionMeta, v_UV);
+    vec4 refractWorld = texture(u_HPWaterRefractionWorldData, v_UV);
     float waterMask = u_HPWaterMaskEnabled == 1
         ? texture(u_HPWaterMask, v_UV).r
         : (waterDepth < 0.9999 ? 1.0 : 0.0);
-    if (waterMask < 0.5 || waterDepth >= 0.9999) {
+    if (waterMask < 0.5 || refractMeta.w < 0.5 || waterDepth >= 0.9999) {
         UpsampledColor = vec4(0.0);
         UpsampledTransmittance = vec4(1.0, 1.0, 1.0, 0.0);
         UpsampledDepth = vec4(0.0);
@@ -89,7 +91,7 @@ void main() {
 
     float waterLinear = LinearizeDepth(waterDepth);
     float targetDepth = refractMeta.z >= 0.9999
-        ? waterLinear + max(refractMeta.w, 0.05) * 80.0
+        ? waterLinear + max(refractWorld.w, 0.05)
         : LinearizeDepth(refractMeta.z);
 
     ivec2 lowSize = textureSize(u_LowResVolumeColor, 0);
