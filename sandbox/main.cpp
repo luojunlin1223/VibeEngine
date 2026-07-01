@@ -7914,6 +7914,7 @@ private:
         if (!d.HPWaterSpectralOceanEnabled ||
             !d.HPWaterSpectralNormalParityEnabled ||
             !d.HPWaterSpectrumVertexDisplacementEnabled ||
+            !d.HPWaterSpectrumChoppyDisplacementEnabled ||
             !d.HPWaterSpectrumComputeRan ||
             !d.HPWaterSpectrumComputeValid ||
             !d.HPWaterSpectrumTextureConsumed ||
@@ -8537,6 +8538,7 @@ private:
         out << "HPWaterSpectralOceanEnabled: " << d.HPWaterSpectralOceanEnabled << "\n";
         out << "HPWaterSpectralNormalParityEnabled: " << d.HPWaterSpectralNormalParityEnabled << "\n";
         out << "HPWaterSpectrumVertexDisplacementEnabled: " << d.HPWaterSpectrumVertexDisplacementEnabled << "\n";
+        out << "HPWaterSpectrumChoppyDisplacementEnabled: " << d.HPWaterSpectrumChoppyDisplacementEnabled << "\n";
         out << "HPWaterSpectrumComputeRan: " << d.HPWaterSpectrumComputeRan << "\n";
         out << "HPWaterSpectrumComputeValid: " << d.HPWaterSpectrumComputeValid << "\n";
         out << "HPWaterSpectrumTextureConsumed: " << d.HPWaterSpectrumTextureConsumed << "\n";

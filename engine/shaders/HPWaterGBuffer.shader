@@ -37,6 +37,7 @@ uniform int   u_HPFluidDynamicsEnabled;
 uniform vec3  u_HPFluidBoxCenter;
 uniform vec3  u_HPFluidBoxSize;
 uniform float u_HPFluidHeightScale;
+uniform float u_HPChoppiness;
 
 out vec3 v_Normal;
 out vec3 v_FragPos;
@@ -51,9 +52,16 @@ void main() {
     vec3 worldNormal = normalize(mat3(u_Model) * a_Normal);
     vec3 worldPos = vec3(u_Model * vec4(a_Position, 1.0));
     vec2 waterUV = clamp(WorldToFluidUVVertex(worldPos), vec2(0.0), vec2(1.0));
-    float spectrumHeight = u_HPSpectrumTextureEnabled == 1 ? texture(u_HPSpectrumTexture, waterUV).a : 0.0;
+    vec4 spectrumPayload = u_HPSpectrumTextureEnabled == 1
+        ? texture(u_HPSpectrumTexture, waterUV)
+        : vec4(0.5, 1.0, 0.5, 0.0);
+    vec3 spectrumNormal = normalize(spectrumPayload.rgb * 2.0 - 1.0);
+    float spectrumHeight = spectrumPayload.a;
     float fluidHeight = u_HPFluidDynamicsEnabled == 1 ? texture(u_HPFluidHeightTexture, waterUV).r * u_HPFluidHeightScale : 0.0;
-    vec3 displacedPosition = a_Position + a_Normal * (spectrumHeight + fluidHeight);
+    vec2 spectrumSlope = -spectrumNormal.xz / max(abs(spectrumNormal.y), 0.08);
+    vec2 horizontalChop = spectrumSlope * spectrumHeight * clamp(u_HPChoppiness, 0.0, 4.0) * 0.65;
+    vec3 displacedPosition = a_Position + a_Normal * (spectrumHeight + fluidHeight) +
+        vec3(horizontalChop.x, 0.0, horizontalChop.y);
 
     v_Normal = worldNormal;
     v_FragPos = vec3(u_Model * vec4(displacedPosition, 1.0));

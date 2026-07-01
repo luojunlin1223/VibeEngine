@@ -3178,6 +3178,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 m_RenderDiagnostics.HPWaterSpectrumVertexDisplacementEnabled =
                     m_RenderDiagnostics.HPWaterSpectrumVertexDisplacementEnabled ||
                     (spectrumComputeValid && water->SpectrumWaves && water->SpectrumAmplitude > 0.0f);
+                m_RenderDiagnostics.HPWaterSpectrumChoppyDisplacementEnabled =
+                    m_RenderDiagnostics.HPWaterSpectrumChoppyDisplacementEnabled ||
+                    (spectrumComputeValid && water->SpectrumWaves && water->SpectrumAmplitude > 0.0f &&
+                     water->Choppiness > 0.0001f);
                 m_RenderDiagnostics.HPWaterFluidVertexDisplacementEnabled =
                     m_RenderDiagnostics.HPWaterFluidVertexDisplacementEnabled ||
                     (fluidValid && water->HeightScale > 0.0f);

@@ -320,6 +320,7 @@ struct RenderDiagnostics {
     bool HPWaterSpectralOceanEnabled = false;
     bool HPWaterSpectralNormalParityEnabled = false;
     bool HPWaterSpectrumVertexDisplacementEnabled = false;
+    bool HPWaterSpectrumChoppyDisplacementEnabled = false;
     bool HPWaterSpectrumComputeRan = false;
     bool HPWaterSpectrumComputeValid = false;
     bool HPWaterSpectrumTextureConsumed = false;
