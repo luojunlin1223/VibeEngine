@@ -1485,6 +1485,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticFilterR2DitherEnabled();
     m_RenderDiagnostics.HPWaterCausticFilterMipAwareEnabled =
         m_DeferredRenderer.IsHPWaterCausticFilterMipAwareEnabled();
+    m_RenderDiagnostics.HPWaterCausticFilterScatterDensityMipEnabled =
+        m_DeferredRenderer.IsHPWaterCausticFilterScatterDensityMipEnabled();
     m_RenderDiagnostics.HPWaterCausticFilterLuminanceFadeEnabled =
         m_DeferredRenderer.IsHPWaterCausticFilterLuminanceFadeEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasTexture = m_DeferredRenderer.GetHPWaterCausticAtlasTexture();
@@ -3899,7 +3901,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.FilterHPWaterCaustics(hpWaterCausticFilterRadius,
                                                      hpWaterCausticFilterDepthSigma,
                                                      hpWaterCausticFilterLuminanceWeight,
-                                                     hpWaterCausticFilterIterations);
+                                                     hpWaterCausticFilterIterations,
+                                                     hpWaterForwardScatterBlurDensity);
         m_RenderDiagnostics.HPWaterCausticFilterKernelParityEnabled =
             m_RenderDiagnostics.HPWaterCausticFilterRan;
         m_RenderDiagnostics.HPWaterVolumeRan =
@@ -4558,6 +4561,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticFilterR2DitherEnabled();
     m_RenderDiagnostics.HPWaterCausticFilterMipAwareEnabled =
         m_DeferredRenderer.IsHPWaterCausticFilterMipAwareEnabled();
+    m_RenderDiagnostics.HPWaterCausticFilterScatterDensityMipEnabled =
+        m_DeferredRenderer.IsHPWaterCausticFilterScatterDensityMipEnabled();
     m_RenderDiagnostics.HPWaterCausticFilterLuminanceFadeEnabled =
         m_DeferredRenderer.IsHPWaterCausticFilterLuminanceFadeEnabled();
     m_RenderDiagnostics.HPWaterCausticAtlasValid = m_DeferredRenderer.IsHPWaterCausticAtlasValid();

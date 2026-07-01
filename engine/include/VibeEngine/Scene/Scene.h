@@ -497,6 +497,7 @@ struct RenderDiagnostics {
     bool HPWaterCausticFilterLDSHaloEnabled = false;
     bool HPWaterCausticFilterR2DitherEnabled = false;
     bool HPWaterCausticFilterMipAwareEnabled = false;
+    bool HPWaterCausticFilterScatterDensityMipEnabled = false;
     bool HPWaterCausticFilterLuminanceFadeEnabled = false;
     float HPWaterCausticStrength = 0.0f;
     float HPWaterCausticScale = 0.0f;

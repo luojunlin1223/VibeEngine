@@ -11,6 +11,7 @@ layout(binding = 0, rgba16f) uniform writeonly image2D u_CausticOutput;
 uniform sampler2D u_CausticInput;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterMask;
+uniform sampler2D u_HPWaterScatterThickness;
 
 uniform int u_OutputWidth;
 uniform int u_OutputHeight;
@@ -18,6 +19,7 @@ uniform float u_FilterStep;
 uniform float u_FilterRadius;
 uniform float u_DepthSigma;
 uniform float u_LuminanceWeight;
+uniform float u_ForwardScatterBlurDensity;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_MipAwareFilterEnabled;
 uniform int u_LuminanceFadeEnabled;
@@ -48,6 +50,11 @@ float LoadMask(ivec2 p, float depthValue) {
         : (depthValue < 0.9999 ? 1.0 : 0.0);
 }
 
+float LoadScatterDensity(ivec2 p) {
+    vec3 scatter = texelFetch(u_HPWaterScatterThickness, ClampPixel(p), 0).rgb;
+    return clamp(dot(max(scatter, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+}
+
 float CausticLuminance(vec4 value) {
     return max(dot(max(value.rgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)), max(value.a, 0.0));
 }
@@ -68,14 +75,6 @@ float AtrousKernel3x3(int x, int y) {
 
 float R2Dither(vec2 samplePosition) {
     return HPWaterR2Dither(samplePosition, 0.0);
-}
-
-float CalculateCausticMipLevel(float depthDiff, float radius, float centerLum) {
-    const float maxMipLevel = 6.0;
-    float scaledDepth = max(depthDiff, 0.0) * max(radius, 0.25) * 24.0;
-    float energyScale = clamp(centerLum * 8.0, 0.0, 1.0);
-    float mipLevel = log2(1.0 + scaledDepth) * mix(0.75, 1.35, energyScale);
-    return clamp(mipLevel, 0.0, maxMipLevel);
 }
 
 void main() {
@@ -118,6 +117,7 @@ void main() {
 
     vec4 centerCaustic = s_Color[lds.y][lds.x];
     float centerLum = CausticLuminance(centerCaustic);
+    float centerScatterDensity = LoadScatterDensity(pixel);
     float depthSigma = max(u_DepthSigma, 0.00001);
     float r2Noise = R2Dither(vec2(pixel));
     float angle = 6.2831853 * r2Noise * 0.125;
@@ -141,7 +141,11 @@ void main() {
             float sampleMask = LoadMask(samplePixel, sampleDepth);
             float depthDiff = abs(sampleDepth - centerDepth);
             float mipLevel = u_MipAwareFilterEnabled == 1
-                ? max(0.0, CalculateCausticMipLevel(depthDiff, u_FilterRadius, centerLum) - r2Noise * 0.25)
+                ? max(0.0, HPWaterCalculateMipLevel(depthDiff,
+                                                    HPWATER_CAUSTIC_SCALING_FACTOR,
+                                                    centerScatterDensity,
+                                                    u_ForwardScatterBlurDensity,
+                                                    6.0) - r2Noise * 0.25)
                 : 0.0;
             float sampleLum = CausticLuminance(sampleCaustic);
             if (u_MipAwareFilterEnabled == 1) {

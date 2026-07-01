@@ -41,11 +41,13 @@ layout(location = 0) out vec4 FragColor;
 uniform sampler2D u_CausticInput;
 uniform sampler2D u_HPWaterDepth;
 uniform sampler2D u_HPWaterMask;
+uniform sampler2D u_HPWaterScatterThickness;
 
 uniform float u_FilterStep;
 uniform float u_FilterRadius;
 uniform float u_DepthSigma;
 uniform float u_LuminanceWeight;
+uniform float u_ForwardScatterBlurDensity;
 uniform int u_HPWaterMaskEnabled;
 uniform int u_MipAwareFilterEnabled;
 uniform int u_LuminanceFadeEnabled;
@@ -74,12 +76,9 @@ float R2Dither(vec2 samplePosition) {
     return HPWaterR2Dither(samplePosition, 0.0);
 }
 
-float CalculateCausticMipLevel(float depthDiff, float radius, float centerLum) {
-    const float maxMipLevel = 6.0;
-    float scaledDepth = max(depthDiff, 0.0) * max(radius, 0.25) * 24.0;
-    float energyScale = clamp(centerLum * 8.0, 0.0, 1.0);
-    float mipLevel = log2(1.0 + scaledDepth) * mix(0.75, 1.35, energyScale);
-    return clamp(mipLevel, 0.0, maxMipLevel);
+float SampleScatterDensity(vec2 uv) {
+    vec3 scatter = texture(u_HPWaterScatterThickness, uv).rgb;
+    return clamp(dot(max(scatter, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
 }
 
 void main() {
@@ -105,6 +104,7 @@ void main() {
     float depthSigma = max(u_DepthSigma, 0.00001);
     vec4 centerCaustic = texture(u_CausticInput, v_UV);
     float centerLum = CausticLuminance(centerCaustic);
+    float centerScatterDensity = SampleScatterDensity(v_UV);
 
     vec4 accum = vec4(0.0);
     float totalWeight = 0.0;
@@ -123,7 +123,11 @@ void main() {
             float spatialWeight = AtrousKernel3x3(x, y);
             float depthDiff = abs(sampleDepth - centerDepth);
             float mipLevel = u_MipAwareFilterEnabled == 1
-                ? max(0.0, CalculateCausticMipLevel(depthDiff, u_FilterRadius, centerLum) - r2Noise * 0.25)
+                ? max(0.0, HPWaterCalculateMipLevel(depthDiff,
+                                                    HPWATER_CAUSTIC_SCALING_FACTOR,
+                                                    centerScatterDensity,
+                                                    u_ForwardScatterBlurDensity,
+                                                    6.0) - r2Noise * 0.25)
                 : 0.0;
             if (u_MipAwareFilterEnabled == 1)
                 sampleCaustic = textureLod(u_CausticInput, sampleUV, mipLevel);

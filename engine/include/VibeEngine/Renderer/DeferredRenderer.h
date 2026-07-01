@@ -336,7 +336,8 @@ public:
     bool FilterHPWaterCaustics(float radius,
                                float depthSigma,
                                float luminanceWeight,
-                               int iterations);
+                               int iterations,
+                               float forwardScatterBlurDensity);
 
     /// Step HPWater's GPU fluid height field. This is the OpenGL ping-pong
     /// equivalent of HPWater's compute wave equation texture path.
@@ -749,6 +750,7 @@ public:
     bool IsHPWaterCausticFilterLDSHaloEnabled() const { return m_HPWaterCausticFilterLDSHaloEnabled; }
     bool IsHPWaterCausticFilterR2DitherEnabled() const { return m_HPWaterCausticFilterR2DitherEnabled; }
     bool IsHPWaterCausticFilterMipAwareEnabled() const { return m_HPWaterCausticFilterMipAwareEnabled; }
+    bool IsHPWaterCausticFilterScatterDensityMipEnabled() const { return m_HPWaterCausticFilterScatterDensityMipEnabled; }
     bool IsHPWaterCausticFilterLuminanceFadeEnabled() const { return m_HPWaterCausticFilterLuminanceFadeEnabled; }
     bool BeginHPWaterCausticAtlas(uint32_t tileResolution);
     void BeginHPWaterCausticAtlasCascade(uint32_t cascadeIndex);
@@ -886,13 +888,15 @@ private:
                                      float stride,
                                      float radius,
                                      float depthSigma,
-                                     float luminanceWeight);
+                                     float luminanceWeight,
+                                     float forwardScatterBlurDensity);
     bool RunHPWaterCausticFilterComputePass(const std::shared_ptr<Framebuffer>& inputFBO,
                                             const std::shared_ptr<Framebuffer>& outputFBO,
                                             float stride,
                                             float radius,
                                             float depthSigma,
-                                            float luminanceWeight);
+                                            float luminanceWeight,
+                                            float forwardScatterBlurDensity);
     bool RunHPWaterCausticComputeIrradiance(float nearClip,
                                             float farClip,
                                             const glm::vec3& lightDir,
@@ -1088,6 +1092,7 @@ private:
     bool m_HPWaterCausticFilterLDSHaloEnabled = false;
     bool m_HPWaterCausticFilterR2DitherEnabled = false;
     bool m_HPWaterCausticFilterMipAwareEnabled = false;
+    bool m_HPWaterCausticFilterScatterDensityMipEnabled = false;
     bool m_HPWaterCausticFilterLuminanceFadeEnabled = false;
     uint32_t m_HPWaterCausticComputeIrradianceTexture = 0;
     uint32_t m_HPWaterCausticComputeIrradianceChannelTextures[3] = {};

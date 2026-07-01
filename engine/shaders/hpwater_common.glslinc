@@ -7,6 +7,7 @@
 const float HPWATER_PI = 3.14159265358979323846;
 const float HPWATER_GOLDEN_ANGLE = 2.39996323;
 const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 100.0;
+const float HPWATER_CAUSTIC_SCALING_FACTOR = 0.01;
 
 float HPWaterCalculateMipLevel(float depth,
                                float scalingFactor,
