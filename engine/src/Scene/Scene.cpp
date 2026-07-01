@@ -4497,6 +4497,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterFluidWaveEquationParityEnabled();
     m_RenderDiagnostics.HPWaterFluidSampleClampParityEnabled =
         m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
+    m_RenderDiagnostics.HPWaterFluidWorldNormalBlendParityEnabled =
+        hpWaterFluidEnabled && m_DeferredRenderer.IsHPWaterFluidDynamicsValid();
     m_RenderDiagnostics.HPWaterFluidHeightCaptureCacheReused =
         m_DeferredRenderer.WasHPWaterFluidHeightCaptureCacheReused();
     m_RenderDiagnostics.HPWaterFluidLayerFilteringParityEnabled =

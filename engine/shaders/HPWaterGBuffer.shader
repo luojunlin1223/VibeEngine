@@ -197,6 +197,12 @@ vec3 SampleFluidNormal(vec3 worldPos, out float centerHeight) {
     return normalize(vec3(dX, 1.0, dZ));
 }
 
+vec3 BlendHPWaterFluidWorldNormal(vec3 baseNormal, vec3 fluidNormal) {
+    vec2 xz = baseNormal.xz + fluidNormal.xz;
+    float y = baseNormal.y * fluidNormal.y;
+    return normalize(vec3(xz.x, y, xz.y));
+}
+
 void main() {
     vec3 N = normalize(v_Normal);
     float roughness = clamp(u_HPRoughness, 0.015, 0.75);
@@ -218,7 +224,7 @@ void main() {
     float fluidHeight = 0.0;
     if (u_HPFluidDynamicsEnabled == 1) {
         vec3 fluidNormal = SampleFluidNormal(v_FragPos, fluidHeight);
-        N = normalize(N + fluidNormal * 0.85);
+        N = BlendHPWaterFluidWorldNormal(N, fluidNormal);
     }
 
     float slope = clamp(1.0 - N.y, 0.0, 1.0);

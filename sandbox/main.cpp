@@ -8989,6 +8989,8 @@ private:
         out << "HPWaterFluidMovingObjectSourceCount: " << d.HPWaterFluidMovingObjectSourceCount << "\n";
         out << "HPWaterFluidWaveEquationParityEnabled: " << d.HPWaterFluidWaveEquationParityEnabled << "\n";
         out << "HPWaterFluidSampleClampParityEnabled: " << d.HPWaterFluidSampleClampParityEnabled << "\n";
+        out << "HPWaterFluidWorldNormalBlendParityEnabled: "
+            << d.HPWaterFluidWorldNormalBlendParityEnabled << "\n";
         out << "HPWaterFluidStartFrameBakeEnabled: " << d.HPWaterFluidStartFrameBakeEnabled << "\n";
         out << "HPWaterFluidHeightCaptureCacheReused: " << d.HPWaterFluidHeightCaptureCacheReused << "\n";
         out << "HPWaterFluidLayerFilteringParityEnabled: " << d.HPWaterFluidLayerFilteringParityEnabled << "\n";
@@ -9644,6 +9646,7 @@ private:
                  d.HPWaterFluidDeltaTimeDriven &&
                  d.HPWaterFluidDeltaTime > 0.0f &&
                  d.HPWaterFluidVertexDisplacementEnabled &&
+                 d.HPWaterFluidWorldNormalBlendParityEnabled &&
                  d.HPWaterFluidLayerFilteringParityEnabled &&
                  d.HPWaterFluidRenderQueueParityEnabled &&
                  d.HPWaterFluidWaterLayerCandidates > 0 &&

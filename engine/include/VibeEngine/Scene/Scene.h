@@ -520,6 +520,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterFluidMovingObjectSourceCount = 0;
     bool HPWaterFluidWaveEquationParityEnabled = false;
     bool HPWaterFluidSampleClampParityEnabled = false;
+    bool HPWaterFluidWorldNormalBlendParityEnabled = false;
     bool HPWaterFluidStartFrameBakeEnabled = false;
     bool HPWaterFluidHeightCaptureCacheReused = false;
     bool HPWaterFluidLayerFilteringParityEnabled = false;
