@@ -2675,6 +2675,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterCompositeConsumesSSRLightingBuffer = false;
         m_HPWaterVolumeCompositeFullResolutionEnabled = false;
         m_HPWaterRefractionNDCMarchEnabled = false;
+        m_HPWaterRefractionBoundaryFadeEnabled = false;
         m_HPWaterRefractionExponentialStepFactor = 0.0f;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
@@ -2999,6 +3000,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         refractionSampleCount > 0 &&
         refractionStrength > 0.0001f &&
         maxRefractionCrossDistance > 0.0001f;
+    m_HPWaterRefractionBoundaryFadeEnabled = m_HPWaterRefractionNDCMarchEnabled;
     m_HPWaterRefractionExponentialStepFactor = m_HPWaterRefractionNDCMarchEnabled
         ? HPWaterAdaptiveRefractionExpFactor(clampedMaxRefractionCrossDistance)
         : 0.0f;

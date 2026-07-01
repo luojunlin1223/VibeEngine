@@ -8214,6 +8214,7 @@ private:
             return false;
 
         if (!d.HPWaterRefractionNDCMarchEnabled ||
+            !d.HPWaterRefractionBoundaryFadeEnabled ||
             !d.HPWaterRefractionAdaptiveStepParityEnabled ||
             !d.HPWaterRefractionAboveSurfaceRejectEnabled ||
             d.HPWaterRefractionDataTexture == 0 ||
@@ -8889,6 +8890,8 @@ private:
         out << "HPWaterRefractionSampleCount: " << d.HPWaterRefractionSampleCount << "\n";
         out << "HPWaterRefractionJitterEnabled: " << d.HPWaterRefractionJitterEnabled << "\n";
         out << "HPWaterRefractionNDCMarchEnabled: " << d.HPWaterRefractionNDCMarchEnabled << "\n";
+        out << "HPWaterRefractionBoundaryFadeEnabled: "
+            << d.HPWaterRefractionBoundaryFadeEnabled << "\n";
         out << "HPWaterRefractionExponentialStepFactor: "
             << d.HPWaterRefractionExponentialStepFactor << "\n";
         out << "HPWaterRefractionAdaptiveStepParityEnabled: "
@@ -10228,6 +10231,7 @@ private:
                 !m_RenderDiagnosticsRequireRefraction ||
                 (d.HPWaterCompositeRan &&
                  d.HPWaterRefractionNDCMarchEnabled &&
+                 d.HPWaterRefractionBoundaryFadeEnabled &&
                  d.HPWaterRefractionAdaptiveStepParityEnabled &&
                  d.HPWaterRefractionDataTexture != 0 &&
                  d.HPWaterRefractionMetaTexture != 0 &&
@@ -10623,8 +10627,9 @@ private:
             d.HPWaterMaskWidth,
             d.HPWaterMaskHeight,
             d.HPWaterMaskTexture);
-        ImGui::Text("HPWater refraction: ndc=%d strength=%.3f dispersion=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
+        ImGui::Text("HPWater refraction: ndc=%d bound=%d strength=%.3f dispersion=%.3f maxCross=%.2f thickness=%.2f samples=%u jitter=%d",
             d.HPWaterRefractionNDCMarchEnabled ? 1 : 0,
+            d.HPWaterRefractionBoundaryFadeEnabled ? 1 : 0,
             d.HPWaterRefractionStrength,
             d.HPWaterWaterDispersionStrength,
             d.HPWaterMaxRefractionCrossDistance,

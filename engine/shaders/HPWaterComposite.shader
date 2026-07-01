@@ -318,6 +318,15 @@ float ScreenEdgeFade(vec2 uv) {
     return clamp(min(edge.x, edge.y) * 8.0, 0.0, 1.0);
 }
 
+float HPWaterRefractionBoundFade(vec2 positionNDC) {
+    const vec2 boundScale = vec2(6.0, 6.0);
+    float boundX = clamp(positionNDC.x * boundScale.x, 0.0, 1.0) *
+        clamp((1.0 - positionNDC.x) * boundScale.x, 0.0, 1.0);
+    float boundY = clamp(positionNDC.y * boundScale.y, 0.0, 1.0) *
+        clamp((1.0 - positionNDC.y) * boundScale.y, 0.0, 1.0);
+    return clamp(pow(boundX * boundY, 0.5), 0.0, 1.0);
+}
+
 float InterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
     const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
     vec2 scrolled = pixelPos + vec2(float(frameIndex & 63)) * vec2(5.588238, 5.588238);
@@ -1369,8 +1378,9 @@ vec2 FindRefractedUV(vec2 uv,
         return uv;
     }
 
-    vec2 uvOffset = clamp(hitNDC.xy, vec2(0.001), vec2(0.999)) - uv;
-    float edgeFade = pow(ScreenEdgeFade(uv), 0.5);
+    vec2 hitUV = clamp(hitNDC.xy, vec2(0.001), vec2(0.999));
+    vec2 uvOffset = hitUV - uv;
+    float edgeFade = HPWaterRefractionBoundFade(hitUV);
     return clamp(uv + uvOffset * edgeFade, vec2(0.001), vec2(0.999));
 }
 
