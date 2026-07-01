@@ -296,6 +296,11 @@ struct RenderDiagnostics {
     uint32_t HPWaterTiledLightListGPUHeaderBytes = 0;
     uint32_t HPWaterTiledLightListGPUReferenceBytes = 0;
     uint32_t HPWaterTiledLightListGPUReferenceCount = 0;
+    bool HPWaterTiledLightListShaderConsumerEnabled = false;
+    uint32_t HPWaterTiledLightListTileMinX = 0;
+    uint32_t HPWaterTiledLightListTileMinY = 0;
+    uint32_t HPWaterTiledLightListTileRectWidth = 0;
+    uint32_t HPWaterTiledLightListTileRectHeight = 0;
     uint32_t HPWaterVolumePointLightCount = 0;
     uint32_t HPWaterVolumeSpotLightCount = 0;
     uint32_t HPWaterVolumeAreaLightCount = 0;

@@ -1262,6 +1262,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterSSRResolveDiagnosticsValid();
     m_RenderDiagnostics.HPWaterCompositeConsumesSSRLightingBuffer =
         m_DeferredRenderer.DoesHPWaterCompositeConsumeSSRLightingBuffer();
+    m_RenderDiagnostics.HPWaterTiledLightListShaderConsumerEnabled =
+        m_DeferredRenderer.IsHPWaterTiledLightListShaderConsumerEnabled();
     m_RenderDiagnostics.HPWaterSSRLightingBufferTexture = m_DeferredRenderer.GetHPWaterSSRLightingTexture();
     m_RenderDiagnostics.HPWaterSSRMotionVectorTexture = m_DeferredRenderer.GetHPWaterSSRMotionVectorTexture();
     m_RenderDiagnostics.HPWaterSSRResolveDiagnosticsTexture =
@@ -1835,6 +1837,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     }
 
     bool hpWaterTiledLightListEnabled = false;
+    m_DeferredRenderer.ResetHPWaterTiledLightListShaderConsumerState();
     uint32_t hpWaterTiledLightListTileSize = 16;
     uint32_t hpWaterTiledLightListGridWidth = (viewportWidth + hpWaterTiledLightListTileSize - 1u) /
                                               hpWaterTiledLightListTileSize;
@@ -1852,6 +1855,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     uint32_t hpWaterTiledLightListLightReferenceCount = 0;
     uint32_t hpWaterTiledLightListMaxReferencesPerTile = 0;
     uint32_t hpWaterTiledLightListReferenceChecksum = 0;
+    uint32_t hpWaterTiledLightListTileMinX = 0;
+    uint32_t hpWaterTiledLightListTileMinY = 0;
+    uint32_t hpWaterTiledLightListTileRectWidth = 0;
+    uint32_t hpWaterTiledLightListTileRectHeight = 0;
     std::vector<uint32_t> hpWaterTiledLightListTileHeaders;
     std::vector<uint32_t> hpWaterTiledLightListReferences;
     if (hpWaterLightSelectionBoundsValid && viewportWidth > 0 && viewportHeight > 0) {
@@ -1895,9 +1902,14 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                                                    hpWaterTiledLightListGridWidth - 1u);
                 const uint32_t maxTileY = std::min(static_cast<uint32_t>(maxScreenY) / hpWaterTiledLightListTileSize,
                                                    hpWaterTiledLightListGridHeight - 1u);
+                hpWaterTiledLightListTileMinX = minTileX;
+                hpWaterTiledLightListTileMinY = minTileY;
+                hpWaterTiledLightListTileRectWidth = maxTileX - minTileX + 1u;
+                hpWaterTiledLightListTileRectHeight = maxTileY - minTileY + 1u;
                 std::vector<uint32_t> tileLightOffsets;
                 std::vector<uint32_t> tileLightCounts;
-                const uint32_t waterTileCapacity = (maxTileX - minTileX + 1u) * (maxTileY - minTileY + 1u);
+                const uint32_t waterTileCapacity =
+                    hpWaterTiledLightListTileRectWidth * hpWaterTiledLightListTileRectHeight;
                 tileLightOffsets.reserve(waterTileCapacity);
                 tileLightCounts.reserve(waterTileCapacity);
                 hpWaterTiledLightListReferences.reserve(waterTileCapacity *
@@ -2039,10 +2051,18 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             }
         }
     }
-    const bool hpWaterTiledLightListGPUUploadEnabled =
-        hpWaterTiledLightListCompactBuildEnabled &&
+    const bool hpWaterTiledLightListGPUUploadAttempted =
         m_DeferredRenderer.UploadHPWaterTiledLightList(hpWaterTiledLightListTileHeaders,
-                                                       hpWaterTiledLightListReferences);
+                                                       hpWaterTiledLightListReferences,
+                                                       hpWaterTiledLightListTileSize,
+                                                       hpWaterTiledLightListGridWidth,
+                                                       hpWaterTiledLightListGridHeight,
+                                                       hpWaterTiledLightListTileMinX,
+                                                       hpWaterTiledLightListTileMinY,
+                                                       hpWaterTiledLightListTileRectWidth,
+                                                       hpWaterTiledLightListTileRectHeight);
+    const bool hpWaterTiledLightListGPUUploadEnabled =
+        hpWaterTiledLightListCompactBuildEnabled && hpWaterTiledLightListGPUUploadAttempted;
 
     auto& ps = m_PipelineSettings;
     auto colorToVec3 = [](const std::array<float, 3>& color) {
@@ -3442,6 +3462,16 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.GetHPWaterTiledLightListGPUReferenceBytes();
         m_RenderDiagnostics.HPWaterTiledLightListGPUReferenceCount =
             m_DeferredRenderer.GetHPWaterTiledLightListGPUReferenceCount();
+        m_RenderDiagnostics.HPWaterTiledLightListShaderConsumerEnabled =
+            m_DeferredRenderer.IsHPWaterTiledLightListShaderConsumerEnabled();
+        m_RenderDiagnostics.HPWaterTiledLightListTileMinX =
+            m_DeferredRenderer.GetHPWaterTiledLightListTileMinX();
+        m_RenderDiagnostics.HPWaterTiledLightListTileMinY =
+            m_DeferredRenderer.GetHPWaterTiledLightListTileMinY();
+        m_RenderDiagnostics.HPWaterTiledLightListTileRectWidth =
+            m_DeferredRenderer.GetHPWaterTiledLightListTileRectWidth();
+        m_RenderDiagnostics.HPWaterTiledLightListTileRectHeight =
+            m_DeferredRenderer.GetHPWaterTiledLightListTileRectHeight();
         const uint32_t hpWaterSkyTexture =
             ps.SkyTexture ? static_cast<uint32_t>(ps.SkyTexture->GetNativeTextureID()) : 0u;
         uint32_t hpWaterReflectionProbeTexture = 0;

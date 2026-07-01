@@ -24,6 +24,7 @@ static constexpr GLuint kHPWaterStencilTraceReflectionRay = 1u << 3u;
 static constexpr GLuint kHPWaterStencilWaterSurface = 1u << 5u;
 static constexpr GLuint kHPWaterStencilRef =
     kHPWaterStencilTraceReflectionRay | kHPWaterStencilWaterSurface;
+static constexpr GLuint kHPWaterTiledLightListBinding = 7u;
 
 static uint32_t CalculateMipCount(uint32_t width, uint32_t height) {
     uint32_t maxDim = std::max(width, height);
@@ -515,6 +516,14 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterTiledLightListGPUHeaderBytes = 0;
     m_HPWaterTiledLightListGPUReferenceBytes = 0;
     m_HPWaterTiledLightListGPUReferenceCount = 0;
+    m_HPWaterTiledLightListTileSize = 0;
+    m_HPWaterTiledLightListGridWidth = 0;
+    m_HPWaterTiledLightListGridHeight = 0;
+    m_HPWaterTiledLightListTileMinX = 0;
+    m_HPWaterTiledLightListTileMinY = 0;
+    m_HPWaterTiledLightListTileRectWidth = 0;
+    m_HPWaterTiledLightListTileRectHeight = 0;
+    m_HPWaterTiledLightListShaderConsumerEnabled = false;
     m_HPWaterCausticAtlasValid = false;
     m_HPWaterCausticAtlasConsumed = false;
     m_HPWaterCausticAtlasTileResolution = 0;
@@ -790,10 +799,25 @@ void DeferredRenderer::DestroyHPWaterTiledLightListBuffer() {
     m_HPWaterTiledLightListGPUHeaderBytes = 0;
     m_HPWaterTiledLightListGPUReferenceBytes = 0;
     m_HPWaterTiledLightListGPUReferenceCount = 0;
+    m_HPWaterTiledLightListTileSize = 0;
+    m_HPWaterTiledLightListGridWidth = 0;
+    m_HPWaterTiledLightListGridHeight = 0;
+    m_HPWaterTiledLightListTileMinX = 0;
+    m_HPWaterTiledLightListTileMinY = 0;
+    m_HPWaterTiledLightListTileRectWidth = 0;
+    m_HPWaterTiledLightListTileRectHeight = 0;
+    m_HPWaterTiledLightListShaderConsumerEnabled = false;
 }
 
 bool DeferredRenderer::UploadHPWaterTiledLightList(const std::vector<uint32_t>& tileHeaders,
-                                                   const std::vector<uint32_t>& lightReferences) {
+                                                   const std::vector<uint32_t>& lightReferences,
+                                                   uint32_t tileSize,
+                                                   uint32_t gridWidth,
+                                                   uint32_t gridHeight,
+                                                   uint32_t tileMinX,
+                                                   uint32_t tileMinY,
+                                                   uint32_t tileRectWidth,
+                                                   uint32_t tileRectHeight) {
     m_HPWaterTiledLightListGPUUploadValid = false;
     m_HPWaterTiledLightListGPUHeaderBytes =
         static_cast<uint32_t>(tileHeaders.size() * sizeof(uint32_t));
@@ -803,10 +827,24 @@ bool DeferredRenderer::UploadHPWaterTiledLightList(const std::vector<uint32_t>& 
         static_cast<uint32_t>(lightReferences.size());
     m_HPWaterTiledLightListGPUBufferBytes =
         m_HPWaterTiledLightListGPUHeaderBytes + m_HPWaterTiledLightListGPUReferenceBytes;
+    m_HPWaterTiledLightListTileSize = tileSize;
+    m_HPWaterTiledLightListGridWidth = gridWidth;
+    m_HPWaterTiledLightListGridHeight = gridHeight;
+    m_HPWaterTiledLightListTileMinX = tileMinX;
+    m_HPWaterTiledLightListTileMinY = tileMinY;
+    m_HPWaterTiledLightListTileRectWidth = tileRectWidth;
+    m_HPWaterTiledLightListTileRectHeight = tileRectHeight;
 
     if (tileHeaders.empty() || lightReferences.empty() ||
         (tileHeaders.size() % 2u) != 0u ||
-        m_HPWaterTiledLightListGPUBufferBytes == 0) {
+        m_HPWaterTiledLightListGPUBufferBytes == 0 ||
+        tileSize == 0 || gridWidth == 0 || gridHeight == 0 ||
+        tileRectWidth == 0 || tileRectHeight == 0 ||
+        tileMinX >= gridWidth || tileMinY >= gridHeight ||
+        tileMinX + tileRectWidth > gridWidth ||
+        tileMinY + tileRectHeight > gridHeight ||
+        tileHeaders.size() !=
+            static_cast<size_t>(tileRectWidth) * static_cast<size_t>(tileRectHeight) * 2u) {
         return false;
     }
 
@@ -831,7 +869,75 @@ bool DeferredRenderer::UploadHPWaterTiledLightList(const std::vector<uint32_t>& 
     m_HPWaterTiledLightListGPUUploadValid =
         m_HPWaterTiledLightListBuffer != 0 &&
         glGetError() == GL_NO_ERROR;
+    m_HPWaterTiledLightListShaderConsumerEnabled =
+        m_HPWaterTiledLightListShaderConsumerEnabled ||
+        m_HPWaterTiledLightListGPUUploadValid;
     return m_HPWaterTiledLightListGPUUploadValid;
+}
+
+bool DeferredRenderer::BindHPWaterTiledLightListForShader(const std::shared_ptr<Shader>& shader) {
+    if (!shader) {
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterTiledLightListBinding, 0);
+        return false;
+    }
+
+    const uint32_t headerCount = m_HPWaterTiledLightListGPUHeaderBytes /
+        static_cast<uint32_t>(2u * sizeof(uint32_t));
+    const uint32_t referenceOffset = m_HPWaterTiledLightListGPUHeaderBytes /
+        static_cast<uint32_t>(sizeof(uint32_t));
+    const bool tileRectValid =
+        m_HPWaterTiledLightListTileSize > 0 &&
+        m_HPWaterTiledLightListGridWidth > 0 &&
+        m_HPWaterTiledLightListGridHeight > 0 &&
+        m_HPWaterTiledLightListTileRectWidth > 0 &&
+        m_HPWaterTiledLightListTileRectHeight > 0 &&
+        m_HPWaterTiledLightListTileMinX < m_HPWaterTiledLightListGridWidth &&
+        m_HPWaterTiledLightListTileMinY < m_HPWaterTiledLightListGridHeight &&
+        m_HPWaterTiledLightListTileMinX + m_HPWaterTiledLightListTileRectWidth <=
+            m_HPWaterTiledLightListGridWidth &&
+        m_HPWaterTiledLightListTileMinY + m_HPWaterTiledLightListTileRectHeight <=
+            m_HPWaterTiledLightListGridHeight &&
+        headerCount == m_HPWaterTiledLightListTileRectWidth *
+            m_HPWaterTiledLightListTileRectHeight;
+    const bool enabled =
+        m_HPWaterTiledLightListGPUUploadValid &&
+        m_HPWaterTiledLightListBuffer != 0 &&
+        m_HPWaterTiledLightListGPUReferenceCount > 0 &&
+        m_HPWaterTiledLightListGPUBufferBytes > 0 &&
+        tileRectValid;
+
+    shader->SetInt("u_HPWaterTiledLightListEnabled", enabled ? 1 : 0);
+    shader->SetInt("u_HPWaterTiledLightListTileSize",
+                   static_cast<int>(m_HPWaterTiledLightListTileSize));
+    shader->SetInt("u_HPWaterTiledLightListGridWidth",
+                   static_cast<int>(m_HPWaterTiledLightListGridWidth));
+    shader->SetInt("u_HPWaterTiledLightListGridHeight",
+                   static_cast<int>(m_HPWaterTiledLightListGridHeight));
+    shader->SetInt("u_HPWaterTiledLightListTileMinX",
+                   static_cast<int>(m_HPWaterTiledLightListTileMinX));
+    shader->SetInt("u_HPWaterTiledLightListTileMinY",
+                   static_cast<int>(m_HPWaterTiledLightListTileMinY));
+    shader->SetInt("u_HPWaterTiledLightListTileRectWidth",
+                   static_cast<int>(m_HPWaterTiledLightListTileRectWidth));
+    shader->SetInt("u_HPWaterTiledLightListTileRectHeight",
+                   static_cast<int>(m_HPWaterTiledLightListTileRectHeight));
+    shader->SetInt("u_HPWaterTiledLightListTileHeaderCount",
+                   static_cast<int>(headerCount));
+    shader->SetInt("u_HPWaterTiledLightListReferenceOffset",
+                   static_cast<int>(referenceOffset));
+    shader->SetInt("u_HPWaterTiledLightListReferenceCount",
+                   static_cast<int>(m_HPWaterTiledLightListGPUReferenceCount));
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                     kHPWaterTiledLightListBinding,
+                     enabled ? static_cast<GLuint>(m_HPWaterTiledLightListBuffer) : 0);
+    m_HPWaterTiledLightListShaderConsumerEnabled =
+        m_HPWaterTiledLightListShaderConsumerEnabled || enabled;
+    return enabled;
+}
+
+void DeferredRenderer::UnbindHPWaterTiledLightListForShader() {
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kHPWaterTiledLightListBinding, 0);
 }
 
 void DeferredRenderer::CreateHPWaterAreaLightLTCLUT() {
@@ -2696,9 +2802,11 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetInt("u_HPWaterSSRLightingEnabled",
         m_HPWaterSSRLightingValid ? 1 : 0);
 
+    BindHPWaterTiledLightListForShader(m_HPWaterCompositeShader);
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
+    UnbindHPWaterTiledLightListForShader();
 
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
@@ -2968,9 +3076,11 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
                                         shadowCascadeSplits[static_cast<size_t>(i)]);
     }
 
+    BindHPWaterTiledLightListForShader(m_HPWaterVolumeShader);
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
+    UnbindHPWaterTiledLightListForShader();
 
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);

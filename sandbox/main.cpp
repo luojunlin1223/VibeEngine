@@ -8083,6 +8083,13 @@ private:
             << d.HPWaterTiledLightListGPUReferenceBytes << "\n";
         out << "HPWaterTiledLightListGPUReferenceCount: "
             << d.HPWaterTiledLightListGPUReferenceCount << "\n";
+        out << "HPWaterTiledLightListShaderConsumerEnabled: "
+            << d.HPWaterTiledLightListShaderConsumerEnabled << "\n";
+        out << "HPWaterTiledLightListTileRect: "
+            << d.HPWaterTiledLightListTileMinX << ","
+            << d.HPWaterTiledLightListTileMinY << " "
+            << d.HPWaterTiledLightListTileRectWidth << "x"
+            << d.HPWaterTiledLightListTileRectHeight << "\n";
         out << "HPWaterVolumePointLightCount: " << d.HPWaterVolumePointLightCount << "\n";
         out << "HPWaterVolumeSpotLightCount: " << d.HPWaterVolumeSpotLightCount << "\n";
         out << "HPWaterVolumeAreaLightCount: " << d.HPWaterVolumeAreaLightCount << "\n";
@@ -9019,6 +9026,17 @@ private:
                      d.HPWaterTiledLightListGPUHeaderBytes + d.HPWaterTiledLightListGPUReferenceBytes &&
                  d.HPWaterTiledLightListGPUReferenceCount ==
                      d.HPWaterTiledLightListLightReferenceCount &&
+                 d.HPWaterTiledLightListShaderConsumerEnabled &&
+                 d.HPWaterTiledLightListTileRectWidth > 0 &&
+                 d.HPWaterTiledLightListTileRectHeight > 0 &&
+                 d.HPWaterTiledLightListTileRectWidth * d.HPWaterTiledLightListTileRectHeight ==
+                     d.HPWaterTiledLightListTileHeaderCount &&
+                 d.HPWaterTiledLightListTileMinX < d.HPWaterTiledLightListGridWidth &&
+                 d.HPWaterTiledLightListTileMinY < d.HPWaterTiledLightListGridHeight &&
+                 d.HPWaterTiledLightListTileMinX + d.HPWaterTiledLightListTileRectWidth <=
+                     d.HPWaterTiledLightListGridWidth &&
+                 d.HPWaterTiledLightListTileMinY + d.HPWaterTiledLightListTileRectHeight <=
+                     d.HPWaterTiledLightListGridHeight &&
                  d.HPWaterVolumePunctualLightLoopEnabled &&
                  d.HPWaterVolumePointLightCount > 0 &&
                  d.HPWaterVolumeAreaLightLoopEnabled &&

@@ -92,6 +92,17 @@ uniform float u_AreaLightIntensities[4];
 uniform float u_AreaLightRanges[4];
 uniform float u_AreaLightWidths[4];
 uniform float u_AreaLightHeights[4];
+uniform int u_HPWaterTiledLightListEnabled;
+uniform int u_HPWaterTiledLightListTileSize;
+uniform int u_HPWaterTiledLightListGridWidth;
+uniform int u_HPWaterTiledLightListGridHeight;
+uniform int u_HPWaterTiledLightListTileMinX;
+uniform int u_HPWaterTiledLightListTileMinY;
+uniform int u_HPWaterTiledLightListTileRectWidth;
+uniform int u_HPWaterTiledLightListTileRectHeight;
+uniform int u_HPWaterTiledLightListTileHeaderCount;
+uniform int u_HPWaterTiledLightListReferenceOffset;
+uniform int u_HPWaterTiledLightListReferenceCount;
 uniform vec3 u_CameraPosition;
 uniform mat4 u_InverseViewProjection;
 uniform vec4 u_HPWaterVolumeResolution; // xy = low-res size, zw = 1 / low-res size
@@ -99,6 +110,13 @@ uniform vec4 u_HPWaterVolumeResolution; // xy = low-res size, zw = 1 / low-res s
 #include "shadows.glslinc"
 
 const float PI = 3.14159265358979323846;
+const int HPWATER_MAX_TILE_LIGHT_REFERENCES = 64;
+const uint HPWATER_LIGHT_REF_SPOT_FLAG = 0x00010000u;
+const uint HPWATER_LIGHT_REF_AREA_FLAG = 0x80000000u;
+
+layout(std430, binding = 7) readonly buffer HPWaterTiledLightListBuffer {
+    uint u_HPWaterTiledLightListData[];
+};
 const vec2 HPWATER_VOLUME_SHADOW_OFFSETS[16] = vec2[16](
     vec2(0.0, 0.0),
     vec2(0.5381, 0.1856),
@@ -420,6 +438,112 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 samplePos,
         emissionFacing * specIrradiance * bodyScale;
 }
 
+bool HPWaterFetchTiledLightList(vec2 pixelCoord, out int referenceOffset, out int referenceCount) {
+    referenceOffset = 0;
+    referenceCount = 0;
+    if (u_HPWaterTiledLightListEnabled != 1 ||
+        u_HPWaterTiledLightListTileSize <= 0 ||
+        u_HPWaterTiledLightListTileRectWidth <= 0 ||
+        u_HPWaterTiledLightListTileRectHeight <= 0 ||
+        u_HPWaterTiledLightListTileHeaderCount <= 0 ||
+        u_HPWaterTiledLightListReferenceCount <= 0) {
+        return false;
+    }
+
+    ivec2 tile = ivec2(floor(pixelCoord / float(u_HPWaterTiledLightListTileSize)));
+    ivec2 relTile = tile - ivec2(u_HPWaterTiledLightListTileMinX, u_HPWaterTiledLightListTileMinY);
+    if (relTile.x < 0 || relTile.y < 0 ||
+        relTile.x >= u_HPWaterTiledLightListTileRectWidth ||
+        relTile.y >= u_HPWaterTiledLightListTileRectHeight) {
+        return false;
+    }
+
+    int headerIndex = relTile.y * u_HPWaterTiledLightListTileRectWidth + relTile.x;
+    if (headerIndex < 0 || headerIndex >= u_HPWaterTiledLightListTileHeaderCount) {
+        return false;
+    }
+
+    int headerBase = headerIndex * 2;
+    referenceOffset = int(u_HPWaterTiledLightListData[headerBase]);
+    referenceCount = int(u_HPWaterTiledLightListData[headerBase + 1]);
+    return referenceOffset >= 0 && referenceCount > 0 &&
+        referenceOffset < u_HPWaterTiledLightListReferenceCount;
+}
+
+uint HPWaterReadTiledLightReference(int referenceIndex) {
+    return u_HPWaterTiledLightListData[u_HPWaterTiledLightListReferenceOffset + referenceIndex];
+}
+
+int HPWaterDecodeLightReferenceIndex(uint referenceValue) {
+    return int(referenceValue & 0x0000ffffu);
+}
+
+vec3 ComputeHPWaterPointLightScatter(int i,
+                                     vec3 samplePos,
+                                     vec3 sampleToCamera,
+                                     vec3 scatteringAlbedo) {
+    vec3 lightVector = u_PointLightPositions[i] - samplePos;
+    float lightDistance = length(lightVector);
+    float lightRange = max(u_PointLightRanges[i], 0.001);
+    if (lightDistance <= 0.0001 || lightDistance >= lightRange)
+        return vec3(0.0);
+
+    vec3 Lp = lightVector / lightDistance;
+    float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange);
+    float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
+    vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
+    vec3 radiance = u_PointLightColors[i] *
+        max(u_PointLightIntensities[i], 0.0) * attenuation;
+    return radiance * phase * 2.2;
+}
+
+vec3 ComputeHPWaterSpotLightScatter(int i,
+                                    vec3 samplePos,
+                                    vec3 sampleToCamera,
+                                    vec3 scatteringAlbedo) {
+    vec3 lightVector = u_SpotLightPositions[i] - samplePos;
+    float lightDistance = length(lightVector);
+    float lightRange = max(u_SpotLightRanges[i], 0.001);
+    if (lightDistance <= 0.0001 || lightDistance >= lightRange)
+        return vec3(0.0);
+
+    vec3 Lp = lightVector / lightDistance;
+    vec3 spotForward = SafeNormalize(-u_SpotLightDirections[i], vec3(0.0, -1.0, 0.0));
+    float theta = dot(Lp, spotForward);
+    float epsilon = max(u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i], 0.001);
+    float spotFactor = clamp((theta - u_SpotLightOuterCos[i]) / epsilon, 0.0, 1.0);
+    spotFactor *= spotFactor;
+    if (spotFactor <= 0.0001)
+        return vec3(0.0);
+
+    float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange) * spotFactor;
+    float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
+    vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
+    vec3 radiance = u_SpotLightColors[i] *
+        max(u_SpotLightIntensities[i], 0.0) * attenuation;
+    return radiance * phase * 2.2;
+}
+
+vec3 ComputeHPWaterAreaLightScatter(int i,
+                                    vec3 samplePos,
+                                    vec3 sampleToCamera,
+                                    vec3 N,
+                                    float roughness,
+                                    vec3 scatteringAlbedo) {
+    vec3 Lp = vec3(0.0, 1.0, 0.0);
+    vec3 radiance = ComputeHPWaterAreaLightRadiance(samplePos,
+                                                    N,
+                                                    sampleToCamera,
+                                                    roughness,
+                                                    i,
+                                                    Lp);
+    if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001)
+        return vec3(0.0);
+
+    float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
+    return radiance * HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo) * 2.2;
+}
+
 vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
                                           vec3 sampleToCamera,
                                           vec3 N,
@@ -428,70 +552,75 @@ vec3 ComputeHPWaterVolumePunctualLighting(vec3 samplePos,
                                           float normalizedThickness) {
     vec3 punctual = vec3(0.0);
     int pointCount = clamp(u_NumPointLights, 0, 8);
-    for (int i = 0; i < 8; ++i) {
-        if (i >= pointCount)
-            break;
-
-        vec3 lightVector = u_PointLightPositions[i] - samplePos;
-        float lightDistance = length(lightVector);
-        float lightRange = max(u_PointLightRanges[i], 0.001);
-        if (lightDistance <= 0.0001 || lightDistance >= lightRange)
-            continue;
-
-        vec3 Lp = lightVector / lightDistance;
-        float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange);
-        float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
-        vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
-        vec3 radiance = u_PointLightColors[i] *
-            max(u_PointLightIntensities[i], 0.0) * attenuation;
-        punctual += radiance * phase * 2.2;
-    }
-
     int spotCount = clamp(u_NumSpotLights, 0, 4);
-    for (int i = 0; i < 4; ++i) {
-        if (i >= spotCount)
-            break;
-
-        vec3 lightVector = u_SpotLightPositions[i] - samplePos;
-        float lightDistance = length(lightVector);
-        float lightRange = max(u_SpotLightRanges[i], 0.001);
-        if (lightDistance <= 0.0001 || lightDistance >= lightRange)
-            continue;
-
-        vec3 Lp = lightVector / lightDistance;
-        vec3 spotForward = SafeNormalize(-u_SpotLightDirections[i], vec3(0.0, -1.0, 0.0));
-        float theta = dot(Lp, spotForward);
-        float epsilon = max(u_SpotLightInnerCos[i] - u_SpotLightOuterCos[i], 0.001);
-        float spotFactor = clamp((theta - u_SpotLightOuterCos[i]) / epsilon, 0.0, 1.0);
-        spotFactor *= spotFactor;
-        if (spotFactor <= 0.0001)
-            continue;
-
-        float attenuation = HPWaterRangeAttenuation(lightDistance, lightRange) * spotFactor;
-        float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
-        vec3 phase = HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo);
-        vec3 radiance = u_SpotLightColors[i] *
-            max(u_SpotLightIntensities[i], 0.0) * attenuation;
-        punctual += radiance * phase * 2.2;
-    }
-
     int areaCount = clamp(u_NumAreaLights, 0, 4);
-    for (int i = 0; i < 4; ++i) {
-        if (i >= areaCount)
-            break;
+    vec2 fullPixel = ResolveHPWaterFullResUV() * vec2(max(textureSize(u_HPWaterDepth, 0), ivec2(1)));
+    int tiledReferenceOffset = 0;
+    int tiledReferenceCount = 0;
+    bool usedTiledLightList = HPWaterFetchTiledLightList(fullPixel,
+                                                         tiledReferenceOffset,
+                                                         tiledReferenceCount);
+    if (usedTiledLightList) {
+        int clampedReferenceCount =
+            min(tiledReferenceCount,
+                u_HPWaterTiledLightListReferenceCount - tiledReferenceOffset);
+        for (int refIt = 0; refIt < HPWATER_MAX_TILE_LIGHT_REFERENCES; ++refIt) {
+            if (refIt >= clampedReferenceCount) {
+                break;
+            }
 
-        vec3 Lp = vec3(0.0, 1.0, 0.0);
-        vec3 radiance = ComputeHPWaterAreaLightRadiance(samplePos,
-                                                        N,
+            uint referenceValue = HPWaterReadTiledLightReference(tiledReferenceOffset + refIt);
+            int lightIndex = HPWaterDecodeLightReferenceIndex(referenceValue);
+            if ((referenceValue & HPWATER_LIGHT_REF_AREA_FLAG) != 0u) {
+                if (lightIndex < areaCount) {
+                    punctual += ComputeHPWaterAreaLightScatter(lightIndex,
+                                                               samplePos,
+                                                               sampleToCamera,
+                                                               N,
+                                                               roughness,
+                                                               scatteringAlbedo);
+                }
+            } else if ((referenceValue & HPWATER_LIGHT_REF_SPOT_FLAG) != 0u) {
+                if (lightIndex < spotCount) {
+                    punctual += ComputeHPWaterSpotLightScatter(lightIndex,
+                                                               samplePos,
+                                                               sampleToCamera,
+                                                               scatteringAlbedo);
+                }
+            } else if (lightIndex < pointCount) {
+                punctual += ComputeHPWaterPointLightScatter(lightIndex,
+                                                            samplePos,
+                                                            sampleToCamera,
+                                                            scatteringAlbedo);
+            }
+        }
+    } else {
+        for (int i = 0; i < 8; ++i) {
+            if (i >= pointCount)
+                break;
+            punctual += ComputeHPWaterPointLightScatter(i,
+                                                        samplePos,
                                                         sampleToCamera,
-                                                        roughness,
-                                                        i,
-                                                        Lp);
-        if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001)
-            continue;
-
-        float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
-        punctual += radiance * HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo) * 2.2;
+                                                        scatteringAlbedo);
+        }
+        for (int i = 0; i < 4; ++i) {
+            if (i >= spotCount)
+                break;
+            punctual += ComputeHPWaterSpotLightScatter(i,
+                                                       samplePos,
+                                                       sampleToCamera,
+                                                       scatteringAlbedo);
+        }
+        for (int i = 0; i < 4; ++i) {
+            if (i >= areaCount)
+                break;
+            punctual += ComputeHPWaterAreaLightScatter(i,
+                                                       samplePos,
+                                                       sampleToCamera,
+                                                       N,
+                                                       roughness,
+                                                       scatteringAlbedo);
+        }
     }
 
     return punctual * (0.55 + 0.45 * normalizedThickness);
@@ -505,22 +634,47 @@ vec3 ComputeHPWaterVolumeAreaLighting(vec3 samplePos,
                                       float normalizedThickness) {
     vec3 areaScatter = vec3(0.0);
     int areaCount = clamp(u_NumAreaLights, 0, 4);
-    for (int i = 0; i < 4; ++i) {
-        if (i >= areaCount)
-            break;
+    vec2 fullPixel = ResolveHPWaterFullResUV() * vec2(max(textureSize(u_HPWaterDepth, 0), ivec2(1)));
+    int tiledReferenceOffset = 0;
+    int tiledReferenceCount = 0;
+    bool usedTiledLightList = HPWaterFetchTiledLightList(fullPixel,
+                                                         tiledReferenceOffset,
+                                                         tiledReferenceCount);
+    if (usedTiledLightList) {
+        int clampedReferenceCount =
+            min(tiledReferenceCount,
+                u_HPWaterTiledLightListReferenceCount - tiledReferenceOffset);
+        for (int refIt = 0; refIt < HPWATER_MAX_TILE_LIGHT_REFERENCES; ++refIt) {
+            if (refIt >= clampedReferenceCount) {
+                break;
+            }
 
-        vec3 Lp = vec3(0.0, 1.0, 0.0);
-        vec3 radiance = ComputeHPWaterAreaLightRadiance(samplePos,
-                                                        N,
-                                                        sampleToCamera,
-                                                        roughness,
-                                                        i,
-                                                        Lp);
-        if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001)
-            continue;
+            uint referenceValue = HPWaterReadTiledLightReference(tiledReferenceOffset + refIt);
+            if ((referenceValue & HPWATER_LIGHT_REF_AREA_FLAG) == 0u) {
+                continue;
+            }
 
-        float cosTheta = clamp(dot(sampleToCamera, Lp), -1.0, 1.0);
-        areaScatter += radiance * HPWaterEffectiveScatterPhase(cosTheta, scatteringAlbedo) * 2.2;
+            int lightIndex = HPWaterDecodeLightReferenceIndex(referenceValue);
+            if (lightIndex < areaCount) {
+                areaScatter += ComputeHPWaterAreaLightScatter(lightIndex,
+                                                              samplePos,
+                                                              sampleToCamera,
+                                                              N,
+                                                              roughness,
+                                                              scatteringAlbedo);
+            }
+        }
+    } else {
+        for (int i = 0; i < 4; ++i) {
+            if (i >= areaCount)
+                break;
+            areaScatter += ComputeHPWaterAreaLightScatter(i,
+                                                          samplePos,
+                                                          sampleToCamera,
+                                                          N,
+                                                          roughness,
+                                                          scatteringAlbedo);
+        }
     }
 
     return areaScatter * (0.55 + 0.45 * normalizedThickness);
