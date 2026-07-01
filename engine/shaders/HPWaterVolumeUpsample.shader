@@ -1,7 +1,8 @@
 // VibeEngine ShaderLab - HPWater full-resolution volume upsample
 // Resolves filtered low-resolution volume color/transmittance/depth into
-// full-resolution textures with HPWater-style 2x2 gather reconstruction:
-// bilinear weights multiplied by reciprocal low/full-depth difference.
+// full-resolution textures with HPWater-style 2x2 gather reconstruction.
+// Neighbor water markers steer the depth-aware weighting like HPWater's
+// deferred volume upsample path near refractive water boundaries.
 
 Shader "VibeEngine/HPWaterVolumeUpsample" {
     Properties {
@@ -61,6 +62,7 @@ struct VolumeTap {
     vec3 transmittance;
     vec3 depth;
     float valid;
+    float depthWeightEnabled;
 };
 
 VolumeTap LoadVolumeTap(ivec2 p) {
@@ -68,11 +70,21 @@ VolumeTap LoadVolumeTap(ivec2 p) {
     vec4 c = texelFetch(u_LowResVolumeColor, p, 0);
     vec4 t = texelFetch(u_LowResVolumeTransmittance, p, 0);
     vec4 d = texelFetch(u_LowResVolumeDepth, p, 0);
+    ivec2 lowSize = textureSize(u_LowResVolumeColor, 0);
+    vec2 tapUV = (vec2(p) + vec2(0.5)) / vec2(lowSize);
+    float waterMarker = texture(u_HPWaterRefractionMeta, tapUV).w;
+    float transLuma = dot(t.rgb, vec3(0.2126, 0.7152, 0.0722));
     tap.color = c.rgb;
     tap.transmittance = t.rgb;
     tap.depth = d.rgb;
     tap.valid = step(0.0001, d.a) * step(0.0001, c.a + t.a);
+    tap.depthWeightEnabled = max(1.0 - step(0.5, waterMarker), step(0.05, transLuma));
     return tap;
+}
+
+float VolumeDepthWeight(VolumeTap tap, float targetDepth) {
+    float depthWeight = 1.0 / (abs(tap.depth.r - targetDepth) + 0.000001);
+    return mix(1.0, depthWeight, tap.depthWeightEnabled);
 }
 
 void main() {
@@ -118,11 +130,10 @@ void main() {
     float wb01 = (1.0 - f.x) * f.y;
     float wb11 = f.x * f.y;
 
-    float epsilon = 0.000001;
-    float w00 = wb00 * tap00.valid / (abs(tap00.depth.r - targetDepth) + epsilon);
-    float w10 = wb10 * tap10.valid / (abs(tap10.depth.r - targetDepth) + epsilon);
-    float w01 = wb01 * tap01.valid / (abs(tap01.depth.r - targetDepth) + epsilon);
-    float w11 = wb11 * tap11.valid / (abs(tap11.depth.r - targetDepth) + epsilon);
+    float w00 = wb00 * tap00.valid * VolumeDepthWeight(tap00, targetDepth);
+    float w10 = wb10 * tap10.valid * VolumeDepthWeight(tap10, targetDepth);
+    float w01 = wb01 * tap01.valid * VolumeDepthWeight(tap01, targetDepth);
+    float w11 = wb11 * tap11.valid * VolumeDepthWeight(tap11, targetDepth);
     float totalWeight = w00 + w10 + w01 + w11;
 
     if (totalWeight <= 0.00001) {

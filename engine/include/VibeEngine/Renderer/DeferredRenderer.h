@@ -675,6 +675,9 @@ public:
     bool IsHPWaterVolumeUpsampleDepthAwareEnabled() const {
         return m_HPWaterVolumeUpsampleDepthAwareEnabled;
     }
+    bool IsHPWaterVolumeUpsampleWaterMarkerAwareEnabled() const {
+        return m_HPWaterVolumeUpsampleWaterMarkerAwareEnabled;
+    }
     bool IsHPWaterVolumeCompositeFullResolutionEnabled() const {
         return m_HPWaterVolumeCompositeFullResolutionEnabled;
     }
@@ -1021,6 +1024,7 @@ private:
     bool m_HPWaterVolumeUpsampledValid = false;
     bool m_HPWaterVolumeUpsampleGatherParityEnabled = false;
     bool m_HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    bool m_HPWaterVolumeUpsampleWaterMarkerAwareEnabled = false;
     bool m_HPWaterVolumeCompositeFullResolutionEnabled = false;
     uint32_t m_HPWaterVolumeFilterIterations = 0;
     bool m_HPWaterVolumeTemporalNeighborhoodClampEnabled = false;

@@ -8592,6 +8592,11 @@ private:
             d.HPWaterVolumeUpsampledWidth == 0 || d.HPWaterVolumeUpsampledHeight == 0)
             return false;
 
+        if (!d.HPWaterVolumeUpsampleGatherParityEnabled ||
+            !d.HPWaterVolumeUpsampleDepthAwareEnabled ||
+            !d.HPWaterVolumeUpsampleWaterMarkerAwareEnabled)
+            return false;
+
         if (d.HPWaterVolumeColorTexture == 0 ||
             d.HPWaterVolumeDepthTexture == 0 ||
             d.HPWaterVolumeFilteredColorTexture == 0 ||
@@ -9549,6 +9554,8 @@ private:
             << d.HPWaterVolumeUpsampleGatherParityEnabled << "\n";
         out << "HPWaterVolumeUpsampleDepthAwareEnabled: "
             << d.HPWaterVolumeUpsampleDepthAwareEnabled << "\n";
+        out << "HPWaterVolumeUpsampleWaterMarkerAwareEnabled: "
+            << d.HPWaterVolumeUpsampleWaterMarkerAwareEnabled << "\n";
         out << "HPWaterVolumeCompositeFullResolutionEnabled: "
             << d.HPWaterVolumeCompositeFullResolutionEnabled << "\n";
         out << "HPWaterCausticRan: " << d.HPWaterCausticRan << "\n";
@@ -10635,6 +10642,7 @@ private:
                  d.HPWaterVolumeUpsampledHeight > 0 &&
                  d.HPWaterVolumeUpsampleGatherParityEnabled &&
                  d.HPWaterVolumeUpsampleDepthAwareEnabled &&
+                 d.HPWaterVolumeUpsampleWaterMarkerAwareEnabled &&
                  d.HPWaterVolumeCompositeFullResolutionEnabled &&
                  HasHPWaterVolumeTextureEvidence());
             const bool strictReadinessRequired =

@@ -457,6 +457,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterVolumeUpsampledHeight = 0;
     bool HPWaterVolumeUpsampleGatherParityEnabled = false;
     bool HPWaterVolumeUpsampleDepthAwareEnabled = false;
+    bool HPWaterVolumeUpsampleWaterMarkerAwareEnabled = false;
     bool HPWaterVolumeCompositeFullResolutionEnabled = false;
     bool HPWaterCausticRan = false;
     bool HPWaterCausticValid = false;
