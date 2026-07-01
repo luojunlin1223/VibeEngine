@@ -8059,6 +8059,18 @@ private:
             << d.HPWaterTiledLightListAreaReferences << "\n";
         out << "HPWaterTiledLightListAverageLightsPerTile: "
             << d.HPWaterTiledLightListAverageLightsPerTile << "\n";
+        out << "HPWaterTiledLightListCompactBuildEnabled: "
+            << d.HPWaterTiledLightListCompactBuildEnabled << "\n";
+        out << "HPWaterTiledLightListOffsetTableValid: "
+            << d.HPWaterTiledLightListOffsetTableValid << "\n";
+        out << "HPWaterTiledLightListTileHeaderCount: "
+            << d.HPWaterTiledLightListTileHeaderCount << "\n";
+        out << "HPWaterTiledLightListLightReferenceCount: "
+            << d.HPWaterTiledLightListLightReferenceCount << "\n";
+        out << "HPWaterTiledLightListMaxReferencesPerTile: "
+            << d.HPWaterTiledLightListMaxReferencesPerTile << "\n";
+        out << "HPWaterTiledLightListReferenceChecksum: "
+            << d.HPWaterTiledLightListReferenceChecksum << "\n";
         out << "HPWaterVolumePointLightCount: " << d.HPWaterVolumePointLightCount << "\n";
         out << "HPWaterVolumeSpotLightCount: " << d.HPWaterVolumeSpotLightCount << "\n";
         out << "HPWaterVolumeAreaLightCount: " << d.HPWaterVolumeAreaLightCount << "\n";
@@ -8978,6 +8990,13 @@ private:
                  d.HPWaterTiledLightListPunctualReferences > 0 &&
                  d.HPWaterTiledLightListAreaReferences > 0 &&
                  d.HPWaterTiledLightListAverageLightsPerTile > 0.0f &&
+                 d.HPWaterTiledLightListCompactBuildEnabled &&
+                 d.HPWaterTiledLightListOffsetTableValid &&
+                 d.HPWaterTiledLightListTileHeaderCount == d.HPWaterTiledLightListWaterTileCount &&
+                 d.HPWaterTiledLightListLightReferenceCount ==
+                     d.HPWaterTiledLightListPunctualReferences + d.HPWaterTiledLightListAreaReferences &&
+                 d.HPWaterTiledLightListMaxReferencesPerTile == d.HPWaterTiledLightListMaxLightsPerTile &&
+                 d.HPWaterTiledLightListReferenceChecksum != 0 &&
                  d.HPWaterVolumePunctualLightLoopEnabled &&
                  d.HPWaterVolumePointLightCount > 0 &&
                  d.HPWaterVolumeAreaLightLoopEnabled &&
