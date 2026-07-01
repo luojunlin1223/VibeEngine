@@ -7924,6 +7924,10 @@ private:
 
         const bool hasSSRHit = diagnosticsProbe.Valid && diagnosticsProbe.MaxRGBA[1] > 0;
         const bool hasLightingContribution = lightingProbe.Valid && lightingProbe.NonBlackRatio > 0.0f;
+        const bool hasLightingDistribution =
+            lightingProbe.Valid &&
+            lightingProbe.LuminanceRange > 0.001f &&
+            lightingProbe.NonBlackRatio > 0.001f;
         const bool hasMotionVectorEvidence =
             motionVectorProbe.Valid && motionVectorProbe.NonBlackRatio > 0.0f;
         const bool hasResolveDiagnostics =
@@ -7931,8 +7935,27 @@ private:
             resolveDiagnosticsProbe.MaxRGBA[0] > 0.0f &&
             resolveDiagnosticsProbe.MaxRGBA[1] > 0.0f &&
             resolveDiagnosticsProbe.MaxRGBA[3] > 0.0f;
-        return hasSSRHit && hasLightingContribution && hasMotionVectorEvidence &&
-            hasResolveDiagnostics;
+        const float hierarchyAverageSum =
+            diagnosticsProbe.AverageRGBA[0] +
+            diagnosticsProbe.AverageRGBA[2] +
+            diagnosticsProbe.AverageRGBA[3];
+        const float environmentFallbackAverage =
+            diagnosticsProbe.AverageRGBA[2] + diagnosticsProbe.AverageRGBA[3];
+        const bool hasHierarchyDistribution =
+            diagnosticsProbe.Valid &&
+            hierarchyAverageSum > 0.001f &&
+            hierarchyAverageSum <= 1.05f &&
+            environmentFallbackAverage > 0.0001f &&
+            (diagnosticsProbe.MaxRGBA[0] > diagnosticsProbe.MinRGBA[0] ||
+                diagnosticsProbe.MaxRGBA[2] > diagnosticsProbe.MinRGBA[2] ||
+                diagnosticsProbe.MaxRGBA[3] > diagnosticsProbe.MinRGBA[3]);
+
+        return hasSSRHit &&
+            hasLightingContribution &&
+            hasLightingDistribution &&
+            hasMotionVectorEvidence &&
+            hasResolveDiagnostics &&
+            hasHierarchyDistribution;
     }
 
     bool HasHPWaterAreaLightTextureEvidence() {
@@ -9385,14 +9408,30 @@ private:
             const float probeWeight = ssrDiagnosticsProbe.AverageRGBA[2];
             const float skyWeight = ssrDiagnosticsProbe.AverageRGBA[3];
             const float hierarchyWeightSum = ssrWeight + probeWeight + skyWeight;
+            const float environmentFallbackWeight = probeWeight + skyWeight;
+            const float hierarchyWeightVariation =
+                ((static_cast<float>(ssrDiagnosticsProbe.MaxRGBA[0]) - static_cast<float>(ssrDiagnosticsProbe.MinRGBA[0])) +
+                    (static_cast<float>(ssrDiagnosticsProbe.MaxRGBA[2]) - static_cast<float>(ssrDiagnosticsProbe.MinRGBA[2])) +
+                    (static_cast<float>(ssrDiagnosticsProbe.MaxRGBA[3]) - static_cast<float>(ssrDiagnosticsProbe.MinRGBA[3]))) /
+                (3.0f * 255.0f);
+            const bool hierarchyDistribution =
+                ssrDiagnosticsProbe.Valid &&
+                hierarchyWeightSum > 0.001f &&
+                hierarchyWeightSum <= 1.05f &&
+                environmentFallbackWeight > 0.0001f &&
+                (ssrDiagnosticsProbe.MaxRGBA[0] > ssrDiagnosticsProbe.MinRGBA[0] ||
+                    ssrDiagnosticsProbe.MaxRGBA[2] > ssrDiagnosticsProbe.MinRGBA[2] ||
+                    ssrDiagnosticsProbe.MaxRGBA[3] > ssrDiagnosticsProbe.MinRGBA[3]);
             out << "HPWaterSSRDiagnosticsHierarchyChannelReadbackEnabled: " << ssrDiagnosticsProbe.Valid << "\n";
             out << "HPWaterSSRDiagnosticsAverageConfidence: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[0] << "\n";
             out << "HPWaterSSRDiagnosticsAverageHitMask: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[1] << "\n";
             out << "HPWaterSSRDiagnosticsAverageProbeHierarchyWeight: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[2] << "\n";
             out << "HPWaterSSRDiagnosticsAverageSkyHierarchyWeight: " << std::fixed << std::setprecision(4) << ssrDiagnosticsProbe.AverageRGBA[3] << "\n";
-            out << "HPWaterSSRDiagnosticsAverageEnvironmentFallbackWeight: " << std::fixed << std::setprecision(4) << (probeWeight + skyWeight) << "\n";
+            out << "HPWaterSSRDiagnosticsAverageEnvironmentFallbackWeight: " << std::fixed << std::setprecision(4) << environmentFallbackWeight << "\n";
             out << "HPWaterSSRDiagnosticsAverageHierarchyWeightSum: " << std::fixed << std::setprecision(4) << hierarchyWeightSum << "\n";
             out << "HPWaterSSRDiagnosticsAverageUnallocatedHierarchyWeight: " << std::fixed << std::setprecision(4) << std::max(0.0f, 1.0f - hierarchyWeightSum) << "\n";
+            out << "HPWaterSSRDiagnosticsHierarchyWeightVariation: " << std::fixed << std::setprecision(4) << hierarchyWeightVariation << "\n";
+            out << "HPWaterSSRDiagnosticsHierarchyDistribution: " << (hierarchyDistribution ? 1 : 0) << "\n";
             out << "HPWaterSSRDiagnosticsAnySSRHit: " << (ssrDiagnosticsProbe.MaxRGBA[1] > 0 ? 1 : 0) << "\n";
             out << "HPWaterSSRDiagnosticsAnyProbeFallback: " << (ssrDiagnosticsProbe.MaxRGBA[2] > 0 ? 1 : 0) << "\n";
             out << "HPWaterSSRDiagnosticsAnySkyFallback: " << (ssrDiagnosticsProbe.MaxRGBA[3] > 0 ? 1 : 0) << "\n";
@@ -9405,7 +9444,11 @@ private:
             out << "HPWaterSSRLightingAverageLuminance: " << std::fixed << std::setprecision(4) << ssrLightingProbe.AverageLuminance << "\n";
             out << "HPWaterSSRLightingAverageHierarchyAlpha: " << std::fixed << std::setprecision(4) << ssrLightingProbe.AverageAlpha << "\n";
             out << "HPWaterSSRLightingNonBlackRatio: " << std::fixed << std::setprecision(4) << ssrLightingProbe.NonBlackRatio << "\n";
+            out << "HPWaterSSRLightingLuminanceRange: " << std::fixed << std::setprecision(4) << ssrLightingProbe.LuminanceRange << "\n";
             out << "HPWaterSSRLightingAnyContribution: " << (ssrLightingProbe.NonBlackRatio > 0.0f ? 1 : 0) << "\n";
+            out << "HPWaterSSRLightingContributionDistribution: "
+                << (ssrLightingProbe.LuminanceRange > 0.001f &&
+                    ssrLightingProbe.NonBlackRatio > 0.001f ? 1 : 0) << "\n";
             SaveTextureBMP(dr.GetHPWaterSSRLightingTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_ssr_lighting.bmp");
         }
