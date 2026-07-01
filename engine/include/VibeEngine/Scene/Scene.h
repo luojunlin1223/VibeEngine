@@ -244,6 +244,7 @@ struct RenderDiagnostics {
     bool HPWaterSurfaceShadowSamplingEnabled = false;
     bool HPWaterShadowCascadeDitherEnabled = false;
     bool HPWaterSharedNoiseParityEnabled = false;
+    bool HPWaterMipLevelScatterDensityEnabled = false;
     bool HPWaterIndirectScatterIntegrationEnabled = false;
     bool HPWaterBSDFComponentWeightingEnabled = false;
     bool HPWaterPunctualBodyComponentWeightingEnabled = false;

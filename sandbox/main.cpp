@@ -9102,6 +9102,7 @@ private:
         out << "HPWaterSurfaceShadowSamplingEnabled: " << d.HPWaterSurfaceShadowSamplingEnabled << "\n";
         out << "HPWaterShadowCascadeDitherEnabled: " << d.HPWaterShadowCascadeDitherEnabled << "\n";
         out << "HPWaterSharedNoiseParityEnabled: " << d.HPWaterSharedNoiseParityEnabled << "\n";
+        out << "HPWaterMipLevelScatterDensityEnabled: " << d.HPWaterMipLevelScatterDensityEnabled << "\n";
         out << "HPWaterIndirectScatterIntegrationEnabled: " << d.HPWaterIndirectScatterIntegrationEnabled << "\n";
         out << "HPWaterBSDFComponentWeightingEnabled: " << d.HPWaterBSDFComponentWeightingEnabled << "\n";
         out << "HPWaterPunctualBodyComponentWeightingEnabled: "
@@ -10514,6 +10515,7 @@ private:
                  d.HPWaterLocalLightShadowDiagnosticsTexture != 0 &&
                  d.HPWaterVolumeAreaLightDiagnosticsTexture != 0 &&
                  d.HPWaterForwardScatterMipEnabled &&
+                 d.HPWaterMipLevelScatterDensityEnabled &&
                  d.HPWaterForwardScatterMipCount > 1 &&
                  d.HPWaterForwardScatterDiagnosticsTexture != 0 &&
                  HasHPWaterPunctualLightTextureEvidence() &&
@@ -10827,11 +10829,12 @@ private:
             d.HPWaterExitFresnelF0,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d sharedNoise=%d punctual=%d areaApprox=%d areaRect=%d areaLTC=%d/%u/%u ltcHDRP=%d ltcSample=%d ltcHDRPUV=%d ltcCosTheta=%d ltcMatrix=%d ltcPoly=%d ltcHorizonClip=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d areaLayerFilter=%d influenceSort=%d layerSkip=%u areaLayerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d volumeAreaRect=%d volumeAreaPoly=%d volumeHorizonClip=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d punctualBody=%d specOcc=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d sharedNoise=%d mipScatter=%d punctual=%d areaApprox=%d areaRect=%d areaLTC=%d/%u/%u ltcHDRP=%d ltcSample=%d ltcHDRPUV=%d ltcCosTheta=%d ltcMatrix=%d ltcPoly=%d ltcHorizonClip=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d areaLayerFilter=%d influenceSort=%d layerSkip=%u areaLayerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d volumeAreaRect=%d volumeAreaPoly=%d volumeHorizonClip=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d punctualBody=%d specOcc=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSurfaceShadowSamplingEnabled ? 1 : 0,
             d.HPWaterShadowCascadeDitherEnabled ? 1 : 0,
             d.HPWaterSharedNoiseParityEnabled ? 1 : 0,
+            d.HPWaterMipLevelScatterDensityEnabled ? 1 : 0,
             d.HPWaterPunctualLightLoopEnabled ? 1 : 0,
             d.HPWaterAreaLightApproximationEnabled ? 1 : 0,
             d.HPWaterAreaLightRectangleSamplingEnabled ? 1 : 0,
@@ -10948,8 +10951,9 @@ private:
             d.HPWaterSSRStepSize,
             d.HPWaterSSRThickness,
             d.HPWaterSSRMaxDistance);
-        ImGui::Text("HPWater forward scatter mips: enabled=%d count=%u",
+        ImGui::Text("HPWater forward scatter mips: enabled=%d scatterDensity=%d count=%u",
             d.HPWaterForwardScatterMipEnabled ? 1 : 0,
+            d.HPWaterMipLevelScatterDensityEnabled ? 1 : 0,
             d.HPWaterForwardScatterMipCount);
         ImGui::Text("HPWater volume raw: %ux%u color=%u trans=%u depth=%u",
             d.HPWaterVolumeWidth,

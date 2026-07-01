@@ -1380,6 +1380,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterShadowCascadeDitherEnabled();
     m_RenderDiagnostics.HPWaterSharedNoiseParityEnabled =
         m_DeferredRenderer.IsHPWaterSharedNoiseParityEnabled();
+    m_RenderDiagnostics.HPWaterMipLevelScatterDensityEnabled =
+        m_DeferredRenderer.IsHPWaterMipLevelScatterDensityEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowSoftness =
@@ -3964,6 +3966,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.IsHPWaterShadowCascadeDitherEnabled();
         m_RenderDiagnostics.HPWaterSharedNoiseParityEnabled =
             m_DeferredRenderer.IsHPWaterSharedNoiseParityEnabled();
+        m_RenderDiagnostics.HPWaterMipLevelScatterDensityEnabled =
+            m_DeferredRenderer.IsHPWaterMipLevelScatterDensityEnabled();
         m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
             m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
         m_RenderDiagnostics.HPWaterVolumeMaxCrossDistanceEnabled =
@@ -4414,6 +4418,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterShadowCascadeDitherEnabled();
     m_RenderDiagnostics.HPWaterSharedNoiseParityEnabled =
         m_DeferredRenderer.IsHPWaterSharedNoiseParityEnabled();
+    m_RenderDiagnostics.HPWaterMipLevelScatterDensityEnabled =
+        m_DeferredRenderer.IsHPWaterMipLevelScatterDensityEnabled();
     m_RenderDiagnostics.HPWaterVolumeShadowParamsEnabled =
         m_DeferredRenderer.IsHPWaterVolumeShadowParamsEnabled();
     m_RenderDiagnostics.HPWaterVolumeMaxCrossDistanceEnabled =

@@ -6,6 +6,21 @@
 
 const float HPWATER_PI = 3.14159265358979323846;
 const float HPWATER_GOLDEN_ANGLE = 2.39996323;
+const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 100.0;
+
+float HPWaterCalculateMipLevel(float depth,
+                               float scalingFactor,
+                               float scatterDensity,
+                               float forwardScatterBlurDensity,
+                               float maxBlurLevel) {
+    float effectiveScale =
+        scalingFactor +
+        clamp(scatterDensity, 0.0, 1.0) *
+            max(forwardScatterBlurDensity, 0.0) *
+            HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE;
+    float mipLevel = log2(1.0 + max(depth, 0.0) * max(effectiveScale, 0.0));
+    return clamp(mipLevel, 0.0, maxBlurLevel);
+}
 
 float HPWaterInterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
     pixelPos += vec2(float(frameIndex)) * 5.588238;

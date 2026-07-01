@@ -460,6 +460,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterFoamColorCompositeEnabled = false;
     m_HPWaterSharedNoiseParityEnabled = false;
+    m_HPWaterMipLevelScatterDensityEnabled = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeTemporalValid = false;
@@ -618,6 +619,7 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
     m_HPWaterSurfaceShadowSamplingEnabled = false;
     m_HPWaterShadowCascadeDitherEnabled = false;
     m_HPWaterSharedNoiseParityEnabled = false;
+    m_HPWaterMipLevelScatterDensityEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterSSRFBO() {
@@ -2687,6 +2689,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterSurfaceShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
         m_HPWaterSharedNoiseParityEnabled = false;
+        m_HPWaterMipLevelScatterDensityEnabled = false;
         m_HPWaterFoamColorCompositeEnabled = false;
         return false;
     }
@@ -3004,6 +3007,11 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterSurfaceShadowSamplingEnabled = surfaceShadowSamplingValid;
     m_HPWaterShadowCascadeDitherEnabled = shadowCascadeDitherEnabled;
     m_HPWaterSharedNoiseParityEnabled = true;
+    m_HPWaterMipLevelScatterDensityEnabled =
+        m_HPWaterSceneColorMipValid &&
+        m_HPWaterSceneColorMipCount > 1 &&
+        forwardScatterStrength > 0.0001f &&
+        forwardScatterBlurDensity > 0.0001f;
     m_HPWaterRefractionNDCMarchEnabled =
         m_HPWaterDepthPyramidValid &&
         refractionSampleCount > 0 &&

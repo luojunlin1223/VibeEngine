@@ -160,7 +160,6 @@ uniform mat4 u_InverseViewProjection;
 #include "hpwater_normal.glslinc"
 
 const float PI = 3.14159265358979323846;
-const float HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE = 10.0;
 const float HPWATER_FORWARD_SCALING_FACTOR = 1.0;
 const float HPWATER_WATER_DISPERSION_UV_CLAMP = 0.01;
 const int HPWATER_INDIRECT_SAMPLE_COUNT = 16;
@@ -1272,15 +1271,6 @@ vec3 SampleHPWaterDispersedSceneColor(vec2 baseUV, vec2 refractedUV, float lod) 
         dot(vec3(0.05, 0.05, 0.90), vec3(sampleLong.b, sampleMid.b, sampleShort.b)));
 }
 
-float CalculateHPWaterMipLevel(float depth, float scalingFactor, float scatterDensity, float maxBlurLevel) {
-    float effectiveScale =
-        scalingFactor +
-        scatterDensity * clamp(u_ForwardScatterBlurDensity, 0.0, 4.0) *
-            HPWATER_FORWARD_SCATTER_BLUR_DENSITY_SCALE;
-    float mipLevel = log2(1.0 + max(depth, 0.0) * max(effectiveScale, 0.0));
-    return clamp(mipLevel, 0.0, maxBlurLevel);
-}
-
 vec2 FindRefractedUV(vec2 uv,
                      vec3 waterWorldPos,
                      vec3 sceneWorldPos,
@@ -1758,10 +1748,11 @@ void main() {
     float hpWaterRayLength = min(rayLength, clamp(u_MaxRefractionCrossDistance, 0.1, 200.0));
     float forwardBlurLOD = max(
         2.0,
-        CalculateHPWaterMipLevel(
+        HPWaterCalculateMipLevel(
             hpWaterRayLength,
             HPWATER_FORWARD_SCALING_FACTOR,
             scatterDensity,
+            clamp(u_ForwardScatterBlurDensity, 0.0, 4.0),
             6.0));
     vec3 forwardBlur = SampleHPWaterDispersedSceneColor(v_UV, refractUV, forwardBlurLOD);
 
