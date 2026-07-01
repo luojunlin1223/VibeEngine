@@ -59,7 +59,7 @@ uniform float u_WaterCascadeSplits[4];
 
 #include "hpwater_normal.glslinc"
 
-const float kAtomicScale = 16384.0;
+const float kAtomicScale = 10000.0;
 
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;

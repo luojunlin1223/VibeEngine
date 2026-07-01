@@ -463,6 +463,8 @@ struct RenderDiagnostics {
     uint32_t HPWaterCausticComputeHeight = 0;
     bool HPWaterCausticComputeAtomicEnabled = false;
     uint32_t HPWaterCausticComputeAtomicTexture = 0;
+    float HPWaterCausticAtomicScale = 0.0f;
+    bool HPWaterCausticAtomicScaleParityEnabled = false;
     bool HPWaterCausticShadowDepthConsumed = false;
     bool HPWaterCausticRGBReceiverProjectionEnabled = false;
     bool HPWaterCausticExponentialLightStepsEnabled = false;

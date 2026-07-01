@@ -8933,6 +8933,8 @@ private:
         out << "HPWaterCausticComputeSize: " << d.HPWaterCausticComputeWidth << "x" << d.HPWaterCausticComputeHeight << "\n";
         out << "HPWaterCausticComputeAtomicEnabled: " << d.HPWaterCausticComputeAtomicEnabled << "\n";
         out << "HPWaterCausticComputeAtomicTexture: " << d.HPWaterCausticComputeAtomicTexture << "\n";
+        out << "HPWaterCausticAtomicScale: " << d.HPWaterCausticAtomicScale << "\n";
+        out << "HPWaterCausticAtomicScaleParityEnabled: " << d.HPWaterCausticAtomicScaleParityEnabled << "\n";
         out << "HPWaterCausticShadowDepthConsumed: " << d.HPWaterCausticShadowDepthConsumed << "\n";
         out << "HPWaterCausticRGBReceiverProjectionEnabled: " << d.HPWaterCausticRGBReceiverProjectionEnabled << "\n";
         out << "HPWaterCausticExponentialLightStepsEnabled: " << d.HPWaterCausticExponentialLightStepsEnabled << "\n";
@@ -9809,6 +9811,7 @@ private:
                  d.HPWaterCausticComputeHeight > 0 &&
                  d.HPWaterCausticComputeAtomicEnabled &&
                  d.HPWaterCausticComputeAtomicTexture != 0 &&
+                 d.HPWaterCausticAtomicScaleParityEnabled &&
                  d.HPWaterCausticShadowDepthConsumed &&
                  d.HPWaterCausticExponentialLightStepsEnabled &&
                  d.HPWaterCausticFrameDitherEnabled &&

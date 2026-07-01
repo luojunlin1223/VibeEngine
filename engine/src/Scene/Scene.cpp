@@ -1431,6 +1431,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticComputeAtomicEnabled();
     m_RenderDiagnostics.HPWaterCausticComputeAtomicTexture =
         m_DeferredRenderer.GetHPWaterCausticComputeAtomicTexture();
+    m_RenderDiagnostics.HPWaterCausticAtomicScale =
+        m_DeferredRenderer.GetHPWaterCausticAtomicScale();
+    m_RenderDiagnostics.HPWaterCausticAtomicScaleParityEnabled =
+        std::abs(m_RenderDiagnostics.HPWaterCausticAtomicScale - 10000.0f) <= 0.5f;
     m_RenderDiagnostics.HPWaterCausticShadowDepthConsumed =
         m_DeferredRenderer.IsHPWaterCausticShadowDepthConsumed();
     m_RenderDiagnostics.HPWaterCausticRGBReceiverProjectionEnabled =
@@ -4444,6 +4448,10 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.IsHPWaterCausticComputeAtomicEnabled();
     m_RenderDiagnostics.HPWaterCausticComputeAtomicTexture =
         m_DeferredRenderer.GetHPWaterCausticComputeAtomicTexture();
+    m_RenderDiagnostics.HPWaterCausticAtomicScale =
+        m_DeferredRenderer.GetHPWaterCausticAtomicScale();
+    m_RenderDiagnostics.HPWaterCausticAtomicScaleParityEnabled =
+        std::abs(m_RenderDiagnostics.HPWaterCausticAtomicScale - 10000.0f) <= 0.5f;
     m_RenderDiagnostics.HPWaterCausticShadowDepthConsumed =
         m_DeferredRenderer.IsHPWaterCausticShadowDepthConsumed();
     m_RenderDiagnostics.HPWaterCausticRGBReceiverProjectionEnabled =

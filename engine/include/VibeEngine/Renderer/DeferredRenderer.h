@@ -707,6 +707,7 @@ public:
     uint32_t GetHPWaterCausticComputeWidth() const { return m_HPWaterCausticComputeWidth; }
     uint32_t GetHPWaterCausticComputeHeight() const { return m_HPWaterCausticComputeHeight; }
     bool IsHPWaterCausticComputeAtomicEnabled() const { return m_HPWaterCausticComputeAtomicEnabled; }
+    float GetHPWaterCausticAtomicScale() const { return 10000.0f; }
     bool IsHPWaterCausticShadowDepthConsumed() const { return m_HPWaterCausticShadowDepthConsumed; }
     bool IsHPWaterCausticRGBReceiverProjectionEnabled() const { return m_HPWaterCausticRGBReceiverProjectionEnabled; }
     bool IsHPWaterCausticExponentialLightStepsEnabled() const { return m_HPWaterCausticExponentialLightStepsEnabled; }

@@ -4126,7 +4126,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     }
     m_HPWaterCausticResolveShader->SetInt("u_OutputWidth", static_cast<int>(m_HPWaterCausticComputeWidth));
     m_HPWaterCausticResolveShader->SetInt("u_OutputHeight", static_cast<int>(m_HPWaterCausticComputeHeight));
-    m_HPWaterCausticResolveShader->SetFloat("u_AtomicScale", 16384.0f);
+    m_HPWaterCausticResolveShader->SetFloat("u_AtomicScale", 10000.0f);
     m_HPWaterCausticResolveShader->SetInt("u_WriteRGBChannels", rgbDispersion ? 1 : 0);
     m_HPWaterCausticResolveShader->Dispatch(
         (m_HPWaterCausticComputeWidth + 15u) / 16u,
