@@ -8139,6 +8139,52 @@ private:
             spectrumProbe.RGBGradientPixelRatio > 0.001f;
     }
 
+    bool HasHPWaterGBufferPackingEvidence(bool requireFoam) {
+        if (!m_Scene)
+            return false;
+
+        const auto& d = m_Scene->GetRenderDiagnostics();
+        auto& dr = m_Scene->GetDeferredRenderer();
+        if (!dr.IsInitialized() ||
+            d.HPWaterGBufferDrawn == 0 ||
+            d.HPWaterGBufferAttachmentCount < 3 ||
+            d.HPWaterGBuffer0 == 0 ||
+            d.HPWaterGBuffer1 == 0 ||
+            d.HPWaterGBuffer2 == 0 ||
+            dr.GetWidth() == 0 ||
+            dr.GetHeight() == 0)
+            return false;
+
+        const TextureProbeSummary normalRoughnessProbe =
+            ProbeTexture(d.HPWaterGBuffer0, dr.GetWidth(), dr.GetHeight());
+        const TextureProbeSummary scatterThicknessProbe =
+            ProbeTexture(d.HPWaterGBuffer1, dr.GetWidth(), dr.GetHeight());
+        const TextureProbeSummary absorptionFoamProbe =
+            ProbeTexture(d.HPWaterGBuffer2, dr.GetWidth(), dr.GetHeight());
+
+        const bool hasNormalRoughness =
+            normalRoughnessProbe.Valid &&
+            normalRoughnessProbe.NonBlackRatio > 0.001f &&
+            normalRoughnessProbe.AverageAlpha > 0.001f;
+        const bool hasScatterThickness =
+            scatterThicknessProbe.Valid &&
+            scatterThicknessProbe.NonBlackRatio > 0.001f &&
+            scatterThicknessProbe.AverageAlpha > 0.001f;
+        const bool hasAbsorption =
+            absorptionFoamProbe.Valid &&
+            absorptionFoamProbe.NonBlackRatio > 0.001f &&
+            absorptionFoamProbe.AverageRGBA[0] + absorptionFoamProbe.AverageRGBA[1] + absorptionFoamProbe.AverageRGBA[2] > 0.001f;
+        const bool hasFoam =
+            absorptionFoamProbe.Valid &&
+            absorptionFoamProbe.AverageAlpha > 0.0001f &&
+            absorptionFoamProbe.MaxRGBA[3] > absorptionFoamProbe.MinRGBA[3];
+
+        return hasNormalRoughness &&
+            hasScatterThickness &&
+            hasAbsorption &&
+            (!requireFoam || hasFoam);
+    }
+
     bool HasHPWaterFinalCompositeEvidence() {
         if (!m_Scene)
             return false;
@@ -8628,6 +8674,8 @@ private:
         out << "HPWaterGBuffer1: " << d.HPWaterGBuffer1 << "\n";
         out << "HPWaterGBuffer2: " << d.HPWaterGBuffer2 << "\n";
         out << "HPWaterGBufferDepth: " << d.HPWaterGBufferDepth << "\n";
+        out << "HPWaterGBufferPackingEvidence: " << (HasHPWaterGBufferPackingEvidence(false) ? 1 : 0) << "\n";
+        out << "HPWaterGBufferFoamPackingEvidence: " << (HasHPWaterGBufferPackingEvidence(true) ? 1 : 0) << "\n";
         out << "HPWaterMaskRan: " << d.HPWaterMaskRan << "\n";
         out << "HPWaterMaskTexture: " << d.HPWaterMaskTexture << "\n";
         out << "HPWaterMaskSize: " << d.HPWaterMaskWidth << "x" << d.HPWaterMaskHeight << "\n";
@@ -9845,7 +9893,16 @@ private:
             for (const auto& target : hpWaterTargets) {
                 if (target.TextureID == 0)
                     continue;
-                writeProbe(target.Name, ProbeTexture(target.TextureID, dr.GetWidth(), dr.GetHeight()));
+                const TextureProbeSummary probe = ProbeTexture(target.TextureID, dr.GetWidth(), dr.GetHeight());
+                writeProbe(target.Name, probe);
+                if (std::string_view(target.Name) == "HPWaterAbsorptionFoam") {
+                    out << "HPWaterAbsorptionFoamAverageFoam: " << std::fixed << std::setprecision(6)
+                        << probe.AverageAlpha << "\n";
+                    out << "HPWaterAbsorptionFoamFoamRange: " << std::fixed << std::setprecision(6)
+                        << ((static_cast<float>(probe.MaxRGBA[3]) - static_cast<float>(probe.MinRGBA[3])) / 255.0f) << "\n";
+                    out << "HPWaterAbsorptionFoamHasFoamDistribution: "
+                        << (probe.AverageAlpha > 0.0001f && probe.MaxRGBA[3] > probe.MinRGBA[3] ? 1 : 0) << "\n";
+                }
                 SaveTextureBMP(target.TextureID, dr.GetWidth(), dr.GetHeight(),
                     std::filesystem::path(VE_PROJECT_ROOT) / target.FileName);
             }
@@ -9913,7 +9970,8 @@ private:
                  HasHPWaterRefractionTextureEvidence());
             const bool spectrumReady =
                 !m_RenderDiagnosticsRequireSpectrum ||
-                HasHPWaterSpectrumTextureEvidence();
+                (HasHPWaterSpectrumTextureEvidence() &&
+                 HasHPWaterGBufferPackingEvidence(true));
             const bool ssrReady =
                 !m_RenderDiagnosticsRequireSSR ||
                 (d.HPWaterSSRReflectionEnabled &&
