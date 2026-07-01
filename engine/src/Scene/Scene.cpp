@@ -4281,6 +4281,19 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterSSRHierarchyBlendEnabled;
     m_RenderDiagnostics.HPWaterRefractionNDCMarchEnabled =
         m_DeferredRenderer.IsHPWaterRefractionNDCMarchEnabled();
+    m_RenderDiagnostics.HPWaterRefractionExponentialStepFactor =
+        m_DeferredRenderer.GetHPWaterRefractionExponentialStepFactor();
+    {
+        const float clampedRefractionDistance =
+            std::clamp(m_RenderDiagnostics.HPWaterMaxRefractionCrossDistance, 0.1f, 200.0f);
+        const float normalizedRefractionDistance = std::max(clampedRefractionDistance, 0.01f) / 20.0f;
+        const float expectedRefractionExpFactor =
+            std::clamp(normalizedRefractionDistance * normalizedRefractionDistance, 1.01f, 32.0f);
+        m_RenderDiagnostics.HPWaterRefractionAdaptiveStepParityEnabled =
+            m_RenderDiagnostics.HPWaterRefractionNDCMarchEnabled &&
+            std::abs(m_RenderDiagnostics.HPWaterRefractionExponentialStepFactor -
+                     expectedRefractionExpFactor) < 0.0001f;
+    }
     m_RenderDiagnostics.HPWaterRefractionAboveSurfaceRejectEnabled =
         m_RenderDiagnostics.HPWaterRefractionNDCMarchEnabled &&
         m_RenderDiagnostics.HPWaterRefractionStrength > 0.0001f;

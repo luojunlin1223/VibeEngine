@@ -7989,6 +7989,7 @@ private:
             return false;
 
         if (!d.HPWaterRefractionNDCMarchEnabled ||
+            !d.HPWaterRefractionAdaptiveStepParityEnabled ||
             !d.HPWaterRefractionAboveSurfaceRejectEnabled ||
             d.HPWaterRefractionDataTexture == 0 ||
             d.HPWaterRefractionMetaTexture == 0)
@@ -8471,6 +8472,10 @@ private:
         out << "HPWaterRefractionSampleCount: " << d.HPWaterRefractionSampleCount << "\n";
         out << "HPWaterRefractionJitterEnabled: " << d.HPWaterRefractionJitterEnabled << "\n";
         out << "HPWaterRefractionNDCMarchEnabled: " << d.HPWaterRefractionNDCMarchEnabled << "\n";
+        out << "HPWaterRefractionExponentialStepFactor: "
+            << d.HPWaterRefractionExponentialStepFactor << "\n";
+        out << "HPWaterRefractionAdaptiveStepParityEnabled: "
+            << d.HPWaterRefractionAdaptiveStepParityEnabled << "\n";
         out << "HPWaterRefractionAboveSurfaceRejectEnabled: "
             << d.HPWaterRefractionAboveSurfaceRejectEnabled << "\n";
         out << "HPWaterEnvironmentReflectionIntensity: " << d.HPWaterEnvironmentReflectionIntensity << "\n";
@@ -9673,6 +9678,7 @@ private:
                 !m_RenderDiagnosticsRequireRefraction ||
                 (d.HPWaterCompositeRan &&
                  d.HPWaterRefractionNDCMarchEnabled &&
+                 d.HPWaterRefractionAdaptiveStepParityEnabled &&
                  d.HPWaterRefractionDataTexture != 0 &&
                  d.HPWaterRefractionMetaTexture != 0 &&
                  HasHPWaterRefractionTextureEvidence());

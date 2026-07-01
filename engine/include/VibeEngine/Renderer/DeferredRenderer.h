@@ -453,6 +453,9 @@ public:
     bool IsHPWaterStencilMarkedInSceneDepth() const { return m_HPWaterStencilMarkedInSceneDepth; }
     uint32_t GetHPWaterStencilRef() const { return m_HPWaterStencilRef; }
     bool IsHPWaterRefractionNDCMarchEnabled() const { return m_HPWaterRefractionNDCMarchEnabled; }
+    float GetHPWaterRefractionExponentialStepFactor() const {
+        return m_HPWaterRefractionExponentialStepFactor;
+    }
     uint32_t GetHPWaterSceneColorMipCount() const { return m_HPWaterSceneColorMipCount; }
     bool IsHPWaterSceneColorMipValid() const { return m_HPWaterSceneColorMipValid; }
     uint32_t GetHPWaterFGDLUTTexture() const { return m_HPWaterFGDLUTTexture; }
@@ -942,6 +945,7 @@ private:
     bool m_HPWaterSSRResolveDiagnosticsValid = false;
     bool m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     bool m_HPWaterRefractionNDCMarchEnabled = false;
+    float m_HPWaterRefractionExponentialStepFactor = 0.0f;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;
     bool m_HPWaterShadowCascadeDitherEnabled = false;
     uint32_t m_HPWaterSceneColorMipCount = 1;

@@ -206,6 +206,8 @@ struct RenderDiagnostics {
     uint32_t HPWaterRefractionSampleCount = 0;
     bool HPWaterRefractionJitterEnabled = false;
     bool HPWaterRefractionNDCMarchEnabled = false;
+    float HPWaterRefractionExponentialStepFactor = 0.0f;
+    bool HPWaterRefractionAdaptiveStepParityEnabled = false;
     bool HPWaterRefractionAboveSurfaceRejectEnabled = false;
     float HPWaterEnvironmentReflectionIntensity = 0.0f;
     float HPWaterIndirectLightStrength = 0.0f;

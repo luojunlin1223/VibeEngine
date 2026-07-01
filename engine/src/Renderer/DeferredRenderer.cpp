@@ -124,6 +124,11 @@ static glm::vec2 IntegrateBRDF(float nDotV, float roughness) {
 // ── Debug visualization fragment shader ─────────────────────────────
 // Displays individual G-buffer channels for debugging.
 
+static float HPWaterAdaptiveRefractionExpFactor(float distance) {
+    const float normalizedDistance = std::max(distance, 0.01f) / 20.0f;
+    return std::clamp(normalizedDistance * normalizedDistance, 1.01f, 32.0f);
+}
+
 static const char* s_DebugFragSrc = R"(
 #version 450 core
 layout(location = 0) in vec2 v_UV;
@@ -2659,6 +2664,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterCompositeConsumesSSRLightingBuffer = false;
         m_HPWaterVolumeCompositeFullResolutionEnabled = false;
         m_HPWaterRefractionNDCMarchEnabled = false;
+        m_HPWaterRefractionExponentialStepFactor = 0.0f;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
         return false;
@@ -2831,8 +2837,10 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterCompositeShader->SetFloat("u_RefractionStrength", std::clamp(refractionStrength, 0.0f, 2.0f));
     m_HPWaterCompositeShader->SetFloat("u_WaterDispersionStrength",
         std::clamp(waterDispersionStrength, 0.0f, 2.0f));
+    const float clampedMaxRefractionCrossDistance =
+        std::clamp(maxRefractionCrossDistance, 0.1f, 200.0f);
     m_HPWaterCompositeShader->SetFloat("u_MaxRefractionCrossDistance",
-        std::clamp(maxRefractionCrossDistance, 0.1f, 200.0f));
+        clampedMaxRefractionCrossDistance);
     m_HPWaterCompositeShader->SetFloat("u_RefractionThicknessOffset",
         std::clamp(refractionThicknessOffset, 0.01f, 8.0f));
     m_HPWaterCompositeShader->SetInt("u_RefractionSampleCount", std::clamp(refractionSampleCount, 4, 64));
@@ -2975,6 +2983,9 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         refractionSampleCount > 0 &&
         refractionStrength > 0.0001f &&
         maxRefractionCrossDistance > 0.0001f;
+    m_HPWaterRefractionExponentialStepFactor = m_HPWaterRefractionNDCMarchEnabled
+        ? HPWaterAdaptiveRefractionExpFactor(clampedMaxRefractionCrossDistance)
+        : 0.0f;
     return true;
 }
 

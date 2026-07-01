@@ -308,6 +308,10 @@ vec3 ComputeHPWaterRefractionDirection(vec3 waterWorldPos, vec3 sceneWorldPos, v
     return NormalizeOr(bent, waterCrossDir);
 }
 
+float HPWaterAdaptiveRefractionExpFactor(float distance) {
+    return clamp(pow(max(distance, 0.01) / 20.0, 2.0), 1.01, 32.0);
+}
+
 float ScreenEdgeFade(vec2 uv) {
     vec2 edge = min(uv, vec2(1.0) - uv);
     return clamp(min(edge.x, edge.y) * 8.0, 0.0, 1.0);
@@ -1301,7 +1305,7 @@ vec2 FindRefractedUV(vec2 uv,
         fallbackNDC.z >= 0.0;
     vec3 hitNDC = fallbackValid ? fallbackNDC : vec3(uv, sceneLinearDepth);
 
-    const float expFactor = 8.0;
+    float expFactor = HPWaterAdaptiveRefractionExpFactor(maxCrossDistance);
     int sampleCount = clamp(u_RefractionSampleCount, 4, 64);
     float hitTolerance = clamp(u_RefractionThicknessOffset, 0.01, 8.0);
     float previousD = 0.0;
