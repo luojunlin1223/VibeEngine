@@ -53,17 +53,19 @@ public:
                       bool hpwaterFluidBakeDiagnostics = false,
                       bool hpwaterSSRDiagnostics = false,
                       bool hpwaterLightDiagnostics = false,
+                      bool hpwaterLightPayloadStressDiagnostics = false,
                       bool hpwaterCausticDiagnostics = false,
                       bool hpwaterVolumeDiagnostics = false,
                       bool hpwaterRefractionDiagnostics = false,
                       bool hpwaterSpectrumDiagnostics = false)
         : VE::Application(VE::RendererAPI::API::OpenGL)
-        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterCausticDiagnostics || hpwaterVolumeDiagnostics || hpwaterRefractionDiagnostics || hpwaterSpectrumDiagnostics)
+        , m_RenderDiagnosticsOnce(renderDiagnosticsOnce || hpwaterMotionDiagnostics || hpwaterFluidFilterDiagnostics || hpwaterFluidBakeDiagnostics || hpwaterSSRDiagnostics || hpwaterLightDiagnostics || hpwaterLightPayloadStressDiagnostics || hpwaterCausticDiagnostics || hpwaterVolumeDiagnostics || hpwaterRefractionDiagnostics || hpwaterSpectrumDiagnostics)
         , m_HPWaterMotionDiagnostics(hpwaterMotionDiagnostics)
         , m_HPWaterFluidFilterDiagnostics(hpwaterFluidFilterDiagnostics)
         , m_HPWaterFluidBakeDiagnostics(hpwaterFluidBakeDiagnostics)
         , m_HPWaterSSRDiagnostics(hpwaterSSRDiagnostics)
-        , m_HPWaterLightDiagnostics(hpwaterLightDiagnostics)
+        , m_HPWaterLightDiagnostics(hpwaterLightDiagnostics || hpwaterLightPayloadStressDiagnostics)
+        , m_HPWaterLightPayloadStressDiagnostics(hpwaterLightPayloadStressDiagnostics)
         , m_HPWaterCausticDiagnostics(hpwaterCausticDiagnostics)
         , m_HPWaterVolumeDiagnostics(hpwaterVolumeDiagnostics)
         , m_HPWaterRefractionDiagnostics(hpwaterRefractionDiagnostics)
@@ -175,6 +177,7 @@ public:
             m_RenderDiagnosticsOnceMinFrame = 60;
             m_RenderDiagnosticsOnceMaxFrame = 240;
             m_RenderDiagnosticsRequireLightLoop = true;
+            m_RenderDiagnosticsRequireLightPayloadStress = m_HPWaterLightPayloadStressDiagnostics;
             LoadSceneFromPath((std::filesystem::path(VE_PROJECT_ROOT) / "Assets" / "launcher.vscene").generic_string());
         }
 
@@ -1494,6 +1497,69 @@ private:
         area.Height = 7.0f;
     }
 
+    void EnsureHPWaterLightPayloadStressObjects() {
+        if (!m_HPWaterLightPayloadStressDiagnostics)
+            return;
+
+        constexpr int kPointStressCount = 10;
+        constexpr int kAreaStressCount = 5;
+
+        for (int i = 0; i < kPointStressCount; ++i) {
+            const std::string name = "HPWater Payload Stress Point " + std::to_string(i);
+            auto entity = FindEntityByName(name);
+            if (!entity)
+                entity = m_Scene->CreateEntity(name);
+
+            auto& tag = entity.GetComponent<VE::TagComponent>();
+            tag.Layer = 4;
+            tag.GameObjectTag = "EditorOnly";
+            tag.Active = true;
+
+            auto& tc = entity.GetComponent<VE::TransformComponent>();
+            const float row = static_cast<float>(i / 5);
+            const float col = static_cast<float>(i % 5);
+            tc.Position = { -20.0f + col * 10.0f, 4.0f + row * 1.2f, 12.0f + row * 16.0f };
+            tc.Scale = { 1.0f, 1.0f, 1.0f };
+
+            auto& light = entity.HasComponent<VE::PointLightComponent>()
+                ? entity.GetComponent<VE::PointLightComponent>()
+                : entity.AddComponent<VE::PointLightComponent>();
+            light.Color = {
+                0.55f + 0.04f * static_cast<float>(i % 3),
+                0.75f + 0.03f * static_cast<float>((i + 1) % 3),
+                1.0f
+            };
+            light.Intensity = 2.6f + 0.15f * static_cast<float>(i);
+            light.Range = 52.0f;
+        }
+
+        for (int i = 0; i < kAreaStressCount; ++i) {
+            const std::string name = "HPWater Payload Stress Area " + std::to_string(i);
+            auto entity = FindEntityByName(name);
+            if (!entity)
+                entity = m_Scene->CreateEntity(name);
+
+            auto& tag = entity.GetComponent<VE::TagComponent>();
+            tag.Layer = 4;
+            tag.GameObjectTag = "EditorOnly";
+            tag.Active = true;
+
+            auto& tc = entity.GetComponent<VE::TransformComponent>();
+            tc.Position = { -24.0f + static_cast<float>(i) * 12.0f, 6.0f, 34.0f };
+            tc.Rotation = EulerFromForwardDirection(glm::vec3(0.18f - 0.08f * static_cast<float>(i), -0.72f, 0.55f));
+            tc.Scale = { 1.0f, 1.0f, 1.0f };
+
+            auto& light = entity.HasComponent<VE::AreaLightComponent>()
+                ? entity.GetComponent<VE::AreaLightComponent>()
+                : entity.AddComponent<VE::AreaLightComponent>();
+            light.Color = { 0.7f, 0.88f, 1.0f };
+            light.Intensity = 2.2f + 0.2f * static_cast<float>(i);
+            light.Range = 56.0f;
+            light.Width = 10.0f + static_cast<float>(i);
+            light.Height = 5.0f;
+        }
+    }
+
     void UpdateHPWaterMotionDiagnosticObject(float deltaTime) {
         if (!m_HPWaterMotionDiagnostics || !m_PlayMode)
             return;
@@ -1751,6 +1817,7 @@ private:
         EnsureLauncherWater();
         EnsureLauncherReflectionProbe();
         EnsureLauncherHPWaterAreaLight();
+        EnsureHPWaterLightPayloadStressObjects();
 
         if (!m_PlayMode)
             return;
@@ -9071,6 +9138,20 @@ private:
                  HasHPWaterPunctualLightTextureEvidence() &&
                  HasHPWaterAreaLightTextureEvidence() &&
                  HasHPWaterForwardScatterMipTextureEvidence());
+            const bool lightPayloadStressReady =
+                !m_RenderDiagnosticsRequireLightPayloadStress ||
+                (d.HPWaterPunctualPointLightCandidates > d.HPWaterPunctualPointLightCapacity &&
+                 d.HPWaterAreaLightCandidates > d.HPWaterAreaLightCapacity &&
+                 d.HPWaterPunctualPointLightsCapacitySkipped > 0 &&
+                 d.HPWaterAreaLightsCapacitySkipped > 0 &&
+                 d.HPWaterLightPayloadPointCount == d.HPWaterPunctualPointLightCandidates &&
+                 d.HPWaterLightPayloadAreaCount == d.HPWaterAreaLightCandidates &&
+                 d.HPWaterLightPayloadPointCount >= 10 &&
+                 d.HPWaterLightPayloadAreaCount >= 5 &&
+                 d.HPWaterTiledLightListPunctualReferences >= d.HPWaterLightPayloadPointCount &&
+                 d.HPWaterTiledLightListAreaReferences >= d.HPWaterLightPayloadAreaCount &&
+                 d.HPWaterTiledLightListMaxReferencesPerTile >
+                    d.HPWaterPunctualPointLightCapacity + d.HPWaterAreaLightCapacity);
             const bool causticsReady =
                 !m_RenderDiagnosticsRequireCaustics ||
                 (d.HPWaterCausticRan &&
@@ -9182,11 +9263,12 @@ private:
                 m_RenderDiagnosticsRequireFluidBake ||
                 m_RenderDiagnosticsRequireSSR ||
                 m_RenderDiagnosticsRequireLightLoop ||
+                m_RenderDiagnosticsRequireLightPayloadStress ||
                 m_RenderDiagnosticsRequireCaustics ||
                 m_RenderDiagnosticsRequireVolume ||
                 m_RenderDiagnosticsRequireRefraction ||
                 m_RenderDiagnosticsRequireSpectrum;
-            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && refractionReady && spectrumReady && ssrReady && lightLoopReady && causticsReady && volumeReady;
+            const bool ready = baseReady && objectMotionReady && fluidFilteringReady && fluidBakeReady && refractionReady && spectrumReady && ssrReady && lightLoopReady && lightPayloadStressReady && causticsReady && volumeReady;
             if (ready || (!strictReadinessRequired && d.FrameIndex > m_RenderDiagnosticsOnceMaxFrame)) {
                 WriteRenderDiagnosticsFile();
                 m_LastAutoRenderDiagnosticFrame = d.FrameIndex;
@@ -11088,6 +11170,7 @@ private:
     bool m_HPWaterFluidBakeDiagnostics = false;
     bool m_HPWaterSSRDiagnostics = false;
     bool m_HPWaterLightDiagnostics = false;
+    bool m_HPWaterLightPayloadStressDiagnostics = false;
     bool m_HPWaterCausticDiagnostics = false;
     bool m_HPWaterVolumeDiagnostics = false;
     bool m_HPWaterRefractionDiagnostics = false;
@@ -11097,6 +11180,7 @@ private:
     bool m_RenderDiagnosticsRequireFluidBake = false;
     bool m_RenderDiagnosticsRequireSSR = false;
     bool m_RenderDiagnosticsRequireLightLoop = false;
+    bool m_RenderDiagnosticsRequireLightPayloadStress = false;
     bool m_RenderDiagnosticsRequireCaustics = false;
     bool m_RenderDiagnosticsRequireVolume = false;
     bool m_RenderDiagnosticsRequireRefraction = false;
@@ -11219,6 +11303,7 @@ int main(int argc, char** argv) {
     bool hpwaterFluidBakeDiagnostics = false;
     bool hpwaterSSRDiagnostics = false;
     bool hpwaterLightDiagnostics = false;
+    bool hpwaterLightPayloadStressDiagnostics = false;
     bool hpwaterCausticDiagnostics = false;
     bool hpwaterVolumeDiagnostics = false;
     bool hpwaterRefractionDiagnostics = false;
@@ -11242,6 +11327,10 @@ int main(int argc, char** argv) {
         } else if (arg == "--hpwater-light-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterLightDiagnostics = true;
+        } else if (arg == "--hpwater-light-payload-stress-diagnostics") {
+            renderDiagnosticsOnce = true;
+            hpwaterLightDiagnostics = true;
+            hpwaterLightPayloadStressDiagnostics = true;
         } else if (arg == "--hpwater-caustic-diagnostics") {
             renderDiagnosticsOnce = true;
             hpwaterCausticDiagnostics = true;
@@ -11263,6 +11352,7 @@ int main(int argc, char** argv) {
         hpwaterFluidBakeDiagnostics,
         hpwaterSSRDiagnostics,
         hpwaterLightDiagnostics,
+        hpwaterLightPayloadStressDiagnostics,
         hpwaterCausticDiagnostics,
         hpwaterVolumeDiagnostics,
         hpwaterRefractionDiagnostics,
