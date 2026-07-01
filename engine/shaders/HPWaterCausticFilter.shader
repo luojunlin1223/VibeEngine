@@ -50,6 +50,8 @@ uniform int u_HPWaterMaskEnabled;
 uniform int u_MipAwareFilterEnabled;
 uniform int u_LuminanceFadeEnabled;
 
+#include "hpwater_common.glslinc"
+
 float CausticLuminance(vec4 value) {
     return max(dot(max(value.rgb, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)), max(value.a, 0.0));
 }
@@ -69,8 +71,7 @@ float AtrousKernel3x3(int x, int y) {
 }
 
 float R2Dither(vec2 samplePosition) {
-    const vec2 alpha = vec2(0.75487765, 0.56984026);
-    return fract(dot(samplePosition, alpha));
+    return HPWaterR2Dither(samplePosition, 0.0);
 }
 
 float CalculateCausticMipLevel(float depthDiff, float radius, float centerLum) {

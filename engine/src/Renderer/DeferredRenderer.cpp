@@ -459,6 +459,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterSSRDisocclusionRejectionEnabled = false;
     m_HPWaterCompositeConsumesSSRLightingBuffer = false;
     m_HPWaterFoamColorCompositeEnabled = false;
+    m_HPWaterSharedNoiseParityEnabled = false;
     m_HPWaterMaskValid = false;
     m_HPWaterVolumeValid = false;
     m_HPWaterVolumeTemporalValid = false;
@@ -616,6 +617,7 @@ void DeferredRenderer::CreateHPWaterCompositeFBO() {
     m_HPWaterCompositeValid = false;
     m_HPWaterSurfaceShadowSamplingEnabled = false;
     m_HPWaterShadowCascadeDitherEnabled = false;
+    m_HPWaterSharedNoiseParityEnabled = false;
 }
 
 void DeferredRenderer::CreateHPWaterSSRFBO() {
@@ -2684,6 +2686,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
         m_HPWaterRefractionExponentialStepFactor = 0.0f;
         m_HPWaterSurfaceShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
+        m_HPWaterSharedNoiseParityEnabled = false;
         m_HPWaterFoamColorCompositeEnabled = false;
         return false;
     }
@@ -3000,6 +3003,7 @@ bool DeferredRenderer::CompositeHPWater(float nearClip,
     m_HPWaterVolumeCompositeFullResolutionEnabled = volumeCompositeFullResolution;
     m_HPWaterSurfaceShadowSamplingEnabled = surfaceShadowSamplingValid;
     m_HPWaterShadowCascadeDitherEnabled = shadowCascadeDitherEnabled;
+    m_HPWaterSharedNoiseParityEnabled = true;
     m_HPWaterRefractionNDCMarchEnabled =
         m_HPWaterDepthPyramidValid &&
         refractionSampleCount > 0 &&
@@ -3068,6 +3072,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         m_HPWaterVolumeExponentialIntegrationEnabled = false;
         m_HPWaterVolumeShadowSamplingEnabled = false;
         m_HPWaterShadowCascadeDitherEnabled = false;
+        m_HPWaterSharedNoiseParityEnabled = false;
         m_HPWaterVolumeShadowParamsEnabled = false;
         m_HPWaterVolumeMaxCrossDistanceEnabled = false;
         m_HPWaterVolumeDynamicShadowDistanceEnabled = false;
@@ -3289,6 +3294,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShadowSamplingEnabled = shadowSamplingValid;
     m_HPWaterShadowCascadeDitherEnabled =
         m_HPWaterShadowCascadeDitherEnabled || shadowCascadeDitherEnabled;
+    m_HPWaterSharedNoiseParityEnabled = true;
     m_HPWaterVolumeShadowParamsEnabled = volumeShadowParamsEnabled;
     m_HPWaterVolumeMaxCrossDistanceEnabled = clampedMaxRefractionCrossDistance > 0.0f;
     m_HPWaterVolumeDynamicShadowDistanceEnabled = shadowSamplingValid;
@@ -4204,6 +4210,7 @@ bool DeferredRenderer::RunHPWaterCausticComputeIrradiance(float nearClip,
     m_HPWaterCausticAtlasEdgeFilterEnabled = atlasValid && shadowDepthValid;
     m_HPWaterCausticSpectralWeightingEnabled =
         rgbDispersion && dispersionStrength > 0.0001f;
+    m_HPWaterSharedNoiseParityEnabled = true;
     return true;
 }
 
@@ -4367,6 +4374,7 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
                 m_HPWaterCausticFilterR2DitherEnabled = true;
                 m_HPWaterCausticFilterMipAwareEnabled = true;
                 m_HPWaterCausticFilterLuminanceFadeEnabled = true;
+                m_HPWaterSharedNoiseParityEnabled = true;
             }
         }
         if (!filtered) {
@@ -4380,6 +4388,7 @@ bool DeferredRenderer::FilterHPWaterCaustics(float radius,
                 m_HPWaterCausticFilterR2DitherEnabled = true;
                 m_HPWaterCausticFilterMipAwareEnabled = true;
                 m_HPWaterCausticFilterLuminanceFadeEnabled = true;
+                m_HPWaterSharedNoiseParityEnabled = true;
             }
         }
         if (!filtered) {

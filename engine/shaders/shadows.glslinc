@@ -1,6 +1,8 @@
 // VibeEngine Cascaded Shadow Maps 鈥?shared shader functions
 // Requires: lighting.glslinc (for u_ViewPos, u_LightDir)
 
+#include "hpwater_common.glslinc"
+
 const int CSM_NUM_CASCADES = 4;
 
 // Shadow uniforms
@@ -27,9 +29,7 @@ int SelectCascade(float viewDepth) {
 }
 
 float ShadowInterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
-    const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
-    vec2 scrolled = pixelPos + vec2(float(frameIndex & 63)) * vec2(5.588238, 5.588238);
-    return fract(magic.z * fract(dot(scrolled, magic.xy)));
+    return HPWaterInterleavedGradientNoise(pixelPos, frameIndex);
 }
 
 // 鈹€鈹€ Shadow sampling functions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€

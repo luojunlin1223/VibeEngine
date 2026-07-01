@@ -22,6 +22,8 @@ uniform int u_HPWaterMaskEnabled;
 uniform int u_MipAwareFilterEnabled;
 uniform int u_LuminanceFadeEnabled;
 
+#include "hpwater_common.glslinc"
+
 shared vec4 s_Color[18][18];
 
 ivec2 ClampPixel(ivec2 p) {
@@ -65,8 +67,7 @@ float AtrousKernel3x3(int x, int y) {
 }
 
 float R2Dither(vec2 samplePosition) {
-    const vec2 alpha = vec2(0.75487765, 0.56984026);
-    return fract(dot(samplePosition, alpha));
+    return HPWaterR2Dither(samplePosition, 0.0);
 }
 
 float CalculateCausticMipLevel(float depthDiff, float radius, float centerLum) {

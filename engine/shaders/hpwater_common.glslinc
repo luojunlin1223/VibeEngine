@@ -1,0 +1,129 @@
+#ifndef VE_HPWATER_COMMON_INCLUDED
+#define VE_HPWATER_COMMON_INCLUDED
+
+// Shared HPWater sampling/noise helpers, ported from HPWaterCommon.hlsl.
+// Keep these prefixed so generic shaders can include this file safely.
+
+const float HPWATER_PI = 3.14159265358979323846;
+const float HPWATER_GOLDEN_ANGLE = 2.39996323;
+
+float HPWaterInterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
+    pixelPos += vec2(float(frameIndex)) * 5.588238;
+    const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+    return fract(magic.z * fract(dot(pixelPos, magic.xy)));
+}
+
+float HPWaterR2Dither(vec2 samplePositionSS, float frameCount) {
+    vec2 coord = samplePositionSS + vec2(mod(frameCount * 2.0, 1000.0));
+    const vec2 alpha = vec2(0.75487765, 0.56984026);
+    return fract(alpha.x * coord.x + alpha.y * coord.y);
+}
+
+vec2 HPWaterRandomDiskOffsetIGN(vec2 screenUV, vec2 resolution, float frameCount) {
+    float spatialNoise = HPWaterInterleavedGradientNoise(screenUV * resolution, int(frameCount));
+    float r = sqrt(spatialNoise);
+    float theta = frameCount * HPWATER_GOLDEN_ANGLE + spatialNoise * 6.2831853;
+    return vec2(cos(theta), sin(theta)) * r;
+}
+
+vec2 HPWaterRandomDiskOffsetR2(vec2 screenUV, vec2 resolution, float frameCount) {
+    float spatialNoise = HPWaterR2Dither(screenUV * resolution, frameCount);
+    float r = sqrt(spatialNoise);
+    float theta = frameCount * HPWATER_GOLDEN_ANGLE + spatialNoise * 6.2831853;
+    return vec2(cos(theta), sin(theta)) * r;
+}
+
+float HPWaterBlueNoise(vec2 screenPos, float frameCount) {
+    return fract(sin(dot(screenPos + vec2(frameCount), vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec3 HPWaterHash3(vec3 p) {
+    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+             dot(p, vec3(269.5, 183.3, 246.1)),
+             dot(p, vec3(113.5, 271.9, 124.6)));
+    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+}
+
+float HPWaterHash(vec3 p) {
+    p = fract(p * 0.3183099 + vec3(0.1));
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float HPWaterGradientNoise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+        mix(
+            mix(dot(HPWaterHash3(i + vec3(0, 0, 0)), f - vec3(0, 0, 0)),
+                dot(HPWaterHash3(i + vec3(1, 0, 0)), f - vec3(1, 0, 0)), u.x),
+            mix(dot(HPWaterHash3(i + vec3(0, 1, 0)), f - vec3(0, 1, 0)),
+                dot(HPWaterHash3(i + vec3(1, 1, 0)), f - vec3(1, 1, 0)), u.x), u.y),
+        mix(
+            mix(dot(HPWaterHash3(i + vec3(0, 0, 1)), f - vec3(0, 0, 1)),
+                dot(HPWaterHash3(i + vec3(1, 0, 1)), f - vec3(1, 0, 1)), u.x),
+            mix(dot(HPWaterHash3(i + vec3(0, 1, 1)), f - vec3(0, 1, 1)),
+                dot(HPWaterHash3(i + vec3(1, 1, 1)), f - vec3(1, 1, 1)), u.x), u.y),
+        u.z);
+}
+
+float HPWaterValueNoise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+        mix(
+            mix(HPWaterHash(i + vec3(0, 0, 0)),
+                HPWaterHash(i + vec3(1, 0, 0)), u.x),
+            mix(HPWaterHash(i + vec3(0, 1, 0)),
+                HPWaterHash(i + vec3(1, 1, 0)), u.x), u.y),
+        mix(
+            mix(HPWaterHash(i + vec3(0, 0, 1)),
+                HPWaterHash(i + vec3(1, 0, 1)), u.x),
+            mix(HPWaterHash(i + vec3(0, 1, 1)),
+                HPWaterHash(i + vec3(1, 1, 1)), u.x), u.y),
+        u.z);
+}
+
+float HPWaterFBmNoise(vec3 p, int octaves, float lacunarity, float gain) {
+    float amplitude = 0.5;
+    float frequency = 1.0;
+    float value = 0.0;
+    float maxValue = 0.0;
+    for (int i = 0; i < octaves; ++i) {
+        value += HPWaterGradientNoise(p * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= gain;
+        frequency *= lacunarity;
+    }
+    return maxValue > 0.0 ? value / maxValue : 0.0;
+}
+
+float HPWaterNoise3D(vec3 position, float scale, float intensity,
+                     int octaves, float lacunarity, float gain, bool useGradient) {
+    vec3 scaledPos = position * scale;
+    float noise = octaves > 1
+        ? HPWaterFBmNoise(scaledPos, octaves, lacunarity, gain)
+        : (useGradient ? HPWaterGradientNoise(scaledPos) : HPWaterValueNoise(scaledPos));
+    return noise * intensity;
+}
+
+float HPWaterNoise3DSimple(vec3 position, float scale, float intensity) {
+    return HPWaterNoise3D(position, scale, intensity, 4, 2.0, 0.5, true);
+}
+
+float HPWaterTurbulence3D(vec3 position, float scale, float intensity, int octaves) {
+    vec3 scaledPos = position * scale;
+    float amplitude = intensity;
+    float frequency = 1.0;
+    float turbulence = 0.0;
+    for (int i = 0; i < octaves; ++i) {
+        turbulence += abs(HPWaterGradientNoise(scaledPos * frequency)) * amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+    return turbulence;
+}
+
+#endif

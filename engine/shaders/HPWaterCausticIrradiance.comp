@@ -57,6 +57,7 @@ uniform mat4 u_InverseViewProjection;
 uniform mat4 u_WaterCascadeVP[4];
 uniform float u_WaterCascadeSplits[4];
 
+#include "hpwater_common.glslinc"
 #include "hpwater_normal.glslinc"
 
 const float kAtomicScale = 10000.0;
@@ -74,9 +75,7 @@ float Hash21(vec2 p) {
 }
 
 float R2Dither(vec2 samplePosition, float frameCount) {
-    vec2 coord = samplePosition + vec2(mod(frameCount * 2.0, 1000.0));
-    vec2 alpha = vec2(0.75487765, 0.56984026);
-    return fract(alpha.x * coord.x + alpha.y * coord.y);
+    return HPWaterR2Dither(samplePosition, frameCount);
 }
 
 float CausticStrands(vec2 causticUV) {

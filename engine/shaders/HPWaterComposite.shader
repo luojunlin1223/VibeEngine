@@ -156,6 +156,7 @@ uniform mat4 u_ViewProjection;
 uniform mat4 u_InverseViewProjection;
 
 #include "shadows.glslinc"
+#include "hpwater_common.glslinc"
 #include "hpwater_normal.glslinc"
 
 const float PI = 3.14159265358979323846;
@@ -328,9 +329,7 @@ float HPWaterRefractionBoundFade(vec2 positionNDC) {
 }
 
 float InterleavedGradientNoise(vec2 pixelPos, int frameIndex) {
-    const vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
-    vec2 scrolled = pixelPos + vec2(float(frameIndex & 63)) * vec2(5.588238, 5.588238);
-    return fract(magic.z * fract(dot(scrolled, magic.xy)));
+    return HPWaterInterleavedGradientNoise(pixelPos, frameIndex);
 }
 
 float RefractionStepJitter(vec2 uv) {

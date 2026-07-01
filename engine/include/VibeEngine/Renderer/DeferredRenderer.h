@@ -589,6 +589,9 @@ public:
     bool IsHPWaterShadowCascadeDitherEnabled() const {
         return m_HPWaterShadowCascadeDitherEnabled;
     }
+    bool IsHPWaterSharedNoiseParityEnabled() const {
+        return m_HPWaterSharedNoiseParityEnabled;
+    }
     bool IsHPWaterVolumeShadowSamplingEnabled() const {
         return m_HPWaterVolumeShadowSamplingEnabled;
     }
@@ -965,6 +968,7 @@ private:
     float m_HPWaterRefractionExponentialStepFactor = 0.0f;
     bool m_HPWaterSurfaceShadowSamplingEnabled = false;
     bool m_HPWaterShadowCascadeDitherEnabled = false;
+    bool m_HPWaterSharedNoiseParityEnabled = false;
     uint32_t m_HPWaterSceneColorMipCount = 1;
     bool m_HPWaterSceneColorMipValid = false;
     uint32_t m_HPWaterFGDLUTTexture = 0;
