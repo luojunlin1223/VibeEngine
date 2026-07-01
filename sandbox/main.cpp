@@ -7600,6 +7600,7 @@ private:
         const bool hasResolveDiagnostics =
             resolveDiagnosticsProbe.Valid &&
             resolveDiagnosticsProbe.MaxRGBA[0] > 0.0f &&
+            resolveDiagnosticsProbe.MaxRGBA[1] > 0.0f &&
             resolveDiagnosticsProbe.MaxRGBA[3] > 0.0f;
         return hasSSRHit && hasLightingContribution && hasMotionVectorEvidence &&
             hasResolveDiagnostics;
