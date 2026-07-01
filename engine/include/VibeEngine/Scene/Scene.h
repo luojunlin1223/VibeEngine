@@ -249,6 +249,8 @@ struct RenderDiagnostics {
     bool HPWaterBSDFComponentWeightingEnabled = false;
     bool HPWaterPunctualBodyComponentWeightingEnabled = false;
     bool HPWaterSpecularSelfOcclusionEnabled = false;
+    bool HPWaterSpecularPostEnergyCompensationEnabled = false;
+    float HPWaterSpecularPostEnergyCompensationFactor = 1.0f;
     bool HPWaterExitFresnelEnabled = false;
     float HPWaterExitFresnelF0 = 0.0f;
     float HPWaterSkyReflectionIntensity = 0.0f;

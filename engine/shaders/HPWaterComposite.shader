@@ -1742,6 +1742,8 @@ void main() {
             indirectDither);
     }
     vec3 reflected = skyReflection + directSpecular * clamp(u_EnvironmentReflectionIntensity, 0.0, 3.0);
+    vec3 specularPostEnergyCompensation = vec3(1.0) + F0 * energyCompensation;
+    reflected *= specularPostEnergyCompensation;
     float forwardPhase = HenyeyGreenstein(lightViewAlignment, clamp(u_PhaseG, -0.95, 0.95));
     float forwardStrength = clamp(u_ForwardScatterStrength, 0.0, 3.0);
     float scatterDensity = clamp(dot(scatterColor, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);

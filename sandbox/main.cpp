@@ -9110,6 +9110,10 @@ private:
             << d.HPWaterPunctualBodyComponentWeightingEnabled << "\n";
         out << "HPWaterSpecularSelfOcclusionEnabled: "
             << d.HPWaterSpecularSelfOcclusionEnabled << "\n";
+        out << "HPWaterSpecularPostEnergyCompensationEnabled: "
+            << d.HPWaterSpecularPostEnergyCompensationEnabled << "\n";
+        out << "HPWaterSpecularPostEnergyCompensationFactor: "
+            << d.HPWaterSpecularPostEnergyCompensationFactor << "\n";
         out << "HPWaterExitFresnelEnabled: " << d.HPWaterExitFresnelEnabled << "\n";
         out << "HPWaterExitFresnelF0: " << d.HPWaterExitFresnelF0 << "\n";
         out << "HPWaterSkyReflectionIntensity: " << d.HPWaterSkyReflectionIntensity << "\n";
@@ -10459,6 +10463,8 @@ private:
                  d.HPWaterAreaLightLTCLUTLayers >= 2 &&
                  d.HPWaterPunctualBodyComponentWeightingEnabled &&
                  d.HPWaterSpecularSelfOcclusionEnabled &&
+                 d.HPWaterSpecularPostEnergyCompensationEnabled &&
+                 d.HPWaterSpecularPostEnergyCompensationFactor > 1.0f &&
                  d.HPWaterLightSelectionBoundsValid &&
                  d.HPWaterLightSelectionRadius > 0.0f &&
                  d.HPWaterTiledLightListEnabled &&
@@ -10832,7 +10838,7 @@ private:
             d.HPWaterExitFresnelF0,
             d.HPWaterPreintegratedFGDLUTValid ? 1 : 0,
             d.HPWaterPreintegratedFGDLUTResolution);
-        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d sharedNoise=%d mipScatter=%d punctual=%d areaApprox=%d areaRect=%d areaLTC=%d/%u/%u ltcHDRP=%d ltcSample=%d ltcHDRPUV=%d ltcCosTheta=%d ltcMatrix=%d ltcPoly=%d ltcHorizonClip=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d areaLayerFilter=%d influenceSort=%d layerSkip=%u areaLayerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d volumeAreaRect=%d volumeAreaPoly=%d volumeHorizonClip=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d punctualBody=%d specOcc=%d skyRefl=%.3f indirect=%.3f dir=%.3f",
+        ImGui::Text("HPWater light loop: valid=%d surfaceShadow=%d cascadeDither=%d sharedNoise=%d mipScatter=%d punctual=%d areaApprox=%d areaRect=%d areaLTC=%d/%u/%u ltcHDRP=%d ltcSample=%d ltcHDRPUV=%d ltcCosTheta=%d ltcMatrix=%d ltcPoly=%d ltcHorizonClip=%d point=%u/%u spot=%u/%u area=%u/%u cap=%u/%u/%u layerFilter=%d areaLayerFilter=%d influenceSort=%d layerSkip=%u areaLayerSkip=%u capSkip=%u areaCapSkip=%u volumePunctual=%d volumeArea=%d volumeAreaRect=%d volumeAreaPoly=%d volumeHorizonClip=%d vPoint=%u vSpot=%u vArea=%u indirectScatter=%d bsdfWeights=%d punctualBody=%d specOcc=%d specPost=%d/%.4f skyRefl=%.3f indirect=%.3f dir=%.3f",
             d.HPWaterLightLoopInputsValid ? 1 : 0,
             d.HPWaterSurfaceShadowSamplingEnabled ? 1 : 0,
             d.HPWaterShadowCascadeDitherEnabled ? 1 : 0,
@@ -10879,6 +10885,8 @@ private:
             d.HPWaterBSDFComponentWeightingEnabled ? 1 : 0,
             d.HPWaterPunctualBodyComponentWeightingEnabled ? 1 : 0,
             d.HPWaterSpecularSelfOcclusionEnabled ? 1 : 0,
+            d.HPWaterSpecularPostEnergyCompensationEnabled ? 1 : 0,
+            d.HPWaterSpecularPostEnergyCompensationFactor,
             d.HPWaterSkyReflectionIntensity,
             d.HPWaterIndirectDiffuseIntensity,
             d.HPWaterDirectionalLightIntensity);

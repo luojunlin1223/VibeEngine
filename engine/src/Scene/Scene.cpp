@@ -2324,6 +2324,7 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     float hpWaterPhaseG = -0.95f;
     float hpWaterSpecularFGDStrength = 0.0f;
     float hpWaterGGXEnergyCompensation = 0.0f;
+    float hpWaterSurfaceRoughness = 0.0f;
     glm::vec3 hpWaterFoamColor(0.85f, 0.96f, 1.0f);
     glm::vec3 hpWaterFoamColorSum(0.0f);
     uint32_t hpWaterFoamColorCount = 0;
@@ -2598,6 +2599,9 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                 hpWaterGGXEnergyCompensation = std::max(
                     hpWaterGGXEnergyCompensation,
                     water->GGXEnergyCompensation);
+                hpWaterSurfaceRoughness = std::max(
+                    hpWaterSurfaceRoughness,
+                    std::clamp(water->Roughness, 0.0f, 1.0f));
                 hpWaterFoamColorSum += glm::clamp(
                     glm::vec3(water->FoamColor[0], water->FoamColor[1], water->FoamColor[2]),
                     glm::vec3(0.0f),
@@ -3480,6 +3484,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled &&
             (hpWaterNumPointLights + hpWaterNumSpotLights + hpWaterNumAreaLights) > 0;
         m_RenderDiagnostics.HPWaterSpecularSelfOcclusionEnabled = true;
+        m_RenderDiagnostics.HPWaterSpecularPostEnergyCompensationEnabled =
+            hpWaterGGXEnergyCompensation > 0.0001f;
+        m_RenderDiagnostics.HPWaterSpecularPostEnergyCompensationFactor =
+            1.0f + 0.02037f * (1.0f + 0.02037f *
+                (1.0f - glm::clamp(hpWaterSurfaceRoughness, 0.0f, 1.0f)) *
+                2.0f * glm::clamp(hpWaterGGXEnergyCompensation, 0.0f, 2.0f) * 0.5f);
         m_RenderDiagnostics.HPWaterExitFresnelEnabled = true;
         m_RenderDiagnostics.HPWaterExitFresnelF0 = 0.02037f;
         m_RenderDiagnostics.HPWaterSkyReflectionIntensity = ps.SkyReflectionIntensity;
@@ -4369,6 +4379,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled = false;
         m_RenderDiagnostics.HPWaterPunctualBodyComponentWeightingEnabled = false;
         m_RenderDiagnostics.HPWaterSpecularSelfOcclusionEnabled = false;
+        m_RenderDiagnostics.HPWaterSpecularPostEnergyCompensationEnabled = false;
+        m_RenderDiagnostics.HPWaterSpecularPostEnergyCompensationFactor = 1.0f;
         m_RenderDiagnostics.HPWaterExitFresnelEnabled = false;
         m_RenderDiagnostics.HPWaterExitFresnelF0 = 0.0f;
     }
