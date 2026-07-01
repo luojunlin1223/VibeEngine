@@ -955,7 +955,7 @@ void main() {
         baseDirectLight += caustic.rgb * causticWeight * clamp(u_CausticVolumeStrength, 0.0, 4.0);
     }
 
-    const float expFactor = 8.0;
+    const float expFactor = 12.0;
     int sampleCount = clamp(u_VolumeSampleCount, 4, 32);
     vec2 volumeSize = max(u_HPWaterVolumeResolution.xy, vec2(1.0));
     float dither = InterleavedGradientNoise(gl_FragCoord.xy, u_FrameIndex);

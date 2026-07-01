@@ -8869,6 +8869,10 @@ private:
             << d.HPWaterVolumeDynamicShadowDistanceEnabled << "\n";
         out << "HPWaterVolumeSampleCount: "
             << d.HPWaterVolumeSampleCount << "\n";
+        out << "HPWaterVolumeExponentialStepFactor: "
+            << d.HPWaterVolumeExponentialStepFactor << "\n";
+        out << "HPWaterVolumeReferenceRayMarchParityEnabled: "
+            << d.HPWaterVolumeReferenceRayMarchParityEnabled << "\n";
         out << "HPWaterVolumeMaxCrossDistance: "
             << d.HPWaterVolumeMaxCrossDistance << "\n";
         out << "HPWaterVolumeShadowSoftness: "
@@ -9873,7 +9877,9 @@ private:
                  d.HPWaterVolumeShadowParamsEnabled &&
                  d.HPWaterVolumeMaxCrossDistanceEnabled &&
                  d.HPWaterVolumeDynamicShadowDistanceEnabled &&
-                 d.HPWaterVolumeSampleCount >= 16 &&
+                 d.HPWaterVolumeReferenceRayMarchParityEnabled &&
+                 d.HPWaterVolumeSampleCount == 6 &&
+                 std::abs(d.HPWaterVolumeExponentialStepFactor - 12.0f) < 0.0001f &&
                  d.HPWaterVolumeMaxCrossDistance > 0.0f &&
                  d.HPWaterVolumeMotionVectorTexture != 0 &&
                  d.HPWaterVolumeTemporalBlendFactor > 0.0f &&

@@ -1386,6 +1386,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterVolumeShadowFilterSamples();
     m_RenderDiagnostics.HPWaterVolumeSampleCount =
         m_DeferredRenderer.GetHPWaterVolumeSampleCount();
+    m_RenderDiagnostics.HPWaterVolumeExponentialStepFactor =
+        m_DeferredRenderer.GetHPWaterVolumeExponentialStepFactor();
+    m_RenderDiagnostics.HPWaterVolumeReferenceRayMarchParityEnabled =
+        m_RenderDiagnostics.HPWaterVolumeSampleCount == 6 &&
+        std::abs(m_RenderDiagnostics.HPWaterVolumeExponentialStepFactor - 12.0f) < 0.0001f;
     m_RenderDiagnostics.HPWaterVolumeMotionVectorTexture =
         m_DeferredRenderer.GetHPWaterVolumeMotionVectorTexture();
     m_RenderDiagnostics.HPWaterVolumeTemporalNeighborhoodClampStrength =
@@ -3966,6 +3971,11 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
             m_DeferredRenderer.GetHPWaterVolumeMaxCrossDistance();
         m_RenderDiagnostics.HPWaterVolumeSampleCount =
             m_DeferredRenderer.GetHPWaterVolumeSampleCount();
+        m_RenderDiagnostics.HPWaterVolumeExponentialStepFactor =
+            m_DeferredRenderer.GetHPWaterVolumeExponentialStepFactor();
+        m_RenderDiagnostics.HPWaterVolumeReferenceRayMarchParityEnabled =
+            m_RenderDiagnostics.HPWaterVolumeSampleCount == 6 &&
+            std::abs(m_RenderDiagnostics.HPWaterVolumeExponentialStepFactor - 12.0f) < 0.0001f;
         m_RenderDiagnostics.HPWaterVolumeTemporalBlendFactor =
             m_DeferredRenderer.GetHPWaterVolumeTemporalBlendFactor();
         m_RenderDiagnostics.HPWaterVolumeSpatialFilterEnabled =

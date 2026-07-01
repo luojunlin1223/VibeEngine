@@ -416,6 +416,8 @@ struct RenderDiagnostics {
     bool HPWaterVolumeMaxCrossDistanceEnabled = false;
     bool HPWaterVolumeDynamicShadowDistanceEnabled = false;
     uint32_t HPWaterVolumeSampleCount = 0;
+    float HPWaterVolumeExponentialStepFactor = 0.0f;
+    bool HPWaterVolumeReferenceRayMarchParityEnabled = false;
     float HPWaterVolumeMaxCrossDistance = 0.0f;
     float HPWaterVolumeShadowSoftness = 0.0f;
     float HPWaterVolumeShadowMinFilterSize = 0.0f;

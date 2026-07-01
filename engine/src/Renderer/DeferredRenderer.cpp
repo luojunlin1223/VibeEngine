@@ -490,6 +490,7 @@ void DeferredRenderer::Shutdown() {
     m_HPWaterVolumeShadowBlockerSamples = 0;
     m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
+    m_HPWaterVolumeExponentialStepFactor = 0.0f;
     m_HPWaterVolumeMaxCrossDistance = 0.0f;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterVolumeTemporalBlendFactor = 0.0f;
@@ -1272,6 +1273,7 @@ void DeferredRenderer::CreateHPWaterVolumeFBO() {
     m_HPWaterVolumeShadowBlockerSamples = 0;
     m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
+    m_HPWaterVolumeExponentialStepFactor = 0.0f;
     m_HPWaterVolumeTemporalNeighborhoodClampStrength = 0.0f;
     m_HPWaterVolumeTemporalBlendFactor = 0.0f;
     m_HPWaterVolumeSpatialFilterEnabled = false;
@@ -1812,6 +1814,7 @@ void DeferredRenderer::Resize(uint32_t width, uint32_t height) {
     m_HPWaterVolumeShadowBlockerSamples = 0;
     m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
+    m_HPWaterVolumeExponentialStepFactor = 0.0f;
     m_HPWaterVolumeTemporalBlendFactor = 0.0f;
     m_HPWaterVolumeSpatialFilterEnabled = false;
     m_HPWaterVolumeSpatialFilterIterations = 0;
@@ -2031,6 +2034,7 @@ void DeferredRenderer::LightingPass() {
     m_HPWaterVolumeShadowBlockerSamples = 0;
     m_HPWaterVolumeShadowFilterSamples = 0;
     m_HPWaterVolumeSampleCount = 0;
+    m_HPWaterVolumeExponentialStepFactor = 0.0f;
     m_HPWaterVolumeTemporalBlendFactor = 0.0f;
     m_HPWaterVolumeSpatialFilterEnabled = false;
     m_HPWaterVolumeSpatialFilterIterations = 0;
@@ -3042,6 +3046,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         m_HPWaterVolumeShadowBlockerSamples = 0;
         m_HPWaterVolumeShadowFilterSamples = 0;
         m_HPWaterVolumeSampleCount = 0;
+        m_HPWaterVolumeExponentialStepFactor = 0.0f;
         m_HPWaterVolumeMaxCrossDistance = 0.0f;
         return false;
     }
@@ -3190,7 +3195,8 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
         clampedMaxRefractionCrossDistance);
     m_HPWaterVolumeShader->SetFloat("u_MacroScatterStrength",
         std::clamp(macroScatterStrength, 0.0f, 4.0f));
-    constexpr uint32_t hpWaterVolumeSampleCount = 16;
+    constexpr uint32_t hpWaterVolumeSampleCount = 6;
+    constexpr float hpWaterVolumeExponentialStepFactor = 12.0f;
     m_HPWaterVolumeShader->SetInt("u_VolumeSampleCount",
         static_cast<int>(hpWaterVolumeSampleCount));
     m_HPWaterVolumeShader->SetInt("u_FrameIndex", static_cast<int>(frameIndex));
@@ -3255,6 +3261,7 @@ bool DeferredRenderer::AccumulateHPWaterVolume(float nearClip,
     m_HPWaterVolumeShadowBlockerSamples = static_cast<uint32_t>(clampedVolumeShadowBlockerSamples);
     m_HPWaterVolumeShadowFilterSamples = static_cast<uint32_t>(clampedVolumeShadowFilterSamples);
     m_HPWaterVolumeSampleCount = hpWaterVolumeSampleCount;
+    m_HPWaterVolumeExponentialStepFactor = hpWaterVolumeExponentialStepFactor;
     m_HPWaterVolumeMaxCrossDistance = clampedMaxRefractionCrossDistance;
     m_HPWaterVolumePunctualLightLoopEnabled = (clampedPointLightCount + clampedSpotLightCount) > 0;
     m_HPWaterVolumeAreaLightLoopEnabled = clampedAreaLightCount > 0;

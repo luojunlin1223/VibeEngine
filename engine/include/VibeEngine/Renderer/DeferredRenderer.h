@@ -611,6 +611,9 @@ public:
     uint32_t GetHPWaterVolumeSampleCount() const {
         return m_HPWaterVolumeSampleCount;
     }
+    float GetHPWaterVolumeExponentialStepFactor() const {
+        return m_HPWaterVolumeExponentialStepFactor;
+    }
     float GetHPWaterVolumeMaxCrossDistance() const {
         return m_HPWaterVolumeMaxCrossDistance;
     }
@@ -1027,6 +1030,7 @@ private:
     uint32_t m_HPWaterVolumeSpotLightCount = 0;
     uint32_t m_HPWaterVolumeAreaLightCount = 0;
     uint32_t m_HPWaterVolumeSampleCount = 0;
+    float m_HPWaterVolumeExponentialStepFactor = 0.0f;
     float m_HPWaterVolumeMaxCrossDistance = 0.0f;
     float m_HPWaterVolumeShadowSoftness = 0.0f;
     float m_HPWaterVolumeShadowMinFilterSize = 0.0f;
