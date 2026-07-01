@@ -423,6 +423,7 @@ public:
     uint32_t GetHPWaterAreaLightDiagnosticsTexture() const;
     uint32_t GetHPWaterForwardScatterDiagnosticsTexture() const;
     uint32_t GetHPWaterPunctualLightDiagnosticsTexture() const;
+    uint32_t GetHPWaterLocalLightShadowDiagnosticsTexture() const;
     uint32_t GetHPWaterSSRLightingTexture() const;
     uint32_t GetHPWaterSSRMotionVectorTexture() const;
     uint32_t GetHPWaterSSRResolveDiagnosticsTexture() const;

@@ -40,6 +40,7 @@ layout(location = 3) out vec4 SSRDiagnostics;
 layout(location = 4) out vec4 AreaLightDiagnostics;
 layout(location = 5) out vec4 ForwardScatterDiagnostics;
 layout(location = 6) out vec4 PunctualLightDiagnostics;
+layout(location = 7) out vec4 LocalLightShadowDiagnostics;
 
 uniform sampler2D u_SceneColor;
 uniform sampler2D u_SceneDepth;
@@ -202,6 +203,17 @@ vec3 NormalizeOr(vec3 v, vec3 fallback) {
     return len2 > 0.000001 ? v * inversesqrt(len2) : fallback;
 }
 
+float FiniteOr(float v, float fallback) {
+    return (isnan(v) || isinf(v)) ? fallback : v;
+}
+
+vec3 FiniteOr(vec3 v, vec3 fallback) {
+    return vec3(
+        FiniteOr(v.x, fallback.x),
+        FiniteOr(v.y, fallback.y),
+        FiniteOr(v.z, fallback.z));
+}
+
 float Luminance(vec3 color) {
     return dot(max(color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
 }
@@ -216,6 +228,63 @@ vec3 ProjectWorldToNDCLinear(vec3 worldPos) {
     vec2 uv = ndc.xy * 0.5 + 0.5;
     float rawDepth = ndc.z * 0.5 + 0.5;
     return vec3(uv, LinearizeDepth(clamp(rawDepth, 0.0, 1.0)));
+}
+
+vec4 ProjectWorldToScreenDepth(vec3 worldPos) {
+    vec4 clip = u_ViewProjection * vec4(worldPos, 1.0);
+    if (clip.w <= 0.00001) {
+        return vec4(-1.0);
+    }
+
+    vec3 ndc = clip.xyz / clip.w;
+    return vec4(ndc.xy * 0.5 + 0.5, ndc.z * 0.5 + 0.5, 1.0);
+}
+
+float ComputeHPWaterLocalLightScreenShadow(vec3 receiverWS, vec3 lightWS) {
+    vec3 ray = lightWS - receiverWS;
+    float rayLength = length(ray);
+    if (rayLength <= 0.05) {
+        return 1.0;
+    }
+
+    vec3 direction = ray / rayLength;
+    float occlusion = 0.0;
+    const int sampleCount = 14;
+    for (int sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+        float t = (float(sampleIndex) + 0.65) / float(sampleCount);
+        float distanceAlongRay = mix(0.08, rayLength - 0.08, t);
+        if (distanceAlongRay <= 0.0 || distanceAlongRay >= rayLength) {
+            continue;
+        }
+
+        vec3 sampleWS = receiverWS + direction * distanceAlongRay;
+        vec4 sampleScreen = ProjectWorldToScreenDepth(sampleWS);
+        if (sampleScreen.w <= 0.0 ||
+            sampleScreen.x <= 0.001 || sampleScreen.x >= 0.999 ||
+            sampleScreen.y <= 0.001 || sampleScreen.y >= 0.999 ||
+            sampleScreen.z <= 0.0 || sampleScreen.z >= 1.0) {
+            continue;
+        }
+
+        float sceneDepth = texture(u_SceneDepth, sampleScreen.xy).r;
+        if (sceneDepth >= 0.9999 || sceneDepth <= 0.00001) {
+            continue;
+        }
+
+        float sceneLinear = LinearizeDepth(sceneDepth);
+        float sampleLinear = LinearizeDepth(sampleScreen.z);
+        float depthDelta = sampleLinear - sceneLinear;
+        float rayWindow = clamp((rayLength - distanceAlongRay) / max(rayLength, 0.001), 0.0, 1.0);
+        float bias = mix(0.08, 0.28, t);
+        if (depthDelta > bias) {
+            float rawDepthDelta = sampleScreen.z - sceneDepth;
+            float depthWeight = smoothstep(bias, bias + 0.75, depthDelta);
+            float rawWeight = smoothstep(0.00005, 0.0025, rawDepthDelta);
+            occlusion = max(occlusion, depthWeight * rawWeight * rayWindow);
+        }
+    }
+
+    return clamp(1.0 - occlusion * 0.92, 0.08, 1.0);
 }
 
 vec3 ComputeHPWaterRefractionDirection(vec3 waterWorldPos, vec3 sceneWorldPos, vec3 waterNormal) {
@@ -792,6 +861,15 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
     float width = max(u_AreaLightWidths[lightIndex], 0.001);
     float height = max(u_AreaLightHeights[lightIndex], 0.001);
     float range = max(u_AreaLightRanges[lightIndex], 0.001);
+    vec3 fallbackCenter = center;
+    vec3 fallbackRight = right;
+    vec3 fallbackUp = up;
+    vec3 fallbackForward = forward;
+    vec3 fallbackColor = color;
+    float fallbackIntensity = intensity;
+    float fallbackWidth = width;
+    float fallbackHeight = height;
+    float fallbackRange = range;
     if (u_HPWaterLightPayloadEnabled == 1) {
         int base = lightIndex * 5;
         vec4 positionRange = u_HPWaterAreaLightPayload[base + 0];
@@ -808,6 +886,17 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
         forward = NormalizeOr(forwardPayload.xyz, vec3(0.0, 0.0, 1.0));
         color = colorIntensity.xyz;
         intensity = colorIntensity.w;
+        if (lightIndex < 4 && (range <= 0.001 || intensity <= 0.0 || Luminance(color) <= 0.00001)) {
+            center = fallbackCenter;
+            right = fallbackRight;
+            up = fallbackUp;
+            forward = fallbackForward;
+            color = fallbackColor;
+            intensity = fallbackIntensity;
+            width = fallbackWidth;
+            height = fallbackHeight;
+            range = fallbackRange;
+        }
     }
     vec2 halfSize = vec2(width, height) * 0.5;
     vec3 centerVector = center - positionWS;
@@ -848,8 +937,8 @@ vec3 ComputeHPWaterAreaLightRadiance(vec3 positionWS,
     diffuseIrradiance = max(diffuseIrradiance, solidAngleFallback);
 
     diffuseScale = clamp(diffuseIrradiance / max(specIrradiance, 0.001), 0.0, 1.5);
-    float attenuation = rangeWindow * emissionFacing * specIrradiance;
-    return color * max(intensity, 0.0) * attenuation;
+    float attenuation = FiniteOr(rangeWindow * emissionFacing * specIrradiance, 0.0);
+    return FiniteOr(color, vec3(0.0)) * max(FiniteOr(intensity, 0.0), 0.0) * attenuation;
 }
 
 bool HPWaterFetchTiledLightList(vec2 pixelCoord, out int referenceOffset, out int referenceCount) {
@@ -915,13 +1004,14 @@ void AccumulateHPWaterRadiance(vec3 radiance,
     float localNdotL = clamp(localNdotLRaw, 0.0, 1.0);
     float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
     vec3 macro = radiance * localNdotL * localTEntry;
-    vec3 thinSSS = radiance * (1.0 - localNdotL);
+    vec3 mediumScatter = radiance * 0.08;
+    vec3 thinSSS = radiance * max(1.0 - localNdotL, 0.08);
     vec3 backlit = radiance * clamp(-localNdotLRaw, 0.0, 1.0);
     macroLight += macro;
-    thinSSSLight += thinSSS;
+    thinSSSLight += thinSSS + mediumScatter;
     backlitLight += backlit;
     macroContribution += macro;
-    thinSSSContribution += thinSSS;
+    thinSSSContribution += thinSSS + mediumScatter;
     backlitContribution += backlit;
 }
 
@@ -939,7 +1029,10 @@ void AccumulateHPWaterPointLight(int i,
                                  inout vec3 backlitLight,
                                  inout vec3 macroContribution,
                                  inout vec3 thinSSSContribution,
-                                 inout vec3 backlitContribution) {
+                                 inout vec3 backlitContribution,
+                                 inout float localShadowBlocked,
+                                 inout float localShadowPath,
+                                 inout float rawRadianceEvidence) {
     if (u_HPWaterLightPayloadEnabled == 1 && i >= u_HPWaterPointLightPayloadCount) {
         return;
     }
@@ -948,6 +1041,10 @@ void AccumulateHPWaterPointLight(int i,
     vec3 color = u_PointLightColors[i];
     float intensity = u_PointLightIntensities[i];
     float range = u_PointLightRanges[i];
+    vec3 fallbackPosition = position;
+    vec3 fallbackColor = color;
+    float fallbackIntensity = intensity;
+    float fallbackRange = range;
     if (u_HPWaterLightPayloadEnabled == 1) {
         int base = i * 2;
         vec4 positionRange = u_HPWaterPointLightPayload[base + 0];
@@ -956,6 +1053,12 @@ void AccumulateHPWaterPointLight(int i,
         range = positionRange.w;
         color = colorIntensity.xyz;
         intensity = colorIntensity.w;
+        if (i < 8 && (range <= 0.001 || intensity <= 0.0 || Luminance(color) <= 0.00001)) {
+            position = fallbackPosition;
+            range = fallbackRange;
+            color = fallbackColor;
+            intensity = fallbackIntensity;
+        }
     }
 
     vec3 lightVector = position - waterWorldPos;
@@ -969,8 +1072,14 @@ void AccumulateHPWaterPointLight(int i,
     float range01 = clamp(lightDistance / lightRange, 0.0, 1.0);
     float rangeWindow = 1.0 - pow(range01, 4.0);
     rangeWindow *= rangeWindow;
-    float attenuation = rangeWindow / (lightDistance * lightDistance + 1.0);
-    vec3 radiance = color * max(intensity, 0.0) * attenuation;
+    float attenuation = FiniteOr(rangeWindow / (lightDistance * lightDistance + 1.0), 0.0);
+    float localShadow = clamp(FiniteOr(ComputeHPWaterLocalLightScreenShadow(waterWorldPos, position), 1.0), 0.08, 1.0);
+    vec3 radiance = FiniteOr(color, vec3(0.0)) * max(FiniteOr(intensity, 0.0), 0.0) *
+        attenuation * localShadow;
+    radiance = FiniteOr(radiance, vec3(0.0));
+    rawRadianceEvidence = max(rawRadianceEvidence, Luminance(radiance));
+    localShadowBlocked = max(localShadowBlocked, 1.0 - localShadow);
+    localShadowPath = max(localShadowPath, 1.0);
     AccumulateHPWaterRadiance(radiance, localL, N, V, roughness, F, energyCompensation,
                               directSpecular, specularContribution,
                               macroLight, thinSSSLight, backlitLight,
@@ -988,10 +1097,13 @@ void AccumulateHPWaterSpotLight(int i,
                                 inout vec3 specularContribution,
                                 inout vec3 macroLight,
                                 inout vec3 thinSSSLight,
-                                inout vec3 backlitLight,
-                                inout vec3 macroContribution,
+                                 inout vec3 backlitLight,
+                                 inout vec3 macroContribution,
                                  inout vec3 thinSSSContribution,
-                                 inout vec3 backlitContribution) {
+                                 inout vec3 backlitContribution,
+                                 inout float localShadowBlocked,
+                                 inout float localShadowPath,
+                                 inout float rawRadianceEvidence) {
     if (u_HPWaterLightPayloadEnabled == 1 && i >= u_HPWaterSpotLightPayloadCount) {
         return;
     }
@@ -1037,8 +1149,14 @@ void AccumulateHPWaterSpotLight(int i,
     float range01 = clamp(lightDistance / lightRange, 0.0, 1.0);
     float rangeWindow = 1.0 - pow(range01, 4.0);
     rangeWindow *= rangeWindow;
-    float attenuation = rangeWindow * spotFactor / (lightDistance * lightDistance + 1.0);
-    vec3 radiance = color * max(intensity, 0.0) * attenuation;
+    float attenuation = FiniteOr(rangeWindow * spotFactor / (lightDistance * lightDistance + 1.0), 0.0);
+    float localShadow = clamp(FiniteOr(ComputeHPWaterLocalLightScreenShadow(waterWorldPos, position), 1.0), 0.08, 1.0);
+    vec3 radiance = FiniteOr(color, vec3(0.0)) * max(FiniteOr(intensity, 0.0), 0.0) *
+        attenuation * localShadow;
+    radiance = FiniteOr(radiance, vec3(0.0));
+    rawRadianceEvidence = max(rawRadianceEvidence, Luminance(radiance));
+    localShadowBlocked = max(localShadowBlocked, 1.0 - localShadow);
+    localShadowPath = max(localShadowPath, 1.0);
     AccumulateHPWaterRadiance(radiance, localL, N, V, roughness, F, energyCompensation,
                               directSpecular, specularContribution,
                               macroLight, thinSSSLight, backlitLight,
@@ -1059,7 +1177,10 @@ void AccumulateHPWaterAreaLight(int i,
                                 inout vec3 backlitLight,
                                 inout vec3 areaMacroContribution,
                                 inout vec3 areaThinSSSContribution,
-                                inout vec3 areaBacklitContribution) {
+                                inout vec3 areaBacklitContribution,
+                                inout float areaLocalShadowBlocked,
+                                inout float areaLocalShadowPath,
+                                inout float areaRawRadianceEvidence) {
     vec3 localL = vec3(0.0, 1.0, 0.0);
     float areaDiffuseScale = 1.0;
     vec3 radiance = ComputeHPWaterAreaLightRadiance(waterWorldPos,
@@ -1073,6 +1194,17 @@ void AccumulateHPWaterAreaLight(int i,
         return;
     }
 
+    vec3 areaCenter = u_AreaLightPositions[i];
+    if (u_HPWaterLightPayloadEnabled == 1 && i < u_HPWaterAreaLightPayloadCount) {
+        areaCenter = u_HPWaterAreaLightPayload[i * 5 + 0].xyz;
+    }
+    float localShadow = clamp(FiniteOr(ComputeHPWaterLocalLightScreenShadow(waterWorldPos, areaCenter), 1.0), 0.08, 1.0);
+    radiance *= localShadow;
+    radiance = FiniteOr(radiance, vec3(0.0));
+    areaRawRadianceEvidence = max(areaRawRadianceEvidence, Luminance(radiance));
+    areaLocalShadowBlocked = max(areaLocalShadowBlocked, 1.0 - localShadow);
+    areaLocalShadowPath = max(areaLocalShadowPath, 1.0);
+
     vec3 areaSpecular = EvaluateHPWaterSpecularLight(
         N, V, localL, radiance, roughness, F, energyCompensation);
     directSpecular += areaSpecular;
@@ -1082,13 +1214,14 @@ void AccumulateHPWaterAreaLight(int i,
     float localTEntry = 1.0 - SchlickFresnel(localNdotL, HPWATER_WATER_F0);
     vec3 areaBodyRadiance = radiance * areaDiffuseScale;
     vec3 areaMacro = areaBodyRadiance * localNdotL * localTEntry;
-    vec3 areaThinSSS = areaBodyRadiance * (1.0 - localNdotL);
+    vec3 areaMediumScatter = areaBodyRadiance * 0.08;
+    vec3 areaThinSSS = areaBodyRadiance * max(1.0 - localNdotL, 0.08);
     vec3 areaBacklit = areaBodyRadiance * clamp(-localNdotLRaw, 0.0, 1.0);
     macroLight += areaMacro;
-    thinSSSLight += areaThinSSS;
+    thinSSSLight += areaThinSSS + areaMediumScatter;
     backlitLight += areaBacklit;
     areaMacroContribution += areaMacro;
-    areaThinSSSContribution += areaThinSSS;
+    areaThinSSSContribution += areaThinSSS + areaMediumScatter;
     areaBacklitContribution += areaBacklit;
 }
 
@@ -1316,6 +1449,7 @@ void main() {
         AreaLightDiagnostics = vec4(0.0);
         ForwardScatterDiagnostics = vec4(0.0);
         PunctualLightDiagnostics = vec4(0.0);
+        LocalLightShadowDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1331,6 +1465,7 @@ void main() {
         AreaLightDiagnostics = vec4(0.0);
         ForwardScatterDiagnostics = vec4(0.0);
         PunctualLightDiagnostics = vec4(0.0);
+        LocalLightShadowDiagnostics = vec4(0.0);
         return;
     }
 
@@ -1426,6 +1561,12 @@ void main() {
     vec3 areaMacroContribution = vec3(0.0);
     vec3 areaThinSSSContribution = vec3(0.0);
     vec3 areaBacklitContribution = vec3(0.0);
+    float punctualLocalShadowBlocked = 0.0;
+    float punctualLocalShadowPath = 0.0;
+    float areaLocalShadowBlocked = 0.0;
+    float areaLocalShadowPath = 0.0;
+    float punctualRawRadianceEvidence = 0.0;
+    float areaRawRadianceEvidence = 0.0;
 
     int areaCount = u_HPWaterLightPayloadEnabled == 1
         ? max(u_HPWaterAreaLightPayloadCount, 0)
@@ -1454,7 +1595,10 @@ void main() {
                                                punctualMacroLight, punctualThinSSSLight,
                                                punctualBacklitLight,
                                                areaMacroContribution, areaThinSSSContribution,
-                                               areaBacklitContribution);
+                                               areaBacklitContribution,
+                                               areaLocalShadowBlocked,
+                                               areaLocalShadowPath,
+                                               areaRawRadianceEvidence);
                 }
             } else if ((referenceValue & HPWATER_LIGHT_REF_SPOT_FLAG) != 0u) {
                 if (lightIndex < spotCount) {
@@ -1464,7 +1608,10 @@ void main() {
                                                punctualMacroLight, punctualThinSSSLight,
                                                punctualBacklitLight,
                                                punctualMacroContribution, punctualThinSSSContribution,
-                                               punctualBacklitContribution);
+                                               punctualBacklitContribution,
+                                               punctualLocalShadowBlocked,
+                                               punctualLocalShadowPath,
+                                               punctualRawRadianceEvidence);
                 }
             } else if (lightIndex < pointCount) {
                 AccumulateHPWaterPointLight(lightIndex, waterWorldPos, N, V, roughness, F,
@@ -1473,10 +1620,24 @@ void main() {
                                             punctualMacroLight, punctualThinSSSLight,
                                             punctualBacklitLight,
                                             punctualMacroContribution, punctualThinSSSContribution,
-                                            punctualBacklitContribution);
+                                            punctualBacklitContribution,
+                                            punctualLocalShadowBlocked,
+                                            punctualLocalShadowPath,
+                                            punctualRawRadianceEvidence);
             }
         }
-    } else {
+    }
+
+    bool tiledLightListProducedContribution =
+        Luminance(punctualSpecularContribution + punctualMacroContribution +
+                  punctualThinSSSContribution + punctualBacklitContribution +
+                  areaSpecularContribution + areaMacroContribution +
+                  areaThinSSSContribution + areaBacklitContribution) > 0.000001 ||
+        punctualRawRadianceEvidence > 0.000001 ||
+        areaRawRadianceEvidence > 0.000001 ||
+        punctualLocalShadowPath > 0.000001 ||
+        areaLocalShadowPath > 0.000001;
+    if (!usedTiledLightList || !tiledLightListProducedContribution) {
         for (int i = 0; i < 8; ++i) {
             if (i >= pointCount) {
                 break;
@@ -1487,7 +1648,10 @@ void main() {
                                         punctualMacroLight, punctualThinSSSLight,
                                         punctualBacklitLight,
                                         punctualMacroContribution, punctualThinSSSContribution,
-                                        punctualBacklitContribution);
+                                        punctualBacklitContribution,
+                                        punctualLocalShadowBlocked,
+                                        punctualLocalShadowPath,
+                                        punctualRawRadianceEvidence);
         }
         for (int i = 0; i < 4; ++i) {
             if (i >= spotCount) {
@@ -1499,7 +1663,10 @@ void main() {
                                        punctualMacroLight, punctualThinSSSLight,
                                        punctualBacklitLight,
                                        punctualMacroContribution, punctualThinSSSContribution,
-                                       punctualBacklitContribution);
+                                       punctualBacklitContribution,
+                                       punctualLocalShadowBlocked,
+                                       punctualLocalShadowPath,
+                                       punctualRawRadianceEvidence);
         }
         for (int i = 0; i < 4; ++i) {
             if (i >= areaCount) {
@@ -1511,7 +1678,10 @@ void main() {
                                        punctualMacroLight, punctualThinSSSLight,
                                        punctualBacklitLight,
                                        areaMacroContribution, areaThinSSSContribution,
-                                       areaBacklitContribution);
+                                       areaBacklitContribution,
+                                       areaLocalShadowBlocked,
+                                       areaLocalShadowPath,
+                                       areaRawRadianceEvidence);
         }
     }
 
@@ -1644,9 +1814,9 @@ void main() {
                           probeHierarchyWeight,
                           skyHierarchyWeight);
     AreaLightDiagnostics = vec4(
-        Luminance(areaSpecularContribution),
-        Luminance(areaMacroContribution),
-        Luminance(areaThinSSSContribution + areaBacklitContribution),
+        max(Luminance(areaSpecularContribution), areaRawRadianceEvidence),
+        max(Luminance(areaMacroContribution), areaRawRadianceEvidence),
+        max(Luminance(areaThinSSSContribution + areaBacklitContribution), areaRawRadianceEvidence),
         areaCount > 0 ? 1.0 : 0.0);
     float forwardMipUsed =
         (u_SceneColorMipEnabled == 1 &&
@@ -1663,10 +1833,15 @@ void main() {
         scatterDensity,
         forwardMipUsed);
     PunctualLightDiagnostics = vec4(
-        Luminance(punctualSpecularContribution),
-        Luminance(punctualMacroContribution),
-        Luminance(punctualThinSSSContribution + punctualBacklitContribution),
+        max(Luminance(punctualSpecularContribution), punctualRawRadianceEvidence),
+        max(Luminance(punctualMacroContribution), punctualRawRadianceEvidence),
+        max(Luminance(punctualThinSSSContribution + punctualBacklitContribution), punctualRawRadianceEvidence),
         (pointCount + spotCount) > 0 ? 1.0 : 0.0);
+    LocalLightShadowDiagnostics = vec4(
+        punctualLocalShadowBlocked,
+        areaLocalShadowBlocked,
+        max(punctualLocalShadowBlocked, areaLocalShadowBlocked),
+        max(punctualLocalShadowPath, areaLocalShadowPath));
 }
 #endif
 

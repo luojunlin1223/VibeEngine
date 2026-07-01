@@ -1300,6 +1300,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterAreaLightLTCLUTLayers = m_DeferredRenderer.GetHPWaterAreaLightLTCLUTLayers();
     m_RenderDiagnostics.HPWaterAreaLightDiagnosticsTexture =
         m_DeferredRenderer.GetHPWaterAreaLightDiagnosticsTexture();
+    m_RenderDiagnostics.HPWaterLocalLightShadowDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterLocalLightShadowDiagnosticsTexture();
     m_RenderDiagnostics.HPWaterVolumeAreaLightDiagnosticsTexture =
         m_DeferredRenderer.GetHPWaterVolumeAreaLightDiagnosticsTexture();
     m_RenderDiagnostics.HPWaterAreaLightLTCHDRPTableEnabled =
@@ -3418,6 +3420,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_RenderDiagnostics.HPWaterAreaLightCount = static_cast<uint32_t>(hpWaterNumAreaLights);
         m_RenderDiagnostics.HPWaterPunctualLightDiagnosticsTexture =
             m_DeferredRenderer.GetHPWaterPunctualLightDiagnosticsTexture();
+        m_RenderDiagnostics.HPWaterLocalLightShadowDiagnosticsTexture =
+            m_DeferredRenderer.GetHPWaterLocalLightShadowDiagnosticsTexture();
         m_RenderDiagnostics.HPWaterPunctualLightLoopEnabled =
             (hpWaterNumPointLights + hpWaterNumSpotLights) > 0;
         m_RenderDiagnostics.HPWaterAreaLightApproximationEnabled = hpWaterNumAreaLights > 0;
@@ -4251,6 +4255,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
         m_DeferredRenderer.GetHPWaterForwardScatterDiagnosticsTexture();
     m_RenderDiagnostics.HPWaterPunctualLightDiagnosticsTexture =
         m_DeferredRenderer.GetHPWaterPunctualLightDiagnosticsTexture();
+    m_RenderDiagnostics.HPWaterLocalLightShadowDiagnosticsTexture =
+        m_DeferredRenderer.GetHPWaterLocalLightShadowDiagnosticsTexture();
     if (m_RenderDiagnostics.HPWaterGBufferDrawn == 0) {
         m_RenderDiagnostics.HPWaterIndirectScatterIntegrationEnabled = false;
         m_RenderDiagnostics.HPWaterBSDFComponentWeightingEnabled = false;

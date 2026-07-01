@@ -232,6 +232,7 @@ struct RenderDiagnostics {
     bool HPWaterAreaLightLTCPolygonIntegrationEnabled = false;
     bool HPWaterAreaLightLTCHorizonClippingEnabled = false;
     uint32_t HPWaterAreaLightDiagnosticsTexture = 0;
+    uint32_t HPWaterLocalLightShadowDiagnosticsTexture = 0;
     bool HPWaterLightLoopInputsValid = false;
     bool HPWaterSurfaceShadowSamplingEnabled = false;
     bool HPWaterShadowCascadeDitherEnabled = false;
