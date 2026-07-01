@@ -319,6 +319,7 @@ struct RenderDiagnostics {
     uint32_t HPWaterVolumeAreaLightDiagnosticsTexture = 0;
     bool HPWaterSpectralOceanEnabled = false;
     bool HPWaterSpectralNormalParityEnabled = false;
+    bool HPWaterSpectrumVertexDisplacementEnabled = false;
     bool HPWaterSpectrumComputeRan = false;
     bool HPWaterSpectrumComputeValid = false;
     bool HPWaterSpectrumTextureConsumed = false;
@@ -529,6 +530,7 @@ struct RenderDiagnostics {
     float HPWaterFluidDamping = 0.0f;
     float HPWaterFluidDeltaTime = 0.0f;
     bool HPWaterFluidDeltaTimeDriven = false;
+    bool HPWaterFluidVertexDisplacementEnabled = false;
     bool HPWaterFluidObstacleValid = false;
     uint32_t HPWaterFluidObstacleTexture = 0;
     bool HPWaterFluidHeightFieldValid = false;

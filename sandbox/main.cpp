@@ -7913,6 +7913,7 @@ private:
         const auto& d = m_Scene->GetRenderDiagnostics();
         if (!d.HPWaterSpectralOceanEnabled ||
             !d.HPWaterSpectralNormalParityEnabled ||
+            !d.HPWaterSpectrumVertexDisplacementEnabled ||
             !d.HPWaterSpectrumComputeRan ||
             !d.HPWaterSpectrumComputeValid ||
             !d.HPWaterSpectrumTextureConsumed ||
@@ -8535,6 +8536,7 @@ private:
             << d.HPWaterVolumeAreaLightDiagnosticsTexture << "\n";
         out << "HPWaterSpectralOceanEnabled: " << d.HPWaterSpectralOceanEnabled << "\n";
         out << "HPWaterSpectralNormalParityEnabled: " << d.HPWaterSpectralNormalParityEnabled << "\n";
+        out << "HPWaterSpectrumVertexDisplacementEnabled: " << d.HPWaterSpectrumVertexDisplacementEnabled << "\n";
         out << "HPWaterSpectrumComputeRan: " << d.HPWaterSpectrumComputeRan << "\n";
         out << "HPWaterSpectrumComputeValid: " << d.HPWaterSpectrumComputeValid << "\n";
         out << "HPWaterSpectrumTextureConsumed: " << d.HPWaterSpectrumTextureConsumed << "\n";
@@ -8876,6 +8878,7 @@ private:
         out << "HPWaterFluidDamping: " << d.HPWaterFluidDamping << "\n";
         out << "HPWaterFluidDeltaTime: " << d.HPWaterFluidDeltaTime << "\n";
         out << "HPWaterFluidDeltaTimeDriven: " << d.HPWaterFluidDeltaTimeDriven << "\n";
+        out << "HPWaterFluidVertexDisplacementEnabled: " << d.HPWaterFluidVertexDisplacementEnabled << "\n";
         out << "HPWaterFluidObstacleValid: " << d.HPWaterFluidObstacleValid << "\n";
         out << "HPWaterFluidObstacleTexture: " << d.HPWaterFluidObstacleTexture << "\n";
         out << "HPWaterFluidHeightFieldValid: " << d.HPWaterFluidHeightFieldValid << "\n";
@@ -9470,6 +9473,7 @@ private:
                  d.HPWaterFluidMovingObjectSourceCount > 0 &&
                  d.HPWaterFluidDeltaTimeDriven &&
                  d.HPWaterFluidDeltaTime > 0.0f &&
+                 d.HPWaterFluidVertexDisplacementEnabled &&
                  d.HPWaterFluidLayerFilteringParityEnabled &&
                  d.HPWaterFluidRenderQueueParityEnabled &&
                  d.HPWaterFluidWaterLayerCandidates > 0 &&

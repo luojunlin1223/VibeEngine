@@ -124,6 +124,5 @@ void main() {
     }
 
     vec3 normal = normalize(vec3(-totalGradient.x, 1.0, -totalGradient.y));
-    float heightSignal = clamp(abs(totalHeight) / max(abs(u_Amplitude) * 2.5, 0.001), 0.0, 1.0);
-    imageStore(u_SpectrumOutput, coord, vec4(normal * 0.5 + 0.5, heightSignal));
+    imageStore(u_SpectrumOutput, coord, vec4(normal * 0.5 + 0.5, totalHeight));
 }

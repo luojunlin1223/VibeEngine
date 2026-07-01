@@ -30,16 +30,35 @@ layout(location = 3) in vec2 a_TexCoord;
 
 uniform mat4 u_MVP;
 uniform mat4 u_Model;
+uniform sampler2D u_HPSpectrumTexture;
+uniform int   u_HPSpectrumTextureEnabled;
+uniform sampler2D u_HPFluidHeightTexture;
+uniform int   u_HPFluidDynamicsEnabled;
+uniform vec3  u_HPFluidBoxCenter;
+uniform vec3  u_HPFluidBoxSize;
+uniform float u_HPFluidHeightScale;
 
 out vec3 v_Normal;
 out vec3 v_FragPos;
 out vec2 v_TexCoord;
 
+vec2 WorldToFluidUVVertex(vec3 worldPos) {
+    vec2 boxSize = max(abs(u_HPFluidBoxSize.xz), vec2(0.001));
+    return (worldPos.xz - u_HPFluidBoxCenter.xz) / boxSize + vec2(0.5);
+}
+
 void main() {
-    v_Normal = normalize(mat3(u_Model) * a_Normal);
-    v_FragPos = vec3(u_Model * vec4(a_Position, 1.0));
+    vec3 worldNormal = normalize(mat3(u_Model) * a_Normal);
+    vec3 worldPos = vec3(u_Model * vec4(a_Position, 1.0));
+    vec2 waterUV = clamp(WorldToFluidUVVertex(worldPos), vec2(0.0), vec2(1.0));
+    float spectrumHeight = u_HPSpectrumTextureEnabled == 1 ? texture(u_HPSpectrumTexture, waterUV).a : 0.0;
+    float fluidHeight = u_HPFluidDynamicsEnabled == 1 ? texture(u_HPFluidHeightTexture, waterUV).r * u_HPFluidHeightScale : 0.0;
+    vec3 displacedPosition = a_Position + a_Normal * (spectrumHeight + fluidHeight);
+
+    v_Normal = worldNormal;
+    v_FragPos = vec3(u_Model * vec4(displacedPosition, 1.0));
     v_TexCoord = a_TexCoord;
-    gl_Position = u_MVP * vec4(a_Position, 1.0);
+    gl_Position = u_MVP * vec4(displacedPosition, 1.0);
 }
 #endif
 
@@ -180,7 +199,7 @@ void main() {
             vec2 spectrumUV = WorldToFluidUV(v_FragPos);
             vec4 spectrumPayload = texture(u_HPSpectrumTexture, clamp(spectrumUV, vec2(0.0), vec2(1.0)));
             spectrumNormal = normalize(spectrumPayload.rgb * 2.0 - 1.0);
-            spectrumHeightSignal = clamp(spectrumPayload.a, 0.0, 1.0);
+            spectrumHeightSignal = clamp(abs(spectrumPayload.a) / max(abs(u_HPSpectrumAmplitude) * 2.5, 0.001), 0.0, 1.0);
         } else {
             spectrumNormal = SampleSpectrumNormal(v_FragPos, spectrumHeightSignal);
         }

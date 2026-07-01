@@ -3175,6 +3175,12 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
                     m_RenderDiagnostics.HPWaterSpectralNormalParityEnabled ||
                     (water->SpectrumWaves && water->SpectrumAmplitude > 0.0f &&
                      water->SpectrumNormalStrength > 0.0f);
+                m_RenderDiagnostics.HPWaterSpectrumVertexDisplacementEnabled =
+                    m_RenderDiagnostics.HPWaterSpectrumVertexDisplacementEnabled ||
+                    (spectrumComputeValid && water->SpectrumWaves && water->SpectrumAmplitude > 0.0f);
+                m_RenderDiagnostics.HPWaterFluidVertexDisplacementEnabled =
+                    m_RenderDiagnostics.HPWaterFluidVertexDisplacementEnabled ||
+                    (fluidValid && water->HeightScale > 0.0f);
                 m_RenderDiagnostics.HPWaterSpectrumComputeRan =
                     m_RenderDiagnostics.HPWaterSpectrumComputeRan ||
                     m_DeferredRenderer.DidHPWaterSpectrumComputeRun();
@@ -4500,6 +4506,8 @@ void Scene::OnRenderDeferred(const glm::mat4& viewProjection,
     m_RenderDiagnostics.HPWaterFluidDamping = hpWaterFluidDamping;
     m_RenderDiagnostics.HPWaterFluidDeltaTime = m_DeferredRenderer.GetHPWaterFluidDeltaTime();
     m_RenderDiagnostics.HPWaterFluidDeltaTimeDriven = m_DeferredRenderer.IsHPWaterFluidDeltaTimeDriven();
+    m_RenderDiagnostics.HPWaterFluidVertexDisplacementEnabled =
+        m_RenderDiagnostics.HPWaterFluidVertexDisplacementEnabled && hpWaterFluidEnabled;
     m_RenderDiagnostics.HPWaterFluidObstacleValid = m_DeferredRenderer.IsHPWaterFluidObstacleValid();
     m_RenderDiagnostics.HPWaterFluidObstacleTexture = m_DeferredRenderer.GetHPWaterFluidObstacleTexture();
     m_RenderDiagnostics.HPWaterFluidHeightFieldValid = m_DeferredRenderer.IsHPWaterFluidHeightFieldValid();
