@@ -7549,7 +7549,10 @@ private:
         uint32_t Height = 0;
         float AverageUVOffset = 0.0f;
         float MaxUVOffset = 0.0f;
+        float UVOffsetVariance = 0.0f;
+        float AverageUVOffsetGradient = 0.0f;
         float NonZeroUVOffsetRatio = 0.0f;
+        float UVOffsetGradientPixelRatio = 0.0f;
         float ValidThicknessRatio = 0.0f;
     };
 
@@ -8060,7 +8063,10 @@ private:
             metaProbe.MaxRGBA[3] > 0.00001f &&
             metaProbe.NonZeroAlphaRatio > 0.0f &&
             uvProbe.MaxUVOffset > 0.0001f &&
-            uvProbe.NonZeroUVOffsetRatio > 0.0f;
+            uvProbe.NonZeroUVOffsetRatio > 0.0f &&
+            uvProbe.UVOffsetVariance > 0.000000001f &&
+            uvProbe.AverageUVOffsetGradient > 0.000001f &&
+            uvProbe.UVOffsetGradientPixelRatio > 0.001f;
     }
 
     bool HasHPWaterSpectrumTextureEvidence() {
@@ -8405,7 +8411,13 @@ private:
         size_t sampled = 0;
         size_t validThickness = 0;
         size_t nonZeroOffset = 0;
+        size_t offsetGradientSamples = 0;
+        size_t offsetGradientPixels = 0;
         double offsetSum = 0.0;
+        double offsetSquaredSum = 0.0;
+        double offsetGradientSum = 0.0;
+        std::vector<float> offsets(pixelCount, 0.0f);
+        std::vector<unsigned char> validPixels(pixelCount, 0);
 
         for (size_t pixel = 0; pixel < pixelCount; pixel += step) {
             const size_t i = pixel * 4;
@@ -8424,6 +8436,9 @@ private:
 
             validThickness++;
             offsetSum += offset;
+            offsetSquaredSum += static_cast<double>(offset) * static_cast<double>(offset);
+            offsets[pixel] = offset;
+            validPixels[pixel] = 1;
             summary.MaxUVOffset = std::max(summary.MaxUVOffset, offset);
             if (offset > 0.0001f)
                 nonZeroOffset++;
@@ -8434,8 +8449,43 @@ private:
             summary.ValidThicknessRatio = static_cast<float>(validThickness) / static_cast<float>(sampled);
         if (validThickness > 0) {
             summary.AverageUVOffset = static_cast<float>(offsetSum / static_cast<double>(validThickness));
+            const double mean = summary.AverageUVOffset;
+            summary.UVOffsetVariance = static_cast<float>(std::max(
+                0.0,
+                offsetSquaredSum / static_cast<double>(validThickness) - mean * mean));
             summary.NonZeroUVOffsetRatio =
                 static_cast<float>(nonZeroOffset) / static_cast<float>(validThickness);
+        }
+        if (validThickness > 0) {
+            for (uint32_t y = 0; y < sampleHeight; ++y) {
+                for (uint32_t x = 0; x < sampleWidth; ++x) {
+                    const size_t pixel = static_cast<size_t>(y) * sampleWidth + x;
+                    if (!validPixels[pixel])
+                        continue;
+                    float maxDelta = 0.0f;
+                    auto accumulateNeighbor = [&](uint32_t nx, uint32_t ny) {
+                        const size_t neighbor = static_cast<size_t>(ny) * sampleWidth + nx;
+                        if (!validPixels[neighbor])
+                            return;
+                        const float delta = std::abs(offsets[pixel] - offsets[neighbor]);
+                        offsetGradientSum += delta;
+                        offsetGradientSamples++;
+                        maxDelta = std::max(maxDelta, delta);
+                    };
+                    if (x + 1 < sampleWidth)
+                        accumulateNeighbor(x + 1, y);
+                    if (y + 1 < sampleHeight)
+                        accumulateNeighbor(x, y + 1);
+                    if (maxDelta > 0.00001f)
+                        offsetGradientPixels++;
+                }
+            }
+        }
+        if (offsetGradientSamples > 0) {
+            summary.AverageUVOffsetGradient =
+                static_cast<float>(offsetGradientSum / static_cast<double>(offsetGradientSamples));
+            summary.UVOffsetGradientPixelRatio =
+                static_cast<float>(static_cast<double>(offsetGradientPixels) / static_cast<double>(validThickness));
         }
 
         return summary;
@@ -9304,14 +9354,27 @@ private:
             out << "HPWaterRefractionMetaMaxUVOffset: "
                 << std::fixed << std::setprecision(6)
                 << refractionMetaUVProbe.MaxUVOffset << "\n";
+            out << "HPWaterRefractionMetaUVOffsetVariance: "
+                << std::fixed << std::setprecision(10)
+                << refractionMetaUVProbe.UVOffsetVariance << "\n";
+            out << "HPWaterRefractionMetaAverageUVOffsetGradient: "
+                << std::fixed << std::setprecision(8)
+                << refractionMetaUVProbe.AverageUVOffsetGradient << "\n";
             out << "HPWaterRefractionMetaNonZeroUVOffsetRatio: "
                 << std::fixed << std::setprecision(4)
                 << refractionMetaUVProbe.NonZeroUVOffsetRatio << "\n";
+            out << "HPWaterRefractionMetaUVOffsetGradientPixelRatio: "
+                << std::fixed << std::setprecision(4)
+                << refractionMetaUVProbe.UVOffsetGradientPixelRatio << "\n";
             out << "HPWaterRefractionMetaValidThicknessRatio: "
                 << std::fixed << std::setprecision(4)
                 << refractionMetaUVProbe.ValidThicknessRatio << "\n";
             out << "HPWaterRefractionMetaAnyUVOffset: "
                 << (refractionMetaUVProbe.MaxUVOffset > 0.0001f ? 1 : 0) << "\n";
+            out << "HPWaterRefractionMetaAnyUVOffsetDistribution: "
+                << (refractionMetaUVProbe.UVOffsetVariance > 0.000000001f &&
+                    refractionMetaUVProbe.AverageUVOffsetGradient > 0.000001f &&
+                    refractionMetaUVProbe.UVOffsetGradientPixelRatio > 0.001f ? 1 : 0) << "\n";
             SaveTextureBMP(dr.GetHPWaterRefractionMetaTexture(), dr.GetWidth(), dr.GetHeight(),
                 std::filesystem::path(VE_PROJECT_ROOT) / "render_diagnostics_hpwater_refraction_meta.bmp");
         }
